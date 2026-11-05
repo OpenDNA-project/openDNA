@@ -7,14 +7,14 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 import checkup as C
 import genetic_code

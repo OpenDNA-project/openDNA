@@ -21,7 +21,7 @@ use gb_io::seq::Topology;
 use pyo3::prelude::*;
 use std::path::PathBuf;
 
-/// Python class `genomeedit_core.Document(path)`: an editable GenBank or .dna file.
+/// Python class `opendna_core.Document(path)`: an editable GenBank or .dna file.
 /// All positions are 0-based, end-exclusive (Python slicing convention).
 #[pyclass]
 struct Document {
@@ -449,7 +449,7 @@ impl Document {
     }
 }
 
-/// Python class `genomeedit_core.Fasta(path)`.
+/// Python class `opendna_core.Fasta(path)`.
 ///
 /// `#[pyclass]` is a PyO3 macro: it generates the code that makes this struct a Python type.
 #[pyclass]
@@ -483,7 +483,7 @@ impl Fasta {
     }
 
     /// Python: `fa.search_motif("chr1", "GARTTC", max_mismatches=0, iupac=True, both=True, limit=100000)`
-    /// -> [(start, end, strand, mismatches)], like `genomeedit_core.find_motif` on that sequence.
+    /// -> [(start, end, strand, mismatches)], like `opendna_core.find_motif` on that sequence.
     #[pyo3(signature = (name, motif, max_mismatches=0, iupac=true, both=true, limit=100_000))]
     fn search_motif(
         &mut self,
@@ -507,7 +507,7 @@ impl Fasta {
     }
 }
 
-/// Python class `genomeedit_core.Track(path)`: a GFF3/GTF/BED annotation file, indexed.
+/// Python class `opendna_core.Track(path)`: a GFF3/GTF/BED annotation file, indexed.
 #[pyclass]
 struct Track {
     inner: tracks::Track,
@@ -555,7 +555,7 @@ impl Track {
     }
 }
 
-/// Python class `genomeedit_core.Bam(path)`: a sorted BAM file with its .bai/.csi index
+/// Python class `opendna_core.Bam(path)`: a sorted BAM file with its .bai/.csi index
 /// (written next to it if missing).
 #[pyclass]
 struct Bam {
@@ -656,7 +656,7 @@ fn to_gb((kind, location, qualifiers): FeatureTuple) -> PyResult<gb_io::seq::Fea
     })
 }
 
-/// `genomeedit_core.tm("ACGT...")`: melting temperature in °C (None if not plain ACGT).
+/// `opendna_core.tm("ACGT...")`: melting temperature in °C (None if not plain ACGT).
 /// One quick-alignment hit: (start, end, strand, score, identity, query start, query end,
 /// mismatches (pos, base), insertions (pos, length), deletions (start, end)). Positions are
 /// on the template, 0-based; they may pass its length for a hit across the origin.
@@ -686,7 +686,7 @@ fn tm(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64, primer_nm: f64) -> Option
     primers::tm(seq.as_bytes(), &primers::Conditions { na_mm, mg_mm, dntp_mm, primer_nm })
 }
 
-/// `genomeedit_core.find_primers(template, circular, primers, max_mismatches, seed)`:
+/// `opendna_core.find_primers(template, circular, primers, max_mismatches, seed)`:
 /// binding sites of every primer on a sequence string, as one list of
 /// (start, end, strand, mismatches) per primer. Takes a copy of the sequence (not a
 /// Document), so it can run in a background thread while the document is being edited.
@@ -715,7 +715,7 @@ fn find_primers(
     })
 }
 
-/// `genomeedit_core.find_motif(seq, motif, max_mismatches=0, iupac=True, both=True, circular=False, limit=100000)`: where a DNA
+/// `opendna_core.find_motif(seq, motif, max_mismatches=0, iupac=True, both=True, circular=False, limit=100000)`: where a DNA
 /// motif occurs (IUPAC letters allowed, up to `max_mismatches` positions differing, on the top strand and with `both` as its
 /// reverse complement), as (start, end, strand, mismatches) in order of position; see search.rs. Takes a copy of the sequence.
 #[pyfunction]
@@ -738,7 +738,7 @@ fn find_motif(
     })
 }
 
-/// `genomeedit_core.find_protein(seq, query, max_mismatches=0, limit=100000)`: where an amino-acid motif occurs in the
+/// `opendna_core.find_protein(seq, query, max_mismatches=0, limit=100000)`: where an amino-acid motif occurs in the
 /// translations of a DNA sequence in the three frames of both strands, as (start, end, strand, mismatches, frame) with the
 /// DNA positions on the top strand, in order of position; see search.rs.
 #[pyfunction]
@@ -753,14 +753,14 @@ fn find_protein(py: Python<'_>, seq: &str, query: &str, max_mismatches: usize, l
     })
 }
 
-/// `genomeedit_core.genetic_codes()`: every embedded NCBI translation table as (id, name, amino acids, starts), the two
+/// `opendna_core.genetic_codes()`: every embedded NCBI translation table as (id, name, amino acids, starts), the two
 /// strings being NCBI's 64-letter ones in TCAG order (see code.rs).
 #[pyfunction]
 fn genetic_codes() -> Vec<(u8, String, String, String)> {
     code::TABLES.iter().map(|t| (t.id, t.name.to_string(), t.aas.to_string(), t.starts.to_string())).collect()
 }
 
-/// `genomeedit_core.translate(seq, table=1)`: amino acids of `seq` read from its first base ('X' for a codon with an N,
+/// `opendna_core.translate(seq, table=1)`: amino acids of `seq` read from its first base ('X' for a codon with an N,
 /// '*' for a stop). An unknown table id falls back to the standard code.
 #[pyfunction]
 #[pyo3(signature = (seq, table=1))]
@@ -768,7 +768,7 @@ fn translate(seq: &str, table: u8) -> String {
     String::from_utf8(code::by_id_or_standard(table).translate(seq.as_bytes())).unwrap_or_default()
 }
 
-/// `genomeedit_core.find_guide_sites(template, circular, guides, pam, max_mismatches, pam_first)`: every site of each
+/// `opendna_core.find_guide_sites(template, circular, guides, pam, max_mismatches, pam_first)`: every site of each
 /// guide (protospacer + PAM, or PAM + protospacer for a Cas12a-type nuclease: `pam_first`) on either strand, with at most `max_mismatches` mismatches in the protospacer, as one
 /// list per guide of (start, end, strand, mismatches, mask). `mask` bit i = guide base i (0 = 5' end) mismatches.
 /// `end` may pass the length on a circular template. Takes a copy of the sequence, like `find_primers`, so it can
@@ -795,7 +795,7 @@ fn find_guide_sites(
         .collect()
 }
 
-/// `genomeedit_core.find_parts(template, circular, parts, coding, min_dna, min_protein)`:
+/// `opendna_core.find_parts(template, circular, parts, coding, min_dna, min_protein)`:
 /// where known parts occur (see annotate.rs), as (part index, start, end, strand,
 /// identity 0..1, found as protein?). `end` may pass the origin of a circular template.
 #[pyfunction]
@@ -820,7 +820,7 @@ fn find_parts(
     })
 }
 
-/// `genomeedit_core.dimer(a, b)`: (ΔG of the most stable dimer, ΔG of the most stable
+/// `opendna_core.dimer(a, b)`: (ΔG of the most stable dimer, ΔG of the most stable
 /// 3'-end dimer) in kcal/mol at 37 °C; same sequence twice = self-dimer.
 #[pyfunction]
 #[pyo3(signature = (a, b, na_mm=50.0, mg_mm=1.5, dntp_mm=0.6))]
@@ -829,7 +829,7 @@ fn dimer(a: &str, b: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64) -> (f64, f64) {
     primers::dimer_dg(a.as_bytes(), b.as_bytes(), &c)
 }
 
-/// `genomeedit_core.hairpin(seq)`: (ΔG of the most stable hairpin, ΔG of the most stable
+/// `opendna_core.hairpin(seq)`: (ΔG of the most stable hairpin, ΔG of the most stable
 /// hairpin involving the 3' end), kcal/mol at 37 °C.
 #[pyfunction]
 #[pyo3(signature = (seq, na_mm=50.0, mg_mm=1.5, dntp_mm=0.6))]
@@ -838,9 +838,9 @@ fn hairpin(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64) -> (f64, f64) {
     primers::hairpin_dg(seq.as_bytes(), &c)
 }
 
-/// The module itself: `import genomeedit_core`. The function name must match the module name.
+/// The module itself: `import opendna_core`. The function name must match the module name.
 #[pymodule]
-fn genomeedit_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tm, m)?)?;
     m.add_function(wrap_pyfunction!(quick_align, m)?)?;
     m.add_function(wrap_pyfunction!(find_primers, m)?)?;

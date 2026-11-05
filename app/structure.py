@@ -35,7 +35,7 @@ NOTICE = {
 ESM_MAX = 400          # amino acids the ESM Atlas accepts
 PDB_MIN = 25           # amino acids RCSB's sequence search accepts
 TIMEOUT, ESM_TIMEOUT, LOCAL_TIMEOUT = 30, 300, 3600   # seconds
-USER_AGENT = "OpenGenEdit"
+USER_AGENT = "openDNA"
 AMINO = set("ACDEFGHIKLMNPQRSTVWY")
 VENDOR = Path(__file__).with_name("vendor") / "3Dmol-min.js"
 PLDDT_BANDS = [(90, "#0053D6", "very high (> 90)"), (70, "#65CBF3", "confident (70-90)"), (50, "#FFDB13", "low (50-70)"),
@@ -175,7 +175,7 @@ def from_local(sequence, command, job=None):
     `cancelled` first, and then this raises StructureError("Cancelled.")."""
     if "{fasta}" not in command or "{pdb}" not in command:
         raise StructureError("The local command needs {fasta} (the input file) and {pdb} (the file it writes) in it.")
-    with tempfile.TemporaryDirectory(prefix="genomeedit_fold_") as folder:
+    with tempfile.TemporaryDirectory(prefix="opendna_fold_") as folder:
         fasta, out = Path(folder) / "protein.fasta", Path(folder) / "model.pdb"
         fasta.write_text(f">protein\n{sequence}\n")
         # posix=False keeps Windows paths whole, and keeps the quotes round a word: take them off

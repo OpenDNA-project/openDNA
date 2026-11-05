@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from Bio import SeqIO
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 ROOT = Path(__file__).resolve().parent.parent
 from sample_files import PLASMID as PLASMID_GB, PLASMID2, DNA_FILE as PLASMID_DNA   # copies (see sample_files.py)

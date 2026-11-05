@@ -8,7 +8,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 from reference import genbank_records
 
@@ -62,7 +62,7 @@ def read_record(path, name):
     """The Document of record `name` of the file."""
     for found, lines in _chunks(path):
         if found == name:
-            handle, tmp = tempfile.mkstemp(suffix=".gb", prefix="genomeedit_record_")
+            handle, tmp = tempfile.mkstemp(suffix=".gb", prefix="opendna_record_")
             with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
                 out.writelines(lines)
             try:
@@ -96,7 +96,7 @@ def forget_siblings(editor):
 
 def save_document(path, name, doc, primers=None):
     """Write `doc` (the record `name` of the multi-record file `path`) into the file, the other records unchanged."""
-    handle, tmp_name = tempfile.mkstemp(suffix=".gb", prefix="genomeedit_save_")
+    handle, tmp_name = tempfile.mkstemp(suffix=".gb", prefix="opendna_save_")
     os.close(handle)
     tmp = Path(tmp_name)
     try:

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ.setdefault("GENOMEEDIT_DATA_DIR", tempfile.mkdtemp(prefix="genomeedit_test_"))
+os.environ.setdefault("OPENDNA_DATA_DIR", tempfile.mkdtemp(prefix="opendna_test_"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 from PySide6.QtWidgets import QApplication
@@ -18,8 +18,8 @@ from project import FILE_TYPES
 
 app = QApplication.instance() or QApplication([])
 
-EXE = [r"C:\Apps\OpenGenEdit\OpenGenEdit.exe"]
-MOVED = [r"D:\Elsewhere\OpenGenEdit.exe"]
+EXE = [r"C:\Apps\openDNA\openDNA.exe"]
+MOVED = [r"D:\Elsewhere\openDNA.exe"]
 
 
 class FakeRegistry:
@@ -110,23 +110,23 @@ def test_register(reg, monkeypatch):
     # --- writes everything
     done = F.register(None, reg, EXE)
     assert done == list(FILE_TYPES)
-    pid = r"Software\Classes\OpenGenEdit.SequenceFile"
-    assert reg.get(pid + r"\shell\open\command") == '"C:\\Apps\\OpenGenEdit\\OpenGenEdit.exe" "%1"'
-    assert reg.get(pid + r"\DefaultIcon") == '"C:\\Apps\\OpenGenEdit\\OpenGenEdit.exe",0'
-    assert reg.get(pid, "FriendlyAppName") == "OpenGenEdit"
+    pid = r"Software\Classes\openDNA.SequenceFile"
+    assert reg.get(pid + r"\shell\open\command") == '"C:\\Apps\\openDNA\\openDNA.exe" "%1"'
+    assert reg.get(pid + r"\DefaultIcon") == '"C:\\Apps\\openDNA\\openDNA.exe",0'
+    assert reg.get(pid, "FriendlyAppName") == "openDNA"
     for ext in FILE_TYPES:
         assert reg.get(rf"Software\Classes\{ext}\OpenWithProgids", F.PROGID) is not None
-        assert reg.get(r"Software\Classes\Applications\OpenGenEdit.exe\SupportedTypes", ext) is not None
+        assert reg.get(r"Software\Classes\Applications\openDNA.exe\SupportedTypes", ext) is not None
         assert reg.get(F.CAPABILITIES + r"\FileAssociations", ext) == F.PROGID
-    assert reg.get(F.REGISTERED_APPS, "OpenGenEdit") == F.CAPABILITIES
+    assert reg.get(F.REGISTERED_APPS, "openDNA") == F.CAPABILITIES
     assert reg.changes == 1   # the shell was told once
 
     # --- only writes our keys
-    ours = (r"Software\Classes\OpenGenEdit.SequenceFile", r"Software\Classes\Applications\OpenGenEdit.exe", F.CAPABILITIES, F.REGISTERED_APPS)
+    ours = (r"Software\Classes\openDNA.SequenceFile", r"Software\Classes\Applications\openDNA.exe", F.CAPABILITIES, F.REGISTERED_APPS)
     for path, name in reg.writes:
         assert path.startswith(ours) or path.endswith("OpenWithProgids"), path
         if path == F.REGISTERED_APPS:
-            assert name == "OpenGenEdit"
+            assert name == "openDNA"
         if path.endswith("OpenWithProgids"):
             assert name == F.PROGID
     assert not any("userchoice" in p.casefold() for p, _ in reg.writes)
@@ -173,7 +173,7 @@ def test_status_default_and_settings_page(reg):
     assert F.is_stale(reg, MOVED) and not F.is_registered_for_current_exe(reg, MOVED)
     F.register(None, reg, MOVED)   # the repair is just registering again
     assert F.is_registered_for_current_exe(reg, MOVED)
-    assert reg.get(r"Software\Classes\OpenGenEdit.SequenceFile\shell\open\command").startswith('"D:')
+    assert reg.get(r"Software\Classes\openDNA.SequenceFile\shell\open\command").startswith('"D:')
 
     # --- path case is ignored
     reg = FakeRegistry()
@@ -189,7 +189,7 @@ def test_status_default_and_settings_page(reg):
     # --- the default-apps settings page
     opened = []
     assert F.open_default_apps_settings(opened.append) is True
-    assert opened == ["ms-settings:defaultapps?registeredAppUser=OpenGenEdit"]
+    assert opened == ["ms-settings:defaultapps?registeredAppUser=openDNA"]
 
     def refuses_deep_link(uri):
         if "?" in uri:
@@ -218,7 +218,7 @@ def test_unregister(reg):
     reg.set(r"Software\Classes\.gb\OpenWithProgids", "Other.Program", None)
     reg.set(r"Software\Classes\.gb", "", "Other.Program")
     reg.set(r"Software\Classes\Applications\Other.exe\shell\open\command", "", '"other.exe" "%1"')
-    reg.set(r"Software\OpenGenEdit\OpenGenEdit\view", "zoom", "3")
+    reg.set(r"Software\openDNA\openDNA\view", "zoom", "3")
     reg.set(F.REGISTERED_APPS, "OtherApp", r"Software\Other\Capabilities")
     reg.set(F.USER_CHOICE.format(ext=".gb"), "ProgId", "Other.Program")
     others = reg.snapshot()
@@ -290,7 +290,7 @@ def test_should_ask_decision_table(reg, ini, tmp_path):
     assert ask(reg, ini) == "stale"
     ini.setValue("stale_asked_for", F.command_for(EXE))   # answered for this path already
     assert ask(reg, ini) is None
-    assert ask(reg, ini, launch=[r"E:\Third\OpenGenEdit.exe"]) == "stale"   # but a new move asks again
+    assert ask(reg, ini, launch=[r"E:\Third\openDNA.exe"]) == "stale"   # but a new move asks again
 
     # --- ini booleans survive a reload
     reg = FakeRegistry()
@@ -326,7 +326,7 @@ def test_startup_question_screens(reg, ini, monkeypatch):
     assert F.is_registered_for_current_exe(reg, EXE)
     assert ask(reg, ini) is None and ini.value("accepted") == "true"
     info = [b for b in F._open_boxes if "Default apps" in b.text()]
-    assert len(info) == 1 and "click OpenGenEdit" in info[0].text()
+    assert len(info) == 1 and "click openDNA" in info[0].text()
     info[0].open_button.click()   # "Open Windows Settings"
     assert opened == [1]
 
@@ -352,7 +352,7 @@ def test_startup_question_screens(reg, ini, monkeypatch):
     box.yes_button.click()
     assert F.is_registered_for_current_exe(reg, EXE)
     # declining a repair is remembered for that path
-    third = [r"E:\Third\OpenGenEdit.exe"]
+    third = [r"E:\Third\openDNA.exe"]
     F.register(None, reg, MOVED)
     F.ask_at_startup(None, ini, reg, third, windows=True, frozen=True).later_button.click()
     assert ask(reg, ini, launch=third) is None

@@ -2,12 +2,12 @@
 # `cargo build` / `cargo test` read this file.
 
 [package]
-name = "genomeedit_core"
+name = "opendna_core"
 version = "0.5.0"
 edition = "2021"   # Rust language "edition" (syntax version), like choosing a Python 3.x baseline
 
 [lib]
-name = "genomeedit_core"
+name = "opendna_core"
 # cdylib = a native shared library (.pyd on Windows) that Python can `import`.
 # rlib   = a normal Rust library, so `cargo test` can run the Rust unit tests.
 crate-type = ["cdylib", "rlib"]
@@ -28,6 +28,6 @@ extension-module = ["pyo3/extension-module"]
 
 # Patched copy of gb-io 0.9.0 (MIT) with a fix in the GenBank writer's line wrapping:
 # a `"` at the wrap column was dropped or caused a panic. See vendor/gb-io/src/writer.rs
-# ("OpenGenEdit patch"). Drop this once fixed upstream.
+# ("openDNA patch"). Drop this once fixed upstream.
 [patch.crates-io]
 gb-io = { path = "vendor/gb-io" }

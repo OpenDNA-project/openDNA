@@ -9,10 +9,10 @@
 assembly design.** Edit a sequence and every annotation stays on the right bases, design primers, and plan an assembly with the exact joining bases,
 Tm and checks of every junction in front of you. The core is written in Rust (`core/`), the interface in Python + PySide6 (`app/`).
 
-> **Version 0.5** ([Releases](https://github.com/Ant-Champ/GenomeEdit/releases)). OpenGenEdit is free software; the official download is
-> github.com/Ant-Champ/GenomeEdit.
+> **Version 0.5** ([Releases](https://github.com/OpenDNA-project/openDNA/releases)). openDNA is free software; the official download is
+> github.com/OpenDNA-project/openDNA.
 
-> **Status: ready for internal use and testing.** It works and has an automated test suite, but few people have used it yet. Keep copies of your files: OpenGenEdit
+> **Status: ready for internal use and testing.** It works and has an automated test suite, but few people have used it yet. Keep copies of your files: openDNA
 > never modifies a `.dna` file (edits are saved as GenBank), but treat any editor with care. The test plan in
 > [docs/TESTING.md](docs/TESTING.md) is nearly complete, not complete (two items are still open), and some tests need real files that are not in this repository.
 > It comes with no warranty. Licensed under the AGPL-3.0: see [Licence](#licence).
@@ -21,7 +21,7 @@ Tm and checks of every junction in front of you. The core is written in Rust (`c
 
 ## Download and run (Windows 10 or 11, 64-bit)
 
-1. Go to **[github.com/Ant-Champ/GenomeEdit/releases](https://github.com/Ant-Champ/GenomeEdit/releases)** and download `oDNA_beta.exe` from the
+1. Go to **[github.com/OpenDNA-project/openDNA/releases](https://github.com/OpenDNA-project/openDNA/releases)** and download `oDNA_beta.exe` from the
    latest release. Nothing needs to be installed; it is one file, it runs without Python. (`oDNA_beta-folder.zip` is the same program as a folder, for people
    who want to replace the Qt libraries it uses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). It does not update itself.)
 2. **Windows SmartScreen will warn you** ("Windows protected your PC"), because the exe is not code-signed (a certificate costs money). That is expected for this test
@@ -36,12 +36,12 @@ Tm and checks of every junction in front of you. The core is written in Rust (`c
 4. Open a `.gb`, `.fasta` or `.dna` file with File > Open (Ctrl+O), or start with the [tutorial](docs/TUTORIAL.md) (15 minutes; it uses the small demo
    files in `demo/` of this repository).
 
-OpenGenEdit is offline. It contacts the internet only for the features you choose to use (NCBI import, 3D structure lookup, the update check): see **[PRIVACY.md](PRIVACY.md)**
+openDNA is offline. It contacts the internet only for the features you choose to use (NCBI import, 3D structure lookup, the update check): see **[PRIVACY.md](PRIVACY.md)**
 for exactly what is sent and where settings and caches are stored.
 
 ## Report a bug, ask for a feature
 
-Use **GitHub Issues**: **[new issue (choose a template)](https://github.com/Ant-Champ/GenomeEdit/issues/new/choose)**. In the program, *Help > Report a Problem*
+Use **GitHub Issues**: **[new issue (choose a template)](https://github.com/OpenDNA-project/openDNA/issues/new/choose)**. In the program, *Help > Report a Problem*
 opens the same form already filled with the version and the last log lines (sequences, file names and paths are blanked out first, and nothing is sent until you press
 Submit on GitHub). A short guide for people who want to help is in [CONTRIBUTING.md](CONTRIBUTING.md). Security problems: [SECURITY.md](SECURITY.md), not a public issue.
 
@@ -100,8 +100,8 @@ For developers and anyone who wants to try the latest code. Windows is the prima
 2. Build and run:
 
 ```powershell
-conda create -n genomeedit python=3.13
-conda activate genomeedit
+conda create -n opendna python=3.13
+conda activate opendna
 pip install -r requirements.txt
 maturin develop -m core/Cargo.toml --release
 python app/main.py demo/demo_insert.gb
@@ -109,22 +109,22 @@ python app/main.py demo/demo_insert.gb
 
 (The three demo files are already in `demo/`; `python scripts/make_demo_files.py` writes them again, identical.)
 
-Use the dedicated `genomeedit` environment, **not** conda `base`: base ships ICU 73 in `Library\bin`, which
+Use the dedicated `opendna` environment, **not** conda `base`: base ships ICU 73 in `Library\bin`, which
 conda's Python puts on the DLL path; PySide6's `Qt6Core.dll` then loads it instead of Windows' ICU and fails
 with "DLL load failed ... The specified procedure could not be found".
 
 ## Build from source
 
-Standalone `dist\OpenGenEdit.exe` (one file, about 39 MB, runs on a PC without Python): after `pip install -r requirements-dev.txt` and
+Standalone `dist\openDNA.exe` (one file, about 39 MB, runs on a PC without Python): after `pip install -r requirements-dev.txt` and
 `maturin develop -m core/Cargo.toml --release`, run
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_exe.ps1
 ```
 
-It builds from the committed recipe `packaging/OpenGenEdit.spec` (which lists the bundled data files, icon and version), prints the size and
+It builds from the committed recipe `packaging/openDNA.spec` (which lists the bundled data files, icon and version), prints the size and
 SHA-256, and smoke-tests the exe: it starts it, opens `demo/demo_vector.gb` and checks that it stays alive (`-NoSmoke` skips the test).
-It also builds `dist\OpenGenEdit-folder.zip`, the same program as a folder with the Qt files replaceable (`-NoFolder` skips it).
+It also builds `dist\openDNA-folder.zip`, the same program as a folder with the Qt files replaceable (`-NoFolder` skips it).
 The release workflow publishes both under the name in `app/project.py` (`EXE_NAME`: `oDNA_beta.exe`, `oDNA_beta-folder.zip`).
 Rebuild the Rust module after every change to `core/`. Releases are built from a `v*` tag by `.github/workflows/release.yml` into a draft
 GitHub release; see [docs/PUBLISHING.md](docs/PUBLISHING.md).
@@ -132,7 +132,7 @@ GitHub release; see [docs/PUBLISHING.md](docs/PUBLISHING.md).
 ## Tests
 
 ```powershell
-cd core; cargo test; cd ..     # Rust (needs PYO3_PYTHON pointing at the genomeedit env's python.exe)
+cd core; cargo test; cd ..     # Rust (needs PYO3_PYTHON pointing at the opendna env's python.exe)
 pytest -q tests                # Python (needs the module built and pip install -r requirements-dev.txt)
 ```
 
@@ -151,18 +151,18 @@ those tests if the files are absent. The same fast checks also run inside the ap
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Bugs, feature requests, running the tests, code style |
 | [docs/TESTING.md](docs/TESTING.md) | The test plan and its progress |
 | [docs/RUST_PRIMER.md](docs/RUST_PRIMER.md) | A guide to reading the Rust code, for people who know Python |
-| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | The components OpenGenEdit is built with and their licences |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | The components openDNA is built with and their licences |
 | Help > Citations | What each panel is based on, and the packages used |
 
 ## Licence
 
-Copyright (C) 2026 Antoine Champie. OpenGenEdit is free software under the **GNU Affero General Public License v3.0**
+Copyright (C) 2026 Antoine Champie. openDNA is free software under the **GNU Affero General Public License v3.0**
 ([LICENSE](LICENSE)): you may use, study and change it, but anything you distribute, or run as a network service, built on
 it must be offered under the same licence with its source. Third-party components keep their own licences:
 see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Windows exe contains Qt, which is under the LGPL: how to get its source and
 use another Qt is explained there.
 
-**Forks are welcome, under another name.** The licence lets anyone share a modified version; the names "OpenGenEdit" and
+**Forks are welcome, under another name.** The licence lets anyone share a modified version; the names "openDNA" and
 "oDNA" and the logo stay with this project, so a modified version must use a name and an icon of its own and must not present
 itself as the official tool. What is allowed without asking is in [TRADEMARKS.md](TRADEMARKS.md).
 
@@ -170,7 +170,7 @@ Author: Antoine Champie.
 
 ## Credits
 
-OpenGenEdit builds on PySide6 / Qt (LGPL), PyO3, `gb-io` (MIT, a patched copy lives in `core/vendor/gb-io`), `noodles`,
+openDNA builds on PySide6 / Qt (LGPL), PyO3, `gb-io` (MIT, a patched copy lives in `core/vendor/gb-io`), `noodles`,
 `quick-xml` and 3Dmol.js (BSD-3-Clause). The methods it implements are cited in **Help > Citations**: Gibson et al. 2009, Engler et al. 2008,
 Potapov et al. 2018 (overhang data), SantaLucia 1998 (Tm), the Cas9 / Cas12a papers, and the Sidewinder method
 (Robinson et al., Nature 2026).

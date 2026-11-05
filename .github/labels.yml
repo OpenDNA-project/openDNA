@@ -8,7 +8,7 @@
   description: A request for new or better behaviour
 - name: "type: question"
   color: d876e3
-  description: A question about using OpenGenEdit
+  description: A question about using openDNA
 - name: "status: new"
   color: ededed
   description: Not looked at yet

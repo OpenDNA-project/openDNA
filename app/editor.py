@@ -15,7 +15,7 @@ from PySide6.QtCore import QEvent, QMimeData, QObject, QRegularExpression, QThre
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QKeySequence, QRegularExpressionValidator
 from PySide6.QtWidgets import QApplication, QToolTip
 
-from genomeedit_core import find_primers
+from opendna_core import find_primers
 
 import multigb
 
@@ -32,7 +32,7 @@ PRIMER_KIND = "primer_bind"
 # files are not drawn: primers come from the primer database and their sites are
 # recomputed on the current sequence (see Editor.match_primers).
 HIDDEN_KINDS = {"source", PRIMER_KIND}
-CLIP_MIME = "application/x-genomeedit-clip"  # copied bases + features, JSON
+CLIP_MIME = "application/x-opendna-clip"  # copied bases + features, JSON
 PRIMER_SYNC_LIMIT = 300_000  # bp; above this, primers are matched in a background thread
 # Qualifiers searched by Find / the genome view's locus box.
 NAME_KEYS = {"label", "gene", "locus_tag", "old_locus_tag", "product", "gene_synonym", "protein_id", "note"}
@@ -997,7 +997,7 @@ class Editor(QObject):
     def copy_mime(self):
         """Clipboard content for a copy: the bases as plain text (for any other program),
         plus the bases and features as JSON under CLIP_MIME, so pasting in another
-        OpenGenEdit window, even one in another running copy of the app, keeps them."""
+        openDNA window, even one in another running copy of the app, keeps them."""
         bases = self.copy()
         mime = QMimeData()
         mime.setText(bases)

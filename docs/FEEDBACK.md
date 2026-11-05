@@ -12,7 +12,7 @@ In the program, **Help** has four items (they are in `app/feedback.py`):
 |---|---|
 | Report a Problem... | Opens GitHub's *Report a problem* form in the browser, already filled with the version, the system (Windows, Python, Qt) and the last 30 lines of the log. The tester only describes what happened. |
 | Request a Feature... | Opens the *Request a feature* form (the problem, the wanted behaviour, who it helps, alternatives). |
-| Open Log Folder | Opens the folder with `genomeedit.log` (3 files of at most 500 KB, `logs` inside the program's data folder). |
+| Open Log Folder | Opens the folder with `opendna.log` (3 files of at most 500 KB, `logs` inside the program's data folder). |
 | Copy Diagnostics | Copies versions plus the last log lines to the clipboard, to paste into an email or a chat. |
 
 When something unexpected happens, the program does not close: it logs the full error and shows one small window,
@@ -55,7 +55,7 @@ gh label create "status: planned" --color 0e8a16 --description "Accepted; will b
 A link to the issues with one status label is the roadmap (replace the label in the address):
 
 ```
-https://github.com/Ant-Champ/GenomeEdit/issues?q=is%3Aissue+label%3A%22status%3A+planned%22
+https://github.com/OpenDNA-project/openDNA/issues?q=is%3Aissue+label%3A%22status%3A+planned%22
 ```
 
 Useful ones: `status: planned`, `status: in progress`, `status: done (next release)`, `status: released`.

@@ -1,6 +1,6 @@
 """The primer database: every primer you create or import, independent of any sequence
 file. Stored as a tab-separated file in the app's data folder
-(%APPDATA%/OpenGenEdit/primers.tsv on Windows; GENOMEEDIT_DATA_DIR overrides
+(%APPDATA%/openDNA/primers.tsv on Windows; OPENDNA_DATA_DIR overrides
 it, e.g. for tests). Export/import as TSV, CSV or FASTA.
 
 Names are unique: the same name with a different sequence is refused, never overwritten.
@@ -8,6 +8,7 @@ Names are unique: the same name with a different sequence is refused, never over
 import csv
 import datetime
 import os
+import shutil
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QSettings, QStandardPaths, Signal
@@ -60,10 +61,30 @@ def settings():
 
 
 def data_dir():
-    folder = os.environ.get("GENOMEEDIT_DATA_DIR") or QStandardPaths.writableLocation(QStandardPaths.AppDataLocation)
+    folder = os.environ.get("OPENDNA_DATA_DIR") or QStandardPaths.writableLocation(QStandardPaths.AppDataLocation)
     path = Path(folder)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+OLD_DATA_NAME = "OpenGenEdit"   # the program's name before openDNA
+
+
+def copy_old_data(new=None):
+    """Copies the data folder of the old name (%APPDATA%/OpenGenEdit: settings, primers, recent files) to the new one, once: only
+    while the new folder does not exist. The old folder stays as it was. Returns True when it copied."""
+    if new is None:
+        if os.environ.get("OPENDNA_DATA_DIR"):
+            return False
+        new = Path(QStandardPaths.writableLocation(QStandardPaths.AppDataLocation))
+    old = new.with_name(OLD_DATA_NAME)
+    if new.exists() or not old.is_dir():
+        return False
+    try:
+        shutil.copytree(old, new)
+    except OSError:   # a half copy: the program starts with what arrived, and the old folder still holds everything
+        return False
+    return True
 
 
 class PrimerDB:

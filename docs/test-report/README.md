@@ -1,6 +1,6 @@
 # Unit-test report
 
-What every automated test of OpenGenEdit feeds in, what it expects to come out, what the answer is checked against, and
+What every automated test of openDNA feeds in, what it expects to come out, what the answer is checked against, and
 how much a pass is worth. Written so that a user can check, test by test, that the tests check relevant things and check
 them well. **The findings of the audit (what was wrong, what was fixed, what is still not tested) are in [AUDIT.md](AUDIT.md).**
 

@@ -1,9 +1,9 @@
-"""Self-update of the single OpenGenEdit.exe: look for a newer GitHub release, download it, check it, swap it in and restart.
+"""Self-update of the single openDNA.exe: look for a newer GitHub release, download it, check it, swap it in and restart.
 
 The steps, each usable without Qt (the dialog at the end only wires them together):
   check()            ask GitHub for the latest release (never raises: the answer says what went wrong).
-  download_update()  fetch OpenGenEdit.exe next to the running exe, verify its SHA-256 against OpenGenEdit.exe.sha256, refuse otherwise.
-  install_update()   rename the running exe to OpenGenEdit.exe.old (Windows allows that, not an overwrite), move the new one in, relaunch.
+  download_update()  fetch openDNA.exe next to the running exe, verify its SHA-256 against openDNA.exe.sha256, refuse otherwise.
+  install_update()   rename the running exe to openDNA.exe.old (Windows allows that, not an overwrite), move the new one in, relaunch.
   cleanup_old()      at the next start-up, delete the leftover .old.
 
 What the checksum does and does not give (be honest with the user about it): the .sha256 file comes from the same release as the exe,
@@ -50,7 +50,7 @@ MAX_EXE = 1_000_000_000            # bytes: stops a wrong URL from filling the d
 CHECK_EVERY = 24 * 3600            # seconds between two automatic checks
 TOOL = "Updates"                   # its tab in Tools > Settings
 tool_settings.register(TOOL, [
-    tool_settings.Param("check", "Look for a new version when OpenGenEdit starts (once a day)", True,
+    tool_settings.Param("check", "Look for a new version when openDNA starts (once a day)", True,
                         tip="Asks GitHub for the latest release, nothing else is sent. Tools > Check for Updates always works."),
 ])
 RETRIES = 5                        # antivirus scanners often hold a freshly written exe for a second or two
@@ -66,8 +66,8 @@ class UpdateError(Exception):
 class Update:
     version: str        # "0.2.0" (no "v")
     tag: str            # "v0.2.0" as published
-    asset_url: str      # where OpenGenEdit.exe is
-    sha256_url: str     # where OpenGenEdit.exe.sha256 is
+    asset_url: str      # where openDNA.exe is
+    sha256_url: str     # where openDNA.exe.sha256 is
     notes: str          # the release description (plain text)
     page_url: str       # the release page, for people who prefer to download by hand
 
@@ -240,7 +240,7 @@ def sha256_of(path):
 
 def download_update(update, folder, progress=None, fetch=None, cancel=None):
     """Download the new exe into `folder` (put it next to the running exe: same drive, so the final move is a rename), verify it, and
-    return its path (OpenGenEdit.exe.new). UpdateError when the checksum is missing or does not match (the file is deleted), when an
+    return its path (openDNA.exe.new). UpdateError when the checksum is missing or does not match (the file is deleted), when an
     address is not allowed, on a network error or when `cancel` (a threading.Event) is set. Meant to run in a worker thread."""
     get = _pick(fetch)
     check_url(update.asset_url)
@@ -279,7 +279,7 @@ def is_frozen():
 
 
 def is_folder_build():
-    """True for the one-folder build (OpenGenEdit-folder.zip), where the program sits next to its files: PyInstaller's bundle folder is
+    """True for the one-folder build (openDNA-folder.zip), where the program sits next to its files: PyInstaller's bundle folder is
     then the exe's folder (version 5) or its `_internal` subfolder (6); a one-file exe unpacks into a temp folder instead."""
     meipass = getattr(sys, "_MEIPASS", None)
     if not (is_frozen() and meipass):
@@ -292,12 +292,12 @@ def install_blocker(current_exe=None):
     """Why this run cannot replace itself (a sentence), or None. Passing `current_exe` means "act on that file" (tests, and
     nothing else: the program itself passes nothing and then only a PyInstaller one-file exe qualifies)."""
     if current_exe is None and not is_frozen():
-        return ("OpenGenEdit is running from its source code, which cannot replace itself. Update with git, or download "
+        return ("openDNA is running from its source code, which cannot replace itself. Update with git, or download "
                 f"{ASSET_NAME} from {project.RELEASES_URL}.")
     if current_exe is None and is_folder_build():
         # Swapping one exe would leave the Qt files the user may have put in this folder untouched but mismatched with the new version.
-        return ("This is the folder version of OpenGenEdit (the one whose Qt files you can replace), so it does not update itself. "
-                f"Download the new OpenGenEdit-folder.zip from {project.RELEASES_URL}.")
+        return ("This is the folder version of openDNA (the one whose Qt files you can replace), so it does not update itself. "
+                f"Download the new openDNA-folder.zip from {project.RELEASES_URL}.")
     return None
 
 
@@ -359,7 +359,7 @@ def install_update(new_exe, current_exe=None, relaunch=None):
 
 
 def cleanup_old(current_exe=None, wait=0.0):
-    """Delete what an update leaves behind (OpenGenEdit.exe.old and any .part / .new). Call at start-up. The old program may still be
+    """Delete what an update leaves behind (openDNA.exe.old and any .part / .new). Call at start-up. The old program may still be
     quitting when the new one starts, so with `wait` seconds it keeps trying. True when nothing is left. Does nothing from source."""
     if current_exe is None and not is_frozen():
         return True
@@ -390,7 +390,7 @@ def _state():
 
 
 def check_enabled():
-    """The setting "look for a new version when OpenGenEdit starts" (Tools > Settings > Updates), on by default."""
+    """The setting "look for a new version when openDNA starts" (Tools > Settings > Updates), on by default."""
     return bool(tool_settings.value(TOOL, "check"))
 
 

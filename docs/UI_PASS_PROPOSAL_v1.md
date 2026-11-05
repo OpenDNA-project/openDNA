@@ -1,4 +1,4 @@
-# oDNA / OpenGenEdit: UI/UX pass, findings and proposals
+# oDNA / openDNA: UI/UX pass, findings and proposals
 
 Status: proposal only. Nothing in the repository has been changed.
 
@@ -118,7 +118,7 @@ Status: proposal only. Nothing in the repository has been changed.
 
 ## G. Wording and tone (need your call)
 
-- G1. The Welcome/About page says, in bold, "If you paid for it, you were scammed." and "Early test version: keep copies of your files." For a 1.0 feel I propose "OpenGenEdit is free software. The official download is github.com/Ant-Champ/GenomeEdit." The test-version warning goes when you declare 1.0.
+- G1. The Welcome/About page says, in bold, "If you paid for it, you were scammed." and "Early test version: keep copies of your files." For a 1.0 feel I propose "openDNA is free software. The official download is github.com/OpenDNA-project/openDNA." The test-version warning goes when you declare 1.0.
 - G2. Developer tools shown to users: View > Performance Timings, the Settings "Self-test" tab, the primer DB window title showing the file path, citations mentioning `scripts/build_parts.py`, and live counts in the ORF window title. Proposal: move them to Help > Troubleshooting and clean up the titles.
 - G3. "Cursor after base 0" in the status bar; proposal: "Cursor at start".
 - G4. "Unique Cutters" (View menu) toggles every drawn enzyme site, while the panel calls it "Restriction enzymes". Proposal: one name, "Restriction Sites".

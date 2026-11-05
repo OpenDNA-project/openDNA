@@ -1,10 +1,10 @@
 # Contributing
 
-Thank you for testing OpenGenEdit. It is an early test version made by one person, so reports from real use are the most useful thing you can give.
+Thank you for testing openDNA. It is an early test version made by one person, so reports from real use are the most useful thing you can give.
 
 ## Bugs, questions and feature requests
 
-Use **GitHub Issues** with the templates: https://github.com/Ant-Champ/GenomeEdit/issues/new/choose
+Use **GitHub Issues** with the templates: https://github.com/OpenDNA-project/openDNA/issues/new/choose
 
 For a bug, say: the version (Help > About), what you did, what you expected, what happened, and a small file that shows it if you can (never a file
 you cannot share). Security problems go through [SECURITY.md](SECURITY.md), not an issue.
@@ -17,15 +17,15 @@ people's data, a library without a compatible licence: add new third-party piece
 based on a paper or a dataset, add it to Help > Citations (`app/citations.py`).
 
 **Your own fork** is welcome too, under the same licence; give it a name and an icon of its own, as [TRADEMARKS.md](TRADEMARKS.md)
-explains (the names "OpenGenEdit" and "oDNA" stay with this project).
+explains (the names "openDNA" and "oDNA" stay with this project).
 
 ### Run the tests
 
 You need Rust, the Visual Studio C++ Build Tools and a conda environment (not `base`; see the README).
 
 ```powershell
-conda create -n genomeedit python=3.13
-conda activate genomeedit
+conda create -n opendna python=3.13
+conda activate opendna
 pip install -r requirements-dev.txt
 maturin develop -m core/Cargo.toml --release     # rebuild after every change in core/
 pytest -q tests
@@ -34,7 +34,7 @@ pytest -q tests
 The Rust tests need to find Python:
 
 ```powershell
-$env:PYO3_PYTHON = (Get-Command python).Source   # the genomeedit environment's python.exe
+$env:PYO3_PYTHON = (Get-Command python).Source   # the opendna environment's python.exe
 cd core; cargo test; cd ..
 ```
 
@@ -51,5 +51,5 @@ CI runs `cargo test`, `pyflakes app tests` and `pytest` on every pull request.
 - Python: PySide6, no extra dependencies without a reason. Reuse what exists: new tools embed the existing sequence view and open as workspace tabs,
   they do not get a copy of it.
 - Anything that talks to the internet must be listed in [PRIVACY.md](PRIVACY.md) and tell the user what is sent before it is sent.
-- `core/vendor/gb-io` is a patched copy of a third-party crate: mark changes "OpenGenEdit patch".
+- `core/vendor/gb-io` is a patched copy of a third-party crate: mark changes "openDNA patch".
 - No emojis in code, docs or messages.

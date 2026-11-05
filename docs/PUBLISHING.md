@@ -1,4 +1,4 @@
-# Publishing OpenGenEdit on GitHub
+# Publishing openDNA on GitHub
 
 A checklist for taking the project further. **Done so far:** the code is in a private GitHub repository under the AGPL-3.0 ([LICENSE](../LICENSE)). The steps below are what is left before opening it up, building releases or adding CI.
 
@@ -9,7 +9,7 @@ A checklist for taking the project further. **Done so far:** the code is in a pr
   forks, and is not meant to. Notes: (1) on a **public** GitHub repository anyone can fork it whatever the licence says.
   (2) To keep one project, the other levers: the **name policy** ([TRADEMARKS.md](../TRADEMARKS.md): forks are welcome under a
   name and an icon of their own; the AGPL's section 7(e) lets the author decline trademark rights), welcoming pull requests,
-  and releases that work. A registered trademark on "OpenGenEdit" / "oDNA" would back the policy up; none is registered yet.
+  and releases that work. A registered trademark on "openDNA" / "oDNA" would back the policy up; none is registered yet.
   (3) Before accepting pull requests from other people, decide whether to ask for a contributor agreement (it keeps the
   option of changing the licence later); without one, each contributor keeps the copyright of their part, under the AGPL.
   (4) The dependencies are compatible: PySide6 is LGPL, `gb-io` is MIT (its `LICENSE` is in `core/vendor/gb-io`), PyO3 is
@@ -45,8 +45,8 @@ git log --all --name-only --format= | sort -u | grep -i -E '\.(dna|gb|gbk|bam|fa
 The most common first issue on any repo is "it does not build". Do this once, in a throwaway folder:
 
 ```powershell
-git clone . ..\OpenGenEdit-clean
-cd ..\OpenGenEdit-clean
+git clone . ..\openDNA-clean
+cd ..\openDNA-clean
 conda create -n ge-clean python=3.13 -y; conda activate ge-clean
 pip install -r requirements-dev.txt
 maturin develop -m core/Cargo.toml --release
@@ -62,7 +62,7 @@ Tests that need your own files skip themselves when the files are absent, so a c
 With the [GitHub CLI](https://cli.github.com/) (`gh auth login` once):
 
 ```powershell
-gh repo create OpenGenEdit --private --source . --remote origin --description "Local DNA editor with Rust core and PySide6 GUI"
+gh repo create openDNA --private --source . --remote origin --description "Local DNA editor with Rust core and PySide6 GUI"
 git push -u origin main
 ```
 
@@ -85,7 +85,7 @@ Private-repo minutes are limited (Windows counts double); the cargo cache keeps 
 
 ## 7. Building the exe
 
-One command builds `dist\OpenGenEdit.exe` (one file, about 39 MB, no Python needed on the PC that runs it) and then tests it:
+One command builds `dist\openDNA.exe` (one file, about 39 MB, no Python needed on the PC that runs it) and then tests it:
 
 ```powershell
 pip install -r requirements-dev.txt
@@ -95,16 +95,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 
 (`-ExecutionPolicy Bypass` is needed on a PC where PowerShell scripts are blocked, which is the Windows default for a normal user.
 Options: `-NoSmoke` skips the test, `-Python <path>` or `$env:PYTHON` picks the interpreter; it must be the one that has
-`genomeedit_core` and PyInstaller.)
+`opendna_core` and PyInstaller.)
 
 What is where:
 
 | File | What it does |
 |---|---|
-| `packaging/OpenGenEdit.spec` | The PyInstaller recipe. Lists every data file the app reads (`parts.tsv`, `tools.toml`, `sponsors.json`, `vendor/3Dmol-min.js` and its licence, `LICENSE`, and `THIRD_PARTY_NOTICES.md` when present). Name, version, author and copyright of the Windows file properties come from `app/project.py`. No UPX packing (antivirus programs dislike it). |
-| `packaging/OpenGenEdit.ico`, `packaging/make_icon.py` | The icon (an open plasmid ring with a promoter and a terminator, on a light tile, 16 to 256 px) and the script that draws it with Qt. The same script writes the window icons and wordmarks in `app/logo/` and the SVGs in `docs/images/`. Re-run `python packaging/make_icon.py` only to change the picture. |
+| `packaging/openDNA.spec` | The PyInstaller recipe. Lists every data file the app reads (`parts.tsv`, `tools.toml`, `sponsors.json`, `vendor/3Dmol-min.js` and its licence, `LICENSE`, and `THIRD_PARTY_NOTICES.md` when present). Name, version, author and copyright of the Windows file properties come from `app/project.py`. No UPX packing (antivirus programs dislike it). |
+| `packaging/openDNA.ico`, `packaging/make_icon.py` | The icon (an open plasmid ring with a promoter and a terminator, on a light tile, 16 to 256 px) and the script that draws it with Qt. The same script writes the window icons and wordmarks in `app/logo/` and the SVGs in `docs/images/`. Re-run `python packaging/make_icon.py` only to change the picture. |
 | `scripts/build_exe.ps1` | Checks the setup, runs PyInstaller on the spec, prints the size, SHA-256 and file properties, then runs the smoke test. |
-| `scripts/smoke_exe.ps1` | Starts the exe on a PATH that has only Windows on it (no Python, conda or Rust), with `demo/demo_vector.gb` on the command line. Passes when the window shows the file's name, the process is still alive 5 seconds later, no error dialog is showing, every bundled data file is inside the unpacked bundle, `genomeedit_core` is in it, and no DLL was loaded from Python, conda, Rust or MSYS. |
+| `scripts/smoke_exe.ps1` | Starts the exe on a PATH that has only Windows on it (no Python, conda or Rust), with `demo/demo_vector.gb` on the command line. Passes when the window shows the file's name, the process is still alive 5 seconds later, no error dialog is showing, every bundled data file is inside the unpacked bundle, `opendna_core` is in it, and no DLL was loaded from Python, conda, Rust or MSYS. |
 | `tests/test_project.py` | Fails if the version differs between `app/project.py`, `core/Cargo.toml` and `core/pyproject.toml`, if a file the app reads with `Path(__file__).with_name(...)` is not in the spec, or if the icon is damaged. |
 
 If you add a file the app reads at run time, add it to `DATA` in the spec (and to `$expected` in `smoke_exe.ps1`). Forgetting it is the
@@ -118,13 +118,13 @@ there; it does not click through the features (the pytest suite does that, on th
 
 A release is one tag. Pushing a tag `v*` starts `.github/workflows/release.yml` (Windows, same setup as CI): it checks the tag
 against `VERSION`, runs the Rust and Python tests, builds the exe with the script above (which smoke-tests it), writes
-`OpenGenEdit.exe.sha256` (`<hex>  OpenGenEdit.exe`, the format `sha256sum -c` and the in-app updater read), and creates a **draft**
+`openDNA.exe.sha256` (`<hex>  openDNA.exe`, the format `sha256sum -c` and the in-app updater read), and creates a **draft**
 GitHub release holding both files. It never publishes: you do that by hand.
 
 1. **Bump the version in three places** to the same value (say 0.1.1): `VERSION` in `app/project.py`, `version` in
    `core/Cargo.toml`, `version` in `core/pyproject.toml`. Building changes `core/Cargo.lock` too: commit it.
    `pytest tests/test_project.py` fails if the three differ.
-2. **Try it locally.** Run the build script (section 7) and start `dist\OpenGenEdit.exe` yourself once.
+2. **Try it locally.** Run the build script (section 7) and start `dist\openDNA.exe` yourself once.
 3. **Commit, push to `main`, wait for CI to go green** (section 6).
 4. **Tag and push the tag.** The tag must be `v` plus the version exactly, or the workflow stops at its first step:
 
@@ -135,7 +135,7 @@ GitHub release holding both files. It never publishes: you do that by hand.
 
 5. **Watch the run** (Actions > release, about 10 to 15 minutes). When it is green, a draft appears under Releases.
 6. **Review the draft.** Both files are attached, the size is about 39 MB, the notes say what changed (edit them; the workflow only
-   writes a default text). Download the exe from the draft, check `Get-FileHash OpenGenEdit.exe` against the `.sha256` file, and run it on
+   writes a default text). Download the exe from the draft, check `Get-FileHash openDNA.exe` against the `.sha256` file, and run it on
    a PC that has no Python.
 7. **Publish** by pressing *Publish release* on the draft page, or `gh release edit v0.1.1 --draft=false --latest`. Only now does the
    release become public and the "latest" one that the in-app update check reads (once `UPDATES_ENABLED` is switched on in
@@ -179,7 +179,7 @@ When Defender flags a release:
 
 1. Note the detection name (Windows Security > Protection history).
 2. Submit the file to Microsoft: <https://www.microsoft.com/en-us/wdsi/filesubmission>. Sign in, choose *Software developer*, upload
-   `OpenGenEdit.exe`, tick that it is a false positive (the detection name goes in the box), and say it is open source with the
+   `openDNA.exe`, tick that it is a false positive (the detection name goes in the box), and say it is open source with the
    repository link and the tag. Answers usually come in a few days, and the fix reaches users through definition updates.
 3. For other vendors use their false-positive pages (VirusTotal lists which ones flagged the file and links to them).
 4. Put a line in the release notes while it lasts: how to verify the hash, and that the source and the build recipe are public.
@@ -188,23 +188,23 @@ Uploading to VirusTotal shares the file with the antivirus vendors: do it for a 
 
 ### Qt (LGPL): the one-file exe and the one-folder zip
 
-OpenGenEdit's licence is AGPL-3.0, but the Qt libraries inside the exe (PySide6) are LGPL-3.0, and the LGPL asks that a user can
+openDNA's licence is AGPL-3.0, but the Qt libraries inside the exe (PySide6) are LGPL-3.0, and the LGPL asks that a user can
 **replace the Qt libraries with their own build** and still run the program. This is a pointer to that obligation, not legal advice;
 if the project grows, ask someone qualified. [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) says how to get the Qt source
 and how to replace Qt.
 
 In a PyInstaller one-file exe the Qt DLLs are packed inside the executable and unpacked to a temporary folder at each start, so a user
-cannot just drop in another DLL. So every release carries **two downloads built from the same recipe** (`packaging/OpenGenEdit.spec`;
-the environment variable `GENOMEEDIT_BUILD=folder` selects the folder layout, and `scripts/build_exe.ps1` builds both, `-NoFolder` skips the folder):
+cannot just drop in another DLL. So every release carries **two downloads built from the same recipe** (`packaging/openDNA.spec`;
+the environment variable `OPENDNA_BUILD=folder` selects the folder layout, and `scripts/build_exe.ps1` builds both, `-NoFolder` skips the folder):
 
 | | What it is | Qt replaceable | Updates itself |
 |---|---|---|---|
-| `OpenGenEdit.exe` | one file, about 40 MB | only by rebuilding from the public source | yes, once `UPDATES_ENABLED` is on |
-| `OpenGenEdit-folder.zip` | the exe plus an `_internal` folder, about 40 MB zipped | yes: `_internal\PySide6` and `_internal\shiboken6` hold plain files that can be swapped (steps in the `README.txt` inside the zip) | no: `updater.is_folder_build()` makes it say "download the new zip", because swapping one exe would leave the user's Qt files out of step with it |
+| `openDNA.exe` | one file, about 40 MB | only by rebuilding from the public source | yes, once `UPDATES_ENABLED` is on |
+| `openDNA-folder.zip` | the exe plus an `_internal` folder, about 40 MB zipped | yes: `_internal\PySide6` and `_internal\shiboken6` hold plain files that can be swapped (steps in the `README.txt` inside the zip) | no: `updater.is_folder_build()` makes it say "download the new zip", because swapping one exe would leave the user's Qt files out of step with it |
 
 The zip also holds `README.txt` (how to swap Qt), `LICENSE` and `THIRD_PARTY_NOTICES.md` next to the exe. `release.yml` attaches the zip
 and its `.sha256` to the draft release; the smoke test runs on both layouts and, for the folder, checks that `Qt6Core.dll` is a plain file.
 Help > About names the Qt and PySide6 versions in use. Tested once by hand (version 0.1.0, built with Qt 6.12.0): unzipped the zip, followed the
 `README.txt` steps with the PySide6-Essentials and shiboken6 6.10.1 wheels, and the program started and passed `smoke_exe.ps1` with Qt 6.10.1 loaded.
 Redo that after a PyInstaller or PySide6 upgrade; the smoke test only proves that the Qt DLL is a plain file, not that a swap still works.
-The updater only looks for `OpenGenEdit.exe` and `OpenGenEdit.exe.sha256` in a release; the zip is ignored by it.
+The updater only looks for `openDNA.exe` and `openDNA.exe.sha256` in a release; the zip is ignored by it.

@@ -1,6 +1,6 @@
 # What the tests check, and how
 
-A plain-language catalogue of every automated test in OpenGenEdit, written for the bench scientist who wants to know
+A plain-language catalogue of every automated test in openDNA, written for the bench scientist who wants to know
 which claims the program has been held to. `docs/TESTING.md` is the *plan* (what should be covered); this file is the
 *inventory* (what each test actually does, and whether its biology is right).
 

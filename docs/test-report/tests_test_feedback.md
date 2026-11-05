@@ -39,7 +39,7 @@ With no explicit details the report link carries the last 30 log lines, and priv
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | log 'marker line 42', then report_url('bug') | logs field has 'marker line 42' and 'Start: OpenGenEdit' |
+| 1 | log 'marker line 42', then report_url('bug') | logs field has 'marker line 42' and 'Start: openDNA' |
 | 2 | 100 log entries, report_url('bug') | logs has entry-099 and entry-070, not entry-069 (last 30 only) |
 | 3 | log + report_url/feature_url built with SECRET_PATH and DNA | decoded query has none of DNA,'bobsmith','secret','Lab Notes','Users','Documents' |
 
@@ -51,10 +51,10 @@ The log file is a scrubbed file in the data folder, captures Qt warnings, does n
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | active(); log an INFO line mentioning SECRET_PATH; teardown; read file | path data/logs/genomeedit.log; has 'Start: OpenGenEdit <ver>', Python, Qt, the message, INFO, logger name; no 'bobsmith'/'secret'; no dialog shown |
+| 1 | active(); log an INFO line mentioning SECRET_PATH; teardown; read file | path data/logs/opendna.log; has 'Start: openDNA <ver>', Python, Qt, the message, INFO, logger name; no 'bobsmith'/'secret'; no dialog shown |
 | 2 | qWarning('... in plasmid.gb') | log has WARNING, 'qt:', the message; 'plasmid.gb' scrubbed out |
 | 3 | setup_logging twice (hooks/qt off) | handler count n -> n+1 inside, back to n after teardown |
-| 4 | LOG_MAX_BYTES=2000, write 400 lines | files == genomeedit.log, .1, .2; each <= 2200 bytes |
+| 4 | LOG_MAX_BYTES=2000, write 400 lines | files == opendna.log, .1, .2; each <= 2200 bytes |
 | 5 | copy_diagnostics with a fake clipboard; then fresh empty data dir | returned text == copied text, has name/version, 'OS:', the log line, no 'bobsmith'; empty folder -> '(the log is empty)' |
 
 **Review notes:**

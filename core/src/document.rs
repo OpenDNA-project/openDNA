@@ -2461,7 +2461,7 @@ ORIGIN
         assert!(doc.undo() && doc.undo() && doc.undo());
         assert!(doc.edited_ranges().is_empty(), "undoing an insertion removes its highlight");
         doc.replace(3, 4, b"TT").unwrap();
-        let path = std::env::temp_dir().join("opengenedit_edited_ranges_test.gb");
+        let path = std::env::temp_dir().join("opendna_edited_ranges_test.gb");
         doc.save_genbank(&path, None).unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(doc.edited_ranges().is_empty(), "save clears");

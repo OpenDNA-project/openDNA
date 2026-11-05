@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for testing OpenGenEdit. The easiest way to fill this form is **Help > Report a Problem...** in the program:
+        Thank you for testing openDNA. The easiest way to fill this form is **Help > Report a Problem...** in the program:
         it opens this page with the version, system and recent log lines already filled in.
 
         **Please do not attach or paste private sequences or files.** If a file is needed to reproduce the problem, describe it
@@ -38,7 +38,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: OpenGenEdit version
+      label: openDNA version
       description: Shown in Help > About and Licence. Filled in for you when you come from the program.
     validations:
       required: true
@@ -55,7 +55,7 @@ body:
       label: Log lines or error details
       description: |
         Filled in for you when you come from the program. Otherwise use Help > Open Log Folder and paste the end of
-        genomeedit.log, or use Help > Copy Diagnostics and paste it here. Sequences, file names and your user name are removed
+        opendna.log, or use Help > Copy Diagnostics and paste it here. Sequences, file names and your user name are removed
         from the log automatically.
       render: text
   - type: textarea

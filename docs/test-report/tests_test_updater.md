@@ -24,7 +24,7 @@ Checks that a newer GitHub release is turned into an Update with the right downl
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | check('0.1.0') on a fake release JSON with tag 'v0.2.0', body 'Fixes things.', exe + .sha256 + other.zip assets | error None; version '0.2.0', tag 'v0.2.0', notes 'Fixes things.', asset_url .../v0.2.0/OpenGenEdit.exe, sha256_url ...exe.sha256, page_url .../releases/tag/v0.2.0; check_for_update returns the same Update |
+| 1 | check('0.1.0') on a fake release JSON with tag 'v0.2.0', body 'Fixes things.', exe + .sha256 + other.zip assets | error None; version '0.2.0', tag 'v0.2.0', notes 'Fixes things.', asset_url .../v0.2.0/openDNA.exe, sha256_url ...exe.sha256, page_url .../releases/tag/v0.2.0; check_for_update returns the same Update |
 | 2 | check(fetch=fake) with no version, release tag = v{project.VERSION} | update None; the only request is project.LATEST_RELEASE_API |
 | 3 | updater.fetch replaced by the fake, check_for_update('0.1.0') with no fetch argument | version '0.2.0' (the module-level fetch is used) |
 | 4 | current 0.1.0; release v0.1.0, v0.0.9, v0.3.0 draft, v0.3.0 prerelease, v0.3.0-beta1 | update None each; error None or containing 'not understood' |
@@ -42,8 +42,8 @@ Protects the user from installing an incomplete or foreign release: a release mi
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | newer release with no assets / only the exe / only the .sha256 | update None; error names the missing OpenGenEdit.exe.sha256 or OpenGenEdit.exe; page_url set |
-| 2 | exe asset URL 'https://evil.example.com/OpenGenEdit.exe', 'http://github.com/x/OpenGenEdit.exe', 'https://github.com/someone/else/releases/download/v9/OpenGenEdit.exe' | update None and 'Refused' in error |
+| 1 | newer release with no assets / only the exe / only the .sha256 | update None; error names the missing openDNA.exe.sha256 or openDNA.exe; page_url set |
+| 2 | exe asset URL 'https://evil.example.com/openDNA.exe', 'http://github.com/x/openDNA.exe', 'https://github.com/someone/else/releases/download/v9/openDNA.exe' | update None and 'Refused' in error |
 | 3 | html_url='https://evil.example.com/x' | update offered with page_url == project.RELEASES_URL |
 | 4 | fetch raising UpdateError('Could not reach api.github.com: offline') / RuntimeError('boom') | error ends with 'offline' / contains 'failed'; no exception |
 | 5 | answers 'not json', '[1, 2]', '', b'\xff\xfe\x00' | update None and 'understood' in error |
@@ -70,9 +70,9 @@ Checks that the downloaded program is verified against its published SHA-256 bef
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | parse_checksum on '<digest>  OpenGenEdit.exe', '<digest> *OpenGenEdit.exe', bare digest, upper-case digest, a two-line file (other.zip first), UTF-16 with BOM, UTF-8 BOM | the lower-case digest each time |
-| 2 | parse_checksum on '', 'hello', 'abc  OpenGenEdit.exe', '<digest>  other.zip', 63-char and 65-char hex | None each |
-| 3 | download_update with the fake serving EXE_BYTES ('MZ' + 'fake exe '*1000) and the matching digest | returns folder/OpenGenEdit.exe.new with EXE_BYTES; no .part left; last progress = (len, len) |
+| 1 | parse_checksum on '<digest>  openDNA.exe', '<digest> *openDNA.exe', bare digest, upper-case digest, a two-line file (other.zip first), UTF-16 with BOM, UTF-8 BOM | the lower-case digest each time |
+| 2 | parse_checksum on '', 'hello', 'abc  openDNA.exe', '<digest>  other.zip', 63-char and 65-char hex | None each |
+| 3 | download_update with the fake serving EXE_BYTES ('MZ' + 'fake exe '*1000) and the matching digest | returns folder/openDNA.exe.new with EXE_BYTES; no .part left; last progress = (len, len) |
 | 4 | exe bytes + b'tampered' | UpdateError 'does not match'; folder empty |
 | 5 | sha256_url='' / checksum text '<html>404</html>' | UpdateError 'no checksum' with no .exe request / 'expected form'; folder empty |
 | 6 | asset_url on evil.example.com / sha256_url on http://github.com | UpdateError 'Refused'; no request made |
@@ -91,10 +91,10 @@ Checks the file swap that installs an update (running exe to .old, new exe in pl
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | folder with OpenGenEdit.exe=b'OLD' and .exe.new=b'NEW'; install_update(new, current, relaunch=recorder) | exe = b'NEW', .exe.old = b'OLD', .new gone, relaunch called with [current] |
+| 1 | folder with openDNA.exe=b'OLD' and .exe.new=b'NEW'; install_update(new, current, relaunch=recorder) | exe = b'NEW', .exe.old = b'OLD', .new gone, relaunch called with [current] |
 | 2 | same with a stale .exe.old = b'ANCIENT' | .exe.old now b'OLD' |
 | 3 | not frozen, install_update(new) without current_exe | UpdateError 'source code', relaunch never called, .new kept; install_blocker() mentions 'source code', install_blocker(Path('x.exe')) is None |
-| 4 | sys.frozen=True, _MEIPASS a temp _MEI1234 folder, then _MEIPASS = exe folder/_internal and exe folder | one-file: not folder build, blocker None; folder layouts: is_folder_build True, blocker mentions 'OpenGenEdit-folder.zip', install raises 'folder version'; files unchanged |
+| 4 | sys.frozen=True, _MEIPASS a temp _MEI1234 folder, then _MEIPASS = exe folder/_internal and exe folder | one-file: not folder build, blocker None; folder layouts: is_folder_build True, blocker mentions 'openDNA-folder.zip', install raises 'folder version'; files unchanged |
 | 5 | sys.frozen=True, sys.executable=current; install_update(new) | current now b'NEW' |
 | 6 | new exe path that does not exist / new exe in another folder | UpdateError 'could not be found' / 'same folder'; current still b'OLD' |
 
@@ -119,8 +119,8 @@ Checks that the restarted program gets a clean PyInstaller environment and that 
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | relaunch(tmp/OpenGenEdit.exe) with Popen faked, env _MEIPASS2 and _PYI_APPLICATION_HOME_DIR set | args [exe path]; env PYINSTALLER_RESET_ENVIRONMENT='1'; no _MEIPASS2 and no _PYI* keys |
-| 2 | folder with OpenGenEdit.exe, .exe.old, .exe.part; cleanup_old(current) twice | True; only OpenGenEdit.exe remains (still b'OLD'); second call True |
+| 1 | relaunch(tmp/openDNA.exe) with Popen faked, env _MEIPASS2 and _PYI_APPLICATION_HOME_DIR set | args [exe path]; env PYINSTALLER_RESET_ENVIRONMENT='1'; no _MEIPASS2 and no _PYI* keys |
+| 2 | folder with openDNA.exe, .exe.old, .exe.part; cleanup_old(current) twice | True; only openDNA.exe remains (still b'OLD'); second call True |
 | 3 | cleanup_old() with no exe, not frozen | True and .old untouched |
 | 4 | Path.unlink raising PermissionError for the first 2 calls, sleep faked; cleanup_old(current, wait=60) | True and .old deleted |
 
@@ -202,7 +202,7 @@ Checks the update dialog end to end with fakes: it shows the notes, installs onl
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | dialog for version 0.2.0 with notes 'Notes'; click Install | header contains '0.2.0', notes text 'Notes'; installed == [folder/OpenGenEdit.exe.new], quit called once, file == EXE_BYTES |
+| 1 | dialog for version 0.2.0 with notes 'Notes'; click Install | header contains '0.2.0', notes text 'Notes'; installed == [folder/openDNA.exe.new], quit called once, file == EXE_BYTES |
 | 2 | fake exe b'MZ-tampered'; click Install | nothing installed, quit 0; status 'does not match'; button enabled, text 'Try Again'; folder empty |
 | 3 | confirm=lambda: False; click Install | nothing installed; folder empty |
 | 4 | click 'Skip This Version' | skipped_version() == '0.2.0', dialog hidden, nothing installed |

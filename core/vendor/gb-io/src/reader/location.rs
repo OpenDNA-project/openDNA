@@ -13,7 +13,7 @@ use nom::sequence::{preceded, separated_pair, terminated};
 
 use crate::seq::{After, Before, GapLength, Location};
 
-/// OpenGenEdit patch. A location must end where a location can end: at a comma or a closing bracket
+/// openDNA patch. A location must end where a location can end: at a comma or a closing bracket
 /// (inside join, complement...), at white space, or at the end of the text. Upstream stopped at the first
 /// thing it did not understand and handed back what it had, so `10..(20.30)` (a fuzzy end) became the
 /// single base `10` and the rest was silently dropped. Now such a text is not understood as a whole and

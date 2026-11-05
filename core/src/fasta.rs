@@ -29,7 +29,7 @@ pub struct FaiEntry {
     pub line_width: u64,
 }
 
-/// An open FASTA file plus its index. This is what Python sees as `genomeedit_core.Fasta`.
+/// An open FASTA file plus its index. This is what Python sees as `opendna_core.Fasta`.
 pub struct IndexedFasta {
     file: File, // private: only code in this file touches the file handle
     pub entries: Vec<FaiEntry>, // Vec<T> = growable list of T, like a Python list with one type

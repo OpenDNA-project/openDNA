@@ -52,7 +52,7 @@ undo step like any edit. *Feature → Edit Feature…* (Ctrl+E) changes it later
 Open `demo/demo_vector.gb` (File → Open). It is circular, so the sequence view shows it twice with a red bar at the origin.
 
 1. *Edit → Circular Sequence* (or the toolbar's **Circular** button) and unpress it.
-2. OpenGenEdit asks where to break the circle: that base becomes base 1. Pick one inside a feature to see the
+2. openDNA asks where to break the circle: that base becomes base 1. Pick one inside a feature to see the
    warning that it will be cut into a two-part feature, and answer *Yes*.
 3. The sequence is now linear and rotated. In **History** this is **one** step, and one undo gives you back the
    circle with its original base 1.
@@ -89,7 +89,7 @@ The top half is the setup and the map, the bottom half is the same sequence view
 
 ## 7. Assembly 1: Gibson
 
-With *Gibson / HiFi* and the three demo files in order (vector, insert, terminator), press **Design primers**. OpenGenEdit designs
+With *Gibson / HiFi* and the three demo files in order (vector, insert, terminator), press **Design primers**. openDNA designs
 new primers that carry the neighbour's end as a 5′ tail (any primers you chose earlier are replaced), and re-checks.
 
 What you should see (the files are seeded, so the numbers are exact):

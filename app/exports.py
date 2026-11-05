@@ -57,7 +57,7 @@ def gff3_text(editor):
                   if v is not None and k not in COLOR_KEYS and k not in ("label", "translation", CAS9_KEY, TU_KEY)]
         strand = "+" if f.strand > 0 else "-" if f.strand < 0 else "."
         for s, e in f.spans:
-            lines.append("\t".join([sid, "OpenGenEdit", f.kind, str(s + 1), str(e), ".", strand, ".", ";".join(attrs)]))
+            lines.append("\t".join([sid, "openDNA", f.kind, str(s + 1), str(e), ".", strand, ".", ";".join(attrs)]))
     return "\n".join(lines) + "\n"
 
 
@@ -187,7 +187,7 @@ def read_project(path, folder):
 
 def open_project(path):
     """(Document, metadata) of project `path` (the GenBank part is read from a temporary folder)."""
-    from genomeedit_core import Document
+    from opendna_core import Document
     with tempfile.TemporaryDirectory() as tmp:
         gb, meta = read_project(path, tmp)
         return Document(str(gb)), meta

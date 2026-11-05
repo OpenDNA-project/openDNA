@@ -52,7 +52,7 @@ The two-chromosome V. cholerae N16961 GenBank opens with both records (sizes exa
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | vibrio_cholerae_N16961.gb (GENOMEEDIT_VIBRIO_GB or V:/ path) | fasta_records == [('NC_002505', 2961149), ('NC_002506', 1072315)], circular, > 1000 features |
+| 1 | vibrio_cholerae_N16961.gb (OPENDNA_VIBRIO_GB or V:/ path) | fasta_records == [('NC_002505', 2961149), ('NC_002506', 1072315)], circular, > 1000 features |
 | 2 | switch to NC_002506; search 'toxin' | length 1072315; hit records == {NC_002505, NC_002506} |
 
 **Review notes:**

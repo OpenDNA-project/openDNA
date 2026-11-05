@@ -12,14 +12,14 @@ from pathlib import Path
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 from PySide6.QtCore import QSettings
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 import cas9
 import ncbi
@@ -220,7 +220,7 @@ def test_ncbi_members_are_joined_with_their_newlines_and_the_reference_is_the_fa
     fasta = tmp_path / "GCF_000000002.1" / "GCF_000000002.1.fna"
     assert s.value("primers/genome") == str(fasta), "the FASTA itself, every record"
     assert "2 sequences" in dialog.status.text()
-    assert [n for n, _ in __import__("genomeedit_core").Fasta(str(fasta)).sequences()] == ["chr1", "chr2"]
+    assert [n for n, _ in __import__("opendna_core").Fasta(str(fasta)).sequences()] == ["chr1", "chr2"]
     w.close()
 
 

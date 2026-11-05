@@ -12,7 +12,7 @@ def _names_match(a, b):
 
 
 def mismatches(editor, track, seqid, length=None, path=""):
-    """Plain sentences, empty when the track fits. `track`: a genomeedit_core Track (None for a BAM, then `length` is the length of
+    """Plain sentences, empty when the track fits. `track`: a opendna_core Track (None for a BAM, then `length` is the length of
     its reference `seqid`)."""
     out = []
     here = editor.fasta_record or editor.doc.name

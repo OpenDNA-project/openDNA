@@ -3,7 +3,7 @@
 Run:  python packaging/make_icon.py        (needs only PySide6, which the app already needs; no Pillow)
 
 The outputs are committed, so a normal build does not run this. Re-run it only to change the picture:
-    packaging/OpenGenEdit.ico          the exe icon, 7 sizes (16 to 256 px) on a light rounded tile
+    packaging/openDNA.ico          the exe icon, 7 sizes (16 to 256 px) on a light rounded tile
     app/logo/icon_<size>.png           the same sizes, for the window icon (main.py)
     app/logo/wordmark.png, ..._dark    the oDNA wordmark, for the welcome page (light and dark theme)
     docs/images/icon.svg, wordmark.svg, wordmark-dark.svg   the same as vector files, for the README
@@ -30,7 +30,7 @@ from PySide6.QtGui import (
 
 ROOT = Path(__file__).resolve().parent.parent
 SIZES = (16, 24, 32, 48, 64, 128, 256)
-ICO = ROOT / "packaging" / "OpenGenEdit.ico"
+ICO = ROOT / "packaging" / "openDNA.ico"
 LOGO_DIR = ROOT / "app" / "logo"
 DOCS = ROOT / "docs" / "images"
 FONTS = ROOT / "packaging" / "fonts"

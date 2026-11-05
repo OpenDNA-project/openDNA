@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from Bio.SeqUtils import MeltingTemp as mt
 
-from genomeedit_core import Document, tm
+from opendna_core import Document, tm
 
 ROOT = Path(__file__).resolve().parent.parent
 from sample_files import DNA_FILE   # a copy of the real .dna file (see sample_files.py)

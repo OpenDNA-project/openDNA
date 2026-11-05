@@ -5011,7 +5011,7 @@
    "cases": [
     {
      "input": "active(); log an INFO line mentioning SECRET_PATH; teardown; read file",
-     "expected": "path data/logs/genomeedit.log; has 'Start: OpenGenEdit <ver>', Python, Qt, the message, INFO, logger name; no 'bobsmith'/'secret'; no dialog shown"
+     "expected": "path data/logs/opendna.log; has 'Start: openDNA <ver>', Python, Qt, the message, INFO, logger name; no 'bobsmith'/'secret'; no dialog shown"
     },
     {
      "input": "qWarning('... in plasmid.gb')",
@@ -5023,7 +5023,7 @@
     },
     {
      "input": "LOG_MAX_BYTES=2000, write 400 lines",
-     "expected": "files == genomeedit.log, .1, .2; each <= 2200 bytes"
+     "expected": "files == opendna.log, .1, .2; each <= 2200 bytes"
     },
     {
      "input": "copy_diagnostics with a fake clipboard; then fresh empty data dir",
@@ -5075,7 +5075,7 @@
    "cases": [
     {
      "input": "log 'marker line 42', then report_url('bug')",
-     "expected": "logs field has 'marker line 42' and 'Start: OpenGenEdit'"
+     "expected": "logs field has 'marker line 42' and 'Start: openDNA'"
     },
     {
      "input": "100 log entries, report_url('bug')",
@@ -5189,7 +5189,7 @@
    "cases": [
     {
      "input": "register(None, fakeReg, EXE)",
-     "expected": "returns list(FILE_TYPES); shell/open/command == '\"...OpenGenEdit.exe\" \"%1\"'; DefaultIcon ==',0'; FriendlyAppName=='OpenGenEdit'; every ext has OpenWithProgids/SupportedTypes/FileAssociations; RegisteredApps set; reg.changes==1"
+     "expected": "returns list(FILE_TYPES); shell/open/command == '\"...openDNA.exe\" \"%1\"'; DefaultIcon ==',0'; FriendlyAppName=='openDNA'; every ext has OpenWithProgids/SupportedTypes/FileAssociations; RegisteredApps set; reg.changes==1"
     },
     {
      "input": "inspect reg.writes",
@@ -5263,7 +5263,7 @@
     },
     {
      "input": "Yes button click",
-     "expected": "registered; ask->None; ini accepted=='true'; a 'Default apps' info box with 'click OpenGenEdit'; its open button calls open_default_apps_settings (opened==[1])"
+     "expected": "registered; ask->None; ini accepted=='true'; a 'Default apps' info box with 'click openDNA'; its open button calls open_default_apps_settings (opened==[1])"
     },
     {
      "input": "Not now (later) click",
@@ -5314,7 +5314,7 @@
     },
     {
      "input": "open_default_apps_settings(opener)",
-     "expected": "opens 'ms-settings:defaultapps?registeredAppUser=OpenGenEdit'; opener that rejects '?' falls back to 'ms-settings:defaultapps'; opener that always raises -> returns False"
+     "expected": "opens 'ms-settings:defaultapps?registeredAppUser=openDNA'; opener that rejects '?' falls back to 'ms-settings:defaultapps'; opener that always raises -> returns False"
     }
    ],
    "oracle": "hand-computed",
@@ -5571,7 +5571,7 @@
      "expected": "same codons, strictly more starts; TGA -> '*' fallback"
     },
     {
-     "input": "genomeedit_core.genetic_codes(); citations",
+     "input": "opendna_core.genetic_codes(); citations",
      "expected": "ids equal; 64-long strings; 'Elzanowski' and 'wprintgc' cited"
     }
    ],
@@ -6026,7 +6026,7 @@
    "cases": [
     {
      "input": "SponsorsDialog with shipped sponsors.json",
-     "expected": "cards == []; welcome text has 'Antoine Champie', 'official download', 'github.com/Ant-Champ/GenomeEdit'"
+     "expected": "cards == []; welcome text has 'Antoine Champie', 'official download', 'github.com/OpenDNA-project/openDNA'"
     },
     {
      "input": "due/show_at_startup; last_shown='2000-01-01'; snooze on/off; never=True; force=True",
@@ -6053,8 +6053,8 @@
      "expected": "tip text changes, TIPS unique and >1; all quick buttons disabled without window; demo enabled, new_file disabled; open_untitled called with DEMO_NAME, accepted"
     },
     {
-     "input": "load stubbed with Acme + 2 empty slots; CONTACT_EMAIL '' / 'genomeedit@example.org'",
-     "expected": "3 cards, first has 'Acme', 'SPONSORED' label visible; no 'mailto' / 'mailto:genomeedit@example.org' in welcome_html"
+     "input": "load stubbed with Acme + 2 empty slots; CONTACT_EMAIL '' / 'opendna@example.org'",
+     "expected": "3 cards, first has 'Acme', 'SPONSORED' label visible; no 'mailto' / 'mailto:opendna@example.org' in welcome_html"
     }
    ],
    "oracle": "GUI state",
@@ -6641,7 +6641,7 @@
    "purpose": "On the real human genome the chromosome list is read (chr1 length correct), chr21 opens as a linear sequence, its row is visible, and the wheel can zoom chr21 down to 50 bp.",
    "cases": [
     {
-     "input": "hg38.fa from GENOMEEDIT_HUMAN_FASTA or V:/HM_Softwares/TestData/human_genome/hg38.fa",
+     "input": "hg38.fa from OPENDNA_HUMAN_FASTA or V:/HM_Softwares/TestData/human_genome/hg38.fa",
      "expected": "> 24 records, chr1 == 248,956,422 bp"
     },
     {
@@ -6972,7 +6972,7 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [
-    "Uses the shared global db() (lines 70,82) with no private-db fixture; the module sets a fresh GENOMEEDIT_DATA_DIR at import so cross-file leakage is limited, but names could collide with other tests in this module."
+    "Uses the shared global db() (lines 70,82) with no private-db fixture; the module sets a fresh OPENDNA_DATA_DIR at import so cross-file leakage is limited, but names could collide with other tests in this module."
    ]
   },
   {
@@ -7086,7 +7086,7 @@
    "purpose": "The two-chromosome V. cholerae N16961 GenBank opens with both records (sizes exact), switches to chromosome II, and a 'toxin' search finds hits on both chromosomes.",
    "cases": [
     {
-     "input": "vibrio_cholerae_N16961.gb (GENOMEEDIT_VIBRIO_GB or V:/ path)",
+     "input": "vibrio_cholerae_N16961.gb (OPENDNA_VIBRIO_GB or V:/ path)",
      "expected": "fasta_records == [('NC_002505', 2961149), ('NC_002506', 1072315)], circular, > 1000 features"
     },
     {
@@ -7142,7 +7142,7 @@
    "cases": [
     {
      "input": "search('nuccore', 'U1.1', key='K') with fake esearch/esummary",
-     "expected": "[('U1.1', 1834, 'circular', 'A made-up plasmid')]; request has tool=OpenGenEdit, api_key=K, db=nuccore, no email"
+     "expected": "[('U1.1', 1834, 'circular', 'A made-up plasmid')]; request has tool=openDNA, api_key=K, db=nuccore, no email"
     },
     {
      "input": "terms 'nothing', '  ', 'broken'",
@@ -7835,7 +7835,7 @@
    "id": "tests/test_project.py::test_exe_recipe_bundles_every_data_file_the_app_reads",
    "line": 50,
    "area": "Packaging (PyInstaller spec)",
-   "purpose": "Every data file the app reads via Path(__file__).with_name(...) must be bundled by packaging/OpenGenEdit.spec, the files the spec names must exist, and the icon must be a multi-size .ico.",
+   "purpose": "Every data file the app reads via Path(__file__).with_name(...) must be bundled by packaging/openDNA.spec, the files the spec names must exist, and the icon must be a multi-size .ico.",
    "cases": [
     {
      "input": "Regex scan of app/*.py for Path(__file__).with_name(\"x\")",
@@ -7850,7 +7850,7 @@
      "expected": "exists under app/ or repo root"
     },
     {
-     "input": "packaging/OpenGenEdit.ico header",
+     "input": "packaging/openDNA.ico header",
      "expected": "reserved 0, type 1; each entry square, 32 bpp, data inside file; sizes include 16, 32, 48, 256"
     }
    ],
@@ -7877,7 +7877,7 @@
     },
     {
      "input": "NAME, AUTHOR, UPDATES_ENABLED",
-     "expected": "NAME == 'OpenGenEdit'; AUTHOR non-blank; UPDATES_ENABLED is bool"
+     "expected": "NAME == 'openDNA'; AUTHOR non-blank; UPDATES_ENABLED is bool"
     },
     {
      "input": "FILE_TYPES",
@@ -9405,16 +9405,16 @@
    "purpose": "Checks that the downloaded program is verified against its published SHA-256 before use, and that any failure (mismatch, bad checksum file, foreign address, cancel, network error, unwritable folder) leaves no partial file behind.",
    "cases": [
     {
-     "input": "parse_checksum on '<digest>  OpenGenEdit.exe', '<digest> *OpenGenEdit.exe', bare digest, upper-case digest, a two-line file (other.zip first), UTF-16 with BOM, UTF-8 BOM",
+     "input": "parse_checksum on '<digest>  openDNA.exe', '<digest> *openDNA.exe', bare digest, upper-case digest, a two-line file (other.zip first), UTF-16 with BOM, UTF-8 BOM",
      "expected": "the lower-case digest each time"
     },
     {
-     "input": "parse_checksum on '', 'hello', 'abc  OpenGenEdit.exe', '<digest>  other.zip', 63-char and 65-char hex",
+     "input": "parse_checksum on '', 'hello', 'abc  openDNA.exe', '<digest>  other.zip', 63-char and 65-char hex",
      "expected": "None each"
     },
     {
      "input": "download_update with the fake serving EXE_BYTES ('MZ' + 'fake exe '*1000) and the matching digest",
-     "expected": "returns folder/OpenGenEdit.exe.new with EXE_BYTES; no .part left; last progress = (len, len)"
+     "expected": "returns folder/openDNA.exe.new with EXE_BYTES; no .part left; last progress = (len, len)"
     },
     {
      "input": "exe bytes + b'tampered'",
@@ -9472,7 +9472,7 @@
    "cases": [
     {
      "input": "dialog for version 0.2.0 with notes 'Notes'; click Install",
-     "expected": "header contains '0.2.0', notes text 'Notes'; installed == [folder/OpenGenEdit.exe.new], quit called once, file == EXE_BYTES"
+     "expected": "header contains '0.2.0', notes text 'Notes'; installed == [folder/openDNA.exe.new], quit called once, file == EXE_BYTES"
     },
     {
      "input": "fake exe b'MZ-tampered'; click Install",
@@ -9531,7 +9531,7 @@
    "purpose": "Checks the file swap that installs an update (running exe to .old, new exe in place, relaunch) and that it refuses to act when running from source, as the folder build, or with missing / misplaced files.",
    "cases": [
     {
-     "input": "folder with OpenGenEdit.exe=b'OLD' and .exe.new=b'NEW'; install_update(new, current, relaunch=recorder)",
+     "input": "folder with openDNA.exe=b'OLD' and .exe.new=b'NEW'; install_update(new, current, relaunch=recorder)",
      "expected": "exe = b'NEW', .exe.old = b'OLD', .new gone, relaunch called with [current]"
     },
     {
@@ -9544,7 +9544,7 @@
     },
     {
      "input": "sys.frozen=True, _MEIPASS a temp _MEI1234 folder, then _MEIPASS = exe folder/_internal and exe folder",
-     "expected": "one-file: not folder build, blocker None; folder layouts: is_folder_build True, blocker mentions 'OpenGenEdit-folder.zip', install raises 'folder version'; files unchanged"
+     "expected": "one-file: not folder build, blocker None; folder layouts: is_folder_build True, blocker mentions 'openDNA-folder.zip', install raises 'folder version'; files unchanged"
     },
     {
      "input": "sys.frozen=True, sys.executable=current; install_update(new)",
@@ -9619,12 +9619,12 @@
    "purpose": "Checks that the restarted program gets a clean PyInstaller environment and that leftovers of an update are deleted at start-up (waiting for a file still held), without touching anything when run from source.",
    "cases": [
     {
-     "input": "relaunch(tmp/OpenGenEdit.exe) with Popen faked, env _MEIPASS2 and _PYI_APPLICATION_HOME_DIR set",
+     "input": "relaunch(tmp/openDNA.exe) with Popen faked, env _MEIPASS2 and _PYI_APPLICATION_HOME_DIR set",
      "expected": "args [exe path]; env PYINSTALLER_RESET_ENVIRONMENT='1'; no _MEIPASS2 and no _PYI* keys"
     },
     {
-     "input": "folder with OpenGenEdit.exe, .exe.old, .exe.part; cleanup_old(current) twice",
-     "expected": "True; only OpenGenEdit.exe remains (still b'OLD'); second call True"
+     "input": "folder with openDNA.exe, .exe.old, .exe.part; cleanup_old(current) twice",
+     "expected": "True; only openDNA.exe remains (still b'OLD'); second call True"
     },
     {
      "input": "cleanup_old() with no exe, not frozen",
@@ -9649,10 +9649,10 @@
    "cases": [
     {
      "input": "newer release with no assets / only the exe / only the .sha256",
-     "expected": "update None; error names the missing OpenGenEdit.exe.sha256 or OpenGenEdit.exe; page_url set"
+     "expected": "update None; error names the missing openDNA.exe.sha256 or openDNA.exe; page_url set"
     },
     {
-     "input": "exe asset URL 'https://evil.example.com/OpenGenEdit.exe', 'http://github.com/x/OpenGenEdit.exe', 'https://github.com/someone/else/releases/download/v9/OpenGenEdit.exe'",
+     "input": "exe asset URL 'https://evil.example.com/openDNA.exe', 'http://github.com/x/openDNA.exe', 'https://github.com/someone/else/releases/download/v9/openDNA.exe'",
      "expected": "update None and 'Refused' in error"
     },
     {
@@ -9684,7 +9684,7 @@
    "cases": [
     {
      "input": "check('0.1.0') on a fake release JSON with tag 'v0.2.0', body 'Fixes things.', exe + .sha256 + other.zip assets",
-     "expected": "error None; version '0.2.0', tag 'v0.2.0', notes 'Fixes things.', asset_url .../v0.2.0/OpenGenEdit.exe, sha256_url ...exe.sha256, page_url .../releases/tag/v0.2.0; check_for_update returns the same Update"
+     "expected": "error None; version '0.2.0', tag 'v0.2.0', notes 'Fixes things.', asset_url .../v0.2.0/openDNA.exe, sha256_url ...exe.sha256, page_url .../releases/tag/v0.2.0; check_for_update returns the same Update"
     },
     {
      "input": "check(fetch=fake) with no version, release tag = v{project.VERSION}",

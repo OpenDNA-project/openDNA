@@ -15,7 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from genomeedit_core import Document, Fasta
+from opendna_core import Document, Fasta
 
 FASTA_EXT = {".fa", ".fasta", ".fna", ".fas", ".ffn", ".frn", ".mfa"}
 WINDOW = 32_000_000        # bases of a linear FASTA record searched in one go (memory bound: ~3 copies of this)

@@ -2,34 +2,34 @@
 
 What is written (all under HKEY_CURRENT_USER, so no administrator rights and no UAC prompt; nothing outside the user's own hive):
 
-    Software\\Classes\\OpenGenEdit.SequenceFile                 the "ProgID": name, icon, and the command that opens a file
+    Software\\Classes\\openDNA.SequenceFile                 the "ProgID": name, icon, and the command that opens a file
         DefaultIcon                                           the exe's own icon
         shell\\open\\command                                   "<exe>" "%1"
-    Software\\Classes\\<ext>\\OpenWithProgids                    one value per extension: "OpenGenEdit can open this" (what fills the
+    Software\\Classes\\<ext>\\OpenWithProgids                    one value per extension: "openDNA can open this" (what fills the
                                                               "Open with" list and Settings > Default apps > by file type)
-    Software\\Classes\\Applications\\OpenGenEdit.exe              SupportedTypes, FriendlyAppName, command: shows the program in "Open with >
+    Software\\Classes\\Applications\\openDNA.exe              SupportedTypes, FriendlyAppName, command: shows the program in "Open with >
                                                               Choose another app" when it is picked by file name
-    Software\\OpenGenEdit\\Capabilities                         name, description, FileAssociations (ext -> ProgID)
-    Software\\RegisteredApplications  value "OpenGenEdit"       points at the Capabilities key: this is what makes the program appear in
+    Software\\openDNA\\Capabilities                         name, description, FileAssociations (ext -> ProgID)
+    Software\\RegisteredApplications  value "openDNA"       points at the Capabilities key: this is what makes the program appear in
                                                               Settings > Default apps as an app of its own
 
 What the user sees in Windows
-    * Right-click a .gb file > Open with: OpenGenEdit is in the list (also under "Choose another app").
-    * Double-click a .gb file that has no default program yet: Windows asks "How do you want to open this file?" and OpenGenEdit is
+    * Right-click a .gb file > Open with: openDNA is in the list (also under "Choose another app").
+    * Double-click a .gb file that has no default program yet: Windows asks "How do you want to open this file?" and openDNA is
       one of the choices.
-    * Settings > Apps > Default apps: type "OpenGenEdit" in the search box (or use the extension box): the page lists every extension
+    * Settings > Apps > Default apps: type "openDNA" in the search box (or use the extension box): the page lists every extension
       the program offers, each with a "set default" button.
 
 Caveats (they are Windows' rules, not ours; the program never tries to get around them)
     * Since Windows 8 a program CANNOT make itself the default for an extension. The choice is stored in
       HKCU\\...\\FileExts\\<ext>\\UserChoice together with a hash computed from the user's SID, the extension, the time and the ProgID, and
       Windows ignores a UserChoice written without a valid hash. Writing that hash by hand is exactly what browser hijackers do, and
-      it breaks with every Windows update, so it is NOT done here. Registering only makes OpenGenEdit a candidate; the user clicks
-      "OpenGenEdit" in Settings (we open the right page and say what to click: open_default_apps_settings()).
-    * `ms-settings:defaultapps?registeredAppUser=OpenGenEdit` opens the page of this very app (the value is the name under
+      it breaks with every Windows update, so it is NOT done here. Registering only makes openDNA a candidate; the user clicks
+      "openDNA" in Settings (we open the right page and say what to click: open_default_apps_settings()).
+    * `ms-settings:defaultapps?registeredAppUser=openDNA` opens the page of this very app (the value is the name under
       HKCU\\Software\\RegisteredApplications, written by register()). Microsoft documents it for Windows 11 21H2/22H2 with the April 2023
       update and 23H2 or later ("Launch the Default Apps settings page", learn.microsoft.com). On Windows 10 and older Windows 11 builds the
-      query string is ignored and the general Default apps page opens: the user then searches for OpenGenEdit.
+      query string is ignored and the general Default apps page opens: the user then searches for openDNA.
     * The exe is not code-signed. SmartScreen ("Windows protected your PC") judges the file when it is launched, whichever way it is
       launched, and a downloaded file keeps its "downloaded from the Internet" mark: registering does not remove it nor bypass it. If it
       keeps appearing, Properties > "Unblock" on the .exe removes the mark. Nothing here changes any security setting.
@@ -38,8 +38,8 @@ Caveats (they are Windows' rules, not ours; the program never tries to get aroun
     * The command holds the exe's absolute path. If the exe is moved, renamed or replaced at another place, the association keeps
       pointing at the old path: is_registered_for_current_exe() sees that (status "other") and the startup question is asked again,
       but only for a user who said Yes before (see should_ask).
-    * Software\\OpenGenEdit may also hold values that older versions kept there with QSettings (settings are .ini files in the data
-      folder now), so unregister() removes only its Capabilities subkey, never Software\\OpenGenEdit itself.
+    * Software\\openDNA may also hold values that older versions kept there with QSettings (settings are .ini files in the data
+      folder now), so unregister() removes only its Capabilities subkey, never Software\\openDNA itself.
 
 The registry is reached through a small object (WinRegistry for the real one; the tests use a dictionary-backed fake), so all of the
 logic runs, and is tested, on any OS.
@@ -54,24 +54,24 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QPushBu
 from primer_db import data_dir
 from project import FILE_TYPES, NAME
 
-PROGID = "OpenGenEdit.SequenceFile"
+PROGID = "openDNA.SequenceFile"
 # key under Software\Classes\Applications: by Windows' rules the exe's own file name (the released one is renamed: project.EXE_NAME)
-APP_KEY = Path(sys.executable).name if getattr(sys, "frozen", False) else "OpenGenEdit.exe"
+APP_KEY = Path(sys.executable).name if getattr(sys, "frozen", False) else "openDNA.exe"
 CLASSES = r"Software\Classes"
-CAPABILITIES = r"Software\OpenGenEdit\Capabilities"
+CAPABILITIES = r"Software\openDNA\Capabilities"
 REGISTERED_APPS = r"Software\RegisteredApplications"
 USER_CHOICE = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\{ext}\UserChoice"   # read only: which program the user chose
 SETTINGS_URI = "ms-settings:defaultapps"
 SETTINGS_APP_URI = f"{SETTINGS_URI}?registeredAppUser={NAME}"
-DESCRIPTION = "OpenGenEdit sequence file"
+DESCRIPTION = "openDNA sequence file"
 
 NONE, THIS, OTHER = "none", "this", "other"   # status of one extension: not registered / for this exe / for another path
 
 # What the Windows Settings page asks the user to do (shown after registering).
-CLICK_TEXT = ("OpenGenEdit is now offered to Windows. Windows does not let a program choose itself, so one last step is yours:\n\n"
-              "In Windows Settings (Default apps), click OpenGenEdit, then, for each file type you want (.gb, .gbk, .dna, .fa, .fasta ...), "
-              "click its button and choose OpenGenEdit.\n\n"
-              "Or, without Settings: right-click a file > Open with > Choose another app > OpenGenEdit > \"Always\".")
+CLICK_TEXT = ("openDNA is now offered to Windows. Windows does not let a program choose itself, so one last step is yours:\n\n"
+              "In Windows Settings (Default apps), click openDNA, then, for each file type you want (.gb, .gbk, .dna, .fa, .fasta ...), "
+              "click its button and choose openDNA.\n\n"
+              "Or, without Settings: right-click a file > Open with > Choose another app > openDNA > \"Always\".")
 
 
 # -------------------------------------------------------------------------------------------------- the registry
@@ -223,8 +223,8 @@ def _progid_command(reg):
 # -------------------------------------------------------------------------------------------------- the public functions
 
 def status(exts=None, registry=None, launch=None):
-    """{extension: NONE | THIS | OTHER}. THIS: the extension offers OpenGenEdit and the command is the one of the running exe;
-    OTHER: it offers OpenGenEdit but the stored command is another path (the exe moved, or an older copy registered itself);
+    """{extension: NONE | THIS | OTHER}. THIS: the extension offers openDNA and the command is the one of the running exe;
+    OTHER: it offers openDNA but the stored command is another path (the exe moved, or an older copy registered itself);
     NONE: not offered. `launch`: the program list to compare with (default: launcher(), the running exe)."""
     reg = _registry(registry)
     launch = launch if launch is not None else launcher()
@@ -250,7 +250,7 @@ def is_stale(registry=None, launch=None):
 
 
 def is_default_for(ext, registry=None):
-    """True when the user has chosen OpenGenEdit for this extension in Windows (reads UserChoice; never writes it)."""
+    """True when the user has chosen openDNA for this extension in Windows (reads UserChoice; never writes it)."""
     return _registry(registry).get(USER_CHOICE.format(ext=ext), "ProgId") == PROGID
 
 
@@ -319,7 +319,7 @@ def unregister(registry=None):
 
 def open_default_apps_settings(opener=None):
     """Opens Windows Settings at this app's Default apps page (Windows 11: its own page; older: the general page, where the user
-    searches for OpenGenEdit). `opener(uri)` is injectable for tests. Returns True if something was opened."""
+    searches for openDNA). `opener(uri)` is injectable for tests. Returns True if something was opened."""
     opener = opener or getattr(os, "startfile", None)
     if opener is None:
         return False

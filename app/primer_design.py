@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from genomeedit_core import dimer, hairpin, tm
+from opendna_core import dimer, hairpin, tm
 
 from editor import reverse_complement
 from primer_db import add_primers

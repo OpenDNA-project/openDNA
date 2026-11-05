@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "app"))
 
 import project
 
-SPEC = (ROOT / "packaging" / "OpenGenEdit.spec").read_text(encoding="utf-8")
+SPEC = (ROOT / "packaging" / "openDNA.spec").read_text(encoding="utf-8")
 
 
 def test_project_metadata_is_consistent():
@@ -24,7 +24,7 @@ def test_project_metadata_is_consistent():
     pyproject = tomllib.loads((ROOT / "core" / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     assert project.VERSION == cargo == pyproject, (project.VERSION, cargo, pyproject)
     # --- version looks like a release number ---
-    # The exe's file version (packaging/OpenGenEdit.spec) and the release tag (v + VERSION) both rely on major.minor.patch.
+    # The exe's file version (packaging/openDNA.spec) and the release tag (v + VERSION) both rely on major.minor.patch.
     assert re.fullmatch(r"\d+\.\d+\.\d+", project.VERSION), project.VERSION
     # --- links are built from the repository name ---
     owner, name = project.REPO.split("/")
@@ -36,7 +36,7 @@ def test_project_metadata_is_consistent():
     for url in (project.REPO_URL, project.ISSUES_URL, project.RELEASES_URL, project.LATEST_RELEASE_API):
         assert url.startswith("https://") and " " not in url
     # --- name and author are filled in ---
-    assert project.NAME == "OpenGenEdit"      # the exe, the settings keys and the release asset are all called this
+    assert project.NAME == "openDNA"      # the exe, the settings keys and the release asset are all called this
     assert project.AUTHOR.strip()
     # --- updates switch is a bool ---
     assert isinstance(project.UPDATES_ENABLED, bool)
@@ -57,7 +57,7 @@ def test_exe_recipe_bundles_every_data_file_the_app_reads():
         wanted.update(re.findall(r'Path\(__file__\)\.with_name\("([^"]+)"\)', text))
     assert {"parts", "sponsors.json", "tools.toml", "vendor"} <= wanted, wanted   # the scan itself still finds them
     for name in wanted:
-        assert f'"{name}"' in SPEC, f"app reads {name} but packaging/OpenGenEdit.spec does not bundle it"
+        assert f'"{name}"' in SPEC, f"app reads {name} but packaging/openDNA.spec does not bundle it"
     # The protein viewer's library is reached through the vendor folder.
     assert 'APP / "vendor" / "3Dmol-min.js"' in SPEC and 'APP / "vendor" / "3Dmol.LICENSE"' in SPEC
 
@@ -68,7 +68,7 @@ def test_exe_recipe_bundles_every_data_file_the_app_reads():
         assert (ROOT / rel).exists(), rel
 
     # --- icon is a multi-size ico ---
-    data = (ROOT / "packaging" / "OpenGenEdit.ico").read_bytes()
+    data = (ROOT / "packaging" / "openDNA.ico").read_bytes()
     reserved, kind, count = struct.unpack_from("<HHH", data)
     assert (reserved, kind) == (0, 1)
     sizes = set()
@@ -77,3 +77,17 @@ def test_exe_recipe_bundles_every_data_file_the_app_reads():
         sizes.add(w or 256)
         assert w == h and bpp == 32 and offset + length <= len(data)
     assert {16, 32, 48, 256} <= sizes, sizes
+
+
+def test_old_data_folder_is_copied_once(tmp_path):
+    """The settings and primers of the program's old name come along to the new data folder, once, and the old folder stays."""
+    from primer_db import OLD_DATA_NAME, copy_old_data
+    old, new = tmp_path / OLD_DATA_NAME, tmp_path / "openDNA"
+    (old / "logs").mkdir(parents=True)
+    (old / "primers.tsv").write_text("name\tsequence\n", encoding="utf-8")
+    assert copy_old_data(new) is True
+    assert (new / "primers.tsv").read_text(encoding="utf-8") == "name\tsequence\n" and (new / "logs").is_dir()
+    assert (old / "primers.tsv").exists(), "the old folder is left as it was"
+    (new / "primers.tsv").write_text("changed", encoding="utf-8")
+    assert copy_old_data(new) is False and (new / "primers.tsv").read_text(encoding="utf-8") == "changed", "never copies over the new folder"
+    assert copy_old_data(tmp_path / "elsewhere" / "openDNA") is False, "nothing to copy when there is no old folder"

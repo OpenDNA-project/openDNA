@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget,
 )
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 import db_status
 import parts_library

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QSpinBox, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from genomeedit_core import dimer, hairpin, tm
+from opendna_core import dimer, hairpin, tm
 
 import tool_settings
 from editor import dna_field, reverse_complement

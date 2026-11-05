@@ -8,7 +8,7 @@ import random
 import sys
 from pathlib import Path
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 rng = random.Random(5)
 

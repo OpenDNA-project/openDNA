@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
@@ -69,7 +69,7 @@ def test_ncbi_calls(fake, monkeypatch):
     records = ncbi.search("nuccore", "U1.1", key="K")
     assert [(r.accession, r.length, r.topology, r.title) for r in records] == [("U1.1", 1834, "circular", "A made-up plasmid")]
     first = fake.requests[0][1]
-    assert first["tool"] == "OpenGenEdit" and first["api_key"] == "K" and "email" not in first and first["db"] == "nuccore"
+    assert first["tool"] == "openDNA" and first["api_key"] == "K" and "email" not in first and first["db"] == "nuccore"
     assert ncbi.search("nuccore", "nothing") == []
     with pytest.raises(NcbiError, match="Type an accession"):
         ncbi.search("nuccore", "  ")

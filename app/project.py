@@ -3,14 +3,14 @@
 Change a value here, not in the places that show it. VERSION must equal the version in core/Cargo.toml and core/pyproject.toml
 (tests/test_project.py checks it).
 """
-NAME = "OpenGenEdit"
-# The file name of the released program (OpenGenEdit.exe is renamed to this in the release, and the folder zip is EXE_NAME-folder.zip).
+NAME = "openDNA"
+# The file name of the released program (openDNA.exe is renamed to this in the release, and the folder zip is EXE_NAME-folder.zip).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
 VERSION = "0.5.0"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
-REPO = "Ant-Champ/GenomeEdit"   # owner/name on GitHub (the repository still has the old name; change this when it is renamed)
+REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
 REPO_URL = f"https://github.com/{REPO}"
 RELEASES_URL = f"{REPO_URL}/releases"
 ISSUES_URL = f"{REPO_URL}/issues"

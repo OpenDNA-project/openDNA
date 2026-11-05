@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 DEMO = Path(__file__).resolve().parent.parent / "demo"
-_folder = Path(tempfile.mkdtemp(prefix="genomeedit_samples_"))
+_folder = Path(tempfile.mkdtemp(prefix="opendna_samples_"))
 
 
 def _copy(name):

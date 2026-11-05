@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -19,7 +19,7 @@ from main import MainWindow
 from sample_files import PLASMID, PLASMID2
 
 app = QApplication.instance() or QApplication([])
-VIBRIO = Path(os.environ.get("GENOMEEDIT_VIBRIO_GB", "V:/HM_Softwares/TestData/vibrio_cholerae/vibrio_cholerae_N16961.gb"))   # outside git
+VIBRIO = Path(os.environ.get("OPENDNA_VIBRIO_GB", "V:/HM_Softwares/TestData/vibrio_cholerae/vibrio_cholerae_N16961.gb"))   # outside git
 
 
 def two_records(tmp_path):

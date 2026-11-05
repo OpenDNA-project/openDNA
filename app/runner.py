@@ -3,7 +3,7 @@
 Recipes live in tools.toml (one entry per tool, no code). On Windows the commands run in
 WSL through `wsl -e bash -lc`, with Windows paths turned into /mnt/<drive>/… paths;
 elsewhere through bash directly. Tools are looked up first in a dedicated conda env
-(genomeedit-tools, see INSTALL), then on the normal PATH.
+(opendna-tools, see INSTALL), then on the normal PATH.
 
 Each run gets a folder next to its output (<out>_run/) with the reference, the exact
 commands (command.txt) and the full log (log.txt), so it can be re-run by hand.
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 RECIPES = Path(__file__).with_name("tools.toml")
-ENV = "genomeedit-tools"
+ENV = "opendna-tools"
 # Where the tools env usually is (Miniforge, Miniconda, Mambaforge); searched before PATH.
 TOOL_DIRS = [f"$HOME/{base}/envs/{ENV}/bin" for base in ("miniforge3", "miniconda3", "mambaforge")]
 TOOLS = ["bwa", "samtools", "minimap2"]

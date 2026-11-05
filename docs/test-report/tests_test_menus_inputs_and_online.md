@@ -17,7 +17,7 @@ Right-click menu actions apply to all selected rows: hide/show/delete features (
 
 **Review notes:**
 
-- Uses the shared global db() (lines 70,82) with no private-db fixture; the module sets a fresh GENOMEEDIT_DATA_DIR at import so cross-file leakage is limited, but names could collide with other tests in this module.
+- Uses the shared global db() (lines 70,82) with no private-db fixture; the module sets a fresh OPENDNA_DATA_DIR at import so cross-file leakage is limited, but names could collide with other tests in this module.
 
 ## `test_about_dialog_and_view_theme`
 

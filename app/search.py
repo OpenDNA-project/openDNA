@@ -13,7 +13,7 @@ sequence; `search_file` the other sequences of a FASTA file (DNA only, the names
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
 
-from genomeedit_core import Fasta, find_motif, find_protein
+from opendna_core import Fasta, find_motif, find_protein
 
 import enzymes
 import genetic_code

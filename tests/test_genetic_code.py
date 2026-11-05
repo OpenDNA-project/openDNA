@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 import pytest
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QApplication
 import genetic_code
 import tool_settings
 from editor import Editor, reverse_complement
-from genomeedit_core import Document, find_protein, translate
+from opendna_core import Document, find_protein, translate
 from sequence_view import cds_codons, codons
 from test_cas9 import close, open_doc
 
@@ -100,7 +100,7 @@ def test_the_embedded_tables_match_biopython_and_differ_where_they_should():
     # An unknown table falls back to the standard code rather than failing.
     assert translate("TGA", 99) == "*"
     # --- Rust and Python agree on the data
-    from genomeedit_core import genetic_codes
+    from opendna_core import genetic_codes
     assert [t[0] for t in genetic_codes()] == IDS
     assert all(len(t[2]) == len(t[3]) == 64 for t in genetic_codes())
     # --- the citation for the genetic codes

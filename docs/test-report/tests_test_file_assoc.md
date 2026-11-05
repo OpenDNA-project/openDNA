@@ -10,7 +10,7 @@ register() writes the full Windows file-association registration (ProgID, Defaul
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | register(None, fakeReg, EXE) | returns list(FILE_TYPES); shell/open/command == '"...OpenGenEdit.exe" "%1"'; DefaultIcon ==',0'; FriendlyAppName=='OpenGenEdit'; every ext has OpenWithProgids/SupportedTypes/FileAssociations; RegisteredApps set; reg.changes==1 |
+| 1 | register(None, fakeReg, EXE) | returns list(FILE_TYPES); shell/open/command == '"...openDNA.exe" "%1"'; DefaultIcon ==',0'; FriendlyAppName=='openDNA'; every ext has OpenWithProgids/SupportedTypes/FileAssociations; RegisteredApps set; reg.changes==1 |
 | 2 | inspect reg.writes | every write path under our 4 roots or endsWith OpenWithProgids; no 'userchoice' written |
 | 3 | register(['.gb','fa'], reg, EXE) | returns ['.gb','.fa']; status .gb==THIS, .dna==NONE; not registered-for-current-exe |
 | 4 | register(['.txt']) | raises ValueError; snapshot unchanged (nothing written) |
@@ -30,7 +30,7 @@ status() round-trips NONE/THIS/OTHER, detects a stale (moved-exe) registration i
 | 3 | status with MOVED launch path | all OTHER; is_stale True; register(MOVED) repairs; command starts '"D:' |
 | 4 | register EXE, query with EXE[0].upper() | is_registered_for_current_exe True (case ignored) |
 | 5 | set UserChoice ProgId==PROGID for .gb | is_default_for('.gb') True, '.fa' False |
-| 6 | open_default_apps_settings(opener) | opens 'ms-settings:defaultapps?registeredAppUser=OpenGenEdit'; opener that rejects '?' falls back to 'ms-settings:defaultapps'; opener that always raises -> returns False |
+| 6 | open_default_apps_settings(opener) | opens 'ms-settings:defaultapps?registeredAppUser=openDNA'; opener that rejects '?' falls back to 'ms-settings:defaultapps'; opener that always raises -> returns False |
 
 ## `test_unregister`
 
@@ -68,7 +68,7 @@ The start-up association dialog (driven without exec) does nothing when there's 
 | # | Input | Expected output |
 |---|---|---|
 | 1 | ask_at_startup with frozen=False then windows=False | None; _open_boxes empty |
-| 2 | Yes button click | registered; ask->None; ini accepted=='true'; a 'Default apps' info box with 'click OpenGenEdit'; its open button calls open_default_apps_settings (opened==[1]) |
+| 2 | Yes button click | registered; ask->None; ini accepted=='true'; a 'Default apps' info box with 'click openDNA'; its open button calls open_default_apps_settings (opened==[1]) |
 | 3 | Not now (later) click | nothing written (status .gb NONE); ask None; dont_ask unset |
 | 4 | Don't ask again (never) click | ask None; dont_ask=='true'; reg.keys=={} |
 | 5 | accepted + register MOVED, stale box | box text has 'moved'; Yes registers EXE; later-click on third path remembered (ask None) |

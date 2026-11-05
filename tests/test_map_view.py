@@ -7,13 +7,13 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QApplication
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 from editor import Editor
 from map_view import MIN_BAND, MapView
@@ -116,12 +116,12 @@ def test_map_layout_crowding_clicks_scale_and_geometry():
 
 
 # ---- linear maps, and a FASTA file of several sequences (one line per chromosome) ---------------------------------------
-HUMAN = Path(os.environ.get("GENOMEEDIT_HUMAN_FASTA", "V:/HM_Softwares/TestData/human_genome/hg38.fa"))   # outside git; tests skip if absent
+HUMAN = Path(os.environ.get("OPENDNA_HUMAN_FASTA", "V:/HM_Softwares/TestData/human_genome/hg38.fa"))   # outside git; tests skip if absent
 
 
 def multi_fasta_editor(lengths, current=0, folder=None):
-    from genomeedit_core import Fasta
-    folder = Path(folder or tempfile.mkdtemp(prefix="genomeedit_multi_"))
+    from opendna_core import Fasta
+    folder = Path(folder or tempfile.mkdtemp(prefix="opendna_multi_"))
     rng = random.Random(3)
     path = folder / "multi.fa"
     path.write_text("".join(f">chr{i + 1}\n" + "".join(rng.choice("ACGT") for _ in range(n)) + "\n" for i, n in enumerate(lengths)))
@@ -172,7 +172,7 @@ def test_human_genome_chromosomes_listed_drawn_and_zoomed():
     import pytest
     if not HUMAN.exists():
         pytest.skip(f"no human genome at {HUMAN}")
-    from genomeedit_core import Fasta
+    from opendna_core import Fasta
     records = [(n, int(l)) for n, l in Fasta(str(HUMAN)).sequences()]
     assert len(records) > 24 and dict(records)["chr1"] == 248_956_422
     chr21 = dict(records)["chr21"]

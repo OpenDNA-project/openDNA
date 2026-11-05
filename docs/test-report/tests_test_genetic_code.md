@@ -14,7 +14,7 @@ Checks every embedded NCBI translation table (except 27, 28, 31) codon by codon,
 | 2 | every table x 64 codons via translate(), codon_map(), bottom-strand codons() and whole-string translate | equal Biopython amino acid or '*'; start/stop sets equal Biopython |
 | 3 | TGA in 1/4/25, AGA in 1/2, ATA in 1/2, CTG in 12/1 | '*'/'W'/'G', 'R'/'*', 'I'/'M', 'S'/'L' |
 | 4 | table 11 vs 1; table 99 | same codons, strictly more starts; TGA -> '*' fallback |
-| 5 | genomeedit_core.genetic_codes(); citations | ids equal; 64-long strings; 'Elzanowski' and 'wprintgc' cited |
+| 5 | opendna_core.genetic_codes(); citations | ids equal; 64-long strings; 'Elzanowski' and 'wprintgc' cited |
 
 ## `test_orfs_start_and_stop_follow_the_table`
 

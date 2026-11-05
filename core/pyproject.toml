@@ -1,11 +1,11 @@
 # Lets `pip install ./core` (or `maturin develop`) compile the Rust crate into an importable
-# Python module named `genomeedit_core`.
+# Python module named `opendna_core`.
 [build-system]
 requires = ["maturin>=1.7,<2"]
 build-backend = "maturin"
 
 [project]
-name = "genomeedit_core"
+name = "opendna_core"
 version = "0.5.0"
 requires-python = ">=3.11"   # the app reads tool settings with tomllib (3.11+); the compiled module itself is abi3-py310
 

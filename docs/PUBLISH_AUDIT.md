@@ -26,9 +26,9 @@ release. **NICE** = polish.
   `tools.toml`, `sponsors.json`. It does **not** bundle `app/vendor/3Dmol-min.js`, which `app/structure.py:39` (`VENDOR`) reads
   when the 3D page is made (`structure.py:251`). An exe built with it would fail on *Open 3D view* (only that feature, not at
   start-up), and would not carry `app/vendor/3Dmol.LICENSE` (BSD-3-Clause requires the notice with binary redistributions).
-- Evidence: the `dist/OpenGenEdit.exe` that was in the working tree on 2026-11-01 (dated 2026-10-29) contained no `3Dmol`
+- Evidence: the `dist/openDNA.exe` that was in the working tree on 2026-11-01 (dated 2026-10-29) contained no `3Dmol`
   string (it has since been removed from `dist/`).
-- The new, untracked `packaging/OpenGenEdit.spec` lists the vendor files, `LICENSE` and `THIRD_PARTY_NOTICES.md`. **To do:**
+- The new, untracked `packaging/openDNA.spec` lists the vendor files, `LICENSE` and `THIRD_PARTY_NOTICES.md`. **To do:**
   commit it, build the release only with it, then check the exe on a PC without Python, including *Open 3D view in the
   browser* (the smoke test mentioned in the spec should assert this).
 - The zip that users download should hold: the exe, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README.md`, and a link to the
@@ -36,18 +36,18 @@ release. **NICE** = polish.
 
 ### B2. Qt (LGPL) inside a PyInstaller one-file exe: decide, and say what you decided
 
-PySide6 6.12.0 is licensed `LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only`; OpenGenEdit uses it under the LGPL-3.0. In plain terms
+PySide6 6.12.0 is licensed `LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only`; openDNA uses it under the LGPL-3.0. In plain terms
 the LGPL asks, for an app that bundles Qt: (1) say that Qt is used and under which licence, and ship the licence text;
 (2) give the corresponding Qt source (or a written offer / link: Qt's source is public at download.qt.io; PySide6's at
 code.qt.io); (3) let users replace the Qt libraries with their own build and run your program with them (and allow
 reverse engineering for debugging such a change).
 
 A one-file exe packs the Qt DLLs inside itself and unpacks them to a temporary folder at each start, so a user cannot simply swap
-a DLL. Recommendation (not legal advice), cheapest first: (a) also publish a **one-folder** build (zip of `dist\OpenGenEdit\`),
+a DLL. Recommendation (not legal advice), cheapest first: (a) also publish a **one-folder** build (zip of `dist\openDNA\`),
 where the Qt DLLs are ordinary files that can be replaced; or (b) keep the one-file exe and state, in the README and
 `THIRD_PARTY_NOTICES.md`, that anyone can rebuild it from source with another PySide6 version (the build is scripted and the source
 is AGPL). `THIRD_PARTY_NOTICES.md` already says (b) and gives the Qt source locations; if you choose (a), add one line.
-**Resolved: both.** Each release now also carries `OpenGenEdit-folder.zip` (a one-folder build with a `README.txt` on swapping Qt), built by
+**Resolved: both.** Each release now also carries `openDNA-folder.zip` (a one-folder build with a `README.txt` on swapping Qt), built by
 `scripts/build_exe.ps1` and `release.yml`; see `docs/PUBLISHING.md`, "Qt (LGPL)".
 Also ship the LGPL-3.0 and GPL-3.0 texts or link them (the notices file links them; Qt's own wheel metadata carries them).
 GPL-3.0 and AGPL-3.0 are expressly allowed to be combined (section 13 of each), so the AGPL project and LGPL Qt do not conflict.
@@ -85,7 +85,7 @@ Limits it states itself: the checksum file lives in the same release as the exe,
 test program with a handful of testers this is a normal trade-off, but (1) say it in the README and `SECURITY.md` (done), (2) protect the GitHub account with 2-factor
 authentication and a hardware or passkey login, and enable "require signed commits / immutable releases" if offered, (3) leave `UPDATES_ENABLED = False` until the repository is public and
 the first release exists (flipping it earlier shows a message and is harmless), (4) make the SHA-256 of the exe visible in the release notes too, so a human can compare it
-without the program, (5) consider a signature (minisign or Sigstore) of `OpenGenEdit.exe.sha256` with a public key stored in the repository, which would defeat a replaced pair of files.
+without the program, (5) consider a signature (minisign or Sigstore) of `openDNA.exe.sha256` with a public key stored in the repository, which would defeat a replaced pair of files.
 
 ### S2. AlphaFold DB: the model URL taken from the server's answer is not checked — done
 
@@ -97,14 +97,14 @@ answer could make the program read a local file and place its text in the page (
 ### S3. The data folder is not what the docs say, and settings are split in three places
 
 `app/main.py` never calls `setOrganizationName` / `setApplicationName`, so Qt names the data folder after the executable:
-`%APPDATA%\OpenGenEdit\` for `OpenGenEdit.exe`, but `%APPDATA%\python\` when run from source with `python app/main.py`
+`%APPDATA%\openDNA\` for `openDNA.exe`, but `%APPDATA%\python\` when run from source with `python app/main.py`
 (both folders exist on the author's PC). `app/primer_db.py:3` and `docs/USER_GUIDE.md:17` say
-`%APPDATA%\OpenGenEdit\OpenGenEdit\`, which does not exist. Consequences: documentation is wrong, and a user who tries the source
+`%APPDATA%\openDNA\openDNA\`, which does not exist. Consequences: documentation is wrong, and a user who tries the source
 version and the exe sees two different primer databases. Fix: set organization/application name once at start-up (then
 decide whether to migrate the old folder), and correct the two docs. `PRIVACY.md` states today's behaviour.
 
-Also: `QSettings("OpenGenEdit", "OpenGenEdit")` (`app/primer_db.py:28`, `app/primer_panel.py:34`) writes to the **Windows registry**
-(`HKCU\Software\OpenGenEdit\OpenGenEdit`: PCR conditions, primer options including the path of the chosen reference genome), while
+Also: `QSettings("openDNA", "openDNA")` (`app/primer_db.py:28`, `app/primer_panel.py:34`) writes to the **Windows registry**
+(`HKCU\Software\openDNA\openDNA`: PCR conditions, primer options including the path of the chosen reference genome), while
 every other setting goes to `.ini` files in the data folder. Moving these two to the same `.ini` style would keep "everything is in
 one folder" true and make uninstalling clean. **Resolved:** both now use `primers.ini` in the data folder (`primer_db.settings()`); the
 registry holds only the optional file-association entries. Older values under the registry key are not copied over.
@@ -171,14 +171,14 @@ sequence dropped into `demo/` would be picked up by `git add .`.
   licence in the About text). The AGPL's "how to apply" suggests a short header; `# SPDX-License-Identifier: AGPL-3.0-or-later`
   decision is yours (is it "only" or "or later"? README says just "AGPL-3.0": say which). The README rewrite says "AGPL-3.0".
 - N2. Copyright line: the old README said "Copyright (C) 2026 Ant-Champ" (a GitHub login), `About` says "Antoine Champie". The rewrite uses the
-  author's name; make the About, the exe's `LegalCopyright` (`packaging/OpenGenEdit.spec`) and the README agree.
+  author's name; make the About, the exe's `LegalCopyright` (`packaging/openDNA.spec`) and the README agree.
 - N3. The recent commit messages carry a `Co-Authored-By: Claude ...` trailer. Nothing wrong; if you want a plain
   statement of AI assistance, put one line in the README.
 - N4. `PLAN.md:219` says "Ubuntu is already installed here" (the author's PC). Harmless.
 - N5. `.github/workflows/ci.yml` uses `actions/checkout@v4`, `setup-python@v5`, `rust-cache@v2`, `dtolnay/rust-toolchain@stable` by tag. For a public repo
   consider pinning actions to commit hashes (supply-chain hygiene) and giving the workflow `permissions: contents: read`.
-- N6. Name collision check for "OpenGenEdit" (other software, GitHub projects, trademark databases) was not done. A name policy for forks
-  ("do not call a fork OpenGenEdit") is mentioned in `docs/PUBLISHING.md`; no trademark is registered.
+- N6. Name collision check for "openDNA" (other software, GitHub projects, trademark databases) was not done. A name policy for forks
+  ("do not call a fork openDNA") is mentioned in `docs/PUBLISHING.md`; no trademark is registered.
 - N7. `app/sponsors.json` is empty (`contact` blank, three empty slots) and the sponsors page now shows only the welcome text when no slot is
   filled. Fine. If you ever add a sponsor: it must stay labelled, and `PRIVACY.md` already says the program loads nothing for it.
 - N8. The 3D page written to the data folder embeds 3Dmol.js (BSD-3-Clause) without the licence text next to it (the library's own header points
@@ -225,7 +225,7 @@ their licences, read from `cargo metadata --locked`).
 | PySide6-Essentials / shiboken6 6.12.0 (Qt 6) | LGPL-3.0 (or GPL-2/3) | Yes (dynamic use under the LGPL; GPL-3 option also combines with AGPL-3) | licence text, Qt source link, replaceability: see B2 |
 | PyO3 0.23.5 | MIT or Apache-2.0 | Yes (Apache-2.0 is compatible with GPL-3/AGPL-3, not GPL-2) | notice in notices file |
 | maturin 1.15.0 | MIT or Apache-2.0 | build tool, not shipped | none |
-| `gb-io` 0.9.0 patched, `core/vendor/gb-io` | MIT | Yes | keep `core/vendor/gb-io/LICENSE`; the patches are marked "OpenGenEdit patch" in the source |
+| `gb-io` 0.9.0 patched, `core/vendor/gb-io` | MIT | Yes | keep `core/vendor/gb-io/LICENSE`; the patches are marked "openDNA patch" in the source |
 | `noodles` 0.118 and its 7 sub-crates, `quick-xml` 0.42 | MIT | Yes | notice |
 | other Rust crates (71 third-party crates in total) | MIT, Apache-2.0, "MIT OR Apache-2.0", Unlicense OR MIT, Zlib (`zlib-rs`), Unicode-3.0 (`unicode-ident`), Apache-2.0 WITH LLVM-exception (`target-lexicon`, build time) | Yes | notice (MIT and Apache ask that the copyright and licence text travel with the binary: the notices file points to each crate's repository) |
 | 3Dmol.js 2.4.2 (version as stated in `docs/PUBLISHING.md`), `app/vendor/3Dmol-min.js` | BSD-3-Clause (includes parts of GLmol, Three.js, jQuery) | Yes | the full notice in `app/vendor/3Dmol.LICENSE` must travel with it (B1) |
@@ -275,16 +275,16 @@ above on the final commit, and make sure `PRIVACY.md` still matches.
 
 | Feature | Host | What is sent | When |
 |---|---|---|---|
-| File > Import from NCBI | `eutils.ncbi.nlm.nih.gov` (HTTPS) | your search words or accession; the tool name `OpenGenEdit` (also as User-Agent); your optional API key if you typed it (as URL parameters) | when you press Search / Open |
+| File > Import from NCBI | `eutils.ncbi.nlm.nih.gov` (HTTPS) | your search words or accession; the tool name `openDNA` (also as User-Agent); your optional API key if you typed it (as URL parameters) | when you press Search / Open |
 | 3D structure: AlphaFold DB | `alphafold.ebi.ac.uk` (then the model URL it returns) | the UniProt accession only | Get structure |
 | 3D structure: PDB | `search.rcsb.org`, `files.rcsb.org` | the **protein sequence** (search), then a PDB code | Get structure (also in Auto) |
 | 3D structure: ESMFold | `api.esmatlas.com` (Meta) | the **protein sequence** (up to 400 aa) | Get structure (also in Auto) |
-| 3D structure: Local command | none by OpenGenEdit | the command *you* typed runs on your PC (`subprocess.run`, no shell); what it does is up to it | Get structure |
+| 3D structure: Local command | none by openDNA | the command *you* typed runs on your PC (`subprocess.run`, no shell); what it does is up to it | Get structure |
 | Open 3D view in the browser | none: it opens a local `.html` file (`QDesktopServices.openUrl(file)`) in your default browser; the page has 3Dmol.js and the data inline and loads nothing | nothing | button |
-| Tools > Install Mapping Tools | conda inside WSL downloads bwa, samtools, minimap2 from conda-forge/bioconda | what conda sends (OpenGenEdit sends nothing itself) | you run it |
-| Links in About, Citations, Welcome (doi.org, GitHub) | your browser | nothing from OpenGenEdit | when you click |
-| Update check (`app/updater.py`, new and untracked at the time of writing) | `api.github.com`, then GitHub release hosts for the download | a GET for "latest release" with User-Agent `OpenGenEdit/<version>`; the exe is downloaded only after the user presses the button | **off while `project.UPDATES_ENABLED` is False**; once true: once a day at start-up (setting *Tools > Settings > Updates*) and on *Check for Updates* |
-| Help > Report a Problem / Request a Feature (`app/feedback.py`, new) | opens `github.com/Ant-Champ/GenomeEdit/issues/new?...` in the browser | version, Windows / Python / Qt versions and the last 30 log lines, **scrubbed** of sequences, file names, paths and the user name; nothing is sent until the user presses Submit on GitHub | on the menu item |
+| Tools > Install Mapping Tools | conda inside WSL downloads bwa, samtools, minimap2 from conda-forge/bioconda | what conda sends (openDNA sends nothing itself) | you run it |
+| Links in About, Citations, Welcome (doi.org, GitHub) | your browser | nothing from openDNA | when you click |
+| Update check (`app/updater.py`, new and untracked at the time of writing) | `api.github.com`, then GitHub release hosts for the download | a GET for "latest release" with User-Agent `openDNA/<version>`; the exe is downloaded only after the user presses the button | **off while `project.UPDATES_ENABLED` is False**; once true: once a day at start-up (setting *Tools > Settings > Updates*) and on *Check for Updates* |
+| Help > Report a Problem / Request a Feature (`app/feedback.py`, new) | opens `github.com/OpenDNA-project/openDNA/issues/new?...` in the browser | version, Windows / Python / Qt versions and the last 30 log lines, **scrubbed** of sequences, file names, paths and the user name; nothing is sent until the user presses Submit on GitHub | on the menu item |
 | Telemetry, analytics, ads | none | none | none |
 | Unexpected-error dialog (`app/feedback.py`) | none by itself | the "Report on GitHub" button opens the prefilled issue page as above | on the user's click |
 
@@ -296,21 +296,21 @@ not part of the program.
 
 All writes found by searching `app/` for `open(`, `write_text`, `write_bytes`, `os.replace`, `unlink`, `mkdir`, `QSettings`, `tempfile`:
 
-- In the **data folder** (`primer_db.data_dir()`: `%APPDATA%\OpenGenEdit\` for the exe, `%APPDATA%\python\` from source, or `GENOMEEDIT_DATA_DIR`):
+- In the **data folder** (`primer_db.data_dir()`: `%APPDATA%\openDNA\` for the exe, `%APPDATA%\python\` from source, or `OPENDNA_DATA_DIR`):
   `primers.tsv` (+ a transient `primers.tmp`), `parts.tsv` (your part library), `*.ini` (`primers` [PCR conditions, primer options, reference-genome path], `settings`, `theme`, `workspace`, `recent`, `search`, `ncbi`
   [may hold your NCBI API key in plain text], `structure` [the local command text]), `ncbi\` (downloaded records), `structures\` (3D cache and the generated page).
-- **Windows registry, file association** (`app/file_assoc.py`, new): only after the user answers Yes to a question, the exe writes `HKCU\Software\Classes\OpenGenEdit.SequenceFile`,
-  `...\Classes\Applications\OpenGenEdit.exe`, one `OpenWithProgids` value per extension, `HKCU\Software\OpenGenEdit\Capabilities` and `HKCU\Software\RegisteredApplications\OpenGenEdit`. All under the
+- **Windows registry, file association** (`app/file_assoc.py`, new): only after the user answers Yes to a question, the exe writes `HKCU\Software\Classes\openDNA.SequenceFile`,
+  `...\Classes\Applications\openDNA.exe`, one `OpenWithProgids` value per extension, `HKCU\Software\openDNA\Capabilities` and `HKCU\Software\RegisteredApplications\openDNA`. All under the
   user's own hive (no admin rights); it does not touch `UserChoice`. The question is asked once. This is the only code that writes outside the data folder in the
   registry; `PRIVACY.md` lists it and how to remove it.
-- **Log files** (`app/feedback.py`): `<data folder>\logs\genomeedit.log`, 3 x 500 KB, scrubbed.
-- **Self-update** (`app/updater.py`): writes the new exe beside the running one, renames the running one to `OpenGenEdit.exe.old`, relaunches. That is a write to the program's own folder,
+- **Log files** (`app/feedback.py`): `<data folder>\logs\opendna.log`, 3 x 500 KB, scrubbed.
+- **Self-update** (`app/updater.py`): writes the new exe beside the running one, renames the running one to `openDNA.exe.old`, relaunches. That is a write to the program's own folder,
   but only after the user presses the button and the SHA-256 matched. (This replaces the earlier statement that nothing is written in the program's own folder.)
 - **Next to the user's file**: `<file>.autosave.gb` recovery copy every minute (deleted on save or clean close; for a `.dna` file the copy goes beside it and the
   `.dna` itself is never written), and Save / Save As where the user chooses. Save is atomic (temp file then rename, `app/primer_db.py:48-52` and the editor).
 - **Next to the output chosen in Map Reads**: `<out>_run\` with `ref.fa`, `command.txt`, `log.txt` and the BAM (`app/runner.py:105-118`, `app/main.py:681-683`).
-- `%TEMP%\genomeedit_fold_*`: scratch folder for a Local command, removed afterwards (`structure.py:170`).
-- Apart from the self-update above, nothing is written into the program's own folder, and nothing is written outside the places above. Tests write to a temporary data folder (`GENOMEEDIT_DATA_DIR`).
+- `%TEMP%\opendna_fold_*`: scratch folder for a Local command, removed afterwards (`structure.py:170`).
+- Apart from the self-update above, nothing is written into the program's own folder, and nothing is written outside the places above. Tests write to a temporary data folder (`OPENDNA_DATA_DIR`).
 - It runs external programs only on request: the user's local structure command, and `wsl -e bash -lc ...` for read mapping and tool installation (recipes in
   `app/tools.toml`; file paths are shell-quoted, `app/runner.py:55`).
 - Opening files: the parsers are Rust (`gb-io`, `noodles`, an XML reader for `.dna`); malformed files are tested to give an error, not a crash

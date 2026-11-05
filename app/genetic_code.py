@@ -14,7 +14,7 @@ A CDS that carries /transl_table=N always uses table N; /codon_start is honoured
 """
 from types import SimpleNamespace
 
-from genomeedit_core import genetic_codes
+from opendna_core import genetic_codes
 
 import tool_settings
 
