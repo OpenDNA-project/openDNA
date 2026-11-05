@@ -1,0 +1,12 @@
+# Blank issues are off: every issue starts from one of the forms in this folder, so each one has the same information
+# and the same labels (type + status) that drive the public roadmap.
+blank_issues_enabled: false
+contact_links:
+  - name: Read the user guide and tutorial
+    url: https://github.com/Ant-Champ/GenomeEdit/blob/main/docs/USER_GUIDE.md
+    about: Most "how do I..." questions are answered there.
+  # Add these once they exist (the links are fixed addresses of this repository, no email):
+  # - name: Ask the community
+  #   url: https://github.com/Ant-Champ/GenomeEdit/discussions        # after Settings > General > Features > Discussions
+  # - name: Report a security problem privately
+  #   url: https://github.com/Ant-Champ/GenomeEdit/security/policy    # after adding a SECURITY.md

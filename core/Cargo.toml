@@ -1,0 +1,33 @@
+# Cargo.toml = the Rust equivalent of pyproject.toml: package name, version, dependencies.
+# `cargo build` / `cargo test` read this file.
+
+[package]
+name = "genomeedit_core"
+version = "0.5.0"
+edition = "2021"   # Rust language "edition" (syntax version), like choosing a Python 3.x baseline
+
+[lib]
+name = "genomeedit_core"
+# cdylib = a native shared library (.pyd on Windows) that Python can `import`.
+# rlib   = a normal Rust library, so `cargo test` can run the Rust unit tests.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gb-io = "0.9.0"
+noodles = { version = "0.118.0", features = ["bam", "sam", "core", "bgzf", "csi", "vcf", "tabix"] }
+# PyO3 generates the glue that turns Rust structs/functions into Python classes/functions.
+# abi3-py310 = use only Python's "stable ABI", so one compiled module works on every
+# Python >= 3.10 (one build per OS instead of one per OS *and* Python version).
+pyo3 = { version = "0.23", features = ["abi3-py310"] }
+quick-xml = "0.42.0"
+
+[features]
+# Only switched on when maturin builds the Python extension (see pyproject.toml);
+# leaving it off lets plain `cargo test` link and run.
+extension-module = ["pyo3/extension-module"]
+
+# Patched copy of gb-io 0.9.0 (MIT) with a fix in the GenBank writer's line wrapping:
+# a `"` at the wrap column was dropped or caused a panic. See vendor/gb-io/src/writer.rs
+# ("OpenGenEdit patch"). Drop this once fixed upstream.
+[patch.crates-io]
+gb-io = { path = "vendor/gb-io" }

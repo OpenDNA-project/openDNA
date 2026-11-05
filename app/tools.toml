@@ -1,0 +1,35 @@
+# External command-line tools OpenGenEdit can run (Tools → Map Reads…).
+# Adding a tool = adding a recipe here, no code. Placeholders, filled by the app:
+#   {ref}      the current sequence, written to <run folder>/ref.fa
+#   {reads1}   first reads file;  {reads2} second (mate) reads file, empty if not given
+#   {out}      output path without extension (the BAM is {out}.bam)
+#   {threads}  number of CPU threads
+# Every file path is quoted for the shell. On Windows commands run in WSL (bash).
+# `prepare` runs first unless the file in `prepared` already exists.
+# `result` is opened as a track of the genome view when the run succeeds.
+
+[bwa_mem]
+label = "Short reads, Illumina (bwa mem)"
+needs = ["bwa", "samtools"]
+prepared = "{ref}.bwt"
+prepare = "bwa index {ref}"
+run = "bwa mem -t {threads} {ref} {reads1} {reads2} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
+result = "{out}.bam"
+
+[minimap2_sr]
+label = "Short reads, fast (minimap2 -x sr)"
+needs = ["minimap2", "samtools"]
+run = "minimap2 -ax sr -t {threads} {ref} {reads1} {reads2} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
+result = "{out}.bam"
+
+[minimap2_ont]
+label = "Long reads, Nanopore (minimap2 -x map-ont)"
+needs = ["minimap2", "samtools"]
+run = "minimap2 -ax map-ont -t {threads} {ref} {reads1} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
+result = "{out}.bam"
+
+[minimap2_pacbio]
+label = "Long reads, PacBio HiFi (minimap2 -x map-hifi)"
+needs = ["minimap2", "samtools"]
+run = "minimap2 -ax map-hifi -t {threads} {ref} {reads1} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
+result = "{out}.bam"

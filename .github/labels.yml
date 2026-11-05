@@ -1,0 +1,38 @@
+# The labels that make the issue list a public roadmap. docs/FEEDBACK.md explains how to apply them
+# (gh label create ... --force, one per entry). Each issue has exactly one "type:" and one "status:" label.
+- name: "type: bug"
+  color: d73a4a
+  description: Something does not work or gives a wrong result
+- name: "type: feature"
+  color: a2eeef
+  description: A request for new or better behaviour
+- name: "type: question"
+  color: d876e3
+  description: A question about using OpenGenEdit
+- name: "status: new"
+  color: ededed
+  description: Not looked at yet
+- name: "status: under review"
+  color: fbca04
+  description: Being looked at; may ask for details
+- name: "status: planned"
+  color: 0e8a16
+  description: Accepted; will be done, not started
+- name: "status: in progress"
+  color: 1d76db
+  description: Someone is working on it now
+- name: "status: done (next release)"
+  color: 5319e7
+  description: Finished on the main branch, in the next release
+- name: "status: released"
+  color: 006b75
+  description: Available in a released version
+- name: "status: declined"
+  color: cfd3d7
+  description: Will not be done; the reason is in the comments
+- name: "good first issue"
+  color: 7057ff
+  description: Small and well described; good for a new contributor
+- name: "help wanted"
+  color: 008672
+  description: Contributions welcome

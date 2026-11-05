@@ -1,0 +1,36 @@
+# Rust build output
+core/target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyd
+.venv/
+.pytest_cache/
+
+# Generated indexes
+*.fai
+
+# Personal sequence files in the repo root (kept out of git; tests skip if absent)
+/*.dna
+/*.gb
+/*.gbk
+/*.fa
+/*.fasta
+
+# Standalone .exe build (PyInstaller)
+/build/
+/dist/
+
+# Simulated reads (tests/fake_reads.py)
+/tests/fake_reads/
+
+# Autosave recovery copies
+*.autosave.gb
+
+# Sequencing data anywhere in the tree (tests build their own tiny files in temp folders)
+*.bam
+*.bai
+*.fastq
+*.fq
+*.fastq.gz

@@ -1,0 +1,22 @@
+name: Ask a question
+description: You are not sure how something works in OpenGenEdit.
+title: "[Question]: "
+labels: ["type: question", "status: new"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please look at the [user guide](https://github.com/Ant-Champ/GenomeEdit/blob/main/docs/USER_GUIDE.md) and the [tutorial](https://github.com/Ant-Champ/GenomeEdit/blob/main/docs/TUTORIAL.md) first.
+        Do not paste private sequences.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to do, and what happened when you tried?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OpenGenEdit version
+      description: Shown in Help > About and Licence.

@@ -1,0 +1,5 @@
+{
+  "_help": "Startup page (sponsors.py). Up to 3 slots; an empty slot shows 'Your ad here'. Each slot: name, text, url (optional), image (optional: a PNG next to this file). contact: shown under empty slots.",
+  "contact": "",
+  "slots": [{}, {}, {}]
+}

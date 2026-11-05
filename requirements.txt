@@ -1,0 +1,4 @@
+# Essentials only (QtCore/Gui/Widgets/Svg/OpenGL...): the full PySide6 package adds ~200 MB of
+# WebEngine/PDF/multimedia we don't use. Avoid GPL-only Qt add-ons (e.g. Qt Charts) to stay LGPL.
+PySide6-Essentials>=6.8
+maturin>=1.7,<2

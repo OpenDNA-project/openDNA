@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Cargo's downloaded crates and build output, keyed on Cargo.lock.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      # Not PyInstaller (only the exe build needs it): faster.
+      - name: Install Python packages
+        run: pip install -r requirements.txt pytest biopython pyflakes
+
+      - name: Build the Rust core and install it
+        run: |
+          maturin build --release -m core/Cargo.toml --out wheels
+          pip install --no-index --find-links wheels genomeedit_core
+
+      - name: Rust tests
+        working-directory: core
+        shell: bash
+        run: PYO3_PYTHON="$(which python)" cargo test
+
+      - name: pyflakes
+        run: python -m pyflakes app tests
+
+      - name: Python tests
+        run: python -m pytest -q tests
+        env:
+          QT_QPA_PLATFORM: offscreen

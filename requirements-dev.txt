@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest
+biopython  # independent GenBank parser used only to check our output in tests
+pyflakes
+pyinstaller
