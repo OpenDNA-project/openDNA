@@ -235,23 +235,26 @@ def test_a_busy_dialog_never_comes_back_over_the_next_dialog(app):
     assert not [d for d in win.findChildren(QProgressDialog)], "every busy dialog is deleted"
 
 
-def test_a_busy_dialog_shows_after_0_4_s_of_work(app):
-    """The busy dialog appears 0.4 s into the work, not 4 s (Qt's own delay, which setMinimumDuration alone did not change on a
-    busy bar: the window took no clicks or keys for up to 4 s, with only a wait cursor)."""
+def test_a_busy_dialog_shows_after_its_delay_and_not_for_short_work(app):
+    """The busy dialog appears BUSY_DELAY_MS into the work, not 4 s (Qt's own delay, which setMinimumDuration alone did not change
+    on a busy bar: the window took no clicks or keys for up to 4 s, with only a wait cursor); work shorter than that (opening a
+    chromosome) never shows it, so it does not flash."""
     import time
     from PySide6.QtCore import QEventLoop, QTimer
     from PySide6.QtWidgets import QProgressDialog
-    from uikit import run_busy
+    from uikit import BUSY_DELAY_MS, run_busy
     win = _window(app)
     seen = []
 
     def flow():
-        QTimer.singleShot(1000, lambda: seen.extend(d.labelText() for d in QApplication.allWidgets()
-                                                    if isinstance(d, QProgressDialog) and d.isVisible()))
-        run_busy(win, "Slow work…", lambda: time.sleep(1.5))
+        look = lambda: seen.append([d.labelText() for d in QApplication.allWidgets() if isinstance(d, QProgressDialog) and d.isVisible()])
+        QTimer.singleShot(BUSY_DELAY_MS - 300, look)
+        run_busy(win, "Short work…", lambda: time.sleep(BUSY_DELAY_MS / 1000 - 0.2))
+        QTimer.singleShot(BUSY_DELAY_MS + 500, look)
+        run_busy(win, "Slow work…", lambda: time.sleep(BUSY_DELAY_MS / 1000 + 1))
         loop.quit()
     loop = QEventLoop()
     QTimer.singleShot(0, flow)
     loop.exec()
-    assert seen == ["Slow work…"]
+    assert seen == [[], ["Slow work…"]]
     assert not win.findChildren(QProgressDialog)

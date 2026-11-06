@@ -633,7 +633,7 @@ class MainWindow(QMainWindow):
         # several records.
         ed.fasta_record, ed.multi_genbank = current, not fasta
         multigb.forget_siblings(ed)
-        if self.load(str(ed.path), names[0]):
+        if self.load(str(ed.path), names[0], reread=True):
             self.statusBar().showMessage(
                 f"Added {', '.join(names)} to {self.editor.path.name}: {plural(len(self.editor.fasta_records), 'sequence')} "
                 "in the file.", 8000)
@@ -712,9 +712,11 @@ class MainWindow(QMainWindow):
         if path:
             self.load(path)
 
-    def load(self, path, record=None):
+    def load(self, path, record=None, reread=False):
         """Open a GenBank/.dna file, or one sequence (`record`, default the first) of
-        a FASTA file. Big files load in the background behind a busy dialog."""
+        a FASTA file. Big files load in the background behind a busy dialog. Another record of the file that is open keeps the
+        list of records the window has (the file is not read through again for it: seconds on a genome of gigabytes), unless
+        `reread` (records were just added to the file)."""
         old = self.editor
         # Another record of the file that is open: the tabs stay as they are, the sequence in them is switched, and the
         # record that was shown stays in memory (with its unsaved edits) until the file is closed or another one opened.
@@ -731,7 +733,10 @@ class MainWindow(QMainWindow):
         names, lengths, meta, gb_record = [], [], None, False
         project = Path(path).suffix.lower() == exports.PROJECT_EXT
         try:
-            if is_fasta(path):
+            if same_file and not reread and record in dict(old.fasta_records):
+                lengths = list(old.fasta_records)
+                names, gb_record = [n for n, _ in lengths], old.multi_genbank
+            elif is_fasta(path):
                 fasta = run_busy(self, f"Indexing {Path(path).name}…", lambda: Fasta(str(path)))
                 lengths = [(n, int(l)) for n, l in fasta.sequences()]   # in file order (the map's list can reorder the file)
                 names = [n for n, _ in lengths]
@@ -778,11 +783,22 @@ class MainWindow(QMainWindow):
         if same_file:
             self.record_docs[old.fasta_record] = old.doc
             self.record_docs.pop(record, None)
-        self.show_document(doc, path, record=record, sequences=names, lengths=lengths, genbank=gb_record,
-                           layout=self.workspace.dump() if keep_tabs else (meta or {}).get("layout"),
-                           current=self.workspace.currentIndex() if keep_tabs else 0)   # a project opens with the tabs it was saved with
-        if same_file:
-            self._carry_settings(old, letters)
+        # Another record of the same file: nothing is painted until the new record is ready, so the old one stays on screen
+        # and then the new one replaces it in one go (the tabs are built again: painted as they were made, a window showed
+        # half-built or black panes for a moment on a big record).
+        frozen = same_file and self.updatesEnabled()
+        if frozen:
+            self.setUpdatesEnabled(False)
+        try:
+            self.show_document(doc, path, record=record, sequences=names, lengths=lengths, genbank=gb_record,
+                               layout=self.workspace.dump() if keep_tabs else (meta or {}).get("layout"),
+                               current=self.workspace.currentIndex() if keep_tabs else 0,   # a project opens with the tabs it was saved with
+                               display=not same_file)   # (the record switched to takes the file's display settings: below)
+            if same_file:
+                self._carry_settings(old, letters)
+        finally:
+            if frozen:
+                self.setUpdatesEnabled(True)
         if carry:
             skipped = [Path(p).name for p in carry if self.load_track(p, quiet=True) is None]
             if skipped:
@@ -976,11 +992,13 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Exported {name} to {target}", 5000)
         return True
 
-    def show_document(self, doc, path, untitled=False, record=None, sequences=(), layout=None, lengths=(), genbank=False, current=0):
+    def show_document(self, doc, path, untitled=False, record=None, sequences=(), layout=None, lengths=(), genbank=False, current=0,
+                      display=True):
         """Put a Document in this window. `untitled`: made in memory (e.g. a PCR product);
         `path` is only the suggested file name, Save asks where to save. `record`: the
         sequence of the FASTA file `path` that `doc` holds. `layout`: the tabs to open with
-        (an Open DNA Project's own); everything else opens with the standard ones."""
+        (an Open DNA Project's own); everything else opens with the standard ones. `display` False: the caller sets the display
+        options itself (another record of the file keeps the file's: laying a genome out twice took most of the switch)."""
         self.editor = ed = Editor(doc, path)
         ed.untitled = untitled
         ed.fasta_record = record
@@ -1007,9 +1025,10 @@ class MainWindow(QMainWindow):
         ed.error.connect(lambda msg: self.statusBar().showMessage(msg, 5000))
         ed.edit_feature_requested.connect(lambda i: edit_feature(self, ed, i))
         ed.edit_primer_requested.connect(lambda name: PrimerDialog(self, ed, name).exec())
-        ed.set_display(enzymes=self.enzymes_action.isChecked(), translation=self.translation_action.isChecked(),
-                       complement=self.complement_action.isChecked(),
-                       collapse_genes=self.collapse_action.isChecked(), cds_only=self.cds_only_action.isChecked())
+        if display:
+            ed.set_display(enzymes=self.enzymes_action.isChecked(), translation=self.translation_action.isChecked(),
+                           complement=self.complement_action.isChecked(),
+                           collapse_genes=self.collapse_action.isChecked(), cds_only=self.cds_only_action.isChecked())
         ed.display_changed.connect(self._sync_display_actions)
         self._show_lock(ed.dna_locked)
         self.search_bar.attach(ed)

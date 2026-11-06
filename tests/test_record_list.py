@@ -183,3 +183,20 @@ def test_fasta_records_are_reordered_exported_and_removed(tmp_path, monkeypatch)
     win.editor.record_requested.emit("chrC")
     app.processEvents()
     assert win.editor.fasta_record == "chrC" and win.editor.doc.sequence() == "TTAA" * 5
+
+
+def test_switching_record_does_not_read_the_file_through_again(tmp_path, monkeypatch):
+    """Opening another record of the open file keeps the window's list of records (the whole file was read again to list them:
+    seconds on a genome of gigabytes), and nothing is painted half-built meanwhile (the window waits, then shows the new record)."""
+    path = three_records(tmp_path)
+    win = opened(path)
+    a, b, c = names(path)
+    monkeypatch.setattr(multigb, "records", lambda *a: pytest.fail("the file was listed again"))
+    monkeypatch.setattr(multigb, "is_multi_genbank", lambda *a: pytest.fail("the file was scanned again"))
+    seen = []
+    real = MainWindow.show_document
+    monkeypatch.setattr(MainWindow, "show_document", lambda self, *a, **k: seen.append(self.updatesEnabled()) or real(self, *a, **k))
+    win.editor.record_requested.emit(b)
+    app.processEvents()
+    assert win.editor.fasta_record == b and [n for n, _ in win.editor.fasta_records] == [a, b, c]
+    assert seen == [False] and win.updatesEnabled(), "painting is held during the switch, then back on"

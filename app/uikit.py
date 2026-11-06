@@ -261,11 +261,14 @@ def show_after(dialog, ms):
     dialog.setValue(dialog.minimum())
 
 
+BUSY_DELAY_MS = 1500   # run_busy's dialog shows only for work longer than this: a shorter one (opening a chromosome) would just flash
+
+
 def run_busy(parent, text, work):
-    """Run `work()` in a thread with a "busy" dialog (shown only if it takes > 0.4 s), keeping the window responsive. Returns its
+    """Run `work()` in a thread with a "busy" dialog (shown only if it takes more than BUSY_DELAY_MS), keeping the window responsive. Returns its
     result or re-raises its error. The Rust calls used here release Python's lock, so the GUI really keeps running.
 
-    Until the dialog shows, clicks and keys are held back (repaints still happen): otherwise a click in that first 0.4 s reached
+    Until the dialog shows, clicks and keys are held back (repaints still happen): otherwise a click in that first moment reached
     the window and could start a second save, open or close in the middle of this one."""
     result = {}
 
@@ -280,7 +283,7 @@ def run_busy(parent, text, work):
     dialog = _BusyDialog(text, None, 0, 0, parent)
     dialog.setWindowTitle(text.rstrip("…. ") or "Working")
     dialog.setWindowModality(Qt.WindowModal)
-    show_after(dialog, 400)
+    show_after(dialog, BUSY_DELAY_MS)
     if QApplication.overrideCursor() is None:
         QApplication.setOverrideCursor(Qt.WaitCursor)
         restore = True
