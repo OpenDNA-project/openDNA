@@ -68,9 +68,14 @@ class _Fitter(QObject):
         for signal in (model.modelReset, model.rowsInserted, model.rowsRemoved, model.layoutChanged, model.dataChanged):
             signal.connect(self._changed)
 
-    def _changed(self, *_):
-        """The rows changed: fit again, unless the model says this change cannot need it (`fit_quiet`: a gene opened or closed in
-        the Features view, where measuring the columns again took most of a second on a genome)."""
+    UNSIZED_ROLES = {Qt.ForegroundRole, Qt.BackgroundRole, Qt.ToolTipRole, Qt.StatusTipRole, Qt.CheckStateRole}
+
+    def _changed(self, *args):
+        """The rows changed: fit again, unless the change cannot need it: only colours changed (dataChanged with those roles: a
+        feature hidden, a display switch), or the model says so (`fit_quiet`: a gene opened or closed in the Features view)."""
+        roles = args[2] if len(args) == 3 and isinstance(args[2], (list, tuple)) else None   # (dataChanged; rowsInserted has ints)
+        if roles and all(r in self.UNSIZED_ROLES for r in roles):
+            return
         try:
             quiet = getattr(self.view.model(), "fit_quiet", False)
         except RuntimeError:   # the table is being deleted: its own model (a QTableWidget's) clears its rows on the way out

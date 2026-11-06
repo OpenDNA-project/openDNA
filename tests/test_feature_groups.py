@@ -104,3 +104,57 @@ def test_opening_a_gene_changes_only_its_rows_and_matches_a_rebuild(tmp_path):
     model.reload()
     app.processEvents()
     assert measured, "a real change of the rows is measured again"
+
+
+def test_columns_are_measured_from_the_longest_texts_and_only_when_widths_can_change(tmp_path):
+    """The Features view measures each column on its longest different texts (genes bold, other rows plain), giving the width
+    measuring every row gives; a change of colours only (a feature hidden, a display switch) does not measure again, rows
+    added or removed do."""
+    from PySide6.QtWidgets import QStyleOptionViewItem
+    ed = Editor(Document(str(genbank(tmp_path / "g.gb"))), tmp_path / "g.gb")
+    table = FeatureTable(ed)
+    table.resize(800, 500)
+    table.show()
+    app.processEvents()
+    model, view = table.model, table.view
+    model.set_expanded("T_A", True)
+    view.MEASURED = 2   # a short list, so the choice of texts matters
+    option = QStyleOptionViewItem()
+    view.initViewItemOption(option)
+    for c in range(model.columnCount()):
+        delegate = view.itemDelegateForColumn(c) or view.itemDelegate()
+        every = max(delegate.sizeHint(option, model.index(r, c)).width() for r in range(model.rowCount())) + 1
+        assert view.sizeHintForColumn(c) == every, model.columns[c]
+    fitter = view._fitter
+    app.processEvents()
+    fitter.timer.stop()
+    model.repaint_rows()   # colours only
+    assert not fitter.timer.isActive()
+    model.set_expanded("T_A", False)   # a gene closed: rows removed, but fit_quiet
+    assert not fitter.timer.isActive()
+    model.beginInsertRows(model.index(0, 0).parent(), 0, 0)   # rows added (rowsInserted also sends 3 arguments: ints)
+    model.shown.insert(0, model.shown[0])
+    model.endInsertRows()
+    assert fitter.timer.isActive()
+
+
+def test_display_switches_only_lay_out_again_and_type_counts_follow_edits(tmp_path):
+    """A display switch (collapse genes, hide a type) lays the features out again without reading them all from the core
+    again (half a second on a genome; it also dropped the Local Align hits); the count of each type, which the Display panel
+    shows, follows the edits."""
+    ed = Editor(Document(str(genbank(tmp_path / "g.gb"))), tmp_path / "g.gb")
+    assert ed.kind_counts == {"gene": 6, "CDS": 6, "misc_feature": 2}
+    ed.query_hits = ["a hit"]
+    reads = []
+    real = ed.doc.features
+    ed.doc = type("Spy", (), {"__getattr__": lambda s, k: getattr(real.__self__, k),
+                              "features": lambda s: reads.append(1) or real()})()
+    ed.set_display(hidden_kinds={"misc_feature"})
+    assert not reads and ed.query_hits == ["a hit"]
+    assert not any(f.kind == "misc_feature" for f in ed.shown)
+    ed.set_display(collapse_genes=not ed.collapse_genes)
+    ed.set_display(hidden_kinds=())
+    assert not reads and any(f.kind == "misc_feature" for f in ed.shown)
+    ed.doc = real.__self__
+    ed.add_features([("repeat_region", "1001..1010", [("label", "r")])])
+    assert ed.kind_counts["repeat_region"] == 1 and ed.kind_counts["gene"] == 6

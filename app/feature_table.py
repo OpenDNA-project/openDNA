@@ -12,10 +12,12 @@ The Features Database tab (db_tabs.py) uses this same table on a document made o
 the columns (`feature_columns`, e.g. Source and From instead of Location) and their texts (`feature_extra`), and
 `database` makes the right-click menu the database's own.
 """
+import heapq
+
 from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, Qt
 from PySide6.QtGui import QFont, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
-    QAbstractItemView, QInputDialog, QLineEdit, QMenu, QMessageBox, QTableView, QVBoxLayout, QWidget,
+    QAbstractItemView, QInputDialog, QLineEdit, QMenu, QMessageBox, QStyleOptionViewItem, QTableView, QVBoxLayout, QWidget,
 )
 
 import genes
@@ -195,6 +197,25 @@ def master_key(editor, f):
 
 class GroupTableView(QTableView):
     """A click on the ▸ of a gene row opens/closes it."""
+    MEASURED = 40   # cells measured per column: the longest different texts of the gene rows (bold) and of the others
+
+    def sizeHintForColumn(self, column):
+        """The widest cell of a column, every row counted, measured by Qt itself but only on the longest texts (the model holds
+        every row's texts). Qt's own measure asked the model for every role of about a thousand cells through Python: 0.15 s a
+        column on a genome, after every edit, display switch and sort."""
+        model = self.model()
+        rows = getattr(model, "shown", None)
+        if rows is None or not rows:
+            return super().sizeHintForColumn(column)
+        texts = ({}, {})   # text -> a row holding it: gene rows (bold), other rows
+        for i, r in enumerate(rows):
+            texts[not r[4]].setdefault(str(r[0][column]), i)
+        option = QStyleOptionViewItem()
+        self.initViewItemOption(option)
+        delegate = self.itemDelegateForColumn(column) or self.itemDelegate()
+        widest = max(delegate.sizeHint(option, model.index(i, column)).width()   # the longest different texts (all of "→ ← —")
+                     for group in texts for _, i in heapq.nlargest(self.MEASURED, group.items(), key=lambda t: len(t[0])))
+        return widest + (1 if self.showGrid() else 0)   # (as QTableView's own: the grid line)
 
     def mousePressEvent(self, event):
         index = self.indexAt(event.position().toPoint())

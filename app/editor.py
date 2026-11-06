@@ -5,6 +5,7 @@ on its signals.
 Positions are 0-based, end-exclusive. The selection is [start, end); when it is empty
 it is just a cursor sitting before base `start`.
 """
+from collections import Counter
 import weakref
 import json
 from bisect import bisect_left, insort
@@ -401,6 +402,10 @@ class Editor(QObject):
         self.features = [f for f in everything if f.kind not in HIDDEN_KINDS]
         self.file_primers = [f for f in everything if f.kind == PRIMER_KIND]  # as stored in the file
         self.by_index = {f.index: f for f in self.features}
+        # Transcription units and the count of every other type, once per edit (the Display panel and the filter asked each
+        # feature again on every edit and display switch: tens of thousands of qualifier lists read from the core on a genome)
+        self.unit_indexes = {f.index for f in self.features if is_tu(f)}
+        self.kind_counts = Counter(f.kind for f in self.features if f.index not in self.unit_indexes)
         self.groups, self.part_of = compute_groups(self.features)
         alone = [g for g in self.groups.values() if len(g.parts) == 1 and g.parts[0].kind == "CDS"]
         self.redundant_genes = {g.master.index for g in alone}
@@ -698,7 +703,9 @@ class Editor(QObject):
                 self.collapse_genes = collapse_genes
             if hidden_kinds is not None:
                 self.hidden_kinds = set(hidden_kinds)
-            self._refresh()
+            # only what is drawn changes: the features, their genes, primer sites and cut sites stay (_refresh read them all
+            # again from the core, half a second on a genome, and dropped the Local Align hits)
+            self._lay_out()
         self.display_changed.emit()
 
     def set_cut_marks(self, owner, marks):
@@ -802,7 +809,13 @@ class Editor(QObject):
             return False
         if self.cds_only and f.kind == GENE and f.index in self.redundant_genes:
             return False
-        return self.show_units if is_tu(f) else f.kind not in self.hidden_kinds
+        return self.show_units if self.is_unit(f) else f.kind not in self.hidden_kinds
+
+    def is_unit(self, f):
+        """A transcription unit? Known for the document's own features (see _refresh); a tool's temporary one is asked."""
+        if self.by_index.get(f.index) is f:
+            return f.index in self.unit_indexes
+        return is_tu(f)
 
     def set_features_hidden(self, keys, hidden):
         """Hide / show (right-click > Hide, Show) the features with these `feature_key`s: only the drawing changes."""
