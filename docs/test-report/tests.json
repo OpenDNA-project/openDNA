@@ -3254,7 +3254,7 @@
     },
     {
      "input": "panel.units unchecked; set_display(hidden_kinds={'mRNA'}, units=True)",
-     "expected": "no TU drawn; project meta display.units False; hiding mRNA type still leaves 2 TUs shown; gff3 lacks 'OpenGenEdit_tu'"
+     "expected": "no TU drawn; project meta display.units False; hiding mRNA type still leaves 2 TUs shown; gff3 lacks 'OpenDNA_tu'"
     },
     {
      "input": "icons.filter_icon / history_icon 32x32",

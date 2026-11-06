@@ -12,7 +12,7 @@ How a saved guide site is stored (so any GenBank reader accepts it): a `misc_fea
 the guide reads along (complement(...) for the bottom strand), with
     /label="gRNA GACTCGTA"
     /note="SpCas9 guide GACTCGTACGTAGCATCGAT, PAM TGG; blunt cut 3 bp from the PAM, after base 57"   (plain words)
-    /OpenGenEdit_cas9="name=SpCas9;pam=NGG;length=20;cut=3"                                          (for this program)
+    /OpenDNA_cas9="name=SpCas9;pam=NGG;length=20;cut=3"                                          (for this program)
 Other programs show an ordinary annotated feature (and ignore the unknown qualifier, like the /ApEinfo_ colour ones); this
 program redraws the protospacer, PAM and cut from the qualifier. The guide and the PAM are not stored a second time: they are
 the bases under the feature (read along the feature's strand), so editing the sequence keeps them right.
@@ -33,7 +33,8 @@ NUCLEASES = {
     "SaCas9 (NNGRRT, 21 nt)": Nuclease("SaCas9", "NNGRRT", 21, 3, False, None),
     "Cas12a (TTTV, 23 nt)": Nuclease("Cas12a", "TTTV", 23, None, True, (18, 23)),
 }
-CAS9_KEY = "OpenGenEdit_cas9"   # the program-specific qualifier (like ApEinfo_fwdcolor): ignored by other readers
+CAS9_KEY = "OpenDNA_cas9"   # the program-specific qualifier (like ApEinfo_fwdcolor): ignored by other readers
+CAS9_KEYS = (CAS9_KEY, "OpenGenEdit_cas9")   # read both: files saved before the rename to openDNA carry the old key
 
 
 def cut_places(nuclease, start, strand):
@@ -50,7 +51,7 @@ def cut_places(nuclease, start, strand):
 
 
 def cas9_qualifier(nuclease):
-    """The value of the /OpenGenEdit_cas9 qualifier: what is needed to know the PAM, protospacer and cut from the feature's
+    """The value of the /OpenDNA_cas9 qualifier: what is needed to know the PAM, protospacer and cut from the feature's
     location. `key=value` pairs, no quotes or line breaks, so it is valid GenBank text as it is."""
     parts = [f"name={nuclease.name}", f"pam={nuclease.pam}", f"length={nuclease.length}"]
     if nuclease.pam_first:
@@ -61,7 +62,7 @@ def cas9_qualifier(nuclease):
 
 
 def parse_cas9(value):
-    """The Nuclease a /OpenGenEdit_cas9 value describes, or None if it is not a usable one (damaged by hand)."""
+    """The Nuclease a /OpenDNA_cas9 value describes, or None if it is not a usable one (damaged by hand)."""
     try:
         d = dict(part.split("=", 1) for part in (value or "").split(";"))
         pam_first = d.get("pam_first") == "yes"
@@ -76,7 +77,7 @@ def parse_cas9(value):
 def cas9_of(feature):
     """The Nuclease of a feature saved as a guide site, or None for any other feature."""
     for key, value in feature.qualifiers:
-        if key == CAS9_KEY:
+        if key in CAS9_KEYS:
             return parse_cas9(value)
     return None
 

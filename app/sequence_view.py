@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QAbstractScrollArea, QApplication, QMenu, QSlider, QToolButton, QToolTip, QVBoxLayout, QWidget,
 )
 
-from cut_sites import CAS9_KEY, feature_layout, runs
+from cut_sites import CAS9_KEYS, feature_layout, runs
 import genetic_code
 import tool_settings
 from editor import arrow, complement, label_font, mono_font, reverse_complement, text_color_on
@@ -1192,7 +1192,7 @@ class SequenceView(QAbstractScrollArea):
         g = units.geometry(f, self.editor.length, self.editor.doc.circular)
         if g is not None:
             return self._draw_unit(p, f, g, base0, n, y)
-        if any(k == CAS9_KEY for k, _ in f.qualifiers):
+        if any(k in CAS9_KEYS for k, _ in f.qualifiers):
             layout = feature_layout(f, self.editor.length)
             if layout is not None:   # (None: the feature was resized by hand: it is drawn as any other)
                 return self._draw_cas9(p, f, layout, base0, n, y)
