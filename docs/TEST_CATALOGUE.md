@@ -151,6 +151,7 @@ The question behind this whole group: **can the program lose or silently alter y
 | `test_record_list.py::test_a_line_dragged_in_the_map_reorders_the_file` | Drag and drop in the map's list | The first line dragged below the last: the file, the list and the picker follow; the open record keeps its unsaved edit, which Save writes; a click without a drag still opens a record. |
 | `test_record_list.py::test_right_click_menu_moves_exports_and_removes` | The list's right-click menu | Move Up / Down (greyed at the ends); Export as GenBank writes the open record with its unsaved edit, or one read from the file, never over the file itself; Remove asks first, removes the open record by opening the next, and keeps the last one. |
 | `test_record_list.py::test_switching_record_does_not_read_the_file_through_again` | Switching record is quick and clean | The file is not scanned or listed again (seconds on a genome of gigabytes); painting is held while the new record's tabs are built, then back on. |
+| `test_record_list.py::test_the_new_record_is_shown_and_laid_out_before_painting_comes_back` | No bare background between two records | When a switch returns, the new tabs are already shown and their sequence views sized (they were shown by a posted call after painting came back: Windows painted the dark background meanwhile). |
 | `test_record_list.py::test_fasta_records_are_reordered_exported_and_removed` | The same on a multi-FASTA | Reorder, export as GenBank and remove; the index follows. |
 
 

@@ -200,3 +200,18 @@ def test_switching_record_does_not_read_the_file_through_again(tmp_path, monkeyp
     app.processEvents()
     assert win.editor.fasta_record == b and [n for n, _ in win.editor.fasta_records] == [a, b, c]
     assert seen == [False] and win.updatesEnabled(), "painting is held during the switch, then back on"
+
+
+def test_the_new_record_is_shown_and_laid_out_before_painting_comes_back(tmp_path):
+    """When a switch returns (painting back on), the new tabs are already shown and sized: nothing is left for the next paint to
+    find half-done. Qt shows a new central widget from a posted call, and the sequence view lays its bases out once it has its
+    size; that used to run after painting was back on, and Windows then painted the window's bare dark background meanwhile."""
+    from sequence_view import SequenceView
+    path = three_records(tmp_path)
+    win = opened(path)
+    a, b, _ = names(path)
+    win.editor.record_requested.emit(b)   # (no app.processEvents(): the state the first paint would see)
+    ws = win.workspace
+    views = ws.views(SequenceView, build=False)
+    assert win.editor.fasta_record == b and win.updatesEnabled()
+    assert ws.isVisible() and views and all(v.isVisible() and v.width() > 100 and v.height() > 100 for v in views)

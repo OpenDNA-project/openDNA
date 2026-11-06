@@ -796,6 +796,8 @@ class MainWindow(QMainWindow):
                                display=not same_file)   # (the record switched to takes the file's display settings: below)
             if same_file:
                 self._carry_settings(old, letters)
+            if frozen:
+                self._settle_layout()
         finally:
             if frozen:
                 self.setUpdatesEnabled(True)
@@ -806,6 +808,15 @@ class MainWindow(QMainWindow):
         if meta is not None:
             self._apply_project(meta, path)
         return True
+
+    def _settle_layout(self):
+        """Show and lay the new tabs out now, while nothing is painted: Qt shows a new central widget from a posted call, then come
+        the layouts, the sizes they give (the sequence view lays its bases out for its width), the panes built when first shown,
+        all of which otherwise ran after painting was back on. On Windows the window was then painted at once with the new tabs
+        not shown or sized yet, showing only its dark background for the second that work took. (Fitting table columns is left
+        for after: it only adjusts widths, and took half a second on a genome.)"""
+        for _ in range(3):   # the new tabs are shown by a posted call (Qt's own), then laid out; a size change can ask for one more pass
+            QApplication.sendPostedEvents()
 
     def _carry_settings(self, old, letters):
         """Switching to another record of the file: the display settings, the lock and the letter size are the file's, not the
