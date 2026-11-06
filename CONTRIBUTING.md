@@ -16,6 +16,11 @@ same licence as the project, the **GNU AGPL v3** ([LICENSE](LICENSE)). Do not ad
 people's data, a library without a compatible licence: add new third-party pieces to [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). If a new panel is
 based on a paper or a dataset, add it to Help > Citations (`app/citations.py`).
 
+**Unfinished features** carry an orange **WIP** tag. `FEATURES` in `app/wip.py` is the switch: one line per feature, `True` while it
+is a work in progress. Tag each place the feature shows with the helpers of that file (`wip.Badge("key")` beside a title or a choice,
+`wip.mark_action(action, "key")` on a menu item, `wip.Delegate` on a list); when the feature is done, set its line to `False` and
+every tag of it goes. `SHOW_TAGS = False` hides them all.
+
 **Your own fork** is welcome too, under the same licence; give it a name and an icon of its own, as [TRADEMARKS.md](TRADEMARKS.md)
 explains (the names "openDNA" and "oDNA" stay with this project).
 

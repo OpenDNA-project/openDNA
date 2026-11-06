@@ -6,6 +6,7 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 import theme
+import wip
 
 INDENT = 16   # px: left padding of an item: the same as its heading's, so each column lines up (the columns already group them)
 
@@ -78,6 +79,14 @@ class ViewPicker(QPushButton):
                 item.setCursor(Qt.PointingHandCursor)
                 item.setProperty("current", name == self.name)
                 item.clicked.connect(lambda _checked=False, name=name: self._choose(name))
+                if name in wip.VIEWS and wip.is_wip(wip.VIEWS[name]):   # an unfinished view: its tag after its name
+                    tag = wip.Badge(wip.VIEWS[name], mouse=False)
+                    tagged = QHBoxLayout(item)
+                    tagged.setContentsMargins(0, 0, 16, 0)
+                    tagged.addStretch()
+                    tagged.addWidget(tag)
+                    item.setMinimumWidth(item.sizeHint().width() + tag.width() + 2 * wip.GAP)
+                    item.setToolTip(wip.tip(wip.VIEWS[name]))
                 box.addWidget(item)
             box.addStretch()
             row.addWidget(column)

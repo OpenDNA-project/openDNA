@@ -39,6 +39,7 @@ from sequence_view import SequenceView
 from sourcefiles import OPEN_FILTER, add_recent, read_document, recent_files
 from uikit import fit_columns, plural, right_aligned
 import theme
+import wip
 
 MAX_FRAGMENTS = 12
 WHOLE_FILE_MAX = 200_000    # bp: a file up to this size is used whole as soon as it is chosen
@@ -621,6 +622,9 @@ class JunctionDialog(QDialog):
 # ---- the panel ---------------------------------------------------------------------------------------------
 
 
+METHOD_WIP = [None, "golden_gate", "sidewinder"]   # per method of the list: its feature in wip.FEATURES, if unfinished
+
+
 class AssemblyPanel(QWidget):
     """See the module docstring. `win`: the main window (for the open files and for opening the product)."""
 
@@ -633,6 +637,20 @@ class AssemblyPanel(QWidget):
         self.product_view, self.product_shown = None, False   # the preview of the product, in the sequence stack
         self.method = QComboBox()
         self.method.addItems(["Gibson / HiFi", "Golden Gate", "Sidewinder"])
+        # The unfinished methods carry the "WIP" tag: in the list, and beside the box while one is chosen (wip.FEATURES).
+        self.method.setItemDelegate(wip.Delegate(lambda index: METHOD_WIP[index.row()], self.method))
+        self.method_wip = wip.Badge(None)
+        if any(wip.is_wip(k) for k in METHOD_WIP if k):   # its room kept when hidden: the options on its right stay put
+            keep = self.method_wip.sizePolicy()
+            keep.setRetainSizeWhenHidden(True)
+            self.method_wip.setSizePolicy(keep)
+        method_box = QWidget()
+        method_row = QHBoxLayout(method_box)
+        method_row.setContentsMargins(0, 0, 0, 0)
+        method_row.setSpacing(wip.GAP)
+        method_row.addWidget(self.method)
+        method_row.addWidget(self.method_wip)
+        self.method.currentIndexChanged.connect(lambda m: self.method_wip.set_key(METHOD_WIP[m]))
         self.count = QSpinBox(minimum=1, maximum=MAX_FRAGMENTS, value=3)
         self.enzyme = QComboBox()
         self.enzyme.addItems(list(GG_ENZYMES))
@@ -645,7 +663,7 @@ class AssemblyPanel(QWidget):
         self.options = []   # (label, widget, method it belongs to) shown only for that method
         grid = QGridLayout()
         grid.setHorizontalSpacing(8)
-        for col, (label, w, only) in enumerate((("Method", self.method, None), ("Fragments", self.count, None), ("Enzyme", self.enzyme, 1),
+        for col, (label, w, only) in enumerate((("Method", method_box, None), ("Fragments", self.count, None), ("Enzyme", self.enzyme, 1),
                                                 ("Overlap", self.min_ov, 0), ("to", self.max_ov, 0), ("Overlap Tm ≥", self.ov_tm, 0),
                                                 ("Annealing Tm", self.anneal_tm, None))):
             lab = QLabel(label)

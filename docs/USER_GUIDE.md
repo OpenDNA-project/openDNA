@@ -15,6 +15,10 @@ from opendna_core import tm; tm("AGCGGATAACAATTTCACACAGGA", na_mm=50, mg_mm=1.5)
 doc.save_genbank("pFG051_edited.gb")      # .dna files are read-only
 ```
 
+Features marked with an orange **WIP** tag (in a menu, beside a view's name, in a list or a window) are not finished: they work,
+but check their results, and they may still change. Today: Golden Gate and Sidewinder assembly, the protein interface (the Protein
+view and 3D structures) and mapping reads (Map Reads, through WSL on Windows).
+
 The primer database is `primers.tsv` in the app data folder (`%APPDATA%\openDNA\` on
 Windows; set `OPENDNA_DATA_DIR` to use another folder). Export/import it from Primers → Primer Database.
 

@@ -53,6 +53,7 @@ import feedback
 import file_assoc
 import project
 import runner
+import wip
 import db_status
 import db_tabs
 from reference_picker import ReferencePicker
@@ -278,11 +279,12 @@ class MainWindow(QMainWindow):
         action(features, "&Variants (VCF)…", None, lambda: self.load_tracks(VCF_FILTER))
         features.addAction(QAction("Import &Features to Features Database…", self, triggered=self.import_parts))
         proteins = imp.addMenu("&Proteins")
-        proteins.addAction(QAction("Protein &FASTA (3D Structure)…", self, triggered=self.import_protein))
-        proteins.addAction(QAction("From &NCBI (Protein)…", self, triggered=lambda: self.import_ncbi("Protein")))
+        proteins.addAction(wip.mark_action(QAction("Protein &FASTA (3D Structure)…", self, triggered=self.import_protein), "protein"))
+        proteins.addAction(wip.mark_action(QAction("From &NCBI (Protein)…", self, triggered=lambda: self.import_ncbi("Protein")),
+                                           "protein"))
         alignments = imp.addMenu("&Alignments")
         action(alignments, "Aligned &Reads (BAM)…", None, lambda: self.load_tracks(BAM_FILTER))
-        action(alignments, "&Map Reads (FASTQ) to This Sequence…", None, self.map_reads)
+        wip.mark_action(action(alignments, "&Map Reads (FASTQ) to This Sequence…", None, self.map_reads), "mapping")
         primer_import = imp.addMenu("P&rimers")
         primer_import.addAction(QAction("Primer &List (TSV, CSV, FASTA)…", self, triggered=self.import_primer_list))
 
@@ -392,10 +394,10 @@ class MainWindow(QMainWindow):
         action(tools, "Plasmid C&heckup (expression of each CDS)…", None, self.open_checkup)
         tools.addAction(QAction("&Import Features to Features Database…", self, triggered=self.import_parts))
         tools.addSeparator()
-        action(tools, "&Map Reads to This Sequence…", None, self.map_reads)
-        tools.addAction(QAction("Check Mapping &Tools…", self, triggered=lambda: RunDialog(
-            self, "Mapping tools", [runner.CHECK]).exec()))
-        tools.addAction(QAction("I&nstall Mapping Tools (conda)…", self, triggered=self.install_tools))
+        wip.mark_action(action(tools, "&Map Reads to This Sequence…", None, self.map_reads), "mapping")
+        tools.addAction(wip.mark_action(QAction("Check Mapping &Tools…", self, triggered=lambda: RunDialog(
+            self, "Mapping tools", [runner.CHECK]).exec()), "mapping"))
+        tools.addAction(wip.mark_action(QAction("I&nstall Mapping Tools (conda)…", self, triggered=self.install_tools), "mapping"))
         tools.addSeparator()
         tools.addAction(QAction("&Settings…", self, triggered=lambda: SettingsDialog(self).exec()))
 
