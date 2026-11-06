@@ -1,4 +1,4 @@
-"""Structural-variant style queries for the quick aligner (`genomeedit_core.align`).
+"""Structural-variant style queries for the quick aligner (`opendna_core.align`).
 
 The scenario: a query made of [A: 100 bp of the template] + [200 bp that match nothing] + [B: 100 bp of the template]
 + [C: 100 bp of the template as its REVERSE COMPLEMENT, what a genome inversion gives] + [D: 100 bp of the template].
@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
-import genomeedit_core as core
+import opendna_core as core
 
 COMP = str.maketrans("ACGT", "TGCA")
 

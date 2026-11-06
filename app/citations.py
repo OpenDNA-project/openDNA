@@ -1,4 +1,4 @@
-"""Help > Citations: what each panel is based on, and the packages OpenGenEdit is built with.
+"""Help > Citations: what each panel is based on, and the packages openDNA is built with.
 
 Whenever a panel uses a published method or dataset, add it to PANELS below (and say so where it is
 used): the user asked for every such source to be cited by panel.
@@ -20,7 +20,7 @@ PANELS = {
          "The method: Type IIS sites outside the fragment leave 4 nt overhangs that are ligated in one pot."),
         ("Potapov V, Ong JL, Kucera RB, et al. Comprehensive profiling of four base overhang ligation fidelity by T4 DNA ligase "
          "and application to DNA assembly. ACS Synth Biol 7(11), 2665-2674 (2018).", "10.1021/acssynbio.8b00333",
-         "The 25 overhangs OpenGenEdit prefers and checks against (supplementary Tables S3 and S4 of the bioRxiv version, "
+         "The 25 overhangs openDNA prefers and checks against (supplementary Tables S3 and S4 of the bioRxiv version, "
          "doi:10.1101/322297: the junctions of the 12- and 24-fragment lac cassettes). The paper's full ligation matrix is not "
          "included, so the one-base-apart warning is a rule of thumb, not a measured fidelity."),
     ],
@@ -42,7 +42,7 @@ PANELS = {
         ("Zetsche B, Gootenberg JS, Abudayyeh OO, et al. Cpf1 is a single RNA-guided endonuclease of a class 2 CRISPR-Cas system. Cell 163, "
          "759-771 (2015).", "10.1016/j.cell.2015.09.038",
          "Cas12a (Cpf1): a TTTV PAM on the 5' side of the target, and a staggered cut (after base 18 of the PAM's strand and base 23 of the "
-         "other) leaving a 5 nt 5' overhang. OpenGenEdit uses a 23 nt protospacer; check the cut positions for the Cas12a you use "
+         "other) leaving a 5 nt 5' overhang. openDNA uses a 23 nt protospacer; check the cut positions for the Cas12a you use "
          "(AsCas12a, LbCas12a and others differ a little)."),
         ("(no paper) The score is a plain checklist of common design advice (GC content, no TTTT, no long runs), not a trained "
          "model such as Doench's Rule Set 2.", None, "Use it to discard poor guides, not to rank good ones against each other."),
@@ -91,7 +91,7 @@ PANELS = {
         ("d'Aubenton Carafa Y, Brody E, Thermes C. Prediction of rho-independent Escherichia coli transcription terminators. "
          "A statistical analysis of their RNA stem-loop structures. J Mol Biol 216(4), 835-858 (1990).",
          "10.1016/S0022-2836(05)80005-0",
-         "What a predicted intrinsic terminator looks like: a G-C rich stem-loop followed by a T tract. OpenGenEdit uses a "
+         "What a predicted intrinsic terminator looks like: a G-C rich stem-loop followed by a T tract. openDNA uses a "
          "simplified version (perfect stem with G-T pairs allowed, a pair score instead of a free energy)."),
         ("Shine J, Dalgarno L. The 3'-terminal sequence of Escherichia coli 16S ribosomal RNA: complementarity to nonsense "
          "triplets and ribosome binding sites. Proc Natl Acad Sci USA 71(4), 1342-1346 (1974).", "10.1073/pnas.71.4.1342",
@@ -133,7 +133,7 @@ PACKAGES = [
 
 
 def citations_html():
-    out = ["<h2>Citations</h2><p>What each part of OpenGenEdit is based on.</p>"]
+    out = ["<h2>Citations</h2><p>What each part of openDNA is based on.</p>"]
     for panel, refs in PANELS.items():
         out.append(f"<h3>{escape(panel)}</h3><ul>")
         for text, doi, use in refs:

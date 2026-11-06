@@ -193,7 +193,7 @@ impl<T: Read> StreamParser<T> {
             let mut end_of_sequence = false;
             for &b in self.buffer.data() {
                 match b {
-                    // OpenGenEdit patch: also the gap letter '-' (a file we wrote with one could not be reopened).
+                    // openDNA patch: also the gap letter '-' (a file we wrote with one could not be reopened).
                     b if b.is_alpha() || b == b'-' => {
                         s.push(b);
                     }

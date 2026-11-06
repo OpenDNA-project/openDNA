@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
@@ -57,7 +57,7 @@ def test_exports(win, tmp_path, monkeypatch):
     assert exports.proteins_fasta(ed).startswith(">")
     # A real CDS on each strand (the demo files are random sequences).
     from editor import Editor, reverse_complement
-    from genomeedit_core import Document
+    from opendna_core import Document
     gene = "ATGAAACCCGGGTAA"
     built = Editor(Document.new_sequence("t", "TT" + gene + "TT" + reverse_complement(gene) + "TT", False), "t.gb")
     built.add_features([("CDS", "3..17", [("label", "fwd")]), ("CDS", "complement(20..34)", [("label", "rev")])])
@@ -213,14 +213,14 @@ def test_example_files_and_feature_direction(win):
     """The example plasmids and genome bundled in demo/ open (read only); a .dna file marks features without direction and
     they come in with no arrow; a new misc_feature has no arrow by default and the direction can be chosen."""
     # --- example files ---
-    from genomeedit_core import Document
+    from opendna_core import Document
     for name, length in [("pBAD30_eilR.gb", 5936), ("pFG051_Chlor.gb", 3780), ("BW25113_2026.gb", None)]:
         doc = Document(str(ROOT / "demo" / name))
         assert doc.features() and (doc.length == length if length else doc.length > 4_000_000), name
     # --- direction read from a .dna file ---
     from sample_files import DNA_FILE
     from editor import arrow
-    from genomeedit_core import Document
+    from opendna_core import Document
     if DNA_FILE.exists():   # (the file is optional)
         feats = Document(str(DNA_FILE)).features()
         cds = [f for f in feats if f.kind == "CDS"]

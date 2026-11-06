@@ -1,4 +1,4 @@
-<title>OpenGenEdit Test Report</title>
+<title>openDNA Test Report</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -133,7 +133,7 @@ dl.guide dt { font-weight: 500; } dl.guide dd { margin: 0; color: var(--muted); 
 
 <div class="wrap">
   <header>
-    <div class="eyebrow" id="eyebrow">OpenGenEdit · unit tests</div>
+    <div class="eyebrow" id="eyebrow">openDNA · unit tests</div>
     <h1>Every test, what goes in and what must come out</h1>
     <p class="lede">For each automated test of the DNA editor: its inputs, the output it expects, what that answer is checked against, how much a pass is worth, and its result in the last run. Use the filters to review one area at a time.</p>
     <div class="stats" id="stats"></div>
@@ -207,7 +207,7 @@ python scripts/test_report.py --junit junit.xml --cargo cargo.txt</code></pre>
 
   // ---- header ----
   const n = T.length, by = (k) => T.filter((t) => t.result === k).length;
-  $("eyebrow").textContent = "OpenGenEdit · unit tests · " + D.generated;
+  $("eyebrow").textContent = "openDNA · unit tests · " + D.generated;
   $("stats").innerHTML = [
     [n, "tests (" + T.filter((t) => t.suite === "py").length + " Python, " + T.filter((t) => t.suite === "rs").length + " Rust)", ""],
     [by("passed"), "passed", "ok"], [by("failed"), "failed", "bad"], [by("skipped"), "skipped", "skip"],

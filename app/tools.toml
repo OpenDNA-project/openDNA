@@ -1,4 +1,4 @@
-# External command-line tools OpenGenEdit can run (Tools → Map Reads…).
+# External command-line tools openDNA can run (Tools → Map Reads…).
 # Adding a tool = adding a recipe here, no code. Placeholders, filled by the app:
 #   {ref}      the current sequence, written to <run folder>/ref.fa
 #   {reads1}   first reads file;  {reads2} second (mate) reads file, empty if not given

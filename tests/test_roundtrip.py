@@ -11,14 +11,14 @@ from pathlib import Path
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
 from Bio import SeqIO
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from genomeedit_core import Document, Fasta
+from opendna_core import Document, Fasta
 
 import main as M
 import primer_db

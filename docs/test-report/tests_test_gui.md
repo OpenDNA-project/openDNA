@@ -159,14 +159,14 @@ The welcome page shows once a day, can be turned off and forced, opens recent fi
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | SponsorsDialog with shipped sponsors.json | cards == []; welcome text has 'Antoine Champie', 'official download', 'github.com/Ant-Champ/GenomeEdit' |
+| 1 | SponsorsDialog with shipped sponsors.json | cards == []; welcome text has 'Antoine Champie', 'official download', 'github.com/OpenDNA-project/openDNA' |
 | 2 | due/show_at_startup; last_shown='2000-01-01'; snooze on/off; never=True; force=True | due True, then False after showing; None when shown; True on a new day; False when snoozed; True when unsnoozed; None when never; forced dialog shown with snooze checked and hidden() still True |
 | 3 | recent_files stubbed to [pX.gb]; click item | 1 item 'pX.gb…'; open_path called with the path; dialog accepted |
 | 4 | No recent files; check_updates with UPDATES_ENABLED False, then stubbed answers (no update, 9.9.9) | list disabled; 'Not available yet'; 'Up to date'; '9.9.9' and 'install:' |
 | 5 | add_recent a then b; pin a; remove a | order [b,a]; a first and bold; a gone from list and pins, file still exists |
 | 6 | seen_version removed; then '0.0.1' with WHATS_NEW[VERSION]=['Pinned files'] | whats_new() None on first install; news shown with 'Pinned files', hidden on next open |
 | 7 | next-tip link; quick actions with/without window; click demo | tip text changes, TIPS unique and >1; all quick buttons disabled without window; demo enabled, new_file disabled; open_untitled called with DEMO_NAME, accepted |
-| 8 | load stubbed with Acme + 2 empty slots; CONTACT_EMAIL '' / 'genomeedit@example.org' | 3 cards, first has 'Acme', 'SPONSORED' label visible; no 'mailto' / 'mailto:genomeedit@example.org' in welcome_html |
+| 8 | load stubbed with Acme + 2 empty slots; CONTACT_EMAIL '' / 'opendna@example.org' | 3 cards, first has 'Acme', 'SPONSORED' label visible; no 'mailto' / 'mailto:opendna@example.org' in welcome_html |
 
 **Review notes:**
 

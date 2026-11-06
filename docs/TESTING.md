@@ -1,6 +1,6 @@
 # Test plan
 
-What a scientist needs to trust OpenGenEdit. `[x]` = a test exists (where); `[ ]` = missing (what it must assert).
+What a scientist needs to trust openDNA. `[x]` = a test exists (where); `[ ]` = missing (what it must assert).
 Rust tests live in `core/src/*.rs` (`cargo test`), Python in `tests/` (pytest). Quick in-app checks run from
 Tools > Settings > Self-test (`app/selftest.py`, also run by `tests/test_selftest.py`); they are marked **(self-test)**.
 Add new checks there when they are small and need no user files.

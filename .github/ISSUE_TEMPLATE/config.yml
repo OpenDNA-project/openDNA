@@ -3,10 +3,10 @@
 blank_issues_enabled: false
 contact_links:
   - name: Read the user guide and tutorial
-    url: https://github.com/Ant-Champ/GenomeEdit/blob/main/docs/USER_GUIDE.md
+    url: https://github.com/OpenDNA-project/openDNA/blob/main/docs/USER_GUIDE.md
     about: Most "how do I..." questions are answered there.
   # Add these once they exist (the links are fixed addresses of this repository, no email):
   # - name: Ask the community
-  #   url: https://github.com/Ant-Champ/GenomeEdit/discussions        # after Settings > General > Features > Discussions
+  #   url: https://github.com/OpenDNA-project/openDNA/discussions        # after Settings > General > Features > Discussions
   # - name: Report a security problem privately
-  #   url: https://github.com/Ant-Champ/GenomeEdit/security/policy    # after adding a SECURITY.md
+  #   url: https://github.com/OpenDNA-project/openDNA/security/policy    # after adding a SECURITY.md

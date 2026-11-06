@@ -1,4 +1,4 @@
-"""The Rust core through its Python API (`genomeedit_core`): melting temperature, hairpins and dimers, GC bins, ORFs, restriction
+"""The Rust core through its Python API (`opendna_core`): melting temperature, hairpins and dimers, GC bins, ORFs, restriction
 sites, find_parts, translation, local alignment, BAM reads / pileup / variants, GFF / BED tracks, feature locations and
 indexed genome FASTA files.
 
@@ -21,8 +21,8 @@ from Bio.SeqUtils import MeltingTemp as mt
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
-import genomeedit_core as core
-from genomeedit_core import Document
+import opendna_core as core
+from opendna_core import Document
 
 import enzymes
 from enzymes import Enzyme

@@ -7,14 +7,14 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 import checkup as C
 import genetic_code
@@ -419,10 +419,36 @@ def test_units_as_features():
         assert exports.project_meta(ed, "x.odp")["display"]["units"] is False
         ed.set_display(hidden_kinds={"mRNA"}, units=True)
         assert sum(units.is_tu(f) for f in ed.shown) == 2, "hiding the mRNA type leaves units to their own switch"
-        assert "OpenGenEdit_tu" not in exports.gff3_text(ed), "the program's own qualifier stays out of exports"
+        assert units.TU_KEY not in exports.gff3_text(ed), "the program's own qualifier stays out of exports"
 
     # --- flat icons ---
     for make in (icons.filter_icon, icons.history_icon):
         img = make().pixmap(32, 32).toImage()
         colors = {img.pixelColor(x, y).name() for x in range(32) for y in range(32) if img.pixelColor(x, y).alpha() > 200}
         assert len(colors) <= 2 and colors, "one flat colour (antialiased edges aside)"
+
+
+def test_units_saved_before_the_rename_still_work(tmp_path):
+    """New files carry /OpenDNA_tu; units in a file saved before the rename to openDNA (/OpenGenEdit_tu) are still units: same
+    +1, same end, drawn by both views, the display switch hides them, and exports leave the old key out."""
+    from PySide6.QtGui import QImage
+    from map_view import MapView
+    from sequence_view import SequenceView
+    import exports
+    ed, _ = unit_doc()
+    new, old = tmp_path / "new.gb", tmp_path / "old.gb"
+    ed.doc.save_genbank(str(new))
+    text = new.read_text(encoding="utf-8")
+    assert "/OpenDNA_tu=" in text and "OpenGenEdit" not in text, "new files carry the new key"
+    old.write_text(text.replace("/OpenDNA_tu=", "/OpenGenEdit_tu="), encoding="utf-8")
+    back = Editor(Document(str(old)), old)
+    before = [units.geometry(f, ed.length, True) for f in ed.features if units.is_tu(f)]
+    after = [units.geometry(f, back.length, True) for f in back.features if units.is_tu(f)]
+    assert len(after) == 2 and after == before, "the old units read back exactly as the new ones"
+    for view in (SequenceView(back), MapView(back)):
+        view.resize(900, 600)
+        view.render(QImage(900, 600, QImage.Format_ARGB32))
+    assert sum(units.is_tu(f) for f in back.shown) == 2
+    back.set_display(units=False)
+    assert not any(units.is_tu(f) for f in back.shown)
+    assert "OpenGenEdit_tu" not in exports.gff3_text(back) and "OpenGenEdit_tu" not in exports.tbl_text(back)

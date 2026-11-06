@@ -1,5 +1,5 @@
 """Transcription units as features: an mRNA feature from a promoter to the end of its terminator, with a program-specific
-qualifier (like the Cas9 guides' OpenGenEdit_cas9) that tells the views to draw it as a unit rather than an arrow:
+qualifier (like the Cas9 guides' OpenDNA_cas9) that tells the views to draw it as a unit rather than an arrow:
 
     ───────━━━━━━━━━━━━━━━━━━━━━━━━━━┫      (minus strand: mirrored)
     promoter  +1 (transcription start)   terminator
@@ -13,7 +13,8 @@ here.
 """
 from types import SimpleNamespace
 
-TU_KEY = "OpenGenEdit_tu"
+TU_KEY = "OpenDNA_tu"
+TU_KEYS = (TU_KEY, "OpenGenEdit_tu")   # read both: files saved before the rename to openDNA carry the old key
 KIND = "mRNA"
 
 
@@ -24,7 +25,7 @@ def tu_qualifier(tss, ending, stopped, exact=False):
 
 def tu_of(feature):
     """SimpleNamespace(tss, ending, stopped) of a feature saved as a unit, or None."""
-    value = next((v for k, v in feature.qualifiers if k == TU_KEY), None)
+    value = next((v for k, v in feature.qualifiers if k in TU_KEYS), None)
     if value is None:
         return None
     fields = dict(part.split("=", 1) for part in value.split(";") if "=" in part)
@@ -37,7 +38,7 @@ def tu_of(feature):
 
 
 def is_tu(feature):
-    return any(k == TU_KEY for k, _ in feature.qualifiers)
+    return any(k in TU_KEYS for k, _ in feature.qualifiers)
 
 
 def extent(f, n, circular):

@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # part names carry Greek letters (lacZα)
 
-from genomeedit_core import Document  # noqa: E402
+from opendna_core import Document  # noqa: E402
 
 from editor import reverse_complement  # noqa: E402
 

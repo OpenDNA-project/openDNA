@@ -144,8 +144,8 @@ def write(root, path, fmt, scale=1.0, dpi=SCREEN_DPI, views=None, light=None):
         # the views' own drawing (the painter's scale already enlarges everything). At the export DPI the text came out
         # dpi / 96 times too big. The printed size asked for is written into the width / height afterwards.
         gen.setResolution(root.logicalDpiY())
-        gen.setTitle(root.window().windowTitle() or "OpenGenEdit")
-        gen.setDescription("Exported from OpenGenEdit")
+        gen.setTitle(root.window().windowTitle() or "openDNA")
+        gen.setDescription("Exported from openDNA")
         _paint(gen, root, parts, scale, light)
         _fix_svg(path, size, dpi)
         return

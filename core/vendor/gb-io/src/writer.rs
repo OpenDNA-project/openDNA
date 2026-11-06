@@ -239,7 +239,7 @@ impl<W: Write> SeqWriter<W> {
             line.push(b'\n');
             self.stream.write_all(&line)?;
         } else {
-            // OpenGenEdit patch: a record with no bases still gets its (empty) ORIGIN line, so the reader finds the end of it.
+            // openDNA patch: a record with no bases still gets its (empty) ORIGIN line, so the reader finds the end of it.
             writeln!(&mut self.stream, "ORIGIN      ")?;
         }
         writeln!(&mut self.stream, "//")?;
@@ -338,7 +338,7 @@ fn wrap_get_line<'a>(
                     // if we're one character away from the end of the line,
                     // wrap now to avoid splitting the escape sequence
                     if line.len() >= max_len - 1 {
-                        // OpenGenEdit patch: upstream did `break` here, but the quote was
+                        // openDNA patch: upstream did `break` here, but the quote was
                         // already taken from the iterator, so it was dropped (or the
                         // `consumed == input.len()` assert panicked when it was the last
                         // char). Wrap now, leaving the quote for the next line.
@@ -381,7 +381,7 @@ fn wrap_get_line<'a>(
         // there's no way to split the line nicely
         &input[consumed..]
     } else {
-        // OpenGenEdit patch: readers re-join wrapped lines with a space, so cutting inside
+        // openDNA patch: readers re-join wrapped lines with a space, so cutting inside
         // a word (e.g. "[2525130][2154468]...") inserted a space on every save. Let the
         // line run past the width up to the next space instead.
         let rest = &input[consumed..];
@@ -400,7 +400,7 @@ fn wrap_get_line<'a>(
 /// Wrap `text` into lines of at most `max_width` bytes (the first one starts with `first_indent`, the others with
 /// `subsequent_indent`) and, for a quoted value, close it with a `"`.
 ///
-/// OpenGenEdit patch: when the last line was as wide as the page, upstream put the closing quote alone on one more
+/// openDNA patch: when the last line was as wide as the page, upstream put the closing quote alone on one more
 /// line. That is valid, but readers join the lines of a value with a space, so Biopython read a trailing space
 /// (it happened for every `/note="sequence: ..."` of a primer of the right length). Now such a text is wrapped
 /// again one byte narrower, until the quote fits on the last line.

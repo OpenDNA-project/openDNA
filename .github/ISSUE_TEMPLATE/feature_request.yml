@@ -1,5 +1,5 @@
 name: Request a feature
-description: Suggest something OpenGenEdit could do, or do better.
+description: Suggest something openDNA could do, or do better.
 title: "[Feature]: "
 labels: ["type: feature", "status: new"]
 body:

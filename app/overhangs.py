@@ -114,7 +114,7 @@ def junction_level(overhang, others):
 
 def preference(overhang, chosen):
     """Penalty for picking `overhang` after the ones in `chosen` (lower is better): used when
-    OpenGenEdit chooses overhangs itself."""
+    openDNA chooses overhangs itself."""
     pen = 100 * (overhang == rc(overhang)) + 5 * (len(set(overhang)) == 1 or set(overhang) <= set("GC") or set(overhang) <= set("AT"))
     pen += 0 if (len(overhang) != 4 or overhang in VALIDATED) else 3
     for q in chosen:

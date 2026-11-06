@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-import genomeedit_core as core
+import opendna_core as core
 
 from cut_sites import CAS9_KEY, NUCLEASES, cas9_mark_tip, cas9_qualifier, cut_places
 from editor import reverse_complement, site_location

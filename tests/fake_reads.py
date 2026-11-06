@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 import runner  # noqa: E402  (app module: recipes and the WSL bridge)
-from genomeedit_core import Document  # noqa: E402
+from opendna_core import Document  # noqa: E402
 
 COMPLEMENT = str.maketrans("ACGTacgtN", "TGCAtgcaN")
 DEPTH = 30

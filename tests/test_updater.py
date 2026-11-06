@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
@@ -33,8 +33,8 @@ BASE = f"https://github.com/{project.REPO}/releases/download/v0.2.0"
 def release(tag="v0.2.0", assets=True, **extra):
     """The JSON GitHub gives for releases/latest."""
     data = {"tag_name": tag, "html_url": f"{project.REPO_URL}/releases/tag/{tag}", "body": "Fixes things.", "draft": False, "prerelease": False,
-            "assets": [{"name": updater.ASSET_NAME, "browser_download_url": f"{BASE}/OpenGenEdit.exe"},
-                       {"name": updater.CHECKSUM_NAME, "browser_download_url": f"{BASE}/OpenGenEdit.exe.sha256"},
+            "assets": [{"name": updater.ASSET_NAME, "browser_download_url": f"{BASE}/openDNA.exe"},
+                       {"name": updater.CHECKSUM_NAME, "browser_download_url": f"{BASE}/openDNA.exe.sha256"},
                        {"name": "other.zip", "browser_download_url": f"{BASE}/other.zip"}] if assets else []}
     data.update(extra)
     return json.dumps(data)
@@ -105,7 +105,7 @@ def wait_for(condition, ms=5000):
 
 
 def update(**kw):
-    values = dict(version="0.2.0", tag="v0.2.0", asset_url=f"{BASE}/OpenGenEdit.exe", sha256_url=f"{BASE}/OpenGenEdit.exe.sha256",
+    values = dict(version="0.2.0", tag="v0.2.0", asset_url=f"{BASE}/openDNA.exe", sha256_url=f"{BASE}/openDNA.exe.sha256",
                   notes="Notes", page_url=f"{project.REPO_URL}/releases/tag/v0.2.0")
     values.update(kw)
     return Update(**values)
@@ -146,7 +146,7 @@ def test_release_json(monkeypatch):
     result = updater.check("0.1.0", Fake())
     u = result.update
     assert result.error is None and u.version == "0.2.0" and u.tag == "v0.2.0" and u.notes == "Fixes things."
-    assert u.asset_url == f"{BASE}/OpenGenEdit.exe" and u.sha256_url == f"{BASE}/OpenGenEdit.exe.sha256"
+    assert u.asset_url == f"{BASE}/openDNA.exe" and u.sha256_url == f"{BASE}/openDNA.exe.sha256"
     assert u.page_url == f"{project.REPO_URL}/releases/tag/v0.2.0"
     assert updater.check_for_update("0.1.0", Fake()) == u
 
@@ -185,8 +185,8 @@ def test_release_assets_and_errors():
         assert result.update is None and missing in result.error and result.page_url, missing
 
     # --- assets on other hosts or other repositories are refused
-    for url in ("https://evil.example.com/OpenGenEdit.exe", "http://github.com/x/OpenGenEdit.exe",
-                "https://github.com/someone/else/releases/download/v9/OpenGenEdit.exe"):
+    for url in ("https://evil.example.com/openDNA.exe", "http://github.com/x/openDNA.exe",
+                "https://github.com/someone/else/releases/download/v9/openDNA.exe"):
         data = json.loads(release())
         data["assets"][0]["browser_download_url"] = url
         result = updater.check("0.1.0", Fake(json.dumps(data)))
@@ -237,9 +237,9 @@ def test_allowed_addresses(monkeypatch):
 
     # --- a redirect to another host is refused
     handler = updater._SafeRedirects()
-    request = updater.urllib.request.Request("https://github.com/a/b/releases/download/v1/OpenGenEdit.exe")
+    request = updater.urllib.request.Request("https://github.com/a/b/releases/download/v1/openDNA.exe")
     with pytest.raises(UpdateError):
-        handler.redirect_request(request, None, 302, "Found", {}, "https://evil.example.com/OpenGenEdit.exe")
+        handler.redirect_request(request, None, 302, "Found", {}, "https://evil.example.com/openDNA.exe")
     assert handler.redirect_request(request, None, 302, "Found", {}, "https://objects.githubusercontent.com/x") is not None
 
 
@@ -257,7 +257,7 @@ def test_checksum_and_download(tmp_path):
     assert updater.parse_checksum(f"{'a' * 64}  other.zip\n{DIGEST}  {updater.ASSET_NAME}\n") == DIGEST
     assert updater.parse_checksum((DIGEST + "\r\n").encode("utf-16")) == DIGEST          # PowerShell's > writes UTF-16 with a BOM
     assert updater.parse_checksum(b"\xef\xbb\xbf" + DIGEST.encode()) == DIGEST
-    for bad in ("", "hello", "abc  OpenGenEdit.exe", f"{DIGEST}  other.zip", DIGEST[:-1], DIGEST + "0"):
+    for bad in ("", "hello", "abc  openDNA.exe", f"{DIGEST}  other.zip", DIGEST[:-1], DIGEST + "0"):
         assert updater.parse_checksum(bad) is None, bad
 
     # --- verifies and returns the new exe
@@ -286,7 +286,7 @@ def test_checksum_and_download(tmp_path):
 
     # --- refuses addresses off github
     folder = fresh_dir(tmp_path, "offgithub")
-    for bad in (update(asset_url="https://evil.example.com/OpenGenEdit.exe"), update(sha256_url="http://github.com/x.sha256")):
+    for bad in (update(asset_url="https://evil.example.com/openDNA.exe"), update(sha256_url="http://github.com/x.sha256")):
         fake = Fake()
         with pytest.raises(UpdateError, match="Refused"):
             updater.download_update(bad, folder, fetch=fake)
@@ -319,7 +319,7 @@ def test_checksum_and_download(tmp_path):
 def installed_in(folder):
     """A 'running exe' and a downloaded new one in a new folder."""
     folder.mkdir()
-    current, new = folder / "OpenGenEdit.exe", folder / "OpenGenEdit.exe.new"
+    current, new = folder / "openDNA.exe", folder / "openDNA.exe.new"
     current.write_bytes(b"OLD")
     new.write_bytes(b"NEW")
     return current, new
@@ -345,14 +345,14 @@ def test_install_swaps_and_refuses(tmp_path, monkeypatch):
     current, new = installed_in(tmp_path / "swap")
     started = []
     updater.install_update(new, current, relaunch=started.append)
-    assert current.read_bytes() == b"NEW" and (current.parent / "OpenGenEdit.exe.old").read_bytes() == b"OLD"
+    assert current.read_bytes() == b"NEW" and (current.parent / "openDNA.exe.old").read_bytes() == b"OLD"
     assert not new.exists() and started == [current]
 
     # --- replaces a stale old file
     current, new = installed_in(tmp_path / "stale")
-    (current.parent / "OpenGenEdit.exe.old").write_bytes(b"ANCIENT")
+    (current.parent / "openDNA.exe.old").write_bytes(b"ANCIENT")
     updater.install_update(new, current, relaunch=lambda p: None)
-    assert (current.parent / "OpenGenEdit.exe.old").read_bytes() == b"OLD"
+    assert (current.parent / "openDNA.exe.old").read_bytes() == b"OLD"
 
     # --- refuses when not frozen
     assert not updater.is_frozen()
@@ -372,7 +372,7 @@ def test_install_swaps_and_refuses(tmp_path, monkeypatch):
         for bundle in (current.parent / "_internal", current.parent):     # PyInstaller 6 and 5 one-folder layouts
             frozen.setattr(sys, "_MEIPASS", str(bundle), raising=False)
             assert updater.is_folder_build()
-            assert "OpenGenEdit-folder.zip" in updater.install_blocker()
+            assert "openDNA-folder.zip" in updater.install_blocker()
             with pytest.raises(UpdateError, match="folder version"):
                 updater.install_update(new, relaunch=lambda p: pytest.fail("must not start anything"))
     assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW"
@@ -406,7 +406,7 @@ def test_install_rolls_back(tmp_path, monkeypatch):
         fail_replace(patch, lambda s, d: s == new)
         with pytest.raises(UpdateError, match="administrator"):
             updater.install_update(new, current, relaunch=lambda p: pytest.fail("must not start"))
-    assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW" and not (current.parent / "OpenGenEdit.exe.old").exists()
+    assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW" and not (current.parent / "openDNA.exe.old").exists()
 
     # --- a folder that cannot be written points to the releases page
     current, new = installed_in(tmp_path / "readonly")
@@ -439,7 +439,7 @@ def test_install_rolls_back(tmp_path, monkeypatch):
         raise OSError("not a valid Win32 application")
     with pytest.raises(UpdateError, match="old one was kept"):
         updater.install_update(new, current, relaunch=broken)
-    assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW" and not (current.parent / "OpenGenEdit.exe.old").exists()
+    assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW" and not (current.parent / "openDNA.exe.old").exists()
 
 
 def test_relaunch_and_cleanup(tmp_path, monkeypatch):
@@ -451,22 +451,22 @@ def test_relaunch_and_cleanup(tmp_path, monkeypatch):
         patch.setattr(updater.subprocess, "Popen", lambda args, **kw: seen.update(args=args, **kw))
         patch.setenv("_MEIPASS2", "C:/temp/_MEI1")
         patch.setenv("_PYI_APPLICATION_HOME_DIR", "C:/temp/_MEI1")
-        updater.relaunch(tmp_path / "OpenGenEdit.exe")
+        updater.relaunch(tmp_path / "openDNA.exe")
     env = seen["env"]
-    assert seen["args"] == [str(tmp_path / "OpenGenEdit.exe")] and env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert seen["args"] == [str(tmp_path / "openDNA.exe")] and env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
     assert "_MEIPASS2" not in env and not any(k.startswith("_PYI") for k in env)
 
     # --- cleanup_old deletes the leftovers only
     current, _ = installed_in(tmp_path / "leftovers")
     for suffix in (".old", ".part"):
-        (current.parent / ("OpenGenEdit.exe" + suffix)).write_bytes(b"x")
+        (current.parent / ("openDNA.exe" + suffix)).write_bytes(b"x")
     assert updater.cleanup_old(current) is True
-    assert [p.name for p in current.parent.iterdir()] == ["OpenGenEdit.exe"] and current.read_bytes() == b"OLD"
+    assert [p.name for p in current.parent.iterdir()] == ["openDNA.exe"] and current.read_bytes() == b"OLD"
     assert updater.cleanup_old(current) is True                          # nothing to do is fine
 
     # --- does nothing from source and waits for a held file
     current, _ = installed_in(tmp_path / "held")
-    old = current.parent / "OpenGenEdit.exe.old"
+    old = current.parent / "openDNA.exe.old"
     old.write_bytes(b"x")
     assert updater.cleanup_old() is True and old.exists()                 # not frozen, no exe given: not touched
     real = Path.unlink

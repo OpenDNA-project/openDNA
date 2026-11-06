@@ -263,7 +263,7 @@ class SponsorsDialog(QDialog):
 
     def open_demo(self):
         """The demo plasmid as a new unsaved file: Save asks where, so the bundled copy is never overwritten."""
-        from genomeedit_core import Document
+        from opendna_core import Document
         self.accept()
         self.parent().open_untitled(Document(str(DEMO)), Path(DEMO_NAME))
 

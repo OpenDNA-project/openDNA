@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
-from genomeedit_core import Document
+from opendna_core import Document
 from primer_panel import MARKS
 from uikit import fit_columns, right_aligned, run_busy
 

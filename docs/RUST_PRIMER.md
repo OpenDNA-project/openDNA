@@ -1,4 +1,4 @@
-# Rust primer for a Python user (with OpenGenEdit's own code)
+# Rust primer for a Python user (with openDNA's own code)
 
 Read alongside [core/src/fasta.rs](../core/src/fasta.rs) and [core/src/lib.rs](../core/src/lib.rs); every concept below appears there.
 
@@ -9,10 +9,10 @@ core/Cargo.toml          ← Rust project file (like pyproject.toml)
 core/src/lib.rs          ← entry point; Python bindings (PyO3)
 core/src/fasta.rs        ← plain Rust logic, no Python inside
 core/pyproject.toml      ← tells pip to build the crate with maturin
-app/main.py              ← Python GUI: `import genomeedit_core`
+app/main.py              ← Python GUI: `import opendna_core`
 ```
 
-`maturin develop` compiles Rust into a native module (`genomeedit_core.pyd`) and installs it into your Python environment. Then Python imports it like any package. **Every time you change Rust code, rebuild** (`maturin develop -m core/Cargo.toml --release`). Python changes need no rebuild.
+`maturin develop` compiles Rust into a native module (`opendna_core.pyd`) and installs it into your Python environment. Then Python imports it like any package. **Every time you change Rust code, rebuild** (`maturin develop -m core/Cargo.toml --release`). Python changes need no rebuild.
 
 ## 2. Commands you will use
 

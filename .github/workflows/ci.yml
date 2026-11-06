@@ -37,7 +37,7 @@ jobs:
       - name: Build the Rust core and install it
         run: |
           maturin build --release -m core/Cargo.toml --out wheels
-          pip install --no-index --find-links wheels genomeedit_core
+          pip install --no-index --find-links wheels opendna_core
 
       - name: Rust tests
         working-directory: core

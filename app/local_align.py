@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout,
 )
 
-from genomeedit_core import align
+from opendna_core import align
 
 from alignments import INVERTED_COLOR
 from editor import clean_pasted

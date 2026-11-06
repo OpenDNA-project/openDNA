@@ -10,7 +10,7 @@ NCBI search parses summaries and sends the tool name / API key, downloads are ca
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | search('nuccore', 'U1.1', key='K') with fake esearch/esummary | [('U1.1', 1834, 'circular', 'A made-up plasmid')]; request has tool=OpenGenEdit, api_key=K, db=nuccore, no email |
+| 1 | search('nuccore', 'U1.1', key='K') with fake esearch/esummary | [('U1.1', 1834, 'circular', 'A made-up plasmid')]; request has tool=openDNA, api_key=K, db=nuccore, no email |
 | 2 | terms 'nothing', '  ', 'broken' | []; NcbiError 'Type an accession'; NcbiError '503' |
 | 3 | protein search 'P12345' | uniprot 'P12345'; nucleotide record uniprot '' |
 | 4 | get(record) twice | .gb file starting 'LOCUS', not cached; second call (path, True) with no request |

@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 import pytest
@@ -15,7 +15,7 @@ from Bio import SeqIO
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
-from genomeedit_core import Document
+from opendna_core import Document
 
 import cas9
 import cut_sites as cs
@@ -335,6 +335,36 @@ def saved_guide(tmp_path, circular=False):
     win.editor.doc.modified = False
     win.reset_layout()
     return ed, g, win
+
+
+def test_a_guide_saved_before_the_rename_still_works(tmp_path, monkeypatch):
+    """New files carry /OpenDNA_cas9; a file saved before the rename to openDNA carries /OpenGenEdit_cas9 and its guide still
+    works: the protospacer, PAM and cut are found, the sequence view draws it as a guide, exports leave the old key out."""
+    from PySide6.QtGui import QImage
+    from editor import Editor
+    import exports
+    ed, g, win = saved_guide(tmp_path)
+    new, old = tmp_path / "new.gb", tmp_path / "old.gb"
+    ed.doc.save_genbank(str(new))
+    text = new.read_text(encoding="utf-8")
+    assert f'/OpenDNA_cas9="{cs.cas9_qualifier(SP)}"' in text and "OpenGenEdit" not in text, "new files carry the new key"
+    old.write_text(text.replace("/OpenDNA_cas9=", "/OpenGenEdit_cas9="), encoding="utf-8")
+    back = Editor(Document(str(old)), old)
+    (f,) = [f for f in back.features if f.kind == "misc_feature"]
+    assert [k for k, _ in f.qualifiers if k.endswith("_cas9")] == ["OpenGenEdit_cas9"], "the old file is read as it was written"
+    layout = cs.feature_layout(f, back.length)
+    assert layout is not None and layout.gaps == [g.cut]
+    assert "".join(back.doc.sequence(a, b) for a, b in layout.proto) == g.guide
+    assert "".join(back.doc.sequence(a, b) for a, b in layout.pam) == g.pam
+    drawn = []
+    real = SequenceView._draw_cas9
+    monkeypatch.setattr(SequenceView, "_draw_cas9", lambda self, *a: drawn.append(a[1]) or real(self, *a))
+    view = SequenceView(back)
+    view.resize(900, 600)
+    view.render(QImage(900, 600, QImage.Format_ARGB32))
+    assert drawn, "the old guide is drawn as a guide, not as a plain feature"
+    assert "OpenGenEdit_cas9" not in exports.tbl_text(back) and "OpenGenEdit_cas9" not in exports.gff3_text(back)
+    assert g.guide in exports.tbl_text(back), "the plain note stays"
 
 
 def test_a_saved_guide_in_the_file(tmp_path):

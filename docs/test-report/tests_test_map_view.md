@@ -55,7 +55,7 @@ On the real human genome the chromosome list is read (chr1 length correct), chr2
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | hg38.fa from GENOMEEDIT_HUMAN_FASTA or V:/HM_Softwares/TestData/human_genome/hg38.fa | > 24 records, chr1 == 248,956,422 bp |
+| 1 | hg38.fa from OPENDNA_HUMAN_FASTA or V:/HM_Softwares/TestData/human_genome/hg38.fa | > 24 records, chr1 == 248,956,422 bp |
 | 2 | open chr21, MapView 1000x700 | editor length == chr21 length, linear; chr21 row within visible rows; backbone y below the list |
 | 3 | 80 wheel-up events at the centre of the chr21 backbone (1000x600) | window width rounds to 50 bp, 0 <= a < b <= length |
 

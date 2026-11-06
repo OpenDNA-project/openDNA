@@ -1,11 +1,11 @@
 # Third-party notices
 
-OpenGenEdit is Copyright (C) 2026 Antoine Champie and is licensed under the GNU Affero General Public License, version 3
+openDNA is Copyright (C) 2026 Antoine Champie and is licensed under the GNU Affero General Public License, version 3
 ([LICENSE](LICENSE)). It contains, links to, or is built with the third-party components below, each under its own licence.
-Those licences are, as far as we can tell, compatible with distributing OpenGenEdit under the AGPL-3.0; this file is a good-faith
+Those licences are, as far as we can tell, compatible with distributing openDNA under the AGPL-3.0; this file is a good-faith
 list of notices, not legal advice. If you find a component that is missing or wrong here, please open an issue.
 
-How to read the "where" column: *bundled* = its code or data is inside this repository or inside the Windows `OpenGenEdit.exe`;
+How to read the "where" column: *bundled* = its code or data is inside this repository or inside the Windows `openDNA.exe`;
 *linked* = comes from a package installed at build time and ends up in the exe; *build* = used to build, not shipped;
 *test* = used only by the tests, not shipped.
 
@@ -13,7 +13,7 @@ How to read the "where" column: *bundled* = its code or data is inside this repo
 
 | Component | Version | Licence | URL | Where |
 |---|---|---|---|---|
-| PySide6-Essentials / shiboken6 (Qt for Python), with the Qt 6 libraries | 6.12.0 | LGPL-3.0 (also offered under GPL-2.0 / GPL-3.0; OpenGenEdit uses it under the LGPL-3.0) | https://doc.qt.io/qtforpython-6/ | linked, in the exe |
+| PySide6-Essentials / shiboken6 (Qt for Python), with the Qt 6 libraries | 6.12.0 | LGPL-3.0 (also offered under GPL-2.0 / GPL-3.0; openDNA uses it under the LGPL-3.0) | https://doc.qt.io/qtforpython-6/ | linked, in the exe |
 | PyO3 | 0.23.5 | MIT or Apache-2.0 | https://github.com/pyo3/pyo3 | linked (Rust to Python glue) |
 | maturin | 1.15.0 (1.7 or newer, below 2) | MIT or Apache-2.0 | https://github.com/PyO3/maturin | build |
 | gb-io (patched copy) | 0.9.0 | MIT, Copyright (c) 2018 David Leslie | https://github.com/dlesl/gb-io | bundled in `core/vendor/gb-io/` (licence: `core/vendor/gb-io/LICENSE`) |
@@ -38,7 +38,7 @@ doi:10.1093/bioinformatics/btu829.
 ### gb-io (MIT), patched
 
 `core/vendor/gb-io` is a copy of gb-io 0.9.0 with a few changes of ours (the GenBank writer's line wrapping, an optional blank after `ORIGIN`
-so an empty record can be re-read, the gap letter `-`, and the end of a location). Every change is marked "OpenGenEdit patch" in the source.
+so an empty record can be re-read, the gap letter `-`, and the end of a location). Every change is marked "openDNA patch" in the source.
 The original MIT licence and copyright (c) 2018 David Leslie stay in `core/vendor/gb-io/LICENSE`. The patch is built in through
 `[patch.crates-io]` in `core/Cargo.toml`.
 
@@ -53,16 +53,16 @@ the third-party code inside Qt, such as FreeType, HarfBuzz, libpng, zlib and ICU
   their own copies in their `dist-info` folders when installed with pip.
 - Source code of Qt and PySide6 (we do not modify them): Qt https://download.qt.io/official_releases/qt/ ; Qt for Python
   https://code.qt.io/cgit/pyside/pyside-setup.git/ (tag `v6.12.0`) and https://pypi.org/project/PySide6-Essentials/#files (source and wheels).
-- Using a different Qt: the LGPL lets you replace the Qt libraries with your own build of Qt/PySide6 and run OpenGenEdit with them. Each release
-  has two Windows downloads. **`OpenGenEdit-folder.zip`** is the program as a folder: Qt is plain files in `_internal\PySide6` and
-  `_internal\shiboken6`, and the `README.txt` inside says how to swap them for another PySide6 version. `OpenGenEdit.exe` is a PyInstaller *one-file*
-  exe that packs those libraries inside itself, so you cannot swap a file in it; for that one, **rebuild OpenGenEdit from its source** (public,
+- Using a different Qt: the LGPL lets you replace the Qt libraries with your own build of Qt/PySide6 and run openDNA with them. Each release
+  has two Windows downloads. **`openDNA-folder.zip`** is the program as a folder: Qt is plain files in `_internal\PySide6` and
+  `_internal\shiboken6`, and the `README.txt` inside says how to swap them for another PySide6 version. `openDNA.exe` is a PyInstaller *one-file*
+  exe that packs those libraries inside itself, so you cannot swap a file in it; for that one, **rebuild openDNA from its source** (public,
   AGPL-3.0) against any PySide6 version you like: `pip install PySide6-Essentials==<version>` and follow the build steps in the README.
   Help > About shows the Qt version in use.
 
 ## Rust crates
 
-OpenGenEdit's core (`core/`) is Rust and uses the crates below (the full dependency tree for the Windows build, read from `cargo metadata`
+openDNA's core (`core/`) is Rust and uses the crates below (the full dependency tree for the Windows build, read from `cargo metadata`
 on `core/Cargo.lock`: 71 crates besides our own). Many are only used while compiling (procedural macros, build scripts) and are not in the
 final binary. MIT, Apache-2.0 and the like ask that copyright and licence notices are kept; each crate's repository (last column) holds its
 licence file and copyright line, and `cargo` stores them in `~/.cargo/registry` after a build. "A OR B" means the crate may be used under either.
@@ -151,7 +151,7 @@ licence file and copyright line, and `cargo` stores them in `~/.cargo/registry` 
   (promoters, origins, resistance genes) are, as far as we can tell, facts about biology; we have not reviewed each record's submitter terms or patents one by one.
 - **Restriction enzymes** (`app/enzymes.py`, 47 common enzymes): recognition sites and cut positions, which are facts about the enzymes. Not taken from
   REBASE or any supplier's catalogue.
-- **Gel ladders** (`app/tools.py`): "typical" band sets of common ladder types, written for OpenGenEdit; not any manufacturer's exact list.
+- **Gel ladders** (`app/tools.py`): "typical" band sets of common ladder types, written for openDNA; not any manufacturer's exact list.
 - **Golden Gate overhangs** (`app/overhangs.py`): the 25 high-fidelity overhangs and the junction sets of the 12- and 24-fragment cassettes from
   Potapov et al., ACS Synth Biol 7, 2665-2674 (2018), doi:10.1021/acssynbio.8b00333 (supplementary tables). Facts published in a paper, cited in Help > Citations.
 - **Demo files** (`demo/demo_*.gb`): random sequences generated by `scripts/make_demo_files.py`. They are not real parts.
@@ -166,7 +166,7 @@ licence file and copyright line, and `cargo` stores them in `~/.cargo/registry` 
 ## Names
 
 SnapGene, BLAST, AlphaFold, ESMFold, Addgene, NEB, Qt, GitHub, Windows and other names in this repository are trademarks of their owners and are used only
-to say what a file format, a method or a service is. OpenGenEdit is an independent project: it is not affiliated with, endorsed by or sponsored by any of them.
+to say what a file format, a method or a service is. openDNA is an independent project: it is not affiliated with, endorsed by or sponsored by any of them.
 
-The project's own names, "OpenGenEdit" and "oDNA", and its wordmark and icon: how they may be used, and why a modified version
+The project's own names, "openDNA" and "oDNA", and its wordmark and icon: how they may be used, and why a modified version
 takes another name, is in [TRADEMARKS.md](TRADEMARKS.md).

@@ -204,7 +204,7 @@ class NcbiDialog(QDialog):
         self._fetch(self._open_record)
 
     def _open_record(self, record, path):
-        from genomeedit_core import Document
+        from opendna_core import Document
         if record.db == "protein":
             name, protein = ncbi.protein_of(path)
             self.opened = StructureDialog(self.window, record.title.split(";")[0][:60] or name, protein, record.uniprot)
@@ -408,7 +408,7 @@ class GenomeDialog(QDialog):
                 _relay.progress.emit(token, got)
             fasta, gff, cached = ncbi.download_genome(a, key, progress)
             if index:   # index every sequence here, on the worker thread (a big genome takes a while)
-                from genomeedit_core import Fasta
+                from opendna_core import Fasta
                 Fasta(str(fasta))
             return "downloaded", (then, a, fasta, gff, cached)
         self._run(work, f"Downloading {a.accession}…", cancellable=True)

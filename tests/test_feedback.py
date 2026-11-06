@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 import feedback
@@ -26,7 +26,7 @@ SECRET_PATH = r"C:\Users\bobsmith\Documents\Lab Notes\my_secret_plasmid.gb"
 
 @pytest.fixture(autouse=True)
 def private_data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("GENOMEEDIT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("OPENDNA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("USERNAME", "bobsmith")
     monkeypatch.setenv("USER", "bobsmith")
     monkeypatch.setattr("getpass.getuser", lambda: "bobsmith")
@@ -88,7 +88,7 @@ def test_scrub_private_text():
     """scrub: username and home path, quoted paths with spaces and UNC, traceback frames keep only the file name, file names and
     sequences, ordinary text and URLs left alone, idempotent."""
     # --- username and home path
-    out = feedback.scrub(r'Cannot write C:\Users\bobsmith\AppData\Roaming\OpenGenEdit\x.tsv for bobsmith')
+    out = feedback.scrub(r'Cannot write C:\Users\bobsmith\AppData\Roaming\openDNA\x.tsv for bobsmith')
     assert "bobsmith" not in out and "Users" not in out and "AppData" not in out
     assert "/home/bobsmith/data" not in feedback.scrub("failed: /home/bobsmith/data/run1")
     assert "bobsmith" not in feedback.scrub("failed: /home/bobsmith/data/run1")
@@ -111,7 +111,7 @@ def test_scrub_private_text():
     assert "acgt" not in feedback.scrub("1 acgtacgtac gtacgtacgt acgtacgtac gt")
 
     # --- ordinary text and URLs are left alone
-    text = "Unhandled exception in main thread: initialization configuration failed (see https://github.com/Ant-Champ/GenomeEdit/issues)"
+    text = "Unhandled exception in main thread: initialization configuration failed (see https://github.com/OpenDNA-project/openDNA/issues)"
     assert feedback.scrub(text) == text
     assert feedback.scrub("") == "" and feedback.scrub(None) == ""
 
@@ -172,22 +172,22 @@ def test_report_url_from_the_log():
     """Without details the link carries the last 30 log lines; sequences, paths and names never reach any link."""
     # --- log lines used when there are no details
     with active():
-        logging.getLogger("genomeedit.test").warning("marker line %d", 42)
+        logging.getLogger("opendna.test").warning("marker line %d", 42)
         q = query(feedback.report_url("bug"))
     assert "marker line 42" in q["logs"][0]
-    assert "Start: OpenGenEdit" in q["logs"][0]
+    assert "Start: openDNA" in q["logs"][0]
 
     # --- only the last thirty log lines
     with active():
         for i in range(100):
-            logging.getLogger("genomeedit.test").warning("entry-%03d", i)
+            logging.getLogger("opendna.test").warning("entry-%03d", i)
         logs = query(feedback.report_url("bug"))["logs"][0]
     assert "entry-099" in logs and "entry-069" not in logs and "entry-070" in logs
 
     # --- never any sequences, paths or names
     details = f"Traceback...\nFileNotFoundError: {SECRET_PATH}\nValueError: bad base in {DNA} ({SECRET_PATH!r})"
     with active():
-        logging.getLogger("genomeedit.test").error("opened %s with %s as bobsmith", SECRET_PATH, DNA)
+        logging.getLogger("opendna.test").error("opened %s with %s as bobsmith", SECRET_PATH, DNA)
         for url in (feedback.report_url("bug", f"cannot open {SECRET_PATH}", details), feedback.report_url("bug"),
                     feedback.feature_url(f"want {DNA} from my_secret_plasmid.gb")):
             decoded = " ".join(sum(query(url).values(), []))
@@ -203,12 +203,12 @@ def test_log_file(private_data_dir, monkeypatch):
     # --- a scrubbed file in the data folder
     with active() as calls:
         path = feedback.log_path()
-        assert path == private_data_dir / "logs" / "genomeedit.log"
-        logging.getLogger("genomeedit.test").info("hello from the test, file %s", SECRET_PATH)
+        assert path == private_data_dir / "logs" / "opendna.log"
+        logging.getLogger("opendna.test").info("hello from the test, file %s", SECRET_PATH)
         feedback.teardown_logging()                     # closes (flushes) the file
         text = path.read_text(encoding="utf-8")
     assert f"Start: {project.NAME} {project.VERSION}" in text and "Python" in text and "Qt" in text
-    assert "hello from the test" in text and "INFO" in text and "genomeedit.test" in text
+    assert "hello from the test" in text and "INFO" in text and "opendna.test" in text
     assert "bobsmith" not in text and "secret" not in text
     assert calls["dialog"] == []
 
@@ -217,7 +217,7 @@ def test_log_file(private_data_dir, monkeypatch):
     with active():
         qWarning("QWidget: something odd happened in plasmid.gb")
         feedback.teardown_logging()
-    text = (private_data_dir / "logs" / "genomeedit.log").read_text(encoding="utf-8")
+    text = (private_data_dir / "logs" / "opendna.log").read_text(encoding="utf-8")
     assert "WARNING" in text and "qt:" in text and "something odd happened" in text and "plasmid.gb" not in text
 
     # --- setting up twice does not stack handlers
@@ -233,19 +233,19 @@ def test_log_file(private_data_dir, monkeypatch):
         small.setattr(feedback, "LOG_MAX_BYTES", 2000)
         with active():
             for i in range(400):
-                logging.getLogger("genomeedit.test").info("filler line %04d %s", i, "y" * 40)
+                logging.getLogger("opendna.test").info("filler line %04d %s", i, "y" * 40)
     names = sorted(p.name for p in (private_data_dir / "logs").iterdir())
-    assert names == ["genomeedit.log", "genomeedit.log.1", "genomeedit.log.2"]
+    assert names == ["opendna.log", "opendna.log.1", "opendna.log.2"]
     assert all(p.stat().st_size <= 2000 + 200 for p in (private_data_dir / "logs").iterdir())
 
     # --- diagnostics text and copy
     with active() as calls:
-        logging.getLogger("genomeedit.test").info("a log line")
+        logging.getLogger("opendna.test").info("a log line")
         text = feedback.copy_diagnostics(clipboard=type("C", (), {"setText": lambda self, t: calls["copied"].append(t)})())
     assert text == calls["copied"][0]
     assert f"{project.NAME} {project.VERSION}" in text and "OS:" in text and "a log line" in text
     assert "bobsmith" not in text
-    monkeypatch.setenv("GENOMEEDIT_DATA_DIR", str(private_data_dir / "fresh"))
+    monkeypatch.setenv("OPENDNA_DATA_DIR", str(private_data_dir / "fresh"))
     assert "(the log is empty)" in feedback.diagnostics_text()   # no log file yet in a fresh data folder
 
 
@@ -265,7 +265,7 @@ def test_excepthook_dialog_and_buttons(private_data_dir):
         sys.excepthook(*raised(boom, "other message"))  # same type and place, other text: still the same error
         assert len(calls["dialog"]) == 2
         feedback.teardown_logging()
-    text = (private_data_dir / "logs" / "genomeedit.log").read_text(encoding="utf-8")
+    text = (private_data_dir / "logs" / "opendna.log").read_text(encoding="utf-8")
     assert text.count("Unhandled exception") == 5       # every occurrence is logged, only the dialog is once
     assert "Traceback (most recent call last)" in text and "ValueError: x" in text and "KeyError" in text
 

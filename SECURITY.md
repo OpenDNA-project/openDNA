@@ -5,15 +5,15 @@
 Please report security problems **privately**, not in a public issue.
 
 1. Preferred: use GitHub's private vulnerability reporting. On the repository page open **Security > Report a vulnerability**
-   (https://github.com/Ant-Champ/GenomeEdit/security/advisories/new). Only the maintainer sees it.
+   (https://github.com/OpenDNA-project/openDNA/security/advisories/new). Only the maintainer sees it.
 2. Or write to `<project email>`. Do not send sequence files you cannot share; describe how to reproduce instead.
 
-Please include: the OpenGenEdit version (Help > About), what you did, what happened, and, if you can, a small file that triggers it.
+Please include: the openDNA version (Help > About), what you did, what happened, and, if you can, a small file that triggers it.
 This is a one-person, spare-time project: expect an acknowledgement within about a week and a fix or a clear answer as soon as it can be done. Please
 give a reasonable time to fix a problem before you publish it; you will be credited in the release notes if you wish.
 
 Examples of what is in scope: a crafted GenBank, FASTA, `.dna`, GFF / BED / VCF or BAM file that crashes the program or makes it run code or read
-files it should not; the 3D structure page or the NCBI import doing something unsafe with data from a server; OpenGenEdit sending data you did not
+files it should not; the 3D structure page or the NCBI import doing something unsafe with data from a server; openDNA sending data you did not
 expect (see [PRIVACY.md](PRIVACY.md)). Ordinary bugs (wrong result, crash with a normal file) are not vulnerabilities: use the issue templates.
 
 ## Supported versions
@@ -40,7 +40,7 @@ This is an early test version (0.1.x). Only the **latest release** is supported;
 The `oDNA_beta.exe` in the Releases is **unsigned** (a certificate costs money and is not in place for this test version), so Windows SmartScreen shows
 "Windows protected your PC" the first time. That warning is expected. To make sure the file is the one that was published:
 
-1. Download it only from https://github.com/Ant-Champ/GenomeEdit/releases (nowhere else; if you paid for it, you were scammed).
+1. Download it only from https://github.com/OpenDNA-project/openDNA/releases (nowhere else; if you paid for it, you were scammed).
 2. Each release lists a **SHA-256** checksum in its notes (and, when attached, in a `SHA256SUMS` file) for the file you download.
 3. Compute the checksum of your download and compare it, letter for letter:
 

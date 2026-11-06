@@ -1,4 +1,4 @@
-# OpenGenEdit — Development Plan
+# openDNA — Development Plan
 
 A local, offline editor for plasmid / construct work and large-genome browsing (plasmid editors and genome browsers cover similar ground).
 Opens and edits `.gb/.gbk` and `.fa/.fasta` (+ `.fai`), opens `.dna` files read-only (saved as GenBank), with first-class annotations and primers.
@@ -15,7 +15,7 @@ Opens and edits `.gb/.gbk` and `.fa/.fasta` (+ `.fai`), opens `.dna` files read-
 │  linear view · circular map · track browser · tables     │
 │  dialogs · primer design · undo/redo UI · plugins        │
 └───────────────▲──────────────────────────────────────────┘
-                │  PyO3 bindings (maturin wheel: genomeedit_core)
+                │  PyO3 bindings (maturin wheel: opendna_core)
 ┌───────────────┴──────────────────────────────────────────┐
 │  CORE (Rust, UI-agnostic)                                │
 │  I/O: GenBank · .dna · FASTA/.fai · bgzip · GFF │
@@ -178,7 +178,7 @@ Rendering rule: each view asks the core for its visible window only; repaint on 
 - BAM/VCF tracks (coverage + reads at high zoom, variants).
 - Pairwise alignment of a sequence/read to the construct (Rust `bio` crate / parasail), `.ab1` trace view.
 - Export: SVG/PNG/PDF of maps, FASTA/GenBank of selection.
-- ✅ **Done** (part 1, IGV extras): BAM alignments in the genome view (Rust, `noodles`): a coverage row (exact under 30 kb; wider windows from per-128-bp block totals computed once per sequence in a background thread) and, under 30 kb (IGV's visibility window), reads packed in 20 rows, coloured by strand, MAPQ 0 faint, mismatches as coloured bases, insertions as purple bars, deletions as a thin line; click a read for its name/position/MAPQ. Unmapped, duplicate and QC-failed reads are ignored. A BAM without `.bai` is indexed on open (if coordinate-sorted). VCF (plain or bgzipped) loads as a variant track (`ID REF>ALT`). External mappers (§6b): `app/tools.toml` recipes (bwa mem, minimap2 short/ONT/HiFi), run in WSL on Windows with a live log and Cancel (stops the WSL processes too), one run folder with reference, commands and log; the BAM opens as a track when done. Tools → Install Mapping Tools creates a `genomeedit-tools` conda env (bioconda) in WSL; Tools → Check Mapping Tools lists what is found.
+- ✅ **Done** (part 1, IGV extras): BAM alignments in the genome view (Rust, `noodles`): a coverage row (exact under 30 kb; wider windows from per-128-bp block totals computed once per sequence in a background thread) and, under 30 kb (IGV's visibility window), reads packed in 20 rows, coloured by strand, MAPQ 0 faint, mismatches as coloured bases, insertions as purple bars, deletions as a thin line; click a read for its name/position/MAPQ. Unmapped, duplicate and QC-failed reads are ignored. A BAM without `.bai` is indexed on open (if coordinate-sorted). VCF (plain or bgzipped) loads as a variant track (`ID REF>ALT`). External mappers (§6b): `app/tools.toml` recipes (bwa mem, minimap2 short/ONT/HiFi), run in WSL on Windows with a live log and Cancel (stops the WSL processes too), one run folder with reference, commands and log; the BAM opens as a track when done. Tools → Install Mapping Tools creates a `opendna-tools` conda env (bioconda) in WSL; Tools → Check Mapping Tools lists what is found.
 - ✅ **Done** (part 2): copy-paste keeps annotations across windows/app instances (system clipboard); workspace tabs (any view or tool in any split pane, layout saved); gene groups (gene feature + parts sharing `/locus_tag`, collapsible in the feature table, one arrow on the map); Detect Common Features (Rust k-mer + protein matcher, NCBI-built `app/parts.tsv` + user library); Tools → Settings (per-tool parameters). Rust for IGV-style reads: pairing info per read, `Bam.pileup`, `Bam.variants` (SNP/indel scan).
 - ✅ **Done** (part 3, IGV styling): reads coloured by pair orientation and insert size (IGV rules: grey normal, red larger / blue smaller than expected, teal LL, indigo RR, green RL, orange mate on another sequence, purple outline mate unmapped; limits = 0.5–99.5th percentile of proper pairs in view, or fixed), or by strand. Coverage split by base where reads disagree above the variant threshold; consensus changes (SNP, deletion, insertion) from a background scan flagged with red marks at any zoom. Variants pane: list, go to, apply ticked changes to the sequence (e.g. correct a plasmid map after whole-plasmid sequencing). Alignments settings: colour mode, insert limits, reads window, variant 20 % / consensus 80 %, min depth, base and mapping quality. Fixed: mate reads were never passed to paired-end mappers.
   Left for IGV extras: coloured coverage bars at variant positions (allele counts), downsampling, paired-read/insert-size colouring, CRAM, read sorting/grouping, tracks that follow edits.
@@ -194,7 +194,7 @@ Rough total to a strong daily-driver (Phases 0–4): **~3–4 months** solo part
 
 ## 6b. External command-line tools (bwa, samtools, minimap2, …), planned for Phase 5
 
-**Principle:** don't re-implement aligners. OpenGenEdit *runs* them as separate processes and *reads their outputs* (BAM/VCF/BED) with the Rust core, exactly like a shell pipeline.
+**Principle:** don't re-implement aligners. openDNA *runs* them as separate processes and *reads their outputs* (BAM/VCF/BED) with the Rust core, exactly like a shell pipeline.
 
 ```
 GUI "Align reads…" dialog
@@ -228,7 +228,7 @@ output files ──► Rust core opens out.bam (noodles) ──► new track in 
 ## 7. Repository layout
 
 ```
-OpenGenEdit/
+openDNA/
 ├─ core/                    # Rust crate (cdylib + rlib)
 │  ├─ src/io/{fasta,genbank,dna_file,gff}.rs
 │  ├─ src/model/{document,feature,location}.rs
@@ -237,7 +237,7 @@ OpenGenEdit/
 │  ├─ src/bio/{translate,tm,enzymes,search,orf}.rs
 │  ├─ src/py.rs             # PyO3 bindings only
 │  └─ benches/
-├─ app/                     # Python package: genomeedit
+├─ app/                     # Python package: opendna
 │  ├─ main.py
 │  ├─ views/{sequence_view,map_view,genome_view}.py
 │  ├─ panels/{features,primers,enzymes,history}.py

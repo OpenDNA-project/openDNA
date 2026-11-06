@@ -7,7 +7,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 # Keep the tests' primer database away from the real one.
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
@@ -20,7 +20,7 @@ from PySide6.QtGui import QColor
 
 from editor import feature_bounds, reverse_complement, text_color_on
 from feature_dialog import FeatureDialog
-from genomeedit_core import Document, Fasta
+from opendna_core import Document, Fasta
 from main import MainWindow, autosave_path
 from primer_db import db
 from primer_design import DesignDialog
@@ -1222,7 +1222,7 @@ def test_start_page_sponsors_and_updates(app, errors, monkeypatch, tmp_path):
     dialog = sponsors.SponsorsDialog()
     assert dialog.cards == [], "no sponsors: no empty 'Your ad here' boxes"
     welcome = " ".join(w.text() for w in dialog.findChildren(QLabel))
-    assert "Antoine Champie" in welcome and "official download" in welcome and "github.com/Ant-Champ/GenomeEdit" in welcome
+    assert "Antoine Champie" in welcome and "official download" in welcome and "github.com/OpenDNA-project/openDNA" in welcome
     assert sponsors.due()
     page = sponsors.show_at_startup(None)
     page.accept()
@@ -1331,8 +1331,8 @@ def test_start_page_sponsors_and_updates(app, errors, monkeypatch, tmp_path):
         assert any(isinstance(w, QLabel) and w.text() == "SPONSORED" and not w.isHidden() for w in dialog.findChildren(QLabel))
         m.setattr(project, "CONTACT_EMAIL", "")
         assert "mailto" not in sponsors.welcome_html(), "no address set: none is shown"
-        m.setattr(project, "CONTACT_EMAIL", "genomeedit@example.org")
-        assert "mailto:genomeedit@example.org" in sponsors.welcome_html()
+        m.setattr(project, "CONTACT_EMAIL", "opendna@example.org")
+        assert "mailto:opendna@example.org" in sponsors.welcome_html()
 
 
 def test_gene_groups_and_detect_common_features(app, errors, tmp_path):

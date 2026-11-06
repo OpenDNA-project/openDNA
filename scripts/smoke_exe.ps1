@@ -3,7 +3,7 @@ Smoke test of the built exe: start it the way a user would (with a file on the c
 it shows its window with the file loaded, stays alive, shows no error dialog, bundles its data files and loads nothing from the
 build machine.
 
-  powershell -File scripts/smoke_exe.ps1 [-Exe dist\OpenGenEdit.exe] [-File demo\demo_vector.gb] [-Seconds 5]
+  powershell -File scripts/smoke_exe.ps1 [-Exe dist\openDNA.exe] [-File demo\demo_vector.gb] [-Seconds 5]
 
 Exit code 0 = passed. It is what scripts/build_exe.ps1 runs after the build (and so what the release workflow runs).
 A one-file exe starts TWO processes (a small launcher that unpacks the bundle into %TEMP%\_MEIxxxx, and the program itself), so the
@@ -11,7 +11,7 @@ checks look at both. A windowed exe has no console, so a crash cannot be read fr
 error dialog (PyInstaller's "Unhandled exception" box), and both are checked.
 #>
 param(
-    [string]$Exe = "dist\OpenGenEdit.exe",
+    [string]$Exe = "dist\openDNA.exe",
     [string]$File = "demo\demo_vector.gb",
     [int]$Seconds = 5
 )
@@ -21,7 +21,7 @@ $Exe = (Resolve-Path $Exe).Path
 $File = (Resolve-Path $File).Path
 $procName = [IO.Path]::GetFileNameWithoutExtension($Exe)
 
-# What must be inside the bundle (the same list as DATA in packaging/OpenGenEdit.spec).
+# What must be inside the bundle (the same list as DATA in packaging/openDNA.spec).
 $expected = @("parts\ncbi_vectors.tsv", "parts\engineering_proteins.tsv", "tools.toml", "sponsors.json", "vendor\3Dmol-min.js", "vendor\3Dmol.LICENSE", "LICENSE", "logo\icon_256.png", "logo\wordmark.png", "logo\wordmark_dark.png")
 if (Test-Path THIRD_PARTY_NOTICES.md) { $expected += "THIRD_PARTY_NOTICES.md" }   # bundled by the spec when it exists
 if (Test-Path TRADEMARKS.md) { $expected += "TRADEMARKS.md" }
@@ -68,10 +68,10 @@ function Ok($msg) { Write-Host "  ok:   $msg" }
 $work = Join-Path ([IO.Path]::GetTempPath()) ("ge-smoke-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 New-Item -ItemType Directory -Path $work | Out-Null
 $savedPath = $env:PATH
-$savedData = $env:GENOMEEDIT_DATA_DIR
+$savedData = $env:OPENDNA_DATA_DIR
 $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
 Remove-Item Env:PYTHONPATH, Env:PYTHONHOME, Env:VIRTUAL_ENV, Env:CONDA_PREFIX -ErrorAction SilentlyContinue
-$env:GENOMEEDIT_DATA_DIR = Join-Path $work "data"
+$env:OPENDNA_DATA_DIR = Join-Path $work "data"
 
 Write-Host "Smoke test: $Exe"
 Write-Host "  opening $File, running from $work"
@@ -81,7 +81,7 @@ try {
     $fileName = [IO.Path]::GetFileName($File)
     $title = $null
     $deadline = (Get-Date).AddSeconds(60)
-    # Wait for the main window to show the file's name (the title reads "file.gb (N bp) - OpenGenEdit").
+    # Wait for the main window to show the file's name (the title reads "file.gb (N bp) - openDNA").
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 500
         if ($launcher.HasExited) { break }
@@ -136,16 +136,16 @@ try {
             if ((Test-Path (Join-Path (Split-Path $Exe -Parent) "_internal")) -and -not (Test-Path (Join-Path $mei "PySide6\Qt6Core.dll"))) {
                 Fail "folder build: _internal\PySide6\Qt6Core.dll is not a plain file"
             }
-            if (-not (Get-ChildItem $mei -Recurse -Filter "genomeedit_core*.pyd" -ErrorAction SilentlyContinue)) {
-                Fail "genomeedit_core*.pyd is not in the bundle"
-            } else { Ok "Rust module genomeedit_core is in the bundle" }
+            if (-not (Get-ChildItem $mei -Recurse -Filter "opendna_core*.pyd" -ErrorAction SilentlyContinue)) {
+                Fail "opendna_core*.pyd is not in the bundle"
+            } else { Ok "Rust module opendna_core is in the bundle" }
             if ($stray.Count) { Fail "loads DLLs from a developer tool outside the bundle: $($stray -join '; ')" } else { Ok "no DLL loaded from Python, conda, Rust or MSYS" }
             if ($injected.Count) { Write-Host "  note: other software injected DLLs into the window (ignored): $(($injected | Split-Path -Leaf) -join ', ')" }
         }
     }
 } finally {
     $env:PATH = $savedPath
-    if ($savedData) { $env:GENOMEEDIT_DATA_DIR = $savedData } else { Remove-Item Env:GENOMEEDIT_DATA_DIR -ErrorAction SilentlyContinue }
+    if ($savedData) { $env:OPENDNA_DATA_DIR = $savedData } else { Remove-Item Env:OPENDNA_DATA_DIR -ErrorAction SilentlyContinue }
     if ($launcher -and -not $launcher.HasExited) { & taskkill /PID $launcher.Id /T /F | Out-Null }
     Get-Process -Name $procName -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe } | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 800

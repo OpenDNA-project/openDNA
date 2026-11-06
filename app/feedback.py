@@ -1,7 +1,7 @@
 """Testing feedback: a log file, a friendly "report it?" dialog for unexpected errors, and prefilled GitHub issue links.
 
 What this module does (Help menu items map to the functions in brackets):
-  * setup_logging()      a rotating log file <data folder>/logs/genomeedit.log (3 files x 500 KB), a start-up line with the
+  * setup_logging()      a rotating log file <data folder>/logs/opendna.log (3 files x 500 KB), a start-up line with the
                          versions, Qt warnings copied into it, and hooks so an error nobody caught is logged and shown once in
                          a small dialog (Report on GitHub / Copy details / Close) instead of killing the program.
   * open_report("bug")   Help > Report a Problem...   opens GitHub's new-issue form, already filled with versions and log lines.
@@ -33,14 +33,14 @@ from PySide6.QtCore import QtMsgType
 import project
 from primer_db import data_dir
 
-LOG_NAME = "genomeedit.log"
+LOG_NAME = "opendna.log"
 LOG_MAX_BYTES = 500 * 1024      # one file; with 2 older copies kept that is 3 x 500 KB at most
 LOG_BACKUPS = 2
 LOG_TAIL_LINES = 30             # lines of the log put into a report
 URL_CAP = 7000                  # GitHub refuses very long addresses (about 8 KB); stay well below
 SUMMARY_MAX = 120
 
-log = logging.getLogger("genomeedit")
+log = logging.getLogger("opendna")
 
 
 # --------------------------------------------------------------------------------------------------- scrubbing
@@ -342,7 +342,7 @@ def _threading_hook(args):
 
 
 def setup_logging(hooks=True, qt_handler=True, show_dialog=None, opener=None, clipboard=None, level=logging.INFO):
-    """Start logging to <data folder>/logs/genomeedit.log and (optionally) install the error hooks. Call once, right after the
+    """Start logging to <data folder>/logs/opendna.log and (optionally) install the error hooks. Call once, right after the
     QApplication is created. `show_dialog(summary, details)`, `opener(url)` and `clipboard` replace the real dialog, browser and clipboard (tests).
     Calling it again first undoes the previous call. Returns the log file path."""
     teardown_logging()

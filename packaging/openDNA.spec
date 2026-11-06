@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller recipe for dist/OpenGenEdit.exe (one file, no console window) and, with GENOMEEDIT_BUILD=folder, dist/OpenGenEdit-folder/.
+"""PyInstaller recipe for dist/openDNA.exe (one file, no console window) and, with OPENDNA_BUILD=folder, dist/openDNA-folder/.
 
 Build it with  powershell scripts/build_exe.ps1  (that script checks the setup and smoke-tests the result).
-By hand, from the repository root:  python -m PyInstaller --noconfirm --clean --workpath build/pyinstaller --distpath dist packaging/OpenGenEdit.spec
+By hand, from the repository root:  python -m PyInstaller --noconfirm --clean --workpath build/pyinstaller --distpath dist packaging/openDNA.spec
 
 Why a committed spec: the data files the program reads at run time are listed here, so the bundle never depends on what happened
 to be lying around. The program finds them with Path(__file__).with_name(...) (flat modules in the bundle root), so each file is
@@ -47,7 +47,7 @@ for name in ("THIRD_PARTY_NOTICES.md", "TRADEMARKS.md"):   # (Help > About names
         DATA.append((ROOT / name, "."))
 missing = [str(src) for src, _ in DATA if not src.exists()]
 if missing:
-    raise SystemExit("OpenGenEdit.spec: missing data file(s): " + ", ".join(missing))
+    raise SystemExit("openDNA.spec: missing data file(s): " + ", ".join(missing))
 datas = [(str(src), dest) for src, dest in DATA]
 
 # Windows "Details" tab of the exe: file version 0.1.0.0 from VERSION "0.1.0".
@@ -86,10 +86,10 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-# Two layouts from this one recipe. Default: one file, dist/OpenGenEdit.exe. GENOMEEDIT_BUILD=folder: dist/OpenGenEdit-folder/ (the exe
+# Two layouts from this one recipe. Default: one file, dist/openDNA.exe. OPENDNA_BUILD=folder: dist/openDNA-folder/ (the exe
 # plus an _internal folder where the Qt DLLs are plain files). The folder exists so that a user can replace Qt, which the LGPL asks
 # for and a one-file exe cannot offer (docs/PUBLISHING.md, "Qt (LGPL)"). scripts/build_exe.ps1 runs PyInstaller once for each.
-FOLDER = os.environ.get("GENOMEEDIT_BUILD") == "folder"
+FOLDER = os.environ.get("OPENDNA_BUILD") == "folder"
 
 exe = EXE(
     pyz,
@@ -99,7 +99,7 @@ exe = EXE(
     [],
     exclude_binaries=FOLDER,
     name=project.NAME,
-    icon=str(ROOT / "packaging" / "OpenGenEdit.ico"),
+    icon=str(ROOT / "packaging" / "openDNA.ico"),
     version=version_info,
     debug=False,
     bootloader_ignore_signals=False,

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from PySide6.QtGui import QColor
 
-from genomeedit_core import Document, find_primers
+from opendna_core import Document, find_primers
 
 import overhangs as OH
 from editor import MAX_SITES, reverse_complement as rc, site_location

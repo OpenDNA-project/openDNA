@@ -1,4 +1,4 @@
-"""OpenGenEdit main window: one file per window, shown in tabs of split panes where any
+"""openDNA main window: one file per window, shown in tabs of split panes where any
 view or tool can go (see workspace.py).
 
 Run:  python app/main.py [file.gb | file.dna | genome.fa]
@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QDialog, QVBoxLayout, QWidget,
 )
 
-from genomeedit_core import Bam, Document, Fasta, Track
+from opendna_core import Bam, Document, Fasta, Track
 
 from display_panel import DisplayPanel
 from history_panel import HistoryPanel
@@ -27,7 +27,7 @@ from feature_dialog import edit_feature
 from feature_table import FeatureTable, delete_feature, features_inside, group_as_gene
 from map_view import MapView
 from editor import primer_sequence
-from primer_db import data_dir, db
+from primer_db import copy_old_data, data_dir, db
 from perf import PerfWindow
 from primer_panel import OptionsDialog, PrimerDialog, PrimerPanel, annealed, melting_temp
 from assembly_panel import AssemblyPanel
@@ -1710,7 +1710,8 @@ if __name__ == "__main__":
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(project.NAME)
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())
-    app.setApplicationName(project.NAME)   # the data folder is then %APPDATA%\OpenGenEdit whether run from source or as the exe
+    app.setApplicationName(project.NAME)   # the data folder is then %APPDATA%\openDNA whether run from source or as the exe
+    copy_old_data()   # settings and primers kept under the old name come along, before anything reads the data folder
     feedback.setup_logging()
     theme.apply(theme.saved(), remember=False)
     win = MainWindow()

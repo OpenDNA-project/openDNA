@@ -122,5 +122,5 @@ Transcription-unit features carry geometry on both strands and across the origin
 | 2 | reverse unit Prev (no terminator, circular) | not stopped (runs on round the circle); tss at Prev's left end; thin over promoter, thick sums to length-len(PROMOTER); 2 spans |
 | 3 | plain gfp mRNA feature | units.geometry None and units.tu_of None |
 | 4 | DisplayPanel on circle and line; SequenceView and MapView render | 'mRNA' not in panel.kinds; render raises nothing; 2 TUs in ed.shown |
-| 5 | panel.units unchecked; set_display(hidden_kinds={'mRNA'}, units=True) | no TU drawn; project meta display.units False; hiding mRNA type still leaves 2 TUs shown; gff3 lacks 'OpenGenEdit_tu' |
+| 5 | panel.units unchecked; set_display(hidden_kinds={'mRNA'}, units=True) | no TU drawn; project meta display.units False; hiding mRNA type still leaves 2 TUs shown; gff3 lacks 'OpenDNA_tu' |
 | 6 | icons.filter_icon / history_icon 32x32 | at most 2 opaque colours (one flat colour, antialias aside) |

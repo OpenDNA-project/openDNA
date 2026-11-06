@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["GENOMEEDIT_DATA_DIR"] = tempfile.mkdtemp(prefix="genomeedit_test_")
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 from PySide6.QtWidgets import QApplication
@@ -15,7 +15,7 @@ import tool_settings
 import view_help
 import workspace
 from test_cas9 import close, dna, open_doc
-from genomeedit_core import Document
+from opendna_core import Document
 
 app = QApplication.instance() or QApplication([])
 

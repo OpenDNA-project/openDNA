@@ -21,8 +21,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from cut_sites import CAS9_KEY
-from units import TU_KEY
+from cut_sites import CAS9_KEYS
+from units import TU_KEYS
 from editor import COLOR_KEYS
 import genetic_code
 from sequence_view import cds_codons
@@ -54,10 +54,10 @@ def gff3_text(editor):
     for f in editor.features:
         attrs = [f"ID=f{f.index}", f"Name={_gff_escape(f.label)}"]
         attrs += [f"{_gff_escape(k)}={_gff_escape(v)}" for k, v in f.qualifiers
-                  if v is not None and k not in COLOR_KEYS and k not in ("label", "translation", CAS9_KEY, TU_KEY)]
+                  if v is not None and k not in COLOR_KEYS and k not in ("label", "translation", *CAS9_KEYS, *TU_KEYS)]
         strand = "+" if f.strand > 0 else "-" if f.strand < 0 else "."
         for s, e in f.spans:
-            lines.append("\t".join([sid, "OpenGenEdit", f.kind, str(s + 1), str(e), ".", strand, ".", ";".join(attrs)]))
+            lines.append("\t".join([sid, "openDNA", f.kind, str(s + 1), str(e), ".", strand, ".", ";".join(attrs)]))
     return "\n".join(lines) + "\n"
 
 
@@ -72,7 +72,7 @@ def bed_text(editor):
     return "\n".join(out) + ("\n" if out else "")
 
 
-TBL_SKIP = set(COLOR_KEYS) | {"label", "translation", CAS9_KEY, TU_KEY}   # program-specific, or computed by table2asn
+TBL_SKIP = set(COLOR_KEYS) | {"label", "translation", *CAS9_KEYS, *TU_KEYS}   # program-specific, or computed by table2asn
 
 
 def tbl_text(editor):
@@ -187,7 +187,7 @@ def read_project(path, folder):
 
 def open_project(path):
     """(Document, metadata) of project `path` (the GenBank part is read from a temporary folder)."""
-    from genomeedit_core import Document
+    from opendna_core import Document
     with tempfile.TemporaryDirectory() as tmp:
         gb, meta = read_project(path, tmp)
         return Document(str(gb)), meta

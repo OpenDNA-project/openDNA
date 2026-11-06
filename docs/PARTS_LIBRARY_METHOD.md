@@ -373,6 +373,6 @@ Established while choosing sources; worth not re-deriving.
 | **Addgene** | Developer API needs an approved token and an accepted data licence (~5 business days) |
 | **NCBI free-text search** | **Does not work for curation.** "plasmid RP4 complete sequence" returns the *Streptomyces coelicolor* genome; "transposon Tn7" returns an *E. coli* chromosome. Use accessions you have verified, never a name search |
 
-The licence constraint that governs all of this: **OpenGenEdit is AGPL-3.0**, so any bundled data
+The licence constraint that governs all of this: **openDNA is AGPL-3.0**, so any bundled data
 must permit commercial use and redistribution. That rules out NC and non-commercial-research
 licences no matter how good the data is.

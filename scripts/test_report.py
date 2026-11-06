@@ -154,7 +154,7 @@ def write(tests, described, results):
     strengths = " · ".join(f"{STRENGTH.get(k[9:], k[9:])}: {v}" for k, v in sorted(totals.items()) if k.startswith("strength:"))
     readme = [
         "# Unit-test report", "",
-        "What every automated test of OpenGenEdit feeds in, what it expects to come out, what the answer is checked against, and",
+        "What every automated test of openDNA feeds in, what it expects to come out, what the answer is checked against, and",
         "how much a pass is worth. Written so that a user can check, test by test, that the tests check relevant things and check",
         "them well. **The findings of the audit (what was wrong, what was fixed, what is still not tested) are in [AUDIT.md](AUDIT.md).**", "",
         "## How to read a test entry", "",
@@ -267,7 +267,7 @@ def main():
     parser.add_argument("--cargo", help="saved output of `cargo test`")
     parser.add_argument("--html", default=str(OUT / "report.html"), help="where to write the HTML page (default: docs/test-report/report.html)")
     parser.add_argument("--bare", action="store_true", help="HTML without <!doctype>/<head>/<body>, for hosts that add them")
-    parser.add_argument("--repo", default="https://github.com/Ant-Champ/GenomeEdit", help="repository URL for the source links")
+    parser.add_argument("--repo", default="https://github.com/OpenDNA-project/openDNA", help="repository URL for the source links")
     args = parser.parse_args()
     described = {t["id"]: t for t in json.loads((OUT / "tests.json").read_text(encoding="utf-8"))["tests"]}
     results = {}

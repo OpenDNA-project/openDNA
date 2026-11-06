@@ -1,22 +1,22 @@
-# OpenGenEdit user guide
+# openDNA user guide
 
 Reference for every feature. New here? Start with [TUTORIAL.md](TUTORIAL.md). Developers: [../README.md](../README.md#build-from-source), [TESTING.md](TESTING.md), [RUST_PRIMER.md](RUST_PRIMER.md).
 
 Python API (positions 0-based, end-exclusive):
 ```python
-from genomeedit_core import Document
+from opendna_core import Document
 doc = Document("demo/pFG051_Chlor.dna")   # or .gb; the format is detected from the content
 doc.features_in(100, 500); doc.primers()
 doc.insert(120, "GATTACA"); doc.delete(10, 20); doc.undo(); doc.redo()
 i = doc.set_feature(None, "misc_feature", "complement(10..30)", [("label", "site")])  # None = new
 doc.delete_feature(i); doc.reverse_complement()
 doc.binding_sites("gaattcAGCGGATAACAATTTCACACAGGA", 1)  # [(start, end, strand, mismatches)]
-from genomeedit_core import tm; tm("AGCGGATAACAATTTCACACAGGA", na_mm=50, mg_mm=1.5)
+from opendna_core import tm; tm("AGCGGATAACAATTTCACACAGGA", na_mm=50, mg_mm=1.5)
 doc.save_genbank("pFG051_edited.gb")      # .dna files are read-only
 ```
 
-The primer database is `primers.tsv` in the app data folder (`%APPDATA%\OpenGenEdit\` on
-Windows; set `GENOMEEDIT_DATA_DIR` to use another folder). Export/import it from Primers → Primer Database.
+The primer database is `primers.tsv` in the app data folder (`%APPDATA%\openDNA\` on
+Windows; set `OPENDNA_DATA_DIR` to use another folder). Export/import it from Primers → Primer Database.
 
 FASTA references (`.fa`, `.fasta`, `.fna`, multi-sequence) open like any other file: pick the sequence in
 the toolbar; Save writes the edited sequence back into the same FASTA (others are copied through
@@ -93,9 +93,9 @@ file…* keeps the GenBank or FASTA file. Records are kept in the `ncbi` folder 
 your search words (or accession) and, if you type them, an API key (10 requests a second instead of 3; free in an NCBI account, kept in plain
 text in the app data) go to NCBI. Records over 20 million bases ask first;
 over 100 million are not fetched (use NCBI Datasets).
-**Reporting a problem or asking for a feature.** The Help menu has four items. *Report a Problem…* opens a GitHub form already filled with your version, system and the last lines of the log, and *Request a Feature…* opens the idea form. *Open Log Folder* shows where `genomeedit.log` is kept, and *Copy Diagnostics* copies the versions and the last log lines so you can paste them into an email. If the program meets an unexpected error it does not close: it records it in the log and shows one small window, "Something went wrong. Report it?", with *Report on GitHub*, *Copy details* and *Close*. Nothing is sent by the program itself, and before anything goes into a report or the log, sequences, file names, folder paths and your user name are replaced by placeholders. You always see the report on GitHub before you send it. Each issue carries a status label (new, under review, planned, in progress, done, released, declined), so you can follow what happens to it.
-**Opening files by double-click (File Associations).** The first time the program starts, it asks whether you want to open .gb, .dna and FASTA files with OpenGenEdit by default. Answer Yes and OpenGenEdit is added to Windows' "Open with" list for these file types. This is for your user account only and needs no administrator rights and no installer. Windows does not allow a program to make itself the default, so you finish in Windows Settings (Default apps): the program opens that page; click OpenGenEdit, then choose it for each file type you want (or right-click a file, then Open with > Choose another app > OpenGenEdit > Always). You can register or remove the registration at any time in Help > File Associations…. If you move the program file, the registration still points at the old place; the program notices at the next start and offers to update it. Because the program file is not code-signed, Windows SmartScreen may warn the first time you run a downloaded copy; right-click the .exe, choose Properties and tick Unblock. Each double-click starts a new window with its own copy of the program, and it takes a few seconds to open because the single-file program unpacks itself first.
-**Updates.** OpenGenEdit can look for a newer version on GitHub once a day when it starts (Tools > Settings > Updates turns this off), and Help > Check for Updates… looks right away. When a new version exists, a window shows what changed. "Install and restart" downloads the new `oDNA_beta.exe`, checks it against the published SHA-256 checksum (a download that does not match is deleted, never installed), replaces the running program and starts the new one. "Later" asks again next time, and "Skip this version" stays quiet until the next release. Only github.com is contacted, over HTTPS, and nothing but the version request is sent. The checksum protects against a damaged or tampered download, not against a hijacked release, so download from the official releases page only. If OpenGenEdit is in a protected folder (such as Program Files) or an antivirus holds the file, it says so and links to the releases page so you can replace the file by hand. Run from source, it cannot replace itself. Until the project is public, updates are switched off and the menu item says so.
+**Reporting a problem or asking for a feature.** The Help menu has four items. *Report a Problem…* opens a GitHub form already filled with your version, system and the last lines of the log, and *Request a Feature…* opens the idea form. *Open Log Folder* shows where `opendna.log` is kept, and *Copy Diagnostics* copies the versions and the last log lines so you can paste them into an email. If the program meets an unexpected error it does not close: it records it in the log and shows one small window, "Something went wrong. Report it?", with *Report on GitHub*, *Copy details* and *Close*. Nothing is sent by the program itself, and before anything goes into a report or the log, sequences, file names, folder paths and your user name are replaced by placeholders. You always see the report on GitHub before you send it. Each issue carries a status label (new, under review, planned, in progress, done, released, declined), so you can follow what happens to it.
+**Opening files by double-click (File Associations).** The first time the program starts, it asks whether you want to open .gb, .dna and FASTA files with openDNA by default. Answer Yes and openDNA is added to Windows' "Open with" list for these file types. This is for your user account only and needs no administrator rights and no installer. Windows does not allow a program to make itself the default, so you finish in Windows Settings (Default apps): the program opens that page; click openDNA, then choose it for each file type you want (or right-click a file, then Open with > Choose another app > openDNA > Always). You can register or remove the registration at any time in Help > File Associations…. If you move the program file, the registration still points at the old place; the program notices at the next start and offers to update it. Because the program file is not code-signed, Windows SmartScreen may warn the first time you run a downloaded copy; right-click the .exe, choose Properties and tick Unblock. Each double-click starts a new window with its own copy of the program, and it takes a few seconds to open because the single-file program unpacks itself first.
+**Updates.** openDNA can look for a newer version on GitHub once a day when it starts (Tools > Settings > Updates turns this off), and Help > Check for Updates… looks right away. When a new version exists, a window shows what changed. "Install and restart" downloads the new `oDNA_beta.exe`, checks it against the published SHA-256 checksum (a download that does not match is deleted, never installed), replaces the running program and starts the new one. "Later" asks again next time, and "Skip this version" stays quiet until the next release. Only github.com is contacted, over HTTPS, and nothing but the version request is sent. The checksum protects against a damaged or tampered download, not against a hijacked release, so download from the official releases page only. If openDNA is in a protected folder (such as Program Files) or an antivirus holds the file, it says so and links to the releases page so you can replace the file by hand. Run from source, it cannot replace itself. Until the project is public, updates are switched off and the menu item says so.
 **Start page** (Help > Welcome): opens at the first start of each day. On the left: what changed (once, after an update), the recent files (also in File → Open Recent; click one to open it; right-click to pin it to the top or remove it from the list, the file itself is not touched), buttons for Open File, New Sequence, Import from NCBI, Assembly and the demo plasmid (opened as a new unsaved file), and Check for Updates, whose answer shows next to the button. On the right: the sponsors, a tip of the day and links. Tick *Don't show at startup* to stop it opening by itself; untick it from Help > Welcome to bring it back. To open it at startup anyway, start the program with `--welcome` (`oDNA_beta.exe --welcome`, or `--welcome` after a file name); it ignores "already shown today" and the tick, and leaves the tick as it was.
 **Primer design** (select the target, then right-click it → *Design Primers for This Sequence…*, or Primers → Design Primers for
 Selection…): opens the designer in its own window over the main one, already run on the selection; the selected pair is drawn in the sequence view as **temporary primers** (teal, "pair1_F" /
@@ -191,7 +191,7 @@ Nature 2026; simplified). Help → Citations lists the references (engine `app/a
 and a checklist score (GC 40-70 %, no TTTT, no long runs: a rule of thumb, not a trained model). *Check specificity* counts, for each
 guide, the other sites it matches up to 1-4 mismatches (as 0/1/2/… mismatches) in the open sequence and in the background genome,
 and marks it ✓ / ? / ✗ (another perfect site is a ✗). The background genome is the one of the Primers tool (Primers → Options): both
-tools read the same setting; every sequence of a multi-record FASTA or GenBank reference is searched (counts are added up). Selecting a row selects the site in the sequence; *Add selected as feature* annotates it: the guide is drawn as an orange box (the protospacer), a yellow one (the PAM), a blue bar under both with its name (all text black, in both themes) and a hollow red arrow pointing up at the cut, and is saved as an ordinary `misc_feature` (a `/label`, a plain-words `/note` with the guide, PAM and cut, and a `/OpenGenEdit_cas9` qualifier that only this program reads), so other programs show a normal annotation; hover it to see where it cuts. **Automatic check:** when a background genome is set, the first 100 guides of the list are checked by themselves in the background (a progress bar and *Cancel check* appear; the table stays usable and fills as results come in; columns sort by a click on their header). Guides beyond the first 100 keep *Check specificity*, and the status line says "100 of N checked". With no background genome set nothing is checked automatically; the *Genome* column header says so. **Right-click** a guide (or several selected ones) → *Add as feature*, the same as the button.
+tools read the same setting; every sequence of a multi-record FASTA or GenBank reference is searched (counts are added up). Selecting a row selects the site in the sequence; *Add selected as feature* annotates it: the guide is drawn as an orange box (the protospacer), a yellow one (the PAM), a blue bar under both with its name (all text black, in both themes) and a hollow red arrow pointing up at the cut, and is saved as an ordinary `misc_feature` (a `/label`, a plain-words `/note` with the guide, PAM and cut, and a `/OpenDNA_cas9` qualifier that only this program reads), so other programs show a normal annotation; hover it to see where it cuts. **Automatic check:** when a background genome is set, the first 100 guides of the list are checked by themselves in the background (a progress bar and *Cancel check* appear; the table stays usable and fills as results come in; columns sort by a click on their header). Guides beyond the first 100 keep *Check specificity*, and the status line says "100 of N checked". With no background genome set nothing is checked automatically; the *Genome* column header says so. **Right-click** a guide (or several selected ones) → *Add as feature*, the same as the button.
 The search is
 done in Rust (`core/src/cas9.rs`): about 0.6 s for 100 guides against a 5 Mb genome.
 
@@ -314,8 +314,8 @@ after its conserved box (…CACTATA|G for T7). Elsewhere the start is estimated 
 -10 box): the line still widens there, without a "+1", and the unit's notes say "+1 estimated". Overlapping units each start at their own promoter, in lanes of their own. Their name says how they end, for bacteria
 the kind of termination: *intrinsic* (a hairpin + T tract was found in the terminator, or it was predicted from one) or
 *rho-dependent?* (an annotated terminator with no such hairpin: rho-dependent, or not a terminator at all); eukaryotic units end
-at a polyA signal. Units added to the document are mRNA features with a program-specific `/OpenGenEdit_tu` qualifier (like
-the Cas9 guides' `/OpenGenEdit_cas9`): other programs see an ordinary mRNA; GFF3 and the NCBI table leave the qualifier out. It is a check of the design, not of expression levels: terminators leak,
+at a polyA signal. Units added to the document are mRNA features with a program-specific `/OpenDNA_tu` qualifier (like
+the Cas9 guides' `/OpenDNA_cas9`): other programs see an ordinary mRNA; GFF3 and the NCBI table leave the qualifier out. It is a check of the design, not of expression levels: terminators leak,
 and predicted elements are motifs only. Tools → Settings tunes each tool. In the Alignment view, each BAM has a
 *variants* track under its coverage: every position where the reads disagree with the sequence (solid: most reads; faded: a minority).
 Right-click a variant to *Change the Sequence to Match* or *Annotate This Variant* (a `variation` feature); right-click the track for both on
@@ -325,7 +325,7 @@ Tools → Map Reads to This Sequence runs bwa mem or minimap2 (recipes in `app/t
 the resulting BAM. `python tests/fake_reads.py [plasmid] [folder]` simulates ONT and Element reads of
 a plasmid with typical cloning errors (mutations, indels, inversion, duplication, mixed populations) and
 maps them the same way; `truth.tsv` lists what was planted. On Windows they run in WSL: Tools → Install Mapping Tools creates the conda env
-`genomeedit-tools` (bwa, samtools, minimap2 from bioconda) inside WSL's conda.
+`opendna-tools` (bwa, samtools, minimap2 from bioconda) inside WSL's conda.
 
 Unsaved work is autosaved every minute to `<file>.autosave.gb` next to the file; reopening the
 file after a crash offers to recover it. The copy is deleted on save or a clean close.
@@ -333,7 +333,7 @@ file after a crash offers to recover it. The copy is deleted on save or a clean 
 `core/vendor/gb-io` is a patched copy of the gb-io crate (GenBank writer wrapping fix);
 see the note in `core/Cargo.toml`.
 
-Use the dedicated `genomeedit` env, **not** conda `base`: base ships ICU 73 in `Library\bin`, which
+Use the dedicated `opendna` env, **not** conda `base`: base ships ICU 73 in `Library\bin`, which
 conda's Python puts on the DLL path; PySide6's `Qt6Core.dll` then loads it instead of Windows' ICU and
 fails with "DLL load failed ... The specified procedure could not be found".
 

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
 )
 
-from genomeedit_core import Document, find_parts
+from opendna_core import Document, find_parts
 
 import genes
 import genetic_code

@@ -27,7 +27,7 @@ from primer_db import data_dir
 
 BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 DATABASES = {"Nucleotide / genome (GenBank)": "nuccore", "Protein": "protein"}
-TOOL = "OpenGenEdit"
+TOOL = "openDNA"
 MAX_RESULTS = 25
 WARN_BASES = 20_000_000     # a record this long takes minutes: ask first
 MAX_BASES = 100_000_000     # longer: not fetched here (NCBI Datasets is made for those)

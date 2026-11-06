@@ -4,7 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
-from genomeedit_core import Document, Fasta
+from opendna_core import Document, Fasta
 
 from primer_db import data_dir
 

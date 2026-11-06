@@ -47,13 +47,13 @@ pub fn double_slash(i: &[u8]) -> IResult<&[u8], ()> {
 // ORIGIN
 
 fn origin<'a>(len: Option<usize>) -> impl Parser<&'a [u8], Output = (Option<String>, Vec<u8>), Error = nom::error::Error<&'a [u8]>> {
-    // OpenGenEdit patch: the blank after ORIGIN is optional, so a record with no bases at all
+    // openDNA patch: the blank after ORIGIN is optional, so a record with no bases at all
     // ("ORIGIN" and then "//") reads back (upstream required a space and failed on it).
     map((origin_tag, space0, sequence(len)), |(tag, _, bases)| (tag, bases))
 }
 
 fn sequence_chunk(i: &[u8]) -> IResult<&[u8], &[u8]> {
-    // OpenGenEdit patch: also the gap letter '-' (upstream accepted letters only, so a file we wrote could not be reopened).
+    // openDNA patch: also the gap letter '-' (upstream accepted letters only, so a file we wrote could not be reopened).
     delimited(opt(pair(digit1, space1)), take_while1(|c: u8| c.is_ascii_alphabetic() || c == b'-'), multispace1).parse(i)
 }
 
