@@ -282,7 +282,7 @@ jobs:
           **Downloads.** Each file has its own \`.sha256\` to check the download against.
           - **Windows** (10 or 11, 64-bit): \`$exe\`, one file, and the one that can update itself later. \`$zip\` is the same program as a folder, for people who want to replace the Qt libraries (see README.txt inside); it does not update itself.
           - **macOS** (macOS 14 Sonoma or later): \`$mac\` for Apple Silicon (M1 and later), \`$intel\` for Intel Macs. Unzip it and move openDNA to Applications.
-          - **Linux** (x86-64, Ubuntu 22.04 or newer and similar): \`$linux\`. \`tar -xzf $linux\`, then run \`openDNA/openDNA\` (see README.txt inside).
+          - **Linux** (x86-64, glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+; a desktop with OpenGL): \`$linux\`. \`tar -xzf $linux\`, then run \`openDNA/openDNA\` (see README.txt inside).
 
           **The programs are not signed**, so the system warns about them. Windows: SmartScreen shows "Windows protected your PC" (More info > Run anyway), and some antivirus programs may flag it wrongly. macOS: the first time, right-click openDNA > Open > Open (or System Settings > Privacy & Security > Open Anyway). Check a download with \`Get-FileHash $exe\` (Windows) or \`shasum -a 256 <file>\` (macOS, Linux).
 
