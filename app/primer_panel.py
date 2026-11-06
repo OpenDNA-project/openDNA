@@ -26,7 +26,7 @@ from value_filter import SortItem
 from tool_settings import Param, SettingsDialog
 from reference import Reference, as_reference
 from sequence_view import TEMP_COLOR
-from uikit import fit_columns, plural
+from uikit import dispose_progress, fit_columns, plural, show_after
 from primer_db import (MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, binding_mismatches, db, notifier,  # noqa: F401 (re-exported)
                        primer_problem, settings, update_primer)
 import theme
@@ -278,13 +278,13 @@ def warm_genome(parent, editor, sequences):
     dialog = QProgressDialog(state["text"], "Cancel", 0, 0, parent)
     dialog.setWindowTitle("Background Genome")
     dialog.setWindowModality(Qt.WindowModal)
-    dialog.setMinimumDuration(400)
+    show_after(dialog, 400)
     dialog.canceled.connect(lambda: state.update(cancel=True))
     while thread.is_alive():
         QApplication.processEvents(QEventLoop.AllEvents, 30)
         dialog.setLabelText(state["text"])
         thread.join(0.02)
-    dialog.close()
+    dispose_progress(dialog)   # (close() left its show timer running: it could come back over the next dialog)
 
 
 class _GenomeSignals(QObject):

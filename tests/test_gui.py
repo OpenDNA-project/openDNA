@@ -496,7 +496,7 @@ def test_primers_clipboard_design_pcr_orfs_and_digest(app, errors, monkeypatch, 
 
 
 def test_fasta_file_tracks_genome_view_search_and_chromosome_list(app, errors, tmp_path, monkeypatch):
-    """A multi-sequence FASTA: edit and save, features offer GenBank, picker, GFF / BED tracks in the genome view, track display, legend, search in the whole file; the map's chromosome list switches sequence; chromosomes are listed largest first."""
+    """A multi-sequence FASTA: edit and save, features offer GenBank, picker, GFF / BED tracks in the genome view, track display, legend, search in the whole file; the map's chromosome list switches sequence; chromosomes are listed in file order."""
     # --- FASTA, tracks, genome view and search ---
     import random
     rng = random.Random(7)
@@ -648,14 +648,14 @@ def test_fasta_file_tracks_genome_view_search_and_chromosome_list(app, errors, t
     assert win.editor.fasta_records == [("chrA", 2000), ("chrB", 1500)] and win.picker.currentText() == "chrB"
     win.grab()
 
-    # --- the chromosome list and picker are largest first ---
+    # --- the chromosome list and picker are in file order (the order the list can change by drag and drop) ---
     fa = tmp_path / "unsorted.fa"
     fa.write_text(">small\n" + "ACGT" * 50 + "\n>big\n" + "ACGT" * 500 + "\n>mid\n" + "ACGT" * 200 + "\n")
     win = MainWindow()
     win.show()
     assert win.load(str(fa))
-    assert [n for n, _ in win.editor.fasta_records] == ["big", "mid", "small"]
-    assert [win.picker.itemText(i) for i in range(3)] == ["big", "mid", "small"] and win.editor.fasta_record == "big"
+    assert [n for n, _ in win.editor.fasta_records] == ["small", "big", "mid"]
+    assert [win.picker.itemText(i) for i in range(3)] == ["small", "big", "mid"] and win.editor.fasta_record == "small"
 
 
 def test_workspace_tabs_and_view_picker(app, errors):

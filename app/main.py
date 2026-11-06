@@ -68,6 +68,8 @@ from tool_settings import SettingsDialog
 import genetic_code
 import shutil
 from file_history import FileHistory
+import add_record
+from add_record import AddRecordsDialog
 import multigb
 from uikit import plural, run_busy
 
@@ -272,6 +274,7 @@ class MainWindow(QMainWindow):
         imp = self.menuBar().addMenu("&Import")
         dna = imp.addMenu("&DNA")
         dna.addAction(QAction("&Sequence File (GenBank, .dna, FASTA, Project)…", self, triggered=self.choose_file))
+        action(dna, "Sequence File as New &Chromosome…", None, lambda: self.import_as_chromosome())
         dna.addAction(QAction("From &NCBI (Nucleotide)…", self, triggered=self.import_ncbi))
         dna.addAction(QAction("&Background Genome from NCBI…", self, triggered=self.import_genome))
         features = imp.addMenu("&Features and Tracks")
@@ -575,6 +578,67 @@ class MainWindow(QMainWindow):
     def import_genome(self):
         GenomeDialog(self).exec()
 
+    def import_as_chromosome(self, path=None):
+        """Import > DNA > Sequence File as New Chromosome: the sequences of another file become new records of the open file. A
+        GenBank file with one record becomes a multi-record file (the map then lists the records, one is open at a time); a FASTA
+        file gets more sequences. The file is written now (see add_record), then the first added record is shown. True if
+        something was added."""
+        ed = self.editor
+        if ed is None:
+            return False
+        title = "Import as New Chromosome"
+        # A .dna file is never changed, and an unsaved sequence or a project has no GenBank file to add to: save one first.
+        if ed.untitled or ed.path.suffix.lower() in (".dna", exports.PROJECT_EXT):
+            why = ("is not saved yet" if ed.untitled else
+                   "is a .dna file, which openDNA never changes" if ed.path.suffix.lower() == ".dna" else "is a project")
+            if QMessageBox.question(self, title, f"{ed.path.name} {why}. Save it as a GenBank file first? The new chromosome is "
+                                    "then added to that file.", QMessageBox.Save | QMessageBox.Cancel) != QMessageBox.Save:
+                return False
+            target, _ = QFileDialog.getSaveFileName(self, "Save As GenBank", str(ed.path.with_suffix(".gb")), "GenBank (*.gb *.gbk)")
+            if not target or Path(target).suffix.lower() in (".dna", exports.PROJECT_EXT) or not self._write(Path(target)):
+                return False
+        fasta = bool(ed.fasta_record) and not ed.multi_genbank
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(self, "Import Sequence File as New Chromosome", "", OPEN_FILTER)
+            if not path:
+                return False
+        try:
+            records = run_busy(self, f"Reading {Path(path).name}…", lambda: add_record.source_records(path))
+        except (OSError, ValueError) as e:
+            QMessageBox.critical(self, "Cannot Open File", f"{path}\n\n{e}")
+            return False
+        dialog = AddRecordsDialog(self, ed.path, fasta, records, add_record.current_names(ed))
+        if dialog.exec() != QDialog.Accepted:
+            return False
+        chosen = dialog.chosen()
+        current = ed.fasta_record or add_record.current_names(ed)[0]   # a one-record GenBank file: the record open now
+
+        try:
+            docs = run_busy(self, f"Reading {Path(path).name}…", lambda: [(r.load(), name) for r, name in chosen])
+            # primers of a .dna file (its primer list) are written as primer_bind features, as Save As GenBank does; read here,
+            # in the window's thread (an Editor is a Qt object)
+            primers = None if fasta else [Editor(doc, Path(path)).file_primer_features() for doc, _ in docs]
+
+            def work():
+                if fasta:
+                    multigb.append_fasta(ed.path, [(name, doc) for doc, name in docs])
+                else:
+                    multigb.append_genbank(ed.path, [multigb.renamed_genbank(doc, name, p) for (doc, name), p in zip(docs, primers)])
+            run_busy(self, f"Adding to {ed.path.name}…", work)
+        except (OSError, ValueError) as e:
+            QMessageBox.critical(self, title, f"{ed.path}\n\n{e}")
+            return False
+        names = [name for _, name in chosen]
+        # The open record stays in memory with its edits (load keeps it, like switching records); the file is now read as one of
+        # several records.
+        ed.fasta_record, ed.multi_genbank = current, not fasta
+        multigb.forget_siblings(ed)
+        if self.load(str(ed.path), names[0], reread=True):
+            self.statusBar().showMessage(
+                f"Added {', '.join(names)} to {self.editor.path.name}: {plural(len(self.editor.fasta_records), 'sequence')} "
+                "in the file.", 8000)
+        return True
+
     # Files dropped on the window open like File > Open: here if the window is empty, else each in a window of its own.
     def dragEnterEvent(self, event):
         if any(u.isLocalFile() for u in event.mimeData().urls()):
@@ -648,9 +712,11 @@ class MainWindow(QMainWindow):
         if path:
             self.load(path)
 
-    def load(self, path, record=None):
+    def load(self, path, record=None, reread=False):
         """Open a GenBank/.dna file, or one sequence (`record`, default the first) of
-        a FASTA file. Big files load in the background behind a busy dialog."""
+        a FASTA file. Big files load in the background behind a busy dialog. Another record of the file that is open keeps the
+        list of records the window has (the file is not read through again for it: seconds on a genome of gigabytes), unless
+        `reread` (records were just added to the file)."""
         old = self.editor
         # Another record of the file that is open: the tabs stay as they are, the sequence in them is switched, and the
         # record that was shown stays in memory (with its unsaved edits) until the file is closed or another one opened.
@@ -667,15 +733,18 @@ class MainWindow(QMainWindow):
         names, lengths, meta, gb_record = [], [], None, False
         project = Path(path).suffix.lower() == exports.PROJECT_EXT
         try:
-            if is_fasta(path):
+            if same_file and not reread and record in dict(old.fasta_records):
+                lengths = list(old.fasta_records)
+                names, gb_record = [n for n, _ in lengths], old.multi_genbank
+            elif is_fasta(path):
                 fasta = run_busy(self, f"Indexing {Path(path).name}…", lambda: Fasta(str(path)))
-                lengths = sorted(((n, int(l)) for n, l in fasta.sequences()), key=lambda r: -r[1])   # largest first, like chr1, chr2...
+                lengths = [(n, int(l)) for n, l in fasta.sequences()]   # in file order (the map's list can reorder the file)
                 names = [n for n, _ in lengths]
                 if not names:
                     raise OSError("no sequence in this FASTA file")
                 record = record if record in names else names[0]
             elif not project and multigb.is_multi_genbank(path):   # treated like a multi-FASTA: one record open, the map lists them all
-                lengths = sorted(((n, int(l)) for n, l, _ in multigb.records(path)), key=lambda r: -r[1])
+                lengths = [(n, int(l)) for n, l, _ in multigb.records(path)]
                 names, gb_record = [n for n, _ in lengths], True
                 record = record if record in names else names[0]
             else:
@@ -714,11 +783,24 @@ class MainWindow(QMainWindow):
         if same_file:
             self.record_docs[old.fasta_record] = old.doc
             self.record_docs.pop(record, None)
-        self.show_document(doc, path, record=record, sequences=names, lengths=lengths, genbank=gb_record,
-                           layout=self.workspace.dump() if keep_tabs else (meta or {}).get("layout"),
-                           current=self.workspace.currentIndex() if keep_tabs else 0)   # a project opens with the tabs it was saved with
-        if same_file:
-            self._carry_settings(old, letters)
+        # Another record of the same file: nothing is painted until the new record is ready, so the old one stays on screen
+        # and then the new one replaces it in one go (the tabs are built again: painted as they were made, a window showed
+        # half-built or black panes for a moment on a big record).
+        frozen = same_file and self.updatesEnabled()
+        if frozen:
+            self.setUpdatesEnabled(False)
+        try:
+            self.show_document(doc, path, record=record, sequences=names, lengths=lengths, genbank=gb_record,
+                               layout=self.workspace.dump() if keep_tabs else (meta or {}).get("layout"),
+                               current=self.workspace.currentIndex() if keep_tabs else 0,   # a project opens with the tabs it was saved with
+                               display=not same_file)   # (the record switched to takes the file's display settings: below)
+            if same_file:
+                self._carry_settings(old, letters)
+            if frozen:
+                self._settle_layout()
+        finally:
+            if frozen:
+                self.setUpdatesEnabled(True)
         if carry:
             skipped = [Path(p).name for p in carry if self.load_track(p, quiet=True) is None]
             if skipped:
@@ -726,6 +808,15 @@ class MainWindow(QMainWindow):
         if meta is not None:
             self._apply_project(meta, path)
         return True
+
+    def _settle_layout(self):
+        """Show and lay the new tabs out now, while nothing is painted: Qt shows a new central widget from a posted call, then come
+        the layouts, the sizes they give (the sequence view lays its bases out for its width), the panes built when first shown,
+        all of which otherwise ran after painting was back on. On Windows the window was then painted at once with the new tabs
+        not shown or sized yet, showing only its dark background for the second that work took. (Fitting table columns is left
+        for after: it only adjusts widths, and took half a second on a genome.)"""
+        for _ in range(3):   # the new tabs are shown by a posted call (Qt's own), then laid out; a size change can ask for one more pass
+            QApplication.sendPostedEvents()
 
     def _carry_settings(self, old, letters):
         """Switching to another record of the file: the display settings, the lock and the letter size are the file's, not the
@@ -812,17 +903,122 @@ class MainWindow(QMainWindow):
         if name != ed.fasta_record and not self.load(ed.path, name):
             self.picker.setCurrentText(ed.fasta_record)  # cancelled: show what is open
 
-    def show_document(self, doc, path, untitled=False, record=None, sequences=(), layout=None, lengths=(), genbank=False, current=0):
+    # ---- the records of a file of several (the map's chromosome list) ------------------------------------------------------------
+    def _set_record_list(self, lengths):
+        """The file's records are now `lengths` [(name, length)] (reordered or one removed): the map's list and the picker follow."""
+        ed = self.editor
+        ed.fasta_records = list(lengths)
+        multigb.forget_siblings(ed)
+        self.picker.clear()
+        self.picker.addItems([n for n, _ in lengths])
+        self.picker.setCurrentText(ed.fasta_record)
+        self.picker_action.setVisible(len(lengths) > 1)
+        ed.match_elsewhere()
+        ed.display_changed.emit()
+
+    def reorder_records(self, names):
+        """Map's list, a line dragged (or Move Up / Down): the records are written into the file in this order, each unchanged.
+        The edits not saved yet stay in memory (records are found by name)."""
+        ed = self.editor
+        lengths = dict(ed.fasta_records)
+        if sorted(names) != sorted(lengths) or list(names) == list(lengths):
+            return False
+        try:
+            run_busy(self, f"Reordering {ed.path.name}…", lambda: multigb.rewrite_records(ed.path, list(names)))
+        except OSError as e:
+            QMessageBox.critical(self, "Reorder Sequences", f"{ed.path}\n\n{e}")
+            return False
+        self._set_record_list([(n, lengths[n]) for n in names])
+        self.statusBar().showMessage(f"Sequences of {ed.path.name} reordered: {', '.join(names[:6])}{'…' if len(names) > 6 else ''}", 5000)
+        return True
+
+    def remove_record(self, name):
+        """Map's list, right-click > Remove from File: the record is deleted from the file (after a question; there is no undo).
+        The open record is first switched to the next one."""
+        ed = self.editor
+        names = [n for n, _ in ed.fasta_records]
+        if name not in names or len(names) < 2:
+            return False
+        edited = (ed.doc.modified if name == ed.fasta_record else
+                  bool(self.record_docs.get(name) is not None and self.record_docs[name].modified))
+        if not self._confirm_remove(name, edited):
+            return False
+        if name == ed.fasta_record:   # show another record first (the open one stays in memory, then is dropped below)
+            i = names.index(name)
+            if not self.load(str(ed.path), names[i + 1] if i + 1 < len(names) else names[i - 1]):
+                return False
+            ed = self.editor
+        keep = [n for n in names if n != name]
+        try:
+            run_busy(self, f"Removing {name}…", lambda: multigb.rewrite_records(ed.path, keep))
+        except OSError as e:
+            QMessageBox.critical(self, "Remove from File", f"{ed.path}\n\n{e}")
+            return False
+        self.record_docs.pop(name, None)
+        self.file_history.forget(name)
+        autosave_path(ed.path, name).unlink(missing_ok=True)
+        lengths = dict(ed.fasta_records)
+        self._set_record_list([(n, lengths[n]) for n in keep])
+        self._update_undo_actions()
+        self.statusBar().showMessage(f"Removed {name} from {ed.path.name}: {plural(len(keep), 'sequence')} left.", 5000)
+        return True
+
+    def _confirm_remove(self, name, edited):
+        """Remove the record? Cancel is the default: nothing written can be undone."""
+        box = QMessageBox(QMessageBox.Warning, "Remove from File", f"Remove {name} from {self.editor.path.name}?", parent=self)
+        box.setInformativeText("The file is written now and this cannot be undone"
+                               + (f": the unsaved edits of {name} are lost too." if edited else "."))
+        remove = box.addButton("&Remove", QMessageBox.DestructiveRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        box.exec()
+        return box.clickedButton() is remove
+
+    def export_record(self, name, target=None):
+        """Map's list, right-click > Export as GenBank: one record of the file as a GenBank file of its own, with its unsaved
+        edits (the file itself is not changed)."""
+        ed = self.editor
+        if target is None:
+            suggested = ed.path.with_name(runner.safe_name(name) + ".gb")
+            target, _ = QFileDialog.getSaveFileName(self, f"Export {name} as GenBank", str(suggested), "GenBank (*.gb *.gbk)")
+            if not target:
+                return False
+        target = Path(target)
+        if target.exists() and target.resolve() == ed.path.resolve():
+            QMessageBox.warning(self, "Export as GenBank", "Choose another file: this one holds every record of the file.")
+            return False
+        try:
+            if name == ed.fasta_record:
+                doc, primers = ed.doc, ed.file_primer_features()
+            elif self.record_docs.get(name) is not None:
+                doc, primers = self.record_docs[name], None
+            else:
+                doc = run_busy(self, f"Reading {name}…", (lambda: multigb.read_record(ed.path, name)) if ed.multi_genbank
+                               else (lambda: Document.from_fasta(str(ed.path), name)))
+                primers = None
+            run_busy(self, f"Exporting {name}…", lambda: doc.write_genbank(str(target), primers))
+        except OSError as e:
+            QMessageBox.critical(self, "Export as GenBank", f"{target}\n\n{e}")
+            return False
+        self.statusBar().showMessage(f"Exported {name} to {target}", 5000)
+        return True
+
+    def show_document(self, doc, path, untitled=False, record=None, sequences=(), layout=None, lengths=(), genbank=False, current=0,
+                      display=True):
         """Put a Document in this window. `untitled`: made in memory (e.g. a PCR product);
         `path` is only the suggested file name, Save asks where to save. `record`: the
         sequence of the FASTA file `path` that `doc` holds. `layout`: the tabs to open with
-        (an Open DNA Project's own); everything else opens with the standard ones."""
+        (an Open DNA Project's own); everything else opens with the standard ones. `display` False: the caller sets the display
+        options itself (another record of the file keeps the file's: laying a genome out twice took most of the switch)."""
         self.editor = ed = Editor(doc, path)
         ed.untitled = untitled
         ed.fasta_record = record
         ed.fasta_records = list(lengths)
         ed.multi_genbank = genbank
         ed.record_requested.connect(self.switch_sequence)
+        ed.records_order_requested.connect(self.reorder_records)
+        ed.record_remove_requested.connect(self.remove_record)
+        ed.record_export_requested.connect(self.export_record)
         ed.record_hit_requested.connect(self.go_to_hit)
         self.picker.clear()
         self.picker.addItems(list(sequences))
@@ -840,9 +1036,10 @@ class MainWindow(QMainWindow):
         ed.error.connect(lambda msg: self.statusBar().showMessage(msg, 5000))
         ed.edit_feature_requested.connect(lambda i: edit_feature(self, ed, i))
         ed.edit_primer_requested.connect(lambda name: PrimerDialog(self, ed, name).exec())
-        ed.set_display(enzymes=self.enzymes_action.isChecked(), translation=self.translation_action.isChecked(),
-                       complement=self.complement_action.isChecked(),
-                       collapse_genes=self.collapse_action.isChecked(), cds_only=self.cds_only_action.isChecked())
+        if display:
+            ed.set_display(enzymes=self.enzymes_action.isChecked(), translation=self.translation_action.isChecked(),
+                           complement=self.complement_action.isChecked(),
+                           collapse_genes=self.collapse_action.isChecked(), cds_only=self.cds_only_action.isChecked())
         ed.display_changed.connect(self._sync_display_actions)
         self._show_lock(ed.dna_locked)
         self.search_bar.attach(ed)

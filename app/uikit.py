@@ -2,6 +2,8 @@
 ("3 primers", never "3 primer(s)"), tables whose columns fit what they hold, and buttons that Enter does not press by surprise."""
 import threading
 
+import shiboken6
+
 from PySide6.QtCore import QEvent, QEventLoop, QObject, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QHeaderView, QProgressDialog, QPushButton, QTableView
 
@@ -64,7 +66,22 @@ class _Fitter(QObject):
         if model is None:
             return
         for signal in (model.modelReset, model.rowsInserted, model.rowsRemoved, model.layoutChanged, model.dataChanged):
-            signal.connect(self.timer.start)
+            signal.connect(self._changed)
+
+    UNSIZED_ROLES = {Qt.ForegroundRole, Qt.BackgroundRole, Qt.ToolTipRole, Qt.StatusTipRole, Qt.CheckStateRole}
+
+    def _changed(self, *args):
+        """The rows changed: fit again, unless the change cannot need it: only colours changed (dataChanged with those roles: a
+        feature hidden, a display switch), or the model says so (`fit_quiet`: a gene opened or closed in the Features view)."""
+        roles = args[2] if len(args) == 3 and isinstance(args[2], (list, tuple)) else None   # (dataChanged; rowsInserted has ints)
+        if roles and all(r in self.UNSIZED_ROLES for r in roles):
+            return
+        try:
+            quiet = getattr(self.view.model(), "fit_quiet", False)
+        except RuntimeError:   # the table is being deleted: its own model (a QTableWidget's) clears its rows on the way out
+            return
+        if not quiet:
+            self.timer.start()
 
     def _names(self):
         model = self.view.model()
@@ -219,20 +236,54 @@ def right_aligned(item):
 
 class _BusyDialog(QProgressDialog):
     """The "busy" dialog of run_busy: neither Escape nor its close button hides it while the work goes on (hiding it gave the
-    window back to the user in the middle of a save or a load)."""
+    window back to the user in the middle of a save or a load). Once the work is done it closes like any window, so even a dialog
+    that came back somehow can never stay on screen for ever."""
+    working = True
 
     def reject(self):
-        pass
+        if not self.working:
+            super().reject()
 
     def closeEvent(self, event):
-        event.ignore()
+        if self.working:
+            event.ignore()
+        else:
+            super().closeEvent(event)
+
+
+def dispose_progress(dialog):
+    """Put a progress dialog away for good, now (run_busy's busy dialog, the background genome search).
+
+    QProgressDialog shows itself from a timer of its own (minimumDuration), and hide() / close() do not stop that timer;
+    deleteLater() is not enough either, as Qt does not delete an object while a dialog opened after it runs its own event loop
+    (the next question, the Import as New Chromosome dialog...). The timer then fired inside that dialog and showed the busy
+    dialog again, which ignores Escape and its close button: it stayed on screen for ever, over a window that no longer answered.
+    reset() stops the timer, and the dialog is deleted at once."""
+    dialog.working = False   # (_BusyDialog: it may close now)
+    dialog.reset()
+    dialog.hide()
+    try:
+        shiboken6.delete(dialog)
+    except RuntimeError:   # already deleted with its window
+        pass
+
+
+def show_after(dialog, ms):
+    """A progress dialog with no steps (a busy bar) shows itself after `ms`. setMinimumDuration alone does not do it: Qt starts
+    a 4 s show timer when the dialog is made and restarts it only once the value is the minimum, which a busy bar's (-1) is not;
+    setValue(0) restarts it with `ms`."""
+    dialog.setMinimumDuration(ms)
+    dialog.setValue(dialog.minimum())
+
+
+BUSY_DELAY_MS = 1500   # run_busy's dialog shows only for work longer than this: a shorter one (opening a chromosome) would just flash
 
 
 def run_busy(parent, text, work):
-    """Run `work()` in a thread with a "busy" dialog (shown only if it takes > 0.4 s), keeping the window responsive. Returns its
+    """Run `work()` in a thread with a "busy" dialog (shown only if it takes more than BUSY_DELAY_MS), keeping the window responsive. Returns its
     result or re-raises its error. The Rust calls used here release Python's lock, so the GUI really keeps running.
 
-    Until the dialog shows, clicks and keys are held back (repaints still happen): otherwise a click in that first 0.4 s reached
+    Until the dialog shows, clicks and keys are held back (repaints still happen): otherwise a click in that first moment reached
     the window and could start a second save, open or close in the middle of this one."""
     result = {}
 
@@ -247,7 +298,7 @@ def run_busy(parent, text, work):
     dialog = _BusyDialog(text, None, 0, 0, parent)
     dialog.setWindowTitle(text.rstrip("…. ") or "Working")
     dialog.setWindowModality(Qt.WindowModal)
-    dialog.setMinimumDuration(400)
+    show_after(dialog, BUSY_DELAY_MS)
     if QApplication.overrideCursor() is None:
         QApplication.setOverrideCursor(Qt.WaitCursor)
         restore = True
@@ -261,8 +312,7 @@ def run_busy(parent, text, work):
     finally:
         if restore:
             QApplication.restoreOverrideCursor()
-        dialog.hide()
-        dialog.deleteLater()
+        dispose_progress(dialog)
     if "error" in result:
         raise result["error"]
     return result["value"]

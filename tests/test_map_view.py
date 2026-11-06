@@ -146,6 +146,9 @@ def test_a_multi_fasta_lists_one_line_per_chromosome_and_a_click_opens_it():
     ed.record_requested.connect(got.append)
     press = QMouseEvent(QEvent.MouseButtonPress, QPointF(20, 2 + 2 * 17 + 3), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
     view.mousePressEvent(press)
+    app.processEvents()
+    assert got == [], "a line opens when the button comes up (it may be dragged instead)"
+    view.mouseReleaseEvent(QMouseEvent(QEvent.MouseButtonRelease, QPointF(20, 2 + 2 * 17 + 3), Qt.LeftButton, Qt.NoButton, Qt.NoModifier))
     app.processEvents()   # the request is sent after the click
     assert got == ["chr3"]
     view.grab()
