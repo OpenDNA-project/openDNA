@@ -368,6 +368,10 @@ def test_install_swaps_and_refuses(tmp_path, monkeypatch):
         frozen.setattr(sys, "frozen", True, raising=False)
         frozen.setattr(sys, "executable", str(current))
         frozen.setattr(sys, "_MEIPASS", str(tmp_path / "somewhere" / "_MEI1234"), raising=False)   # one-file: a temp folder
+        for system, download in (("darwin", "macos-arm64.zip"), ("linux", "linux-x86_64.tar.gz")):   # never the Windows exe there
+            frozen.setattr(sys, "platform", system)
+            assert "does not update itself" in updater.install_blocker() and download in updater.install_blocker()
+        frozen.setattr(sys, "platform", "win32")   # (the one-file exe that updates itself is the Windows one)
         assert not updater.is_folder_build() and updater.install_blocker() is None
         for bundle in (current.parent / "_internal", current.parent):     # PyInstaller 6 and 5 one-folder layouts
             frozen.setattr(sys, "_MEIPASS", str(bundle), raising=False)
@@ -381,6 +385,7 @@ def test_install_swaps_and_refuses(tmp_path, monkeypatch):
     current, new = installed_in(tmp_path / "running")
     with monkeypatch.context() as frozen:
         frozen.setattr(sys, "frozen", True, raising=False)
+        frozen.setattr(sys, "platform", "win32")
         frozen.setattr(sys, "executable", str(current))
         updater.install_update(new, relaunch=lambda p: None)
     assert current.read_bytes() == b"NEW"

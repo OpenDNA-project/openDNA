@@ -3,6 +3,7 @@ view or tool can go (see workspace.py).
 
 Run:  python app/main.py [file.gb | file.dna | genome.fa]
 """
+import os
 import re
 import sys
 from pathlib import Path
@@ -1893,6 +1894,27 @@ def start_up_questions(win, force_welcome=False):
         then_associations()
 
 
+# Files the program reads from its own folder at run time (the DATA of packaging/openDNA.spec): a build that misses one fails on that
+# feature only, so the smoke test asks the program itself whether it finds them.
+BUNDLED_FILES = ("parts/ncbi_vectors.tsv", "parts/engineering_proteins.tsv", "tools.toml", "sponsors.json", "vendor/3Dmol-min.js",
+                 "vendor/3Dmol.LICENSE", "logo/icon_256.png", "logo/wordmark.png", "logo/wordmark_dark.png")
+
+
+def write_smoke_report(win, path):
+    """For the smoke test of a build: the window's title, the file and sequence it shows, and the bundled files it cannot find, as
+    JSON in `path`. (Only when OPENDNA_SMOKE_REPORT is set: nothing is written otherwise.)"""
+    import json
+    here = Path(__file__).parent
+    ed = win.editor
+    report = {"title": win.windowTitle(), "file": str(ed.path) if ed is not None else None,
+              "sequence": ed.doc.name if ed is not None else None, "length": ed.length if ed is not None else 0,
+              "missing": [f for f in BUNDLED_FILES if not (here / f).exists()], "frozen": bool(getattr(sys, "frozen", False)),
+              "platform": sys.platform, "qt": qVersion()}
+    tmp = Path(path).with_suffix(".tmp")
+    tmp.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def app_icon():
     """The window and taskbar icon: every size drawn for itself (packaging/make_icon.py makes app/logo/icon_*.png)."""
     icon = QIcon()
@@ -1918,6 +1940,8 @@ if __name__ == "__main__":
     QTimer.singleShot(0, lambda: start_up_questions(win, force_welcome=WELCOME_FLAG in sys.argv[1:]))
     if files:
         win.load(files[0])
+    if os.environ.get("OPENDNA_SMOKE_REPORT"):   # the smoke test of a build (scripts/smoke_unix.py) reads what the program shows
+        QTimer.singleShot(1500, lambda: write_smoke_report(win, os.environ["OPENDNA_SMOKE_REPORT"]))
     code = app.exec()
     feedback.teardown_logging()
     sys.exit(code)

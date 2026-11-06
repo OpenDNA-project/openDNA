@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller recipe for dist/openDNA.exe (one file, no console window) and, with OPENDNA_BUILD=folder, dist/openDNA-folder/.
+On macOS it builds dist/openDNA.app, on Linux the folder dist/openDNA/ (the program and its libraries as plain files; no one-file
+build there: a folder starts faster and its Qt files can be replaced, as the LGPL asks).
 
-Build it with  powershell scripts/build_exe.ps1  (that script checks the setup and smoke-tests the result).
+Build it with  powershell scripts/build_exe.ps1  on Windows, or  bash scripts/build_unix.sh  on macOS and Linux (both check the setup
+and smoke-test the result).
 By hand, from the repository root:  python -m PyInstaller --noconfirm --clean --workpath build/pyinstaller --distpath dist packaging/openDNA.spec
 
 Why a committed spec: the data files the program reads at run time are listed here, so the bundle never depends on what happened
@@ -14,11 +17,10 @@ Name and version of the Windows file properties come from app/project.py (NAME, 
 """
 import importlib.util
 import os
+import sys
 from pathlib import Path
 
-from PyInstaller.utils.win32.versioninfo import (
-    FixedFileInfo, StringFileInfo, StringStruct, StringTable, VarFileInfo, VarStruct, VSVersionInfo,
-)
+WINDOWS, MACOS = sys.platform == "win32", sys.platform == "darwin"
 
 ROOT = Path(SPECPATH).resolve().parent          # SPECPATH (set by PyInstaller) is this file's folder: packaging/
 APP = ROOT / "app"
@@ -50,10 +52,14 @@ if missing:
     raise SystemExit("openDNA.spec: missing data file(s): " + ", ".join(missing))
 datas = [(str(src), dest) for src, dest in DATA]
 
-# Windows "Details" tab of the exe: file version 0.1.0.0 from VERSION "0.1.0".
+# Windows "Details" tab of the exe: file version 0.1.0.0 from VERSION "0.1.0". (Windows only: macOS has the Info.plist below.)
 parts = [int(x) for x in project.VERSION.split(".")[:3]]
 vtuple = tuple(parts + [0] * (4 - len(parts)))
-version_info = VSVersionInfo(
+if WINDOWS:
+    from PyInstaller.utils.win32.versioninfo import (
+        FixedFileInfo, StringFileInfo, StringStruct, StringTable, VarFileInfo, VarStruct, VSVersionInfo,
+    )
+version_info = None if not WINDOWS else VSVersionInfo(
     ffi=FixedFileInfo(filevers=vtuple, prodvers=vtuple, mask=0x3F, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0),
     kids=[
         StringFileInfo([StringTable("040904B0", [   # US English, Unicode
@@ -89,7 +95,9 @@ pyz = PYZ(a.pure)
 # Two layouts from this one recipe. Default: one file, dist/openDNA.exe. OPENDNA_BUILD=folder: dist/openDNA-folder/ (the exe
 # plus an _internal folder where the Qt DLLs are plain files). The folder exists so that a user can replace Qt, which the LGPL asks
 # for and a one-file exe cannot offer (docs/PUBLISHING.md, "Qt (LGPL)"). scripts/build_exe.ps1 runs PyInstaller once for each.
-FOLDER = os.environ.get("OPENDNA_BUILD") == "folder"
+FOLDER = os.environ.get("OPENDNA_BUILD") == "folder" or not WINDOWS   # macOS and Linux: always a folder (a .app is one)
+# The icon: the .ico on Windows; on macOS the 256 px picture, which PyInstaller turns into an .icns (with Pillow); Linux has none.
+ICON = str(ROOT / "packaging" / "openDNA.ico") if WINDOWS else str(APP / "logo" / "icon_256.png") if MACOS else None
 
 exe = EXE(
     pyz,
@@ -99,7 +107,7 @@ exe = EXE(
     [],
     exclude_binaries=FOLDER,
     name=project.NAME,
-    icon=str(ROOT / "packaging" / "openDNA.ico"),
+    icon=ICON,
     version=version_info,
     debug=False,
     bootloader_ignore_signals=False,
@@ -123,5 +131,25 @@ if FOLDER:
         strip=False,
         upx=False,
         upx_exclude=[],
-        name=project.NAME + "-folder",
+        name=project.NAME + ("-folder" if WINDOWS else ""),
+    )
+
+if MACOS:
+    # dist/openDNA.app: what a Mac user drags to Applications. Not signed (that needs a paid Apple developer account): the first
+    # start is through right-click > Open, as the release notes say.
+    app = BUNDLE(
+        coll,
+        name=project.NAME + ".app",
+        icon=ICON,
+        bundle_identifier="org.opendna-project.opendna",
+        version=project.VERSION,
+        info_plist={
+            "CFBundleName": project.NAME,
+            "CFBundleDisplayName": project.NAME,
+            "CFBundleShortVersionString": project.VERSION,
+            "CFBundleVersion": project.VERSION,
+            "NSHighResolutionCapable": True,
+            "NSHumanReadableCopyright": f"Copyright (C) 2026 {project.AUTHOR}. Licensed under AGPL-3.0.",
+            "LSMinimumSystemVersion": "12.0",
+        },
     )

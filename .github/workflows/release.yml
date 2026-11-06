@@ -1,15 +1,25 @@
 name: release
 
-# Builds openDNA.exe (one file) and openDNA-folder.zip (the same program as a folder, Qt replaceable) from a tag, renames them to the released
-# name (project.EXE_NAME: oDNA_beta.exe, oDNA_beta-folder.zip) and attaches them to a DRAFT GitHub release. It never publishes: you read the draft, then press
-# "Publish release" yourself (docs/PUBLISHING.md, section 7).
+# Builds, from a tag, on three machines at once:
+#   Windows  openDNA.exe (one file) and openDNA-folder.zip (the same program as a folder, Qt replaceable)
+#   macOS    openDNA.app for Apple Silicon, zipped
+#   Linux    the folder openDNA (x86-64, glibc 2.35+), as a .tar.gz
+# renames them to the released name (project.EXE_NAME: oDNA_beta.exe, oDNA_beta-folder.zip, oDNA_beta-macos-arm64.zip,
+# oDNA_beta-linux-x86_64.tar.gz), each with its .sha256, and attaches them to a DRAFT GitHub release. It never publishes: you read the
+# draft, then press "Publish release" yourself (docs/PUBLISHING.md, section 7).
 #
 #   git tag v0.1.0 && git push origin v0.1.0        # the normal way
-#   Actions > release > Run workflow                  # a dry run from any branch: same build, draft named after project.VERSION
+#   Actions > release > Run workflow                  # a dry run from any branch: same build, draft named after project.VERSION;
+#                                                     # untick "release" to build and test only (the files are then the run's artifacts)
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Make the draft release (untick: build and test only)"
+        type: boolean
+        default: true
 
 # Needed to create the release and attach files; nothing else.
 permissions:
@@ -21,9 +31,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  # Cheapest check first: a tag that does not match the version in the code is a mistake, whatever the tests say.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      exe_name: ${{ steps.read.outputs.exe_name }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the tag matches project.VERSION
+        id: read
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version=$(sed -nE 's/^VERSION *= *"([^"]+)".*/\1/p' app/project.py)
+          exe_name=$(sed -nE 's/^EXE_NAME *= *"([^"]+)".*/\1/p' app/project.py)
+          [ -n "$version" ] || { echo "could not read VERSION from app/project.py"; exit 1; }
+          [ -n "$exe_name" ] || { echo "could not read EXE_NAME from app/project.py"; exit 1; }
+          echo "Version in the code: $version; released files: $exe_name.*"
+          if [ "$REF_TYPE" = tag ] && [ "$REF_NAME" != "v$version" ]; then
+            echo "tag $REF_NAME does not match project.VERSION $version (expected v$version). Delete the tag, fix the version in app/project.py, core/Cargo.toml and core/pyproject.toml, tag again."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "exe_name=$exe_name" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      EXE_NAME: ${{ needs.version.outputs.exe_name }}
     defaults:
       run:
         shell: pwsh
@@ -41,24 +80,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
-
-      # Cheapest check first: a tag that does not match the version in the code is a mistake, whatever the tests say.
-      - name: Check the tag matches project.VERSION
-        env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          $version = (Select-String -Path app/project.py -Pattern '^VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-          if (-not $version) { throw "could not read VERSION from app/project.py" }
-          "Version in the code: $version"
-          if ($env:REF_TYPE -eq "tag" -and $env:REF_NAME -ne "v$version") {
-            throw "tag $env:REF_NAME does not match project.VERSION $version (expected v$version). Delete the tag, fix the version in app/project.py, core/Cargo.toml and core/pyproject.toml, tag again."
-          }
-          [IO.File]::AppendAllText($env:GITHUB_ENV, "VERSION=$version`n")   # UTF-8 without a byte-order mark, on any PowerShell
-          $exeName = (Select-String -Path app/project.py -Pattern '^EXE_NAME\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
-          if (-not $exeName) { throw "could not read EXE_NAME from app/project.py" }
-          "Released file name: $exeName.exe"
-          [IO.File]::AppendAllText($env:GITHUB_ENV, "EXE_NAME=$exeName`n")
 
       # Includes PyInstaller (needed for the exe) and pytest/pyflakes/biopython (the tests).
       - name: Install Python packages
@@ -89,48 +110,184 @@ jobs:
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_exe.ps1
 
       # The tested files under their released name (the same bytes: only the file name changes; inside the folder zip the program keeps
-      # its own name, openDNA.exe, as its README says).
-      - name: Name the files for the release
+      # its own name, openDNA.exe, as its README says), each with its checksum in the format `sha256sum -c` reads: "<hex>  <file name>",
+      # two spaces, LF line end, no byte-order mark.
+      - name: Name the files for the release and compute their checksums
         run: |
-          Copy-Item dist/openDNA.exe "dist/$env:EXE_NAME.exe"
-          Copy-Item dist/openDNA-folder.zip "dist/$env:EXE_NAME-folder.zip"
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item dist/openDNA.exe "release/$env:EXE_NAME.exe"
+          Copy-Item dist/openDNA-folder.zip "release/$env:EXE_NAME-folder.zip"
+          foreach ($name in "$env:EXE_NAME.exe", "$env:EXE_NAME-folder.zip") {
+            $hash = (Get-FileHash "release/$name" -Algorithm SHA256).Hash.ToLower()
+            [IO.File]::WriteAllText("$PWD/release/$name.sha256", "$hash  $name`n")
+            Write-Host "$hash  $name"
+          }
 
-      # The format `sha256sum -c` reads: "<hex>  <file name>", two spaces, LF line end, no byte-order mark.
-      - name: Compute the checksum
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: release/
+          if-no-files-found: error
+
+  macos:
+    needs: version
+    runs-on: macos-14   # Apple Silicon (arm64)
+    timeout-minutes: 60
+    env:
+      EXE_NAME: ${{ needs.version.outputs.exe_name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      # Pillow: PyInstaller makes the .app's .icns icon with it.
+      - name: Install Python packages
+        run: pip install -r requirements-dev.txt pillow
+
+      - name: Build the Rust core and install it
         run: |
-          $exe, $zip = "$env:EXE_NAME.exe", "$env:EXE_NAME-folder.zip"
-          $hash = (Get-FileHash "dist/$exe" -Algorithm SHA256).Hash.ToLower()
-          $line = "$hash  $exe`n"
-          [IO.File]::WriteAllText("$PWD/dist/$exe.sha256", $line)
-          $zipHash = (Get-FileHash "dist/$zip" -Algorithm SHA256).Hash.ToLower()
-          [IO.File]::WriteAllText("$PWD/dist/$zip.sha256", "$zipHash  $zip`n")
-          Write-Host "$zipHash  $zip"
-          Write-Host $line
+          maturin build --release -m core/Cargo.toml --out wheels
+          pip install --no-index --find-links wheels opendna_core
+
+      # For information: the tests are written and checked on Windows (fonts and window sizes differ here). The smoke test of the
+      # built program below is what decides.
+      - name: Python tests (information only)
+        continue-on-error: true
+        timeout-minutes: 25
+        run: python -m pytest -q tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Build openDNA.app and smoke-test it
+        run: PYTHON=python bash scripts/build_unix.sh
+
+      - name: Name the file for the release and compute its checksum
+        run: |
+          mkdir -p release
+          name="$EXE_NAME-macos-arm64.zip"
+          cp dist/openDNA-macos.zip "release/$name"
+          (cd release && printf '%s  %s\n' "$(shasum -a 256 "$name" | cut -d' ' -f1)" "$name" > "$name.sha256" && cat "$name.sha256")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: release/
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    runs-on: ubuntu-22.04   # the oldest glibc (2.35) GitHub offers: the build runs on that and every newer distribution
+    timeout-minutes: 60
+    env:
+      EXE_NAME: ${{ needs.version.outputs.exe_name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # What Qt needs to start: the X11 helper libraries are then bundled into the build (a desktop without libxcb-cursor0, for
+      # one, still runs it); libGL / libEGL / fontconfig stay the system's own.
+      - name: Install the libraries Qt needs
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libegl1 libgl1 libfontconfig1 libdbus-1-3 libxkbcommon0 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - name: Install Python packages
+        run: pip install -r requirements-dev.txt
+
+      - name: Build the Rust core and install it
+        run: |
+          maturin build --release -m core/Cargo.toml --out wheels
+          pip install --no-index --find-links wheels opendna_core
+
+      - name: Python tests (information only)
+        continue-on-error: true
+        timeout-minutes: 25
+        run: python -m pytest -q tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Build the Linux folder and smoke-test it
+        run: PYTHON=python bash scripts/build_unix.sh
+
+      - name: Name the file for the release and compute its checksum
+        run: |
+          mkdir -p release
+          name="$EXE_NAME-linux-x86_64.tar.gz"
+          cp dist/openDNA-linux.tar.gz "release/$name"
+          (cd release && sha256sum "$name" > "$name.sha256" && cat "$name.sha256")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: release/
+          if-no-files-found: error
+
+  release:
+    needs: [version, windows, macos, linux]
+    if: github.event_name != 'workflow_dispatch' || inputs.release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
 
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
+          VERSION: ${{ needs.version.outputs.version }}
+          EXE_NAME: ${{ needs.version.outputs.exe_name }}
         run: |
-          $tag = "v$env:VERSION"
-          $exe, $zip = "$env:EXE_NAME.exe", "$env:EXE_NAME-folder.zip"
-          $notes = @"
-          openDNA $env:VERSION. Early software: keep copies of your files.
+          tag="v$VERSION"
+          exe="$EXE_NAME.exe"; zip="$EXE_NAME-folder.zip"; mac="$EXE_NAME-macos-arm64.zip"; linux="$EXE_NAME-linux-x86_64.tar.gz"
+          ls -l release
+          cat > release-notes.md <<NOTES
+          openDNA $VERSION. Early software: keep copies of your files.
 
-          **Windows will warn about this file.** The exe is not code-signed, so SmartScreen shows "Windows protected your PC" (More info > Run anyway) and some antivirus programs may flag it wrongly. To check the download, compare its SHA-256 with ``$exe.sha256`` (``Get-FileHash $exe``).
+          **Downloads.** Each file has its own \`.sha256\` to check the download against.
+          - **Windows** (10 or 11, 64-bit): \`$exe\`, one file, and the one that can update itself later. \`$zip\` is the same program as a folder, for people who want to replace the Qt libraries (see README.txt inside); it does not update itself.
+          - **macOS** (Apple Silicon, macOS 12 or later): \`$mac\`. Unzip it and move openDNA to Applications.
+          - **Linux** (x86-64, Ubuntu 22.04 or newer and similar): \`$linux\`. \`tar -xzf $linux\`, then run \`openDNA/openDNA\` (see README.txt inside).
 
-          **Two downloads.** ``$exe`` is one file and the one that can update itself later. ``$zip`` is the same program as a folder, for people who want to replace the Qt libraries (see README.txt inside); it does not update itself. Each has its own ``.sha256`` file.
+          **The programs are not signed**, so the system warns about them. Windows: SmartScreen shows "Windows protected your PC" (More info > Run anyway), and some antivirus programs may flag it wrongly. macOS: the first time, right-click openDNA > Open > Open (or System Settings > Privacy & Security > Open Anyway). Check a download with \`Get-FileHash $exe\` (Windows) or \`shasum -a 256 <file>\` (macOS, Linux).
 
-          Licence: AGPL-3.0. Source: this repository at tag ``$tag``.
-          "@
-          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+          Licence: AGPL-3.0. Source: this repository at tag \`$tag\`.
+          NOTES
+          sed -i 's/^          //' release-notes.md
           # On a tag push the tag already exists; on a manual run the draft points at the commit and creates no tag until published.
-          $target = if ($env:REF_TYPE -eq "tag") { @() } else { @("--target", $env:SHA) }
+          target=(); [ "$REF_TYPE" = tag ] || target=(--target "$SHA")
           # A draft of this version left by an earlier run is replaced (a published release never is: then the create below fails)
-          $old = gh release view $tag --json isDraft --jq .isDraft 2>$null
-          if ($LASTEXITCODE -eq 0 -and $old -eq "true") { gh release delete $tag --yes; "Replaced the earlier draft $tag" }
-          gh release create $tag "dist/$exe" "dist/$exe.sha256" "dist/$zip" "dist/$zip.sha256" --draft --title "openDNA $env:VERSION" --notes-file release-notes.md @target
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed (does a release for $tag already exist?)" }
-          [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "Draft release $tag created: review it under Releases, then publish it yourself.`n")
+          if [ "$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)" = true ]; then
+            gh release delete "$tag" --yes && echo "Replaced the earlier draft $tag"
+          fi
+          files=()
+          for f in "$exe" "$zip" "$mac" "$linux"; do files+=("release/$f" "release/$f.sha256"); done
+          gh release create "$tag" "${files[@]}" --draft --title "openDNA $VERSION" --notes-file release-notes.md "${target[@]}" ||
+            { echo "gh release create failed (does a release for $tag already exist?)"; exit 1; }
+          echo "Draft release $tag created: review it under Releases, then publish it yourself." >> "$GITHUB_STEP_SUMMARY"
