@@ -12,13 +12,21 @@ Design primers, Cas9 guides and assemblies, on your own computer, with nothing s
 
 ## Downloads
 
-- **Windows** (10 or 11, 64-bit) — **[download openDNA](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta.exe)** (one file, no installer, no Python needed).
-  Also [as a folder](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-folder.zip) if you want to replace the Qt libraries yourself.
-- **macOS** — [not available yet](https://github.com/OpenDNA-project/openDNA/releases); [run from source](CONTRIBUTING.md#run-from-source) meanwhile.
-- **Linux** — [not available yet](https://github.com/OpenDNA-project/openDNA/releases); [run from source](CONTRIBUTING.md#run-from-source) meanwhile.
+| System | Requirements | Download |
+|---|---|---|
+| **Windows** | Windows 10 or 11, 64-bit (x86-64). No installer, no administrator rights, no Python. | **[oDNA_beta.exe](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta.exe)** (one file, about 42 MB)<br>or [as a folder](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-folder.zip), to replace the Qt libraries yourself |
+| **macOS, Apple Silicon** | macOS 14 Sonoma or later, on a Mac with an M1 chip or later (Apple menu → *About This Mac* shows **Chip**). | **[oDNA_beta-macos-arm64.zip](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-macos-arm64.zip)** (about 31 MB): unzip, move openDNA to Applications |
+| **macOS, Intel** | macOS 14 Sonoma or later, on an Intel Mac (*About This Mac* shows **Processor**). | **[oDNA_beta-macos-x86_64.zip](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-macos-x86_64.zip)** (about 32 MB): unzip, move openDNA to Applications |
+| **Linux** | 64-bit (x86-64) with glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+ (`ldd --version` shows it; not RHEL / Rocky 9). A desktop (X11 or Wayland) with OpenGL and fontconfig. | **[oDNA_beta-linux-x86_64.tar.gz](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-linux-x86_64.tar.gz)** (about 74 MB): `tar -xzf oDNA_beta-linux-x86_64.tar.gz`, then run `openDNA/openDNA` |
 
-> **Beta (0.5): keep copies of your files.** The exe is unsigned, so Windows SmartScreen warns you: check its SHA-256 against the
-> release notes, then *More info* → *Run anyway* ([SECURITY.md](SECURITY.md)). New here? The [tutorial](docs/TUTORIAL.md) takes 15 minutes.
+Older systems, Windows on ARM, or anything else: [run from source](CONTRIBUTING.md#run-from-source) (Python 3.11+ and Rust).
+Read mapping (optional) also needs bwa, samtools and minimap2: on Windows through WSL (*Tools → Install Mapping Tools*).
+
+Every download has a `.sha256` file beside it on the [releases page](https://github.com/OpenDNA-project/openDNA/releases).
+
+> **Beta (0.5): keep copies of your files.** The programs are unsigned, so the system warns you: check the SHA-256 against the
+> release notes, then on Windows *More info* → *Run anyway*, on macOS right-click openDNA → *Open* → *Open* the first time
+> ([SECURITY.md](SECURITY.md)). New here? The [tutorial](docs/TUTORIAL.md) takes 15 minutes.
 
 ## Edit a sequence without losing your annotations
 

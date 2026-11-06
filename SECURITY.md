@@ -51,5 +51,10 @@ The `oDNA_beta.exe` in the Releases is **unsigned** (a certificate costs money a
    or, in a command prompt, `certutil -hashfile oDNA_beta.exe SHA256`. If the release gives the checksum of a `.zip`, check the zip before you unpack it.
 4. If the values differ, do not run the file, and report it as above.
 
+The macOS and Linux downloads (`oDNA_beta-macos-arm64.zip`, `oDNA_beta-macos-x86_64.zip`, `oDNA_beta-linux-x86_64.tar.gz`) are not signed either: macOS refuses to
+open the app the first time (right-click it, *Open*, then *Open* again, or System Settings > Privacy & Security > *Open Anyway*).
+Check them the same way before you unpack them, with `shasum -a 256 <file>` (macOS) or `sha256sum <file>` (Linux), against the
+`.sha256` file beside each download.
+
 A matching checksum shows the file is the one that was published; it does not by itself prove the published file is harmless. The source is public, and you can build
 the exe yourself (see the README).

@@ -118,7 +118,9 @@ def test_columns_are_measured_from_the_longest_texts_and_only_when_widths_can_ch
     app.processEvents()
     model, view = table.model, table.view
     model.set_expanded("T_A", True)
-    view.MEASURED = 2   # a short list, so the choice of texts matters
+    # (the 40 longest different texts of each kind of row: here every text. The choice by length is what keeps a genome quick; a
+    # shorter list would make the test depend on the fonts, where the longest text in letters is not always the widest)
+    assert all(len({str(r[0][c]) for r in model.shown}) <= view.MEASURED for c in range(model.columnCount()))
     option = QStyleOptionViewItem()
     view.initViewItemOption(option)
     for c in range(model.columnCount()):
