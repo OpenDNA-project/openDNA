@@ -66,7 +66,13 @@ class _Fitter(QObject):
         if model is None:
             return
         for signal in (model.modelReset, model.rowsInserted, model.rowsRemoved, model.layoutChanged, model.dataChanged):
-            signal.connect(self.timer.start)
+            signal.connect(self._changed)
+
+    def _changed(self, *_):
+        """The rows changed: fit again, unless the model says this change cannot need it (`fit_quiet`: a gene opened or closed in
+        the Features view, where measuring the columns again took most of a second on a genome)."""
+        if not getattr(self.view.model(), "fit_quiet", False):
+            self.timer.start()
 
     def _names(self):
         model = self.view.model()

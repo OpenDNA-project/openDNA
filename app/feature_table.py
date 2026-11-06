@@ -33,6 +33,8 @@ TOGGLE_PX = 18  # clicks this close to the left of a gene's name expand/collapse
 
 
 class FeatureModel(QAbstractTableModel):
+    fit_quiet = False   # True during a change the table's column fitting may skip (see uikit._Fitter)
+
     def __init__(self, editor):
         super().__init__()
         self.editor = editor
@@ -92,8 +94,41 @@ class FeatureModel(QAbstractTableModel):
     def toggle(self, row):
         key = self.shown[row][4]
         if key:
-            self.expanded ^= {key}  # ^= toggles membership
-            self.reload()
+            self.set_expanded(key, key not in self.expanded)
+
+    def set_expanded(self, key, open_):
+        """Open or close one gene: only its row (the arrow) and the rows of its parts under it change. (It rebuilt and sorted the
+        rows of every feature and reset the table, then the columns were measured again: most of a second on a genome.)"""
+        if (key in self.expanded) == open_:
+            return
+        self.expanded ^= {key}
+        at = next((i for i, r in enumerate(self.shown) if r[4] == key), None)
+        if at is None:   # the gene is not on view (filtered out): nothing to redraw
+            return
+        old = self.shown[at]
+        new = self._row(self.editor.by_index[old[3]], key)   # its name now shows ▾ / ▸
+        self.rows[next(i for i, r in enumerate(self.rows) if r is old)] = new
+        kids = self.children.get(key, [])
+        ids = {id(k) for k in kids}
+        end = at + 1
+        while end < len(self.shown) and id(self.shown[end]) in ids:   # the parts shown under it now
+            end += 1
+        needle = self.filter_text
+        under = kids if open_ else [k for k in kids if needle in k[2]] if needle else []
+        self.fit_quiet = True   # (the parts hold what their gene holds: the columns need not be measured again)
+        try:
+            self.shown[at] = new
+            self.dataChanged.emit(self.index(at, 0), self.index(at, len(self.columns) - 1))
+            if end > at + 1:
+                self.beginRemoveRows(QModelIndex(), at + 1, end - 1)
+                del self.shown[at + 1:end]
+                self.endRemoveRows()
+            if under:
+                self.beginInsertRows(QModelIndex(), at + 1, at + len(under))
+                self.shown[at + 1:at + 1] = under
+                self.endInsertRows()
+        finally:
+            self.fit_quiet = False
 
     def set_filter(self, text):
         self.beginResetModel()
@@ -111,8 +146,7 @@ class FeatureModel(QAbstractTableModel):
         """Row of a feature; a part of a closed gene opens it first."""
         key = self.editor.part_of.get(feature_index)
         if key and key not in self.expanded and not any(r[3] == feature_index for r in self.shown):
-            self.expanded.add(key)
-            self.reload()
+            self.set_expanded(key, True)
         return next((i for i, r in enumerate(self.shown) if r[3] == feature_index), None)
 
     def rowCount(self, parent=QModelIndex()):
