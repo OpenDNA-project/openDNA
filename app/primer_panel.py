@@ -870,7 +870,19 @@ class PrimerPanel(QWidget):
         layout.addWidget(self.tree)
         editor.primers_changed.connect(self.reload)
         editor.elsewhere_changed.connect(self.reload)
+        self.sources = self._sources()
+        editor.display_changed.connect(self._display_changed)
         self.reload()
+
+    def _sources(self):
+        """The primer sources switched on in the Display filter: (From this sequence, From the database)."""
+        return self.editor.show_file_primers, self.editor.show_db_primers
+
+    def _display_changed(self):
+        """The Display filter changed: the list follows its primer switches (only those: the other switches change nothing here)."""
+        if not self.database and self._sources() != self.sources:
+            self.sources = self._sources()
+            self.reload()
 
     def _can_edit(self):
         if self.edit_button is not None:
@@ -889,10 +901,17 @@ class PrimerPanel(QWidget):
         for site in ed.elsewhere:   # a multi-record file: the sites on the other records are listed too
             elsewhere.setdefault(site.label, []).append(site)
             groups.setdefault(site.label, [])
-        rows = {}
+        rows, filtered = {}, 0
         if self.database:   # every primer of the database, also one that binds nowhere (an ambiguity code...)
             rows = {r["name"]: r for r in db().rows}
             groups = {name: groups.get(name, []) for name in rows}
+        elif not all(self._sources()):
+            # Only the primers of the sources switched on in the Display filter (From this sequence / From the database), as
+            # the views draw them; a hidden primer of a source shown stays listed, greyed.
+            in_db = ed._db_primer_keys()
+            shown = {name: sites for name, sites in groups.items()
+                     if ed.primer_source_shown(name, (sites or elsewhere[name])[0].sequence, in_db)}
+            filtered, groups = len(groups) - len(shown), shown
         self.tree.blockSignals(True)  # don't select sites while refilling
         current = self.tree.currentItem()
         keep = primer_item(current).data(0, Qt.UserRole) if current is not None else None
@@ -938,7 +957,10 @@ class PrimerPanel(QWidget):
         self.tree.setRootIsDecorated(any(self.tree.topLevelItem(i).childCount() for i in range(self.tree.topLevelItemCount())))
         self.tree.blockSignals(False)
         n = len(groups)
-        self.count.setText(plural(n, "primer") if self.database else f"{plural(n, 'primer')} on this sequence")
+        text = plural(n, "primer") if self.database else f"{plural(n, 'primer')} on this sequence"
+        if filtered:
+            text += f" ({filtered} more not shown: Display filter)"
+        self.count.setText(text)
         self._can_edit()
 
     # ---- the sites of a primer, grouped by where they are -------------------------------------------------------------------
