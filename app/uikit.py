@@ -71,7 +71,11 @@ class _Fitter(QObject):
     def _changed(self, *_):
         """The rows changed: fit again, unless the model says this change cannot need it (`fit_quiet`: a gene opened or closed in
         the Features view, where measuring the columns again took most of a second on a genome)."""
-        if not getattr(self.view.model(), "fit_quiet", False):
+        try:
+            quiet = getattr(self.view.model(), "fit_quiet", False)
+        except RuntimeError:   # the table is being deleted: its own model (a QTableWidget's) clears its rows on the way out
+            return
+        if not quiet:
             self.timer.start()
 
     def _names(self):
