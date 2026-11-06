@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from opendna_core import Bam, Document, Fasta, Track
 
 from display_panel import DisplayPanel
-from history_panel import HistoryPanel
+from history_panel import HistoryPanel, side_panel_width
 from editor import Editor, clean_pasted
 from shortcuts import ShortcutsDialog
 from sponsors import SponsorsDialog, show_at_startup
@@ -182,8 +182,8 @@ class MainWindow(QMainWindow):
         self.autosave_timer = QTimer(self, interval=AUTOSAVE_MS, timeout=self.autosave)
         self.autosave_timer.start()
 
-    # ---- what the window remembers between sessions: its size and place, the side panel's width, the View switches. Not the
-    # tabs (a file always opens with the standard ones, unless it is a project) and not which side panel was open.
+    # ---- what the window remembers between sessions: its size and place, the View switches. Not the tabs (a file always opens
+    # with the standard ones, unless it is a project), not which side panel was open, and no side panel width (fixed).
     VIEW_SWITCHES = ("enzymes_action", "translation_action", "complement_action", "collapse_action", "cds_only_action")
 
     @staticmethod
@@ -199,31 +199,27 @@ class MainWindow(QMainWindow):
             w, h = min(1400, int(screen.width() * 0.85)), min(850, int(screen.height() * 0.85))
             self.resize(w, h)
             self.move(screen.center().x() - w // 2, screen.center().y() - h // 2)
-        self.panel_width = int(s.value("panel_width", 0) or 0)
         for name in self.VIEW_SWITCHES:
             a = getattr(self, name)
             saved = s.value(f"view/{name}")
             if saved is not None:
                 a.setChecked(str(saved).lower() == "true")
             a.toggled.connect(lambda on, name=name: self._window_settings().setValue(f"view/{name}", on))
-        for dock in (self.display_dock, self.history_dock):   # a side panel opens at the width it was left at
-            dock.visibilityChanged.connect(lambda on, dock=dock: on and self.panel_width and
-                                           QTimer.singleShot(0, lambda: self.resizeDocks([dock], [self.panel_width], Qt.Horizontal)))
 
     def _save_window(self):
         s = self._window_settings()
         s.setValue("geometry", self.saveGeometry())   # size, place and maximised (restoreGeometry keeps it on a screen)
-        shown = next((d for d in (self.display_dock, self.history_dock) if d.isVisible()), None)
-        if shown is not None:
-            s.setValue("panel_width", shown.width())
+        s.remove("panel_width")   # (the side panels were once as wide as dragged: they all have one fixed width now)
 
     @staticmethod
     def _fix_to_the_right(dock):
         """A side panel that is always on the right: no title bar (no heading, no float / close buttons) and it cannot be moved; the
         toolbar's button (or its shortcut) opens and closes it. (Closable stays: with no feature at all Qt's toggle action cannot
-        show the panel.)"""
+        show the panel.) Every side panel has the same fixed width, the History panel's (side_panel_width): it cannot be dragged
+        wider, and no content (the enzyme criteria unfolded, a long feature type...) can push it to half the window."""
         dock.setFeatures(QDockWidget.DockWidgetClosable)
         dock.setTitleBarWidget(QWidget())
+        dock.setFixedWidth(side_panel_width())
 
     MENU_ORDER = ("&File", "&Edit", "&View", "&Import", "E&xport", "Fea&ture", "&Primers", "Data&bases", "T&ools", "&Help")
 

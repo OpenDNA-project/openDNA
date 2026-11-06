@@ -342,12 +342,6 @@ class DisplayPanel(QScrollArea):
         self.expander.setArrowType(Qt.DownArrow if open_ else Qt.RightArrow)
         self.criteria_box.setVisible(open_)
 
-    def sizeHint(self):
-        """The width the panel opens at (the dock takes its size hint): what its content needs, scroll bar and frame included, plus
-        3.5% so that nothing is cramped."""
-        need = self.widget().minimumSizeHint().width() + 2 * self.frameWidth() + self.verticalScrollBar().sizeHint().width()
-        return QSize(int(need * 1.035), super().sizeHint().height())
-
     def _rule(self):
         """A thin bar between two categories."""
         line = QFrame(frameShape=QFrame.HLine, frameShadow=QFrame.Plain)
