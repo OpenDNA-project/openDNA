@@ -41,7 +41,7 @@ MIN_SIZE, MAX_SIZE = 6, 32
 ZOOM_BAR_W = 24            # strip kept free at the right edge for the zoom bar
 ORIGIN_COLOR = "#d50000"   # the origin mark between the copies of a circular sequence
 PRIMER_COLOR = "#5e35b1"   # exact binding site, light theme (the views use theme "primer", which has a dark-theme twin)
-ALMOST_COLOR = "#ef6c00"   # site with mismatches (dashed)
+ALMOST_COLOR = "#ef6c00"   # site with mismatches (the mismatched bases written on its line)
 TEMP_COLOR = "#00897b"   # a primer that is not part of this file: designed here (not saved yet) or only in the primer database
 
 
@@ -799,9 +799,9 @@ class SequenceView(QAbstractScrollArea):
         selected = ed.current_primer == f.key
         color = theme.selection_color() if selected else (
             QColor(primer_color(f)))
+        # A site with mismatches is a solid line too: its bases that pair are aligned like any other; only the mismatched bases
+        # stand out (the primer's own base, in orange, breaks the line there: see `letters` below) and the line is orange.
         pen = QPen(color, 3 if selected else 2)
-        if f.mismatches:
-            pen.setStyle(Qt.DashLine)  # "almost binds"
         p.setPen(pen)
         length, bpl = ed.length, self.bases_per_line()
         last_row = base0 + n >= length and not ed.circular

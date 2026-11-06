@@ -3,14 +3,14 @@ dialog (type a sequence, see live where it binds), the primer database window, o
 
 A primer is just a name + sequence in the primer database (primer_db.py). Where it binds
 is never stored: Editor.match_primers recomputes it on the current sequence after every
-edit, including sites with a few mismatches ("almost binds", drawn dashed).
+edit, including sites with a few mismatches ("almost binds", orange, the mismatched bases written on the line).
 """
 from html import escape
 import sys
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QEventLoop, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEventLoop, QObject, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFrame,
@@ -761,7 +761,9 @@ class PrimerTree(QTreeWidget):
 
 
 class MismatchDelegate(QStyledItemDelegate):
-    """The sequence of a binding site, letter by letter: the bases that do not pair with the template in red, bold."""
+    """The sequence of a binding site, letter by letter: the bases that do not pair with the template in red, bold. Every letter
+    takes the room it has in the normal font (a bold one centred in it), so the bases after a mismatch stay in line with the
+    primer's sequence on the row above and with the exact sites."""
 
     def paint(self, painter, option, index):
         marks = set(index.data(MISMATCHES) or [])
@@ -785,10 +787,12 @@ class MismatchDelegate(QStyledItemDelegate):
         x = rect.left()
         for k, letter in enumerate(text):
             mismatch = k in marks
+            width = metrics.horizontalAdvance(letter)
             painter.setFont(bold if mismatch else opt.font)
             painter.setPen(red if mismatch else plain)
-            painter.drawText(x, y, letter)
-            x += (bold_metrics if mismatch else metrics).horizontalAdvance(letter)
+            shift = (width - bold_metrics.horizontalAdvance(letter)) / 2 if mismatch else 0
+            painter.drawText(QPointF(x + shift, y), letter)
+            x += width
         painter.restore()
 
 
