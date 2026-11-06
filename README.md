@@ -14,11 +14,16 @@ Design primers, Cas9 guides and assemblies, on your own computer, with nothing s
 
 - **Windows** (10 or 11, 64-bit) — **[download openDNA](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta.exe)** (one file, no installer, no Python needed).
   Also [as a folder](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-folder.zip) if you want to replace the Qt libraries yourself.
-- **macOS** — [not available yet](https://github.com/OpenDNA-project/openDNA/releases); [run from source](CONTRIBUTING.md#run-from-source) meanwhile.
-- **Linux** — [not available yet](https://github.com/OpenDNA-project/openDNA/releases); [run from source](CONTRIBUTING.md#run-from-source) meanwhile.
+- **macOS** (14 Sonoma or later) — **[download for Apple Silicon](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-macos-arm64.zip)** (M1 and later)
+  or **[for Intel Macs](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-macos-x86_64.zip)**: unzip it and move openDNA to Applications.
+- **Linux** (x86-64, Ubuntu 22.04 or newer and similar) — **[download openDNA](https://github.com/OpenDNA-project/openDNA/releases/latest/download/oDNA_beta-linux-x86_64.tar.gz)**:
+  `tar -xzf oDNA_beta-linux-x86_64.tar.gz`, then run `openDNA/openDNA`.
 
-> **Beta (0.5): keep copies of your files.** The exe is unsigned, so Windows SmartScreen warns you: check its SHA-256 against the
-> release notes, then *More info* → *Run anyway* ([SECURITY.md](SECURITY.md)). New here? The [tutorial](docs/TUTORIAL.md) takes 15 minutes.
+Every download has a `.sha256` file beside it on the [releases page](https://github.com/OpenDNA-project/openDNA/releases).
+
+> **Beta (0.5): keep copies of your files.** The programs are unsigned, so the system warns you: check the SHA-256 against the
+> release notes, then on Windows *More info* → *Run anyway*, on macOS right-click openDNA → *Open* → *Open* the first time
+> ([SECURITY.md](SECURITY.md)). New here? The [tutorial](docs/TUTORIAL.md) takes 15 minutes.
 
 ## Edit a sequence without losing your annotations
 

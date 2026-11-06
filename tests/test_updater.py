@@ -368,8 +368,11 @@ def test_install_swaps_and_refuses(tmp_path, monkeypatch):
         frozen.setattr(sys, "frozen", True, raising=False)
         frozen.setattr(sys, "executable", str(current))
         frozen.setattr(sys, "_MEIPASS", str(tmp_path / "somewhere" / "_MEI1234"), raising=False)   # one-file: a temp folder
-        for system, download in (("darwin", "macos-arm64.zip"), ("linux", "linux-x86_64.tar.gz")):   # never the Windows exe there
+        import platform
+        for system, machine, download in (("darwin", "arm64", "macos-arm64.zip"), ("darwin", "x86_64", "macos-x86_64.zip"),
+                                          ("linux", "x86_64", "linux-x86_64.tar.gz")):   # never the Windows exe there
             frozen.setattr(sys, "platform", system)
+            frozen.setattr(platform, "machine", lambda m=machine: m)
             assert "does not update itself" in updater.install_blocker() and download in updater.install_blocker()
         frozen.setattr(sys, "platform", "win32")   # (the one-file exe that updates itself is the Windows one)
         assert not updater.is_folder_build() and updater.install_blocker() is None

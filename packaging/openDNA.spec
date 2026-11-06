@@ -150,6 +150,6 @@ if MACOS:
             "CFBundleVersion": project.VERSION,
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": f"Copyright (C) 2026 {project.AUTHOR}. Licensed under AGPL-3.0.",
-            "LSMinimumSystemVersion": "12.0",
+            "LSMinimumSystemVersion": "14.0",   # what PySide6 6.12's Qt needs (its wheels are macosx_14_0)
         },
     )

@@ -2,10 +2,10 @@ name: release
 
 # Builds, from a tag, on three machines at once:
 #   Windows  openDNA.exe (one file) and openDNA-folder.zip (the same program as a folder, Qt replaceable)
-#   macOS    openDNA.app for Apple Silicon, zipped
+#   macOS    openDNA.app for Apple Silicon and for Intel Macs (macOS 14+), zipped
 #   Linux    the folder openDNA (x86-64, glibc 2.35+), as a .tar.gz
 # renames them to the released name (project.EXE_NAME: oDNA_beta.exe, oDNA_beta-folder.zip, oDNA_beta-macos-arm64.zip,
-# oDNA_beta-linux-x86_64.tar.gz), each with its .sha256, and attaches them to a DRAFT GitHub release. It never publishes: you read the
+# oDNA_beta-macos-x86_64.zip, oDNA_beta-linux-x86_64.tar.gz), each with its .sha256, and attaches them to a DRAFT GitHub release. It never publishes: you read the
 # draft, then press "Publish release" yourself (docs/PUBLISHING.md, section 7).
 #
 #   git tag v0.1.0 && git push origin v0.1.0        # the normal way
@@ -131,7 +131,15 @@ jobs:
 
   macos:
     needs: version
-    runs-on: macos-14   # Apple Silicon (arm64)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:   # (macos-14 and macos-13 runners are not offered to this account: macos-15 is)
+          - runner: macos-15         # Apple Silicon
+            arch: arm64
+          - runner: macos-15-intel   # Intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
       EXE_NAME: ${{ needs.version.outputs.exe_name }}
@@ -174,13 +182,13 @@ jobs:
       - name: Name the file for the release and compute its checksum
         run: |
           mkdir -p release
-          name="$EXE_NAME-macos-arm64.zip"
+          name="$EXE_NAME-macos-${{ matrix.arch }}.zip"
           cp dist/openDNA-macos.zip "release/$name"
           (cd release && printf '%s  %s\n' "$(shasum -a 256 "$name" | cut -d' ' -f1)" "$name" > "$name.sha256" && cat "$name.sha256")
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos
+          name: macos-${{ matrix.arch }}
           path: release/
           if-no-files-found: error
 
@@ -265,14 +273,15 @@ jobs:
           EXE_NAME: ${{ needs.version.outputs.exe_name }}
         run: |
           tag="v$VERSION"
-          exe="$EXE_NAME.exe"; zip="$EXE_NAME-folder.zip"; mac="$EXE_NAME-macos-arm64.zip"; linux="$EXE_NAME-linux-x86_64.tar.gz"
+          exe="$EXE_NAME.exe"; zip="$EXE_NAME-folder.zip"; linux="$EXE_NAME-linux-x86_64.tar.gz"
+          mac="$EXE_NAME-macos-arm64.zip"; intel="$EXE_NAME-macos-x86_64.zip"
           ls -l release
           cat > release-notes.md <<NOTES
           openDNA $VERSION. Early software: keep copies of your files.
 
           **Downloads.** Each file has its own \`.sha256\` to check the download against.
           - **Windows** (10 or 11, 64-bit): \`$exe\`, one file, and the one that can update itself later. \`$zip\` is the same program as a folder, for people who want to replace the Qt libraries (see README.txt inside); it does not update itself.
-          - **macOS** (Apple Silicon, macOS 12 or later): \`$mac\`. Unzip it and move openDNA to Applications.
+          - **macOS** (macOS 14 Sonoma or later): \`$mac\` for Apple Silicon (M1 and later), \`$intel\` for Intel Macs. Unzip it and move openDNA to Applications.
           - **Linux** (x86-64, Ubuntu 22.04 or newer and similar): \`$linux\`. \`tar -xzf $linux\`, then run \`openDNA/openDNA\` (see README.txt inside).
 
           **The programs are not signed**, so the system warns about them. Windows: SmartScreen shows "Windows protected your PC" (More info > Run anyway), and some antivirus programs may flag it wrongly. macOS: the first time, right-click openDNA > Open > Open (or System Settings > Privacy & Security > Open Anyway). Check a download with \`Get-FileHash $exe\` (Windows) or \`shasum -a 256 <file>\` (macOS, Linux).
@@ -287,7 +296,7 @@ jobs:
             gh release delete "$tag" --yes && echo "Replaced the earlier draft $tag"
           fi
           files=()
-          for f in "$exe" "$zip" "$mac" "$linux"; do files+=("release/$f" "release/$f.sha256"); done
+          for f in "$exe" "$zip" "$mac" "$intel" "$linux"; do files+=("release/$f" "release/$f.sha256"); done
           gh release create "$tag" "${files[@]}" --draft --title "openDNA $VERSION" --notes-file release-notes.md "${target[@]}" ||
             { echo "gh release create failed (does a release for $tag already exist?)"; exit 1; }
           echo "Draft release $tag created: review it under Releases, then publish it yourself." >> "$GITHUB_STEP_SUMMARY"

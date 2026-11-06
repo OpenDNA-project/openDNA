@@ -296,8 +296,10 @@ def install_blocker(current_exe=None):
                 f"{ASSET_NAME} from {project.RELEASES_URL}.")
     if current_exe is None and sys.platform != "win32":
         # The release's one-file program is the Windows exe: a Mac or a Linux build must never swap that in for itself.
-        what = "the new openDNA for macOS (oDNA_beta-macos-arm64.zip)" if sys.platform == "darwin" else \
-            "the new openDNA for Linux (oDNA_beta-linux-x86_64.tar.gz)"
+        import platform
+        mac = f"{project.EXE_NAME}-macos-{'arm64' if platform.machine() == 'arm64' else 'x86_64'}.zip"
+        what = f"the new openDNA for macOS ({mac})" if sys.platform == "darwin" else \
+            f"the new openDNA for Linux ({project.EXE_NAME}-linux-x86_64.tar.gz)"
         return f"This version of openDNA does not update itself. Download {what} from {project.RELEASES_URL}."
     if current_exe is None and is_folder_build():
         # Swapping one exe would leave the Qt files the user may have put in this folder untouched but mismatched with the new version.
