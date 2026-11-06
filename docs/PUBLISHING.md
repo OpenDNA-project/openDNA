@@ -71,10 +71,11 @@ repository settings, then make it public when ready: `gh repo edit --visibility 
 
 ## 5. Make it look good
 
-- Add 2-3 screenshots to `docs/images/` and reference them from the README. `GE_SHOTS=<folder>` makes the GUI tests
-  save screenshots (see the README); the Assembly panel (the junction cards) is the most distinctive.
-- Pin the README's *Quick start* to a tested path (section 3 does exactly that).
-- Optional: `CONTRIBUTING.md`, issue templates, a code of conduct. Skip them until someone asks.
+- The README is a showcase page: one section per feature, each with a picture. `python scripts/make_screenshots.py` makes
+  every picture again from the real program and the sequences in `demo/`; redo them whenever the interface changes
+  (`CONTRIBUTING.md` says how).
+- Keep the download links of the README pointing at `releases/latest/download/<EXE_NAME>.exe`, so they follow each release.
+- Optional: a code of conduct. Skip it until someone asks (`CONTRIBUTING.md` and the issue templates are in place).
 
 ## 6. Continuous integration
 
