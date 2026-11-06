@@ -5,6 +5,7 @@ saves where it should not) can never change the files shipped with the program.
 - PLASMID2: pFG051_Chlor.gb, a second plasmid (15 primer sites, many misc_features).
 - DNA_FILE: pFG051_Chlor.dna, the same plasmid as the original .dna file (not cleaned up): only for tests of reading .dna files.
 - GENOME: BW25113_2026.gb, the E. coli genome (4.6 Mb).
+- VIBRIO: vibrio_cholerae_N16961.gb, Vibrio cholerae N16961 (NCBI RefSeq): two chromosomes in one GenBank file.
 """
 import shutil
 import tempfile
@@ -26,3 +27,4 @@ PLASMID = _copy("pBAD30_eilR.gb")
 PLASMID2 = _copy("pFG051_Chlor.gb")
 DNA_FILE = _copy("pFG051_Chlor.dna")
 GENOME = _copy("BW25113_2026.gb")
+VIBRIO = _copy("vibrio_cholerae_N16961.gb")

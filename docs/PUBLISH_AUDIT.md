@@ -209,11 +209,15 @@ Findings:
   The words `token`/`api_key` in `app/` are an internal counter and the NCBI API-key field the *user* types (stored in the user's own `ncbi.ini`, see `PRIVACY.md`).
 - Sequence data: the files shipped are `demo/demo_*.gb` (random, seeded sequences written by `scripts/make_demo_files.py`, "made-up sequences, not real
   parts"), the author's own example sequences in `demo/` (`pBAD30_eilR.gb`, `pFG051_Chlor.gb`, `pFG051_Chlor.dna` and `BW25113_2026.gb`, which the tests
-  also read, through `tests/sample_files.py`), and `app/parts.tsv` (see S5). The author made all four examples and owns them; they go out under the
+  also read, through `tests/sample_files.py`), `demo/vibrio_cholerae_N16961.gb` (NCBI RefSeq NC_002505 / NC_002506, public domain US government data,
+  read by `tests/test_multi_genbank.py`), and `app/parts.tsv` (see S5). The author made the four examples and owns them; they go out under the
   project's own licence (`THIRD_PARTY_NOTICES.md`). No `.bam`, `.bai` or `.fastq` is tracked anywhere.
-- `docs/images/*.png` (3 screenshots) show only the demo plasmid and the Assembly tab with demo fragments: no personal path, name or data visible.
+- `docs/images/*.png` (7 screenshots, made by `scripts/make_screenshots.py`) show only sequences shipped in `demo/` (the author's own
+  plasmids, the BW25113 genome, the RefSeq V. cholerae genome) and, in one picture, simulated reads made by `tests/fake_reads.py`.
+  No personal path, user name or outside data is visible; the script writes its settings to a temporary folder, not the author's.
 - `app/sponsors.json`: `{"contact": "", "slots": [{}, {}, {}]}`; nothing in it.
-- Repository size: about 18 MB, most of it `demo/BW25113_2026.gb` (27 MB of text, about 6 MB packed). No other large binaries in history.
+- Repository size: about 21 MB, most of it `demo/BW25113_2026.gb` (27 MB of text) and `demo/vibrio_cholerae_N16961.gb` (10 MB of text),
+  both of which pack down well. No other large binaries in history.
 
 ## 2. Licensing
 
