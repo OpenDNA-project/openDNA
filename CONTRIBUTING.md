@@ -19,9 +19,51 @@ based on a paper or a dataset, add it to Help > Citations (`app/citations.py`).
 **Your own fork** is welcome too, under the same licence; give it a name and an icon of its own, as [TRADEMARKS.md](TRADEMARKS.md)
 explains (the names "openDNA" and "oDNA" stay with this project).
 
+### Run from source
+
+Windows is the primary platform. Install [Rust](https://rustup.rs/), the Visual Studio C++ Build Tools and
+[Miniconda](https://docs.conda.io/en/latest/miniconda.html), then:
+
+```powershell
+conda create -n opendna python=3.13
+conda activate opendna
+pip install -r requirements.txt
+maturin develop -m core/Cargo.toml --release
+python app/main.py demo/pBAD30_eilR.gb
+```
+
+Use the dedicated `opendna` environment, **not** conda `base`: base ships ICU 73 in `Library\bin`, which conda's Python puts on the
+DLL path; PySide6's `Qt6Core.dll` then loads it instead of Windows' ICU and fails with "DLL load failed … The specified procedure
+could not be found".
+
+The sequences in `demo/` are real: two plasmids, the *E. coli* BW25113 genome and *Vibrio cholerae* N16961 (both chromosomes).
+`python scripts/make_demo_files.py` writes the three small made-up fragments used by the tutorial.
+
+### Build the exe
+
+A standalone `dist\openDNA.exe` (one file, about 39 MB, runs on a PC without Python): after
+`pip install -r requirements-dev.txt` and `maturin develop -m core/Cargo.toml --release`, run
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_exe.ps1
+```
+
+It builds from the committed recipe `packaging/openDNA.spec`, prints the size and SHA-256, and smoke-tests the exe: it starts it,
+opens a demo file and checks that it stays alive (`-NoSmoke` skips that). It also builds `dist\openDNA-folder.zip`, the same program
+as a folder with the Qt files replaceable (`-NoFolder` skips it). Releases are built from a `v*` tag by
+`.github/workflows/release.yml` into a draft GitHub release, under the name in `app/project.py` (`EXE_NAME`); see
+[docs/PUBLISHING.md](docs/PUBLISHING.md).
+
+### The README pictures
+
+`python scripts/make_screenshots.py` makes every picture in `docs/images/` again, from the real program and the real sequences in
+`demo/`. Run it with real fonts (do not set `QT_QPA_PLATFORM`); its settings go to a temporary folder, never yours. Name one or
+more pictures to redo only those (`editor`, `map`, `gibson`, `primers`, `cas9`, `align`, `tracks`). The `tracks` picture maps
+simulated reads, so it needs bwa and samtools the way *Tools > Map Reads* does. Redo the pictures when you change the interface.
+
 ### Run the tests
 
-You need Rust, the Visual Studio C++ Build Tools and a conda environment (not `base`; see the README).
+You need Rust, the Visual Studio C++ Build Tools and a conda environment (not `base`; see above).
 
 ```powershell
 conda create -n opendna python=3.13

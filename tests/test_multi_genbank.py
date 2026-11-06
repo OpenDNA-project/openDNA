@@ -16,10 +16,11 @@ from PySide6.QtWidgets import QApplication
 
 import multigb
 from main import MainWindow
+import sample_files
 from sample_files import PLASMID, PLASMID2
 
 app = QApplication.instance() or QApplication([])
-VIBRIO = Path(os.environ.get("OPENDNA_VIBRIO_GB", "V:/HM_Softwares/TestData/vibrio_cholerae/vibrio_cholerae_N16961.gb"))   # outside git
+VIBRIO = Path(os.environ["OPENDNA_VIBRIO_GB"]) if os.environ.get("OPENDNA_VIBRIO_GB") else sample_files.VIBRIO   # demo/, or another copy
 
 
 def two_records(tmp_path):
