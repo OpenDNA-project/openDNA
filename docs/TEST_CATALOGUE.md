@@ -142,6 +142,11 @@ The question behind this whole group: **can the program lose or silently alter y
 | `test_reference.py::test_a_contig_name_matches_ignoring_chr_and_case` | Track contig names | chr1 = 1 = Chr1 when unambiguous; no guess when two fit or none. |
 | `test_reference.py::test_tracks_follow_the_record_and_a_mismatching_single_contig_is_said` | Tracks on other records | A track whose only contig differs shows a status message; switching record carries the tracks (by contig name) and names those with no data. |
 | `test_reference.py::test_saving_one_record_as_genbank_says_the_others_stay_behind` | Save as from a multi-record FASTA | The status bar says "only chr1: the other 2 sequence(s)... not included". |
+| `test_add_chromosome.py::test_one_record_genbank_becomes_multi_record` | Import as New Chromosome makes a multi-record GenBank file | A plasmid file gets a second plasmid as a new record: the old bytes are the start of the new file, the added record has the same bases, topology and features, the window shows it, and the first record comes back with its unsaved edit, which Save writes in place. |
+| `test_add_chromosome.py::test_names_are_unique_and_can_be_changed` | Record names stay unique | The same plasmid added to itself becomes `<name>_2`; a typed name is used (spaces become `_`); a name the file has is refused and nothing is written. |
+| `test_add_chromosome.py::test_multi_fasta_source_and_target` | New sequences in a FASTA file | Ticked records of a multi-FASTA (a clashing name renamed) and a GenBank plasmid (bases only) are appended; the stale `.fai` is rebuilt with every length; a Windows file keeps CRLF only; a last line without a newline is ended, not joined. |
+| `test_add_chromosome.py::test_dna_source_keeps_primers_and_dna_target_is_saved_first` | `.dna` files | The primers of a `.dna` source become `primer_bind` features of the new record; an open `.dna` file is saved as GenBank first and never changed. |
+| `test_add_chromosome.py::test_cancelled_dialog_writes_nothing` | Cancel | The file's bytes and the window are unchanged. |
 
 
 ## 6. Editing: do annotations stay on the right bases?

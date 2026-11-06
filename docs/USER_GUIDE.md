@@ -22,8 +22,16 @@ FASTA references (`.fa`, `.fasta`, `.fna`, multi-sequence) open like any other f
 the toolbar; Save writes the edited sequence back into the same FASTA (others are copied through
 unchanged). Only one sequence is open at a time: tracks (GFF3/BED/VCF/BAM) follow you to another sequence of the file (each on the
 contig of the same name; "chr1" matches "1"), Save as GenBank / a project writes only the open sequence (the status bar says how many
-others stay behind), and mapping reads sends the mapper only the open sequence. A multi-record GenBank file cannot be opened (the message
-says so); as a *background genome* it is read in full. The alignment view (View → Alignment View, Ctrl+Shift+G; off until you ask for it, on any sequence) shows
+others stay behind), and mapping reads sends the mapper only the open sequence. A GenBank file of several records (a genome and its plasmids) opens the
+same way: the map lists the records, one is open at a time, and Save puts it back among the others; as a *background genome* it is
+read in full.
+
+**Import → DNA → Sequence File as New Chromosome** adds the sequences of another file (GenBank, `.dna`, FASTA, project; a
+multi-record file lists its records, tick the ones you want and rename them if you like) to the open file as new records,
+after the ones it has: a one-record GenBank file becomes a multi-record GenBank file, a FASTA file gets more sequences (bases
+only: FASTA keeps no features). The new records are written into the file at once (the records already in it are copied byte for
+byte, and Undo does not remove the new ones); the sequence that was open keeps its unsaved edits until you save it. An open `.dna`
+file, project or unsaved sequence is first saved as GenBank, and the records are added to that file. The alignment view (View → Alignment View, Ctrl+Shift+G; off until you ask for it, on any sequence) shows
 tracks loaded with File → Load Track: GFF3/GTF/BED annotations, VCF variants and BAM alignments
 (coverage + reads; the `.bai` is made if missing; several files at once). Click a track's name to hide
 it, right-click it for expanded/condensed/hidden and a log scale, drag the line under it to resize; the

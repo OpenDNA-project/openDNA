@@ -68,6 +68,8 @@ from tool_settings import SettingsDialog
 import genetic_code
 import shutil
 from file_history import FileHistory
+import add_record
+from add_record import AddRecordsDialog
 import multigb
 from uikit import plural, run_busy
 
@@ -272,6 +274,7 @@ class MainWindow(QMainWindow):
         imp = self.menuBar().addMenu("&Import")
         dna = imp.addMenu("&DNA")
         dna.addAction(QAction("&Sequence File (GenBank, .dna, FASTA, Project)…", self, triggered=self.choose_file))
+        action(dna, "Sequence File as New &Chromosome…", None, lambda: self.import_as_chromosome())
         dna.addAction(QAction("From &NCBI (Nucleotide)…", self, triggered=self.import_ncbi))
         dna.addAction(QAction("&Background Genome from NCBI…", self, triggered=self.import_genome))
         features = imp.addMenu("&Features and Tracks")
@@ -574,6 +577,67 @@ class MainWindow(QMainWindow):
 
     def import_genome(self):
         GenomeDialog(self).exec()
+
+    def import_as_chromosome(self, path=None):
+        """Import > DNA > Sequence File as New Chromosome: the sequences of another file become new records of the open file. A
+        GenBank file with one record becomes a multi-record file (the map then lists the records, one is open at a time); a FASTA
+        file gets more sequences. The file is written now (see add_record), then the first added record is shown. True if
+        something was added."""
+        ed = self.editor
+        if ed is None:
+            return False
+        title = "Import as New Chromosome"
+        # A .dna file is never changed, and an unsaved sequence or a project has no GenBank file to add to: save one first.
+        if ed.untitled or ed.path.suffix.lower() in (".dna", exports.PROJECT_EXT):
+            why = ("is not saved yet" if ed.untitled else
+                   "is a .dna file, which openDNA never changes" if ed.path.suffix.lower() == ".dna" else "is a project")
+            if QMessageBox.question(self, title, f"{ed.path.name} {why}. Save it as a GenBank file first? The new chromosome is "
+                                    "then added to that file.", QMessageBox.Save | QMessageBox.Cancel) != QMessageBox.Save:
+                return False
+            target, _ = QFileDialog.getSaveFileName(self, "Save As GenBank", str(ed.path.with_suffix(".gb")), "GenBank (*.gb *.gbk)")
+            if not target or Path(target).suffix.lower() in (".dna", exports.PROJECT_EXT) or not self._write(Path(target)):
+                return False
+        fasta = bool(ed.fasta_record) and not ed.multi_genbank
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(self, "Import Sequence File as New Chromosome", "", OPEN_FILTER)
+            if not path:
+                return False
+        try:
+            records = run_busy(self, f"Reading {Path(path).name}…", lambda: add_record.source_records(path))
+        except (OSError, ValueError) as e:
+            QMessageBox.critical(self, "Cannot Open File", f"{path}\n\n{e}")
+            return False
+        dialog = AddRecordsDialog(self, ed.path, fasta, records, add_record.current_names(ed))
+        if dialog.exec() != QDialog.Accepted:
+            return False
+        chosen = dialog.chosen()
+        current = ed.fasta_record or add_record.current_names(ed)[0]   # a one-record GenBank file: the record open now
+
+        try:
+            docs = run_busy(self, f"Reading {Path(path).name}…", lambda: [(r.load(), name) for r, name in chosen])
+            # primers of a .dna file (its primer list) are written as primer_bind features, as Save As GenBank does; read here,
+            # in the window's thread (an Editor is a Qt object)
+            primers = None if fasta else [Editor(doc, Path(path)).file_primer_features() for doc, _ in docs]
+
+            def work():
+                if fasta:
+                    multigb.append_fasta(ed.path, [(name, doc) for doc, name in docs])
+                else:
+                    multigb.append_genbank(ed.path, [multigb.renamed_genbank(doc, name, p) for (doc, name), p in zip(docs, primers)])
+            run_busy(self, f"Adding to {ed.path.name}…", work)
+        except (OSError, ValueError) as e:
+            QMessageBox.critical(self, title, f"{ed.path}\n\n{e}")
+            return False
+        names = [name for _, name in chosen]
+        # The open record stays in memory with its edits (load keeps it, like switching records); the file is now read as one of
+        # several records.
+        ed.fasta_record, ed.multi_genbank = current, not fasta
+        multigb.forget_siblings(ed)
+        if self.load(str(ed.path), names[0]):
+            self.statusBar().showMessage(
+                f"Added {', '.join(names)} to {self.editor.path.name}: {plural(len(self.editor.fasta_records), 'sequence')} "
+                "in the file.", 8000)
+        return True
 
     # Files dropped on the window open like File > Open: here if the window is empty, else each in a window of its own.
     def dragEnterEvent(self, event):

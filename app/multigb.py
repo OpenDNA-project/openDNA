@@ -5,6 +5,7 @@ The Rust document holds one record, so a record is cut out of the file into a te
 (the file is streamed: nothing but the open record is held in memory). Records are told apart by their LOCUS name.
 """
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -109,6 +110,83 @@ def save_document(path, name, doc, primers=None):
 def save_record_of(editor):
     """Write the Document of `editor` (one record of a multi-record file) back into its file, the others unchanged."""
     save_document(editor.path, editor.fasta_record, editor.doc, editor.file_primer_features())
+
+
+def record_name(name, taken=()):
+    """A record name for a file: no spaces (a LOCUS / FASTA name is one word), not one of `taken` (then "_2", "_3"... is added)."""
+    base = re.sub(r"\s+", "_", (name or "").strip()) or "sequence"
+    taken = set(taken)
+    out, n = base, 1
+    while out in taken:
+        n += 1
+        out = f"{base}_{n}"
+    return out
+
+
+def renamed_genbank(doc, name, primers=None):
+    """The GenBank text of `doc` (one record) with `name` as its LOCUS name; the document itself is not changed."""
+    handle, tmp_name = tempfile.mkstemp(suffix=".gb", prefix="opendna_add_")
+    os.close(handle)
+    tmp = Path(tmp_name)
+    try:
+        doc.write_genbank(str(tmp), primers)
+        text = tmp.read_text(encoding="utf-8")
+    finally:
+        tmp.unlink(missing_ok=True)
+    text, count = re.subn(r"^LOCUS([ \t]+)\S+", lambda m: "LOCUS" + m.group(1) + name, text, count=1, flags=re.M)
+    if not count:
+        raise OSError(f"{name}: the GenBank text has no LOCUS line")
+    return text if text.endswith("\n") else text + "\n"
+
+
+def _write_appended(path, write_more):
+    """Copy `path` to a temporary file, let `write_more(out, eol)` add to its end, then rename it over the original (a crash
+    never leaves half a file). `eol` is the file's own line ending ("\\r\\n" for a Windows file), so nothing comes out mixed."""
+    path = Path(path)
+    tmp = path.with_name(path.name + ".saving")
+    try:
+        with open(path, "rb") as src, open(tmp, "wb") as out:
+            first = src.readline()
+            eol = b"\r\n" if first.endswith(b"\r\n") else b"\n"
+            out.write(first)
+            last = first
+            while block := src.read(1 << 20):
+                out.write(block)
+                last = block
+            if last and not last.endswith(b"\n"):
+                out.write(eol)   # the old last line had no line ending
+            write_more(out, eol)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def append_genbank(path, texts):
+    """Add GenBank records (their texts, see `renamed_genbank`) at the end of the GenBank file `path`, which then holds several
+    records. The records already in it are copied byte for byte."""
+    def more(out, eol):
+        for text in texts:
+            out.write(text.replace("\r\n", "\n").replace("\n", eol.decode()).encode("utf-8"))
+    _write_appended(path, more)
+
+
+FASTA_WIDTH = 60
+_BLOCK = FASTA_WIDTH * 100_000   # bases read from a document at a time (a chromosome is never copied whole into Python)
+
+
+def append_fasta(path, records):
+    """Add sequences [(name, Document)] at the end of the FASTA file `path` (only the bases: FASTA has no features). Its `.fai`
+    index is deleted, so it is built again, with the new sequences, the next time the file is read."""
+    def more(out, eol):
+        for name, doc in records:
+            header = f">{name}" + (f" {doc.definition.strip()}" if (doc.definition or "").strip() else "")
+            out.write(header.encode("utf-8") + eol)
+            for start in range(0, doc.length, _BLOCK):
+                bases = doc.sequence(start, min(start + _BLOCK, doc.length))
+                for i in range(0, len(bases), FASTA_WIDTH):
+                    out.write(bases[i:i + FASTA_WIDTH].encode("ascii", "replace") + eol)
+    _write_appended(path, more)
+    Path(str(path) + ".fai").unlink(missing_ok=True)
 
 
 def write_record(path, name, text):
