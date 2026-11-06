@@ -23,7 +23,7 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import (
     QColor, QContextMenuEvent, QFont, QFontMetricsF, QPainter, QPainterPath, QPalette, QPen, QPixmap, QPolygonF,
 )
-from PySide6.QtWidgets import QApplication, QSlider, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QMenu, QSlider, QToolButton, QVBoxLayout, QWidget
 
 import image_export
 import units
@@ -104,6 +104,8 @@ class MapView(QWidget):
         self.scroll = None   # first chromosome line shown (None: put the open sequence in view at the first paint)
         self.site_hits = []   # where the last paint drew each enzyme (View > Restriction Sites): (segment or rect, key)
         self.press = None    # where the left button went down on the backbone; a selection starts once it moves far enough
+        self.list_press = None   # (name, point): the left button went down on a line of the chromosome list
+        self.list_drop = None    # while a line of the list is dragged: where it would go (index between lines, 0 = first)
         self._zoom_wheel, self._list_wheel = WheelSteps(), WheelSteps()
         self.setMinimumSize(250, 200)
         # Big sequences: re-render the (many-feature) map once typing pauses, not per key.
@@ -351,9 +353,52 @@ class MapView(QWidget):
             p.setPen(Qt.NoPen)
             p.setBrush(dim)
             p.drawRect(QRectF(self.width() - 5, 2 + h * first / len(recs), 3, max(8.0, h * rows / len(recs))))
+        if self.list_drop is not None:   # a line is dragged: where it would go
+            names = [n for n, _ in recs]
+            row = names.index(self.list_press[0]) - first
+            p.setBrush(Qt.NoBrush)
+            if 0 <= row < rows:
+                p.setPen(QPen(dim, 1, Qt.DashLine))
+                p.drawRect(QRectF(1, 2 + row * row_h, self.width() - 3, row_h - 1))
+            p.setPen(QPen(text, 2))
+            y = 2 + (self.list_drop - first) * row_h
+            p.drawLine(QPointF(4, y), QPointF(self.width() - 8, y))
         p.setClipping(False)
         p.setPen(QPen(dim, 1))
         p.drawLine(0, self._top() - 3, self.width(), self._top() - 3)
+
+    def _drop_index(self, pt):
+        """Where a dragged line of the list would go: the gap between lines nearest the pointer (0 = before the first)."""
+        k = int(round((pt.y() - 2) / self.row_h()))
+        return self._first_row() + max(0, min(self._rows(), k))
+
+    def _moved_order(self, name, index):
+        """The names of the list with `name` moved to the gap `index` (as _drop_index counts them)."""
+        names = [n for n, _ in self._records()]
+        old = names.index(name)
+        names.pop(old)
+        names.insert(max(0, min(len(names), index - (1 if index > old else 0))), name)
+        return names
+
+    def record_menu(self, name):
+        """The right-click menu of a line of the chromosome list. Its actions are sent once the menu has closed (opening a
+        record replaces this pane)."""
+        ed = self.editor
+        names = [n for n, _ in self._records()]
+        i = names.index(name)
+        menu = QMenu(self)
+
+        def later(send):
+            return lambda: QTimer.singleShot(0, send)
+        menu.addAction(f"&Open {name}", later(lambda: ed.record_requested.emit(name))).setEnabled(name != ed.fasta_record)
+        menu.addSeparator()
+        menu.addAction("Move &Up", later(lambda: ed.records_order_requested.emit(self._moved_order(name, i - 1)))).setEnabled(i > 0)
+        menu.addAction("Move &Down", later(lambda: ed.records_order_requested.emit(self._moved_order(name, i + 2)))).setEnabled(
+            i < len(names) - 1)
+        menu.addSeparator()
+        menu.addAction("&Export as GenBank (.gb)…", later(lambda: ed.record_export_requested.emit(name)))
+        menu.addAction("&Remove from File…", later(lambda: ed.record_remove_requested.emit(name)))
+        return menu
 
     def _record_at(self, pt):
         """Name of the sequence whose line of the list is under a widget point, else None."""
@@ -875,7 +920,12 @@ class MapView(QWidget):
         event.accept()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.RightButton and event.position().y() < self._top():
+        if event.position().y() < self._top():   # the chromosome list: a click opens a line, a drag moves it, a right click its menu
+            name = self._record_at(event.position())
+            if name is not None and event.button() == Qt.RightButton:
+                self.record_menu(name).exec(event.globalPosition().toPoint())
+            elif name is not None and event.button() == Qt.LeftButton:
+                self.list_press = (name, event.position())   # opened when the button comes up without a drag (mouseReleaseEvent)
             return
         if event.button() == Qt.RightButton:
             self._menu_at(event.position(), event.globalPosition().toPoint())
@@ -885,11 +935,6 @@ class MapView(QWidget):
             self.setCursor(Qt.ClosedHandCursor)
             return
         if event.button() != Qt.LeftButton:
-            return
-        if event.position().y() < self._top():   # the chromosome list (switching replaces this pane: do it after the click)
-            name = self._record_at(event.position())
-            if name is not None and name != self.editor.fasta_record:
-                QTimer.singleShot(0, lambda: self.editor.record_requested.emit(name))
             return
         pos, feature = self._hit(event.position())
         site = self._primer_at(event.position())
@@ -914,6 +959,16 @@ class MapView(QWidget):
             self.editor.edit_feature_requested.emit(feature)
 
     def mouseMoveEvent(self, event):
+        if self.list_press is not None and event.buttons() & Qt.LeftButton:   # a line of the chromosome list is dragged
+            if self.list_drop is None and (event.position() - self.list_press[1]).manhattanLength() < QApplication.startDragDistance():
+                return
+            y = event.position().y()
+            if self.scroll is not None and (y < 2 or y > 2 + self._rows() * self.row_h()):   # past the list's edge: it scrolls
+                self.scroll += -1 if y < 2 else 1
+            self.list_drop = self._drop_index(event.position())
+            self.setCursor(Qt.ClosedHandCursor)
+            self.update()
+            return
         if self.pan is not None:
             a, b = self._win()
             first = self.pan[1] - (event.position().x() - self.pan[0]) / self._linear()[1] * (b - a)
@@ -933,6 +988,18 @@ class MapView(QWidget):
                            or self._site_at(event.position()) is not None else Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, event):
+        if self.list_press is not None:   # (the pane is replaced when another record opens: the request is sent after the click)
+            name, drop = self.list_press[0], self.list_drop
+            self.list_press = self.list_drop = None
+            self.unsetCursor()
+            self.update()
+            if drop is not None:
+                order = self._moved_order(name, drop)
+                if order != [n for n, _ in self._records()]:
+                    QTimer.singleShot(0, lambda: self.editor.records_order_requested.emit(order))
+            elif name != self.editor.fasta_record:
+                QTimer.singleShot(0, lambda: self.editor.record_requested.emit(name))
+            return
         if self.pan is not None:
             self.pan = None
             self.unsetCursor()   # the hover cursor comes back with the next move

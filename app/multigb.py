@@ -11,7 +11,7 @@ from pathlib import Path
 
 from opendna_core import Document
 
-from reference import genbank_records
+from reference import genbank_records, is_fasta_file
 
 GENBANK_EXT = {".gb", ".gbk", ".gbff", ".genbank", ".gen"}
 
@@ -187,6 +187,77 @@ def append_fasta(path, records):
                     out.write(bases[i:i + FASTA_WIDTH].encode("ascii", "replace") + eol)
     _write_appended(path, more)
     Path(str(path) + ".fai").unlink(missing_ok=True)
+
+
+def record_spans(path):
+    """(bytes before the first record, [(name, start, end)]) of the records of a GenBank or FASTA file, in file order: each
+    record runs from its LOCUS / '>' line to the next one (blank lines between records go with the one before). The file is
+    scanned in blocks for the start of a line ("\\nLOCUS", "\\n>"), not read line by line, so a genome of gigabytes is quick."""
+    marker = b">" if is_fasta_file(path) else b"LOCUS"
+    needle = b"\n" + marker
+    starts = []
+    with open(path, "rb") as fh:
+        head = fh.read(len(marker) + 3)
+        bom = 3 if head.startswith(b"\xef\xbb\xbf") else 0
+        if head[bom:bom + len(marker)] == marker:
+            starts.append(bom)
+        fh.seek(0)
+        offset, tail = 0, b""
+        while block := fh.read(1 << 22):
+            data, base = tail + block, offset - len(tail)
+            i = data.find(needle)
+            while i != -1:
+                starts.append(base + i + 1)
+                i = data.find(needle, i + 1)
+            tail = data[-(len(needle) - 1):]   # a line start cut in two by the block boundary is found next time
+            offset += len(block)
+        spans = []
+        for k, start in enumerate(starts):
+            fh.seek(start)
+            line = fh.readline(65536).decode("utf-8", "replace")
+            words = line[1:].split() if marker == b">" else line.split()[1:]   # "> chr1 x" names chr1, as the FASTA index does
+            name = words[0] if words else ""
+            spans.append((name, start, starts[k + 1] if k + 1 < len(starts) else offset))
+    return (starts[0] if starts else offset), spans
+
+
+def rewrite_records(path, names):
+    """Write the file with its records in the order of `names` (record names it has; a record left out is removed). Each record
+    is copied byte for byte, through a temporary file renamed over the original; a FASTA file's `.fai` is deleted (rebuilt the
+    next time the file is read)."""
+    path = Path(path)
+    prefix, spans = record_spans(path)
+    where = {n: (s, e) for n, s, e in spans}
+    if len(where) != len(spans):
+        raise OSError(f"{path.name}: two records have the same name")
+    if not names:
+        raise OSError(f"{path.name}: a file keeps at least one sequence")
+    if len(set(names)) != len(names) or any(n not in where for n in names):
+        raise OSError(f"{path.name}: the records do not match the file (was it changed by another program?)")
+    tmp = path.with_name(path.name + ".saving")
+    try:
+        with open(path, "rb") as src, open(tmp, "wb") as out:
+            eol = b"\r\n" if src.readline().endswith(b"\r\n") else b"\n"
+            src.seek(0)
+            out.write(src.read(prefix))
+            for name in names:
+                start, end = where[name]
+                src.seek(start)
+                left, last = end - start, b""
+                while left > 0:
+                    block = src.read(min(left, 1 << 22))
+                    if not block:
+                        break
+                    out.write(block)
+                    left -= len(block)
+                    last = block
+                if not last.endswith(b"\n"):
+                    out.write(eol)   # the old last record had no line ending: it may not be last any more
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    if is_fasta_file(path):
+        Path(str(path) + ".fai").unlink(missing_ok=True)
 
 
 def write_record(path, name, text):

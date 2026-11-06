@@ -147,6 +147,10 @@ The question behind this whole group: **can the program lose or silently alter y
 | `test_add_chromosome.py::test_multi_fasta_source_and_target` | New sequences in a FASTA file | Ticked records of a multi-FASTA (a clashing name renamed) and a GenBank plasmid (bases only) are appended; the stale `.fai` is rebuilt with every length; a Windows file keeps CRLF only; a last line without a newline is ended, not joined. |
 | `test_add_chromosome.py::test_dna_source_keeps_primers_and_dna_target_is_saved_first` | `.dna` files | The primers of a `.dna` source become `primer_bind` features of the new record; an open `.dna` file is saved as GenBank first and never changed. |
 | `test_add_chromosome.py::test_cancelled_dialog_writes_nothing` | Cancel | The file's bytes and the window are unchanged. |
+| `test_record_list.py::test_rewrite_records_reorders_and_removes_byte_for_byte` | Reordering / removing records | Three GenBank records reordered then one removed: each record's bytes unchanged; empty, doubled or unknown names refused, the file untouched. A FASTA with a BOM, CRLF and no final newline keeps all three; the stale `.fai` is rebuilt. |
+| `test_record_list.py::test_a_line_dragged_in_the_map_reorders_the_file` | Drag and drop in the map's list | The first line dragged below the last: the file, the list and the picker follow; the open record keeps its unsaved edit, which Save writes; a click without a drag still opens a record. |
+| `test_record_list.py::test_right_click_menu_moves_exports_and_removes` | The list's right-click menu | Move Up / Down (greyed at the ends); Export as GenBank writes the open record with its unsaved edit, or one read from the file, never over the file itself; Remove asks first, removes the open record by opening the next, and keeps the last one. |
+| `test_record_list.py::test_fasta_records_are_reordered_exported_and_removed` | The same on a multi-FASTA | Reorder, export as GenBank and remove; the index follows. |
 
 
 ## 6. Editing: do annotations stay on the right bases?

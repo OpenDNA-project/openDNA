@@ -733,13 +733,13 @@ class MainWindow(QMainWindow):
         try:
             if is_fasta(path):
                 fasta = run_busy(self, f"Indexing {Path(path).name}…", lambda: Fasta(str(path)))
-                lengths = sorted(((n, int(l)) for n, l in fasta.sequences()), key=lambda r: -r[1])   # largest first, like chr1, chr2...
+                lengths = [(n, int(l)) for n, l in fasta.sequences()]   # in file order (the map's list can reorder the file)
                 names = [n for n, _ in lengths]
                 if not names:
                     raise OSError("no sequence in this FASTA file")
                 record = record if record in names else names[0]
             elif not project and multigb.is_multi_genbank(path):   # treated like a multi-FASTA: one record open, the map lists them all
-                lengths = sorted(((n, int(l)) for n, l, _ in multigb.records(path)), key=lambda r: -r[1])
+                lengths = [(n, int(l)) for n, l, _ in multigb.records(path)]
                 names, gb_record = [n for n, _ in lengths], True
                 record = record if record in names else names[0]
             else:
@@ -876,6 +876,106 @@ class MainWindow(QMainWindow):
         if name != ed.fasta_record and not self.load(ed.path, name):
             self.picker.setCurrentText(ed.fasta_record)  # cancelled: show what is open
 
+    # ---- the records of a file of several (the map's chromosome list) ------------------------------------------------------------
+    def _set_record_list(self, lengths):
+        """The file's records are now `lengths` [(name, length)] (reordered or one removed): the map's list and the picker follow."""
+        ed = self.editor
+        ed.fasta_records = list(lengths)
+        multigb.forget_siblings(ed)
+        self.picker.clear()
+        self.picker.addItems([n for n, _ in lengths])
+        self.picker.setCurrentText(ed.fasta_record)
+        self.picker_action.setVisible(len(lengths) > 1)
+        ed.match_elsewhere()
+        ed.display_changed.emit()
+
+    def reorder_records(self, names):
+        """Map's list, a line dragged (or Move Up / Down): the records are written into the file in this order, each unchanged.
+        The edits not saved yet stay in memory (records are found by name)."""
+        ed = self.editor
+        lengths = dict(ed.fasta_records)
+        if sorted(names) != sorted(lengths) or list(names) == list(lengths):
+            return False
+        try:
+            run_busy(self, f"Reordering {ed.path.name}…", lambda: multigb.rewrite_records(ed.path, list(names)))
+        except OSError as e:
+            QMessageBox.critical(self, "Reorder Sequences", f"{ed.path}\n\n{e}")
+            return False
+        self._set_record_list([(n, lengths[n]) for n in names])
+        self.statusBar().showMessage(f"Sequences of {ed.path.name} reordered: {', '.join(names[:6])}{'…' if len(names) > 6 else ''}", 5000)
+        return True
+
+    def remove_record(self, name):
+        """Map's list, right-click > Remove from File: the record is deleted from the file (after a question; there is no undo).
+        The open record is first switched to the next one."""
+        ed = self.editor
+        names = [n for n, _ in ed.fasta_records]
+        if name not in names or len(names) < 2:
+            return False
+        edited = (ed.doc.modified if name == ed.fasta_record else
+                  bool(self.record_docs.get(name) is not None and self.record_docs[name].modified))
+        if not self._confirm_remove(name, edited):
+            return False
+        if name == ed.fasta_record:   # show another record first (the open one stays in memory, then is dropped below)
+            i = names.index(name)
+            if not self.load(str(ed.path), names[i + 1] if i + 1 < len(names) else names[i - 1]):
+                return False
+            ed = self.editor
+        keep = [n for n in names if n != name]
+        try:
+            run_busy(self, f"Removing {name}…", lambda: multigb.rewrite_records(ed.path, keep))
+        except OSError as e:
+            QMessageBox.critical(self, "Remove from File", f"{ed.path}\n\n{e}")
+            return False
+        self.record_docs.pop(name, None)
+        self.file_history.forget(name)
+        autosave_path(ed.path, name).unlink(missing_ok=True)
+        lengths = dict(ed.fasta_records)
+        self._set_record_list([(n, lengths[n]) for n in keep])
+        self._update_undo_actions()
+        self.statusBar().showMessage(f"Removed {name} from {ed.path.name}: {plural(len(keep), 'sequence')} left.", 5000)
+        return True
+
+    def _confirm_remove(self, name, edited):
+        """Remove the record? Cancel is the default: nothing written can be undone."""
+        box = QMessageBox(QMessageBox.Warning, "Remove from File", f"Remove {name} from {self.editor.path.name}?", parent=self)
+        box.setInformativeText("The file is written now and this cannot be undone"
+                               + (f": the unsaved edits of {name} are lost too." if edited else "."))
+        remove = box.addButton("&Remove", QMessageBox.DestructiveRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        box.exec()
+        return box.clickedButton() is remove
+
+    def export_record(self, name, target=None):
+        """Map's list, right-click > Export as GenBank: one record of the file as a GenBank file of its own, with its unsaved
+        edits (the file itself is not changed)."""
+        ed = self.editor
+        if target is None:
+            suggested = ed.path.with_name(runner.safe_name(name) + ".gb")
+            target, _ = QFileDialog.getSaveFileName(self, f"Export {name} as GenBank", str(suggested), "GenBank (*.gb *.gbk)")
+            if not target:
+                return False
+        target = Path(target)
+        if target.exists() and target.resolve() == ed.path.resolve():
+            QMessageBox.warning(self, "Export as GenBank", "Choose another file: this one holds every record of the file.")
+            return False
+        try:
+            if name == ed.fasta_record:
+                doc, primers = ed.doc, ed.file_primer_features()
+            elif self.record_docs.get(name) is not None:
+                doc, primers = self.record_docs[name], None
+            else:
+                doc = run_busy(self, f"Reading {name}…", (lambda: multigb.read_record(ed.path, name)) if ed.multi_genbank
+                               else (lambda: Document.from_fasta(str(ed.path), name)))
+                primers = None
+            run_busy(self, f"Exporting {name}…", lambda: doc.write_genbank(str(target), primers))
+        except OSError as e:
+            QMessageBox.critical(self, "Export as GenBank", f"{target}\n\n{e}")
+            return False
+        self.statusBar().showMessage(f"Exported {name} to {target}", 5000)
+        return True
+
     def show_document(self, doc, path, untitled=False, record=None, sequences=(), layout=None, lengths=(), genbank=False, current=0):
         """Put a Document in this window. `untitled`: made in memory (e.g. a PCR product);
         `path` is only the suggested file name, Save asks where to save. `record`: the
@@ -887,6 +987,9 @@ class MainWindow(QMainWindow):
         ed.fasta_records = list(lengths)
         ed.multi_genbank = genbank
         ed.record_requested.connect(self.switch_sequence)
+        ed.records_order_requested.connect(self.reorder_records)
+        ed.record_remove_requested.connect(self.remove_record)
+        ed.record_export_requested.connect(self.export_record)
         ed.record_hit_requested.connect(self.go_to_hit)
         self.picker.clear()
         self.picker.addItems(list(sequences))

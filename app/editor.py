@@ -326,6 +326,9 @@ class Editor(QObject):
     elsewhere_changed = Signal()      # the primer sites on the other records of the file were (re)computed
     record_hit_requested = Signal(str, int, int)   # open this record of the file and select these bases
     record_requested = Signal(str)   # the map's chromosome list was clicked: open this sequence of the FASTA file
+    records_order_requested = Signal(object)   # the map's chromosome list was reordered (drag and drop): [names] in the new order
+    record_remove_requested = Signal(str)      # the map's chromosome list: remove this record from the file
+    record_export_requested = Signal(str)      # the map's chromosome list: export this record as a GenBank file
     query_hit_changed = Signal(int)   # the Local Align hit (row) picked in the Alignment view or the dialog's table: its index, -1 none
 
     # Last Copy in this app, shared by all open documents: (bases, features relative to

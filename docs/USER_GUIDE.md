@@ -26,6 +26,12 @@ others stay behind), and mapping reads sends the mapper only the open sequence. 
 same way: the map lists the records, one is open at a time, and Save puts it back among the others; as a *background genome* it is
 read in full.
 
+The map's list of records (a file of several) is in file order. Click a line to open that record; **drag a line** up or down to
+reorder the records in the file. **Right-click** a line for *Move Up* / *Move Down*, *Export as GenBank (.gb)* (that record as a
+file of its own, with its unsaved edits; the file itself is not changed) and *Remove from File* (after a question). Reordering and
+removing write the file at once, each record copied byte for byte (no undo; the edits not saved yet stay in memory, and the last
+record cannot be removed).
+
 **Import → DNA → Sequence File as New Chromosome** adds the sequences of another file (GenBank, `.dna`, FASTA, project; a
 multi-record file lists its records, tick the ones you want and rename them if you like) to the open file as new records,
 after the ones it has: a one-record GenBank file becomes a multi-record GenBank file, a FASTA file gets more sequences (bases
