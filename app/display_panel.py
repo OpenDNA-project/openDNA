@@ -4,7 +4,6 @@ unique cutters, CDS translations, the 3-frame translation and transcription unit
 drawing changes: features stay in the file, the feature table and Find. The broad switches are also toggles at the right
 end of the tab row (QuickFilters).
 """
-from collections import Counter
 
 from types import SimpleNamespace
 
@@ -22,7 +21,6 @@ import theme
 import tool_settings
 from enzymes import PRESETS, EnzymeFilter
 from sequence_view import primer_color
-from units import is_tu
 
 
 class PrimerSwatch(QWidget):
@@ -81,12 +79,12 @@ class QuickFilters(QWidget):
         self.refresh()
 
     def _annotations_on(self):
-        kinds = {f.kind for f in self.editor.features if not is_tu(f)}
+        kinds = set(self.editor.kind_counts)
         return bool(kinds - self.editor.hidden_kinds) if kinds else not self.editor.hidden_kinds
 
     def _set_annotations(self, on):
         ed = self.editor
-        kinds = {f.kind for f in ed.features if not is_tu(f)}
+        kinds = set(ed.kind_counts)
         if on:
             ed.set_display(hidden_kinds=self.kept_hidden if kinds - self.kept_hidden else ())
         else:
@@ -313,7 +311,7 @@ class DisplayPanel(QScrollArea):
         buttons = QHBoxLayout()
         buttons.addWidget(QPushButton("All", clicked=lambda: editor.set_display(hidden_kinds=())))
         buttons.addWidget(QPushButton("None", clicked=lambda: editor.set_display(
-            hidden_kinds={f.kind for f in editor.features if not is_tu(f)})))
+            hidden_kinds=set(editor.kind_counts))))
         self.box.addLayout(buttons)
         self.kinds_box = QVBoxLayout()
         self.kinds_box.setContentsMargins(0, 0, 0, 0)
@@ -378,7 +376,7 @@ class DisplayPanel(QScrollArea):
     def _paint_icons(self):
         """Each category's icon, clear while it is shown and faded when not (as the quick bar's toggles)."""
         ed = self.editor
-        kinds = {f.kind for f in ed.features if not is_tu(f)}
+        kinds = set(ed.kind_counts)
         shown = {"primers": ed.show_primers, "enzymes": ed.show_enzymes, "cds": ed.show_cds_translation, "units": ed.show_units,
                  "annotations": bool(kinds - ed.hidden_kinds) if kinds else not ed.hidden_kinds}
         for name, label in self.icons.items():
@@ -432,7 +430,7 @@ class DisplayPanel(QScrollArea):
         self.show_hidden.setEnabled(bool(ed.hidden_features))
         self.hidden_label.setText(f"{plural(len(ed.hidden_features), 'feature')} hidden by hand" if ed.hidden_features
                                   else "No feature hidden by hand")
-        counts = Counter(f.kind for f in ed.features if not is_tu(f))   # units have their own switch
+        counts = ed.kind_counts   # (units have their own switch)
         if sorted(counts) != sorted(self.kinds):  # rebuild the list when the types change
             while self.kinds_box.count():
                 self.kinds_box.takeAt(0).widget().deleteLater()

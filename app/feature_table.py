@@ -12,10 +12,12 @@ The Features Database tab (db_tabs.py) uses this same table on a document made o
 the columns (`feature_columns`, e.g. Source and From instead of Location) and their texts (`feature_extra`), and
 `database` makes the right-click menu the database's own.
 """
+import heapq
+
 from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, Qt
 from PySide6.QtGui import QFont, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
-    QAbstractItemView, QInputDialog, QLineEdit, QMenu, QMessageBox, QTableView, QVBoxLayout, QWidget,
+    QAbstractItemView, QInputDialog, QLineEdit, QMenu, QMessageBox, QStyleOptionViewItem, QTableView, QVBoxLayout, QWidget,
 )
 
 import genes
@@ -33,6 +35,8 @@ TOGGLE_PX = 18  # clicks this close to the left of a gene's name expand/collapse
 
 
 class FeatureModel(QAbstractTableModel):
+    fit_quiet = False   # True during a change the table's column fitting may skip (see uikit._Fitter)
+
     def __init__(self, editor):
         super().__init__()
         self.editor = editor
@@ -92,8 +96,41 @@ class FeatureModel(QAbstractTableModel):
     def toggle(self, row):
         key = self.shown[row][4]
         if key:
-            self.expanded ^= {key}  # ^= toggles membership
-            self.reload()
+            self.set_expanded(key, key not in self.expanded)
+
+    def set_expanded(self, key, open_):
+        """Open or close one gene: only its row (the arrow) and the rows of its parts under it change. (It rebuilt and sorted the
+        rows of every feature and reset the table, then the columns were measured again: most of a second on a genome.)"""
+        if (key in self.expanded) == open_:
+            return
+        self.expanded ^= {key}
+        at = next((i for i, r in enumerate(self.shown) if r[4] == key), None)
+        if at is None:   # the gene is not on view (filtered out): nothing to redraw
+            return
+        old = self.shown[at]
+        new = self._row(self.editor.by_index[old[3]], key)   # its name now shows ▾ / ▸
+        self.rows[next(i for i, r in enumerate(self.rows) if r is old)] = new
+        kids = self.children.get(key, [])
+        ids = {id(k) for k in kids}
+        end = at + 1
+        while end < len(self.shown) and id(self.shown[end]) in ids:   # the parts shown under it now
+            end += 1
+        needle = self.filter_text
+        under = kids if open_ else [k for k in kids if needle in k[2]] if needle else []
+        self.fit_quiet = True   # (the parts hold what their gene holds: the columns need not be measured again)
+        try:
+            self.shown[at] = new
+            self.dataChanged.emit(self.index(at, 0), self.index(at, len(self.columns) - 1))
+            if end > at + 1:
+                self.beginRemoveRows(QModelIndex(), at + 1, end - 1)
+                del self.shown[at + 1:end]
+                self.endRemoveRows()
+            if under:
+                self.beginInsertRows(QModelIndex(), at + 1, at + len(under))
+                self.shown[at + 1:at + 1] = under
+                self.endInsertRows()
+        finally:
+            self.fit_quiet = False
 
     def set_filter(self, text):
         self.beginResetModel()
@@ -111,8 +148,7 @@ class FeatureModel(QAbstractTableModel):
         """Row of a feature; a part of a closed gene opens it first."""
         key = self.editor.part_of.get(feature_index)
         if key and key not in self.expanded and not any(r[3] == feature_index for r in self.shown):
-            self.expanded.add(key)
-            self.reload()
+            self.set_expanded(key, True)
         return next((i for i, r in enumerate(self.shown) if r[3] == feature_index), None)
 
     def rowCount(self, parent=QModelIndex()):
@@ -161,6 +197,25 @@ def master_key(editor, f):
 
 class GroupTableView(QTableView):
     """A click on the ▸ of a gene row opens/closes it."""
+    MEASURED = 40   # cells measured per column: the longest different texts of the gene rows (bold) and of the others
+
+    def sizeHintForColumn(self, column):
+        """The widest cell of a column, every row counted, measured by Qt itself but only on the longest texts (the model holds
+        every row's texts). Qt's own measure asked the model for every role of about a thousand cells through Python: 0.15 s a
+        column on a genome, after every edit, display switch and sort."""
+        model = self.model()
+        rows = getattr(model, "shown", None)
+        if rows is None or not rows:
+            return super().sizeHintForColumn(column)
+        texts = ({}, {})   # text -> a row holding it: gene rows (bold), other rows
+        for i, r in enumerate(rows):
+            texts[not r[4]].setdefault(str(r[0][column]), i)
+        option = QStyleOptionViewItem()
+        self.initViewItemOption(option)
+        delegate = self.itemDelegateForColumn(column) or self.itemDelegate()
+        widest = max(delegate.sizeHint(option, model.index(i, column)).width()   # the longest different texts (all of "→ ← —")
+                     for group in texts for _, i in heapq.nlargest(self.MEASURED, group.items(), key=lambda t: len(t[0])))
+        return widest + (1 if self.showGrid() else 0)   # (as QTableView's own: the grid line)
 
     def mousePressEvent(self, event):
         index = self.indexAt(event.position().toPoint())

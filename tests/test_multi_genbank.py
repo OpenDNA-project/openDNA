@@ -43,7 +43,7 @@ def wait_search(win):
 
 
 def test_records_and_saving(tmp_path, monkeypatch):
-    """The records are listed largest first and switched from the map; Save puts the record back among the others; Save As keeps
+    """The records are listed in file order and switched from the map; Save puts the record back among the others; Save As keeps
     the whole file; switching records keeps the tabs and the edits in memory (one Save writes both)."""
     # --- records listed and switched ---
     path = two_records(tmp_path)
@@ -53,7 +53,7 @@ def test_records_and_saving(tmp_path, monkeypatch):
     assert win.load(str(path))
     ed = win.editor
     sizes = [l for _, l in ed.fasta_records]
-    assert len(sizes) == 2 and sizes == sorted(sizes, reverse=True) and ed.multi_genbank
+    assert len(sizes) == 2 and [n for n, _ in ed.fasta_records] == [n for n, *_ in multigb.records(path)] and ed.multi_genbank
     other = ed.fasta_records[1][0]
     ed.record_requested.emit(other)
     app.processEvents()

@@ -17,6 +17,12 @@ class FileHistory:
     def reset(self):
         self.undo_log, self.redo_log, self.seen = [], [], {}
 
+    def forget(self, record):
+        """The record was removed from the file: its steps leave the file's history."""
+        self.undo_log = [r for r in self.undo_log if r != record]
+        self.redo_log = [r for r in self.redo_log if r != record]
+        self.seen.pop(record, None)
+
     def observe(self, record, undo_steps, redo_steps):
         """The record now has this many undo / redo steps. The first report of a record is only a starting point."""
         before = self.seen.get(record)
