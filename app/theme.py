@@ -166,6 +166,9 @@ ROLES = {
     "status_bad": ("#c62828", "#ff7a70"),
     "status_info": ("#5b6573", "#a3adb8"),
     "status_likely": ("#6b7a00", "#c5d34f"),   # Plasmid Checkup's "Likely"
+    # the dot plot of Repeats: a window that matches in the same orientation (blue) and as a reverse complement (red)
+    "dot_direct": ("#1565c0", "#6fa8ff"),
+    "dot_inverted": ("#c62828", "#ff7a70"),
     # a primer's exact binding site in the views (the deep purple was 2.0 on a dark background)
     "primer": ("#5e35b1", "#b39ddb"),
     # the "WIP" tag of an unfinished feature (wip.py): a burnt orange pill, its white letters at 4.6 to 1; it stands out on the

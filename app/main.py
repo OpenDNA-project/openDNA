@@ -66,6 +66,7 @@ from workspace import DEFAULT as DEFAULT_LAYOUT, Workspace, pane, split
 from annotation import DetectDialog, import_files
 from parts_library import user_library
 from cas9 import Cas9Dialog
+from repeats import RepeatsDialog
 import tool_settings
 import codon_dialog
 import codon_usage
@@ -393,6 +394,7 @@ class MainWindow(QMainWindow):
 
         tools = self.menuBar().addMenu("T&ools")
         action(tools, "S&pacer Finder (Cas9 / Cas12a)…", None, lambda: Cas9Dialog(self, self.editor).exec())
+        action(tools, "&Repeats and Dot Plot…", None, lambda: RepeatsDialog(self, self.editor).exec())
         tools.addAction(QAction("&Assembly", self, triggered=self.show_assembly))  # needs no open file
         action(tools, "&Local Align…", "Ctrl+Shift+B", lambda: LocalAlignDialog(self, self.editor).exec())
         action(tools, "Align &Clipboard…", None, lambda: LocalAlignDialog.align_clipboard(self, self.editor))
