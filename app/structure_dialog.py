@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 import structure
 from primer_db import data_dir
 import theme
+import wip
 
 
 class _Relay(QObject):
@@ -49,7 +50,11 @@ class StructureDialog(QDialog):
         self.busy = QProgressBar(minimum=0, maximum=0, textVisible=False, visible=False)
         self.cancel_button = QPushButton("Cancel", clicked=self.cancel, visible=False)
         form = QFormLayout()
-        form.addRow("Protein", QLabel(f"{name} · {len(protein):,} amino acids"))
+        title = QHBoxLayout()   # the protein, and the "WIP" tag while the protein interface is unfinished (wip.FEATURES)
+        title.addWidget(QLabel(f"{name} · {len(protein):,} amino acids"))
+        title.addStretch()
+        title.addWidget(wip.Badge("protein"))
+        form.addRow("Protein", title)
         form.addRow("Source", self.source)
         form.addRow("Accession", self.accession)
         form.addRow("Local command", self.command)

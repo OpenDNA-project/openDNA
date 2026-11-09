@@ -546,18 +546,15 @@ class Editor(QObject):
     def _set_sites(self, primers, hits):
         n = self.length
         sites = []
-        in_db = {(r["name"], r["sequence"].upper()) for r in db().rows}
+        in_db = self._db_primer_keys()
         for (name, seq), found in zip(primers, hits):
             for i, (s, e, strand, mm) in enumerate(found[:MAX_SITES]):
                 site = SimpleNamespace(key=f"{name}#{i}", label=name, sequence=seq, strand=strand, start=s, end=e,
                                        spans=[(s, e)] if e <= n else [(s, n), (0, e - n)],
                                        mismatches=mm, tail=max(0, len(seq) - (e - s)))
-                site.from_db = (name, seq.upper()) in in_db      # in the primer database
                 key = (name, seq.upper())
-                # In this file: stored in it / imported to it, designed here, or not from the database at all. A primer that
-                # is in the file and in the database counts as the file's (and is drawn as one).
-                site.from_file = key in self.file_primer_set or not site.from_db or any(
-                    key == (n, q.upper()) for n, q in self.extra)
+                site.from_db = key in in_db      # in the primer database
+                site.from_file = self.primer_from_file(name, seq, in_db)
                 site.temporary = key in self.temporary_primers and key not in self.file_primer_set   # designed, not imported
                 # Drawn in the temporary style: designed here, or only in the database (not in this file).
                 site.provisional = site.temporary or not site.from_file
@@ -571,6 +568,23 @@ class Editor(QObject):
         if self.current_primer not in self.site_by_key:
             self.current_primer = None
         self.primers_changed.emit()
+
+    @staticmethod
+    def _db_primer_keys():
+        return {(r["name"], r["sequence"].upper()) for r in db().rows}
+
+    def primer_from_file(self, name, seq, in_db=None):
+        """Is this primer "From this sequence" (Display filter) rather than "From the database"? In this file: stored in it /
+        imported to it, designed here, or not from the database at all. A primer that is in the file and in the database counts
+        as the file's (and is drawn as one). `in_db`: the database's (name, SEQUENCE) pairs, when already at hand."""
+        key = (name, seq.upper())
+        if key in self.file_primer_set or any(key == (n, q.upper()) for n, q in self.extra):
+            return True
+        return key not in (self._db_primer_keys() if in_db is None else in_db)
+
+    def primer_source_shown(self, name, seq, in_db=None):
+        """Is this primer's source switched on in the Display filter (From this sequence / From the database)?"""
+        return self.show_file_primers if self.primer_from_file(name, seq, in_db) else self.show_db_primers
 
     def match_elsewhere(self):
         """Multi-record file: where the primers bind on the other records, found on a worker thread (each record is read from the

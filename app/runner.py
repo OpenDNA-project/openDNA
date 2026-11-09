@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
+import wip
+
 RECIPES = Path(__file__).with_name("tools.toml")
 ENV = "opendna-tools"
 # Where the tools env usually is (Miniforge, Miniconda, Mambaforge); searched before PATH.
@@ -212,7 +214,10 @@ class MapReadsDialog(QDialog):
         self.out = QLineEdit()
         self.threads = QSpinBox(minimum=1, maximum=256, value=max(1, (os.cpu_count() or 2) - 1))
         form = QFormLayout(self)
-        form.addRow("Mapper", self.recipe)
+        mapper = QHBoxLayout()   # the "WIP" tag while mapping is unfinished (wip.FEATURES)
+        mapper.addWidget(self.recipe, 1)
+        mapper.addWidget(wip.Badge("mapping"))
+        form.addRow("Mapper", mapper)
         form.addRow("Reads", self._with_browse(self.reads1, self._pick_reads1))
         self.reads2_row = self._with_browse(self.reads2, lambda: self._pick(self.reads2))
         form.addRow("Mate reads", self.reads2_row)

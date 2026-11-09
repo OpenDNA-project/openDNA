@@ -102,6 +102,31 @@ def test_a_primer_is_drawn_by_where_it_comes_from(tmp_path):
     assert {x.label for x in ed.drawn_primers} == {"mine", "both", "temp"}
 
 
+def test_the_primers_tab_lists_the_sources_the_display_filter_shows(tmp_path):
+    """Issue #7: the Primers tab follows the Display filter's two primer switches (From this sequence / From the database), as
+    the views do, and says how many primers the filter keeps out of the list."""
+    from primer_panel import PrimerPanel
+    ed = make(tmp_path)
+    panel = PrimerPanel(ed)
+
+    def listed():
+        return {panel.tree.topLevelItem(i).data(0, 0x0100) for i in range(panel.tree.topLevelItemCount())}   # (Qt.UserRole)
+    assert listed() == {"dbonly", "mine", "both", "temp"}
+    assert "not shown" not in panel.count.text()
+    ed.set_display(db_primers=False)
+    assert listed() == {"mine", "both", "temp"}, "a primer in the file and the database is the file's; a designed one too"
+    assert "1 more not shown" in panel.count.text()
+    ed.set_display(file_primers=False, db_primers=True)
+    assert listed() == {"dbonly"}
+    assert "3 more not shown" in panel.count.text()
+    ed.set_display(primers=False)
+    assert listed() == set()
+    ed.set_display(primers=True)
+    assert listed() == {"dbonly", "mine", "both", "temp"}
+    ed.set_primer_hidden("mine", True)   # hidden by hand: still listed (greyed) while its source is shown
+    assert "mine" in listed()
+
+
 def test_import_to_this_sequence_menu_entries_and_one_undo_step(tmp_path):
     """The menu entries for each kind of primer; Import to This Sequence adds the primer to the file as one undo step."""
     ed = make(tmp_path)

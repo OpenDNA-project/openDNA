@@ -60,6 +60,16 @@ class PressedStyle(QProxyStyle):
             for role in (QPalette.ButtonText, QPalette.WindowText, QPalette.Text):
                 option.palette.setColor(role, color("highlight_text"))
         super().drawControl(element, option, painter, widget)
+        if element == QStyle.CE_MenuItem:   # the "WIP" tag of an unfinished feature's menu item (wip.mark_action)
+            import wip
+            wip.menu_pill(option, painter, widget, self)
+
+    def sizeFromContents(self, kind, option, size, widget=None):
+        size = super().sizeFromContents(kind, option, size, widget)
+        if kind == QStyle.CT_MenuItem:   # room for the "WIP" tag
+            import wip
+            size.setWidth(size.width() + wip.menu_extra(option, widget))
+        return size
 
 
 def install_style(app):
@@ -158,6 +168,10 @@ ROLES = {
     "status_likely": ("#6b7a00", "#c5d34f"),   # Plasmid Checkup's "Likely"
     # a primer's exact binding site in the views (the deep purple was 2.0 on a dark background)
     "primer": ("#5e35b1", "#b39ddb"),
+    # the "WIP" tag of an unfinished feature (wip.py): a burnt orange pill, its white letters at 4.6 to 1; it stands out on the
+    # light and the dark backgrounds alike
+    "wip": ("#c75300", "#d35d0a"),
+    "wip_text": ("#ffffff", "#ffffff"),
 }
 
 # The search hit band over the bases (with its transparency): the light theme's yellow; in the dark theme a deeper amber, so the

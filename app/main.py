@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 from opendna_core import Bam, Document, Fasta, Track
 
 from display_panel import DisplayPanel
-from history_panel import HistoryPanel
+from history_panel import HistoryPanel, side_panel_width
 from editor import Editor, clean_pasted
 from shortcuts import ShortcutsDialog
 from sponsors import SponsorsDialog, show_at_startup
@@ -54,6 +54,7 @@ import feedback
 import file_assoc
 import project
 import runner
+import wip
 import db_status
 import db_tabs
 from reference_picker import ReferencePicker
@@ -183,8 +184,8 @@ class MainWindow(QMainWindow):
         self.autosave_timer = QTimer(self, interval=AUTOSAVE_MS, timeout=self.autosave)
         self.autosave_timer.start()
 
-    # ---- what the window remembers between sessions: its size and place, the side panel's width, the View switches. Not the
-    # tabs (a file always opens with the standard ones, unless it is a project) and not which side panel was open.
+    # ---- what the window remembers between sessions: its size and place, the View switches. Not the tabs (a file always opens
+    # with the standard ones, unless it is a project), not which side panel was open, and no side panel width (fixed).
     VIEW_SWITCHES = ("enzymes_action", "translation_action", "complement_action", "collapse_action", "cds_only_action")
 
     @staticmethod
@@ -200,31 +201,27 @@ class MainWindow(QMainWindow):
             w, h = min(1400, int(screen.width() * 0.85)), min(850, int(screen.height() * 0.85))
             self.resize(w, h)
             self.move(screen.center().x() - w // 2, screen.center().y() - h // 2)
-        self.panel_width = int(s.value("panel_width", 0) or 0)
         for name in self.VIEW_SWITCHES:
             a = getattr(self, name)
             saved = s.value(f"view/{name}")
             if saved is not None:
                 a.setChecked(str(saved).lower() == "true")
             a.toggled.connect(lambda on, name=name: self._window_settings().setValue(f"view/{name}", on))
-        for dock in (self.display_dock, self.history_dock):   # a side panel opens at the width it was left at
-            dock.visibilityChanged.connect(lambda on, dock=dock: on and self.panel_width and
-                                           QTimer.singleShot(0, lambda: self.resizeDocks([dock], [self.panel_width], Qt.Horizontal)))
 
     def _save_window(self):
         s = self._window_settings()
         s.setValue("geometry", self.saveGeometry())   # size, place and maximised (restoreGeometry keeps it on a screen)
-        shown = next((d for d in (self.display_dock, self.history_dock) if d.isVisible()), None)
-        if shown is not None:
-            s.setValue("panel_width", shown.width())
+        s.remove("panel_width")   # (the side panels were once as wide as dragged: they all have one fixed width now)
 
     @staticmethod
     def _fix_to_the_right(dock):
         """A side panel that is always on the right: no title bar (no heading, no float / close buttons) and it cannot be moved; the
         toolbar's button (or its shortcut) opens and closes it. (Closable stays: with no feature at all Qt's toggle action cannot
-        show the panel.)"""
+        show the panel.) Every side panel has the same fixed width, the History panel's (side_panel_width): it cannot be dragged
+        wider, and no content (the enzyme criteria unfolded, a long feature type...) can push it to half the window."""
         dock.setFeatures(QDockWidget.DockWidgetClosable)
         dock.setTitleBarWidget(QWidget())
+        dock.setFixedWidth(side_panel_width())
 
     MENU_ORDER = ("&File", "&Edit", "&View", "&Import", "E&xport", "Fea&ture", "&Primers", "Data&bases", "T&ools", "&Help")
 
@@ -283,11 +280,12 @@ class MainWindow(QMainWindow):
         action(features, "&Variants (VCF)…", None, lambda: self.load_tracks(VCF_FILTER))
         features.addAction(QAction("Import &Features to Features Database…", self, triggered=self.import_parts))
         proteins = imp.addMenu("&Proteins")
-        proteins.addAction(QAction("Protein &FASTA (3D Structure)…", self, triggered=self.import_protein))
-        proteins.addAction(QAction("From &NCBI (Protein)…", self, triggered=lambda: self.import_ncbi("Protein")))
+        proteins.addAction(wip.mark_action(QAction("Protein &FASTA (3D Structure)…", self, triggered=self.import_protein), "protein"))
+        proteins.addAction(wip.mark_action(QAction("From &NCBI (Protein)…", self, triggered=lambda: self.import_ncbi("Protein")),
+                                           "protein"))
         alignments = imp.addMenu("&Alignments")
         action(alignments, "Aligned &Reads (BAM)…", None, lambda: self.load_tracks(BAM_FILTER))
-        action(alignments, "&Map Reads (FASTQ) to This Sequence…", None, self.map_reads)
+        wip.mark_action(action(alignments, "&Map Reads (FASTQ) to This Sequence…", None, self.map_reads), "mapping")
         primer_import = imp.addMenu("P&rimers")
         primer_import.addAction(QAction("Primer &List (TSV, CSV, FASTA)…", self, triggered=self.import_primer_list))
 
@@ -397,10 +395,10 @@ class MainWindow(QMainWindow):
         action(tools, "Plasmid C&heckup (expression of each CDS)…", None, self.open_checkup)
         tools.addAction(QAction("&Import Features to Features Database…", self, triggered=self.import_parts))
         tools.addSeparator()
-        action(tools, "&Map Reads to This Sequence…", None, self.map_reads)
-        tools.addAction(QAction("Check Mapping &Tools…", self, triggered=lambda: RunDialog(
-            self, "Mapping tools", [runner.CHECK]).exec()))
-        tools.addAction(QAction("I&nstall Mapping Tools (conda)…", self, triggered=self.install_tools))
+        wip.mark_action(action(tools, "&Map Reads to This Sequence…", None, self.map_reads), "mapping")
+        tools.addAction(wip.mark_action(QAction("Check Mapping &Tools…", self, triggered=lambda: RunDialog(
+            self, "Mapping tools", [runner.CHECK]).exec()), "mapping"))
+        tools.addAction(wip.mark_action(QAction("I&nstall Mapping Tools (conda)…", self, triggered=self.install_tools), "mapping"))
         tools.addSeparator()
         tools.addAction(QAction("&Settings…", self, triggered=lambda: SettingsDialog(self).exec()))
 

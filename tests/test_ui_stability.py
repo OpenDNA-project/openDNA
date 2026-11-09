@@ -163,6 +163,32 @@ def test_the_view_picker_keeps_its_width_whatever_view_it_shows(app):
     assert len(widths) == 1, widths
 
 
+def test_the_side_panels_have_one_fixed_width_the_history_panels(app):
+    """Issues #3 and #8: the Display filter was wider than the History panel, and sometimes (a primer clicked, the enzyme
+    criteria unfolded, a width dragged and remembered) the side panel took half the window. Both have one fixed width now, the
+    History panel's, whatever they show; it cannot be dragged and is not remembered."""
+    from history_panel import side_panel_width
+    win = _window(app)
+    width = side_panel_width()
+    assert width >= win.history_dock.widget().minimumSizeHint().width(), "the History panel fits its own width"
+    for dock in (win.display_dock, win.history_dock):
+        dock.show()
+        app.processEvents()
+        assert dock.width() == width, (dock.objectName(), dock.width(), width)
+        win.resizeDocks([dock], [width * 3], Qt.Horizontal)   # as a drag of the separator
+        app.processEvents()
+        assert dock.width() == width, f"the {dock.objectName()} panel was dragged wider"
+    win.display_dock.show()
+    panel = win.display_dock.widget()
+    panel.expander.setChecked(True)   # the enzyme criteria, unfolded
+    app.processEvents()
+    assert win.display_dock.width() == width
+    assert not panel.horizontalScrollBar().isVisible(), "the Display filter fits the side panel"
+    panel.expander.setChecked(False)
+    win.close()
+    assert "panel_width" not in win._window_settings().allKeys()
+
+
 def test_the_window_remembers_its_size_view_switches_and_column_widths(app):
     """Size and place, the View switches and a column width dragged by hand come back in the next window; which side panel was
     open does not (nor the tabs)."""

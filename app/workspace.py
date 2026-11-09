@@ -31,6 +31,7 @@ from map_view import MapView
 from local_align import LocalAlignDialog
 from primer_panel import PrimerPanel
 from protein import ProteinView
+import wip
 from sequence_view import SequenceView
 from view_help import ViewHelpDialog, open_options, options_tip, OPTIONS
 from view_picker import ViewPicker
@@ -110,6 +111,8 @@ class Pane(QWidget):
         header = QHBoxLayout()
         header.setContentsMargins(2, 1, 2, 1)
         header.addWidget(self.picker)
+        self.wip = wip.Badge(wip.VIEWS.get(self.view_name))   # an unfinished view: its "WIP" tag beside its name
+        header.addWidget(self.wip)
         # Next to the picker: the options of this view (a cog) and its quick guide (?). Both follow the picker's choice.
         self.cog = QToolButton(autoRaise=True, focusPolicy=Qt.TabFocus)
         self.cog.clicked.connect(lambda: open_options(workspace.window, self.view_name))
@@ -175,6 +178,7 @@ class Pane(QWidget):
             self.view = None
         self.view_name = name
         self.picker.set_current(name)
+        self.wip.set_key(wip.VIEWS.get(name))
         self._update_helpers()
         self.workspace.refresh_names()
         if self.isVisible():

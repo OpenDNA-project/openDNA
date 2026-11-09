@@ -12,6 +12,16 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
 
 SHOWN = 300  # rows listed (the oldest beyond are still in the undo history)
+HEADING = ("<b>History</b> (oldest first; greyed = undone).<br>"
+           "Drag ▶ Current sequence up or down to go back or forward.")
+MARGIN = 4
+
+
+def side_panel_width():
+    """The width of the side panels (History and the Display filter share it, fixed: they cannot be dragged wider). It is the
+    History panel's own width, the one set by its heading (its longest line), whatever the panel shows; a panel whose content
+    once needed more pushed the side panel to half the window."""
+    return QLabel(HEADING).sizeHint().width() + 2 * MARGIN
 
 
 def _bases(text, count):
@@ -119,9 +129,8 @@ class HistoryPanel(QWidget):
         self.list.model().rowsMoved.connect(self._moved)
         self.button = QPushButton("Go back to before this change", clicked=self.go)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.addWidget(QLabel("<b>History</b> (oldest first; greyed = undone).<br>"
-                                "Drag ▶ Current sequence up or down to go back or forward."))
+        layout.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
+        layout.addWidget(QLabel(HEADING))
         layout.addWidget(self.list, 1)
         layout.addWidget(self.button)
         editor.changed.connect(self.refresh)
