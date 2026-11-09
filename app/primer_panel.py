@@ -13,7 +13,7 @@ from pathlib import Path
 from PySide6.QtCore import QEventLoop, QObject, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPalette
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFrame,
+    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFrame,
     QApplication, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QProgressDialog, QPushButton,
     QSpinBox, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
@@ -27,7 +27,7 @@ from tool_settings import Param, SettingsDialog
 from reference import Reference, as_reference
 from sequence_view import TEMP_COLOR
 from uikit import dispose_progress, fit_columns, plural, show_after
-from primer_db import (MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, binding_mismatches, db, notifier,  # noqa: F401 (re-exported)
+from primer_db import (ORDER_FORMATS, PLATE_SIZE, PURIFICATIONS, SCALES, export_order, MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, binding_mismatches, db, notifier,  # noqa: F401 (re-exported)
                        primer_problem, settings, update_primer)
 import theme
 
@@ -704,6 +704,60 @@ def export_file(parent):
             db().export(path)
         except OSError as e:
             QMessageBox.critical(parent, "Export failed", f"{path}\n\n{e}")
+
+
+class OrderDialog(QDialog):
+    """Export for Ordering: the file format, and for a plate the synthesis scale and purification."""
+
+    def __init__(self, parent, count):
+        super().__init__(parent)
+        self.setWindowTitle("Export primers for ordering")
+        self.format = QComboBox()
+        self.format.addItems(ORDER_FORMATS)
+        self.scale = QComboBox()
+        self.scale.addItems(SCALES)
+        self.purification = QComboBox()
+        self.purification.addItems(PURIFICATIONS)
+        self.format.currentIndexChanged.connect(self._format_changed)
+        form = QFormLayout(self)
+        form.addRow("Format", self.format)
+        form.addRow("Scale", self.scale)
+        form.addRow("Purification", self.purification)
+        plates = -(-count // PLATE_SIZE)
+        form.addRow(QLabel(f"{count} {'primer' if count == 1 else 'primers'}" + (f", on {plates} plates: one file per plate" if plates > 1 else ""),
+                           wordWrap=True))
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Export…")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def _format_changed(self):
+        plate = self.format.currentIndex() == 0   # the plain two-column file has no scale or purification
+        self.scale.setEnabled(plate)
+        self.purification.setEnabled(plate)
+
+
+def export_for_ordering(parent, names=None):
+    """Export for Ordering…: the primers called `names` (the ones selected in the Primer Database), all of them when none."""
+    rows = [r for r in db().rows if not names or r["name"] in set(names)]
+    if not rows:
+        QMessageBox.information(parent, "Export for ordering", "The primer database is empty: there is nothing to export.")
+        return []
+    dialog = OrderDialog(parent, len(rows))
+    if dialog.exec() != QDialog.Accepted:
+        return []
+    path, _ = QFileDialog.getSaveFileName(parent, "Export primers for ordering", "primer_order.csv", "CSV (*.csv)")
+    if not path:
+        return []
+    try:
+        written = export_order(rows, path, dialog.format.currentText(), dialog.scale.currentText(), dialog.purification.currentText())
+    except (OSError, ValueError) as e:
+        QMessageBox.critical(parent, "Export failed", f"{path}\n\n{e}")
+        return []
+    if len(written) > 1:
+        QMessageBox.information(parent, "Export for ordering", "Written, one file per plate:\n" + "\n".join(str(w) for w in written))
+    return written
 
 
 MISMATCHES = Qt.UserRole + 2   # on a site's sequence cell: the indices of its bases that do not pair (drawn red)

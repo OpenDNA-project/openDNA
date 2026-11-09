@@ -45,7 +45,7 @@ from checkup import TOOL as CHECKUP
 import image_export
 import ncbi
 from ncbi_dialog import GenomeDialog, NcbiDialog
-from primer_panel import import_primers
+from primer_panel import export_for_ordering, import_primers
 from primer_design import design_for_selection
 from structure_dialog import StructureDialog
 from search_bar import SearchBar
@@ -318,6 +318,7 @@ class MainWindow(QMainWindow):
         self.export_alignments = exp.addMenu("&Alignments (SAM)")   # one entry per loaded BAM, made when shown
         self.export_primers = exp.addMenu("P&rimers")
         self.export_primers.addAction(QAction("Primer &Database (TSV, CSV, FASTA)…", self, triggered=self.export_primer_db))
+        self.export_primers.addAction(QAction("For &Ordering (IDT plate, CSV)…", self, triggered=self.export_primers_for_ordering))
         exp.addSeparator()
         self.export_image = QAction("&Image of the Current Tab (SVG, PNG, TIFF)…", self, triggered=self.export_tab_image)
         exp.addAction(self.export_image)
@@ -1493,6 +1494,11 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "Export Primer Database", "primers.tsv",
                                               "Tab-separated (*.tsv);;CSV (*.csv);;FASTA (*.fasta)")
         return path and self._export(Path(path), lambda: db().export(path))
+
+    def export_primers_for_ordering(self):
+        """The primers selected in the Primer Database tab when it is on view, else all of them."""
+        tab = self.tool_tabs.get(db_tabs.TITLES[db_tabs.PRIMERS])
+        export_for_ordering(self, tab.table.chosen() if tab is not None and tab.isVisible() and tab.table is not None else None)
 
     # ---- DNA lock --------------------------------------------------------------------------------------------------------
     def set_dna_locked(self, on):

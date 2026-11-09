@@ -248,6 +248,7 @@ class DatabaseTab(QWidget):
                                     ("Delete", "Delete the primers selected (Delete key)", self.delete_primers),
                                     ("Import…", "Add the primers of a TSV, CSV or FASTA list", self.import_primers),
                                     ("Export…", "Write the whole database as TSV, CSV or FASTA", self.export_primers),
+                                    ("Export for Ordering…", "Write the primers selected (all when none) as an oligo order", self.export_for_ordering),
                                     ("Options…", "PCR conditions and the primer checks", self.primer_options)):
                 button = QPushButton(text, clicked=slot, toolTip=tip)
                 head.addWidget(button)
@@ -464,6 +465,10 @@ class DatabaseTab(QWidget):
     def export_primers(self):
         from primer_panel import export_file
         export_file(self)
+
+    def export_for_ordering(self):
+        from primer_panel import export_for_ordering
+        export_for_ordering(self, self.table.chosen())
 
     def primer_options(self):
         from primer_panel import OptionsDialog
