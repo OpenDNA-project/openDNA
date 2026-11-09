@@ -112,14 +112,14 @@ def test_the_editor_starts_empty_makes_edits_and_saves_a_table_of_yours(clean, m
     import codon_dialog
     import tool_settings
     holder = codon_dialog.CodonDialog()
-    dialog = holder.usage
+    dialog = holder.page
     assert dialog.current is None and "No codon usage table yet" in dialog.title.text()
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Recoded host", True))
     dialog.new()
-    assert dialog.current.name == "Recoded host" and dialog.grid.item(0, 2).flags() & codon_dialog.Qt.ItemIsEditable
-    dialog.grid.item(0, 2).setText("99.5")   # TTT
-    dialog.grid.item(1, 2).setText("not a number")   # refused: the old number comes back
-    assert dialog.grid.item(1, 2).text() in ("15.62", "15.63")
+    assert dialog.current.name == "Recoded host" and dialog.boxes[0][2].isEnabled()
+    dialog.boxes[0][2].setText("99.5")   # TTT
+    dialog.boxes[1][2].setText("not a number")   # refused: the old number comes back
+    assert dialog.boxes[1][2].text() in ("15.62", "15.63")
     dialog.use()
     holder.done(0)   # leaving saves the edit
     assert cu.all_tables()["Recoded host"].per_thousand["TTT"] == 99.5 and cu.active_name() == "Recoded host"
@@ -132,13 +132,68 @@ def test_the_editor_starts_empty_makes_edits_and_saves_a_table_of_yours(clean, m
     assert cu.active_name() == "Recoded host"
     # export, then import under the same name
     holder = codon_dialog.CodonDialog()
-    dialog = holder.usage
+    dialog = holder.page
     cu.write_csv(cu.all_tables()["Recoded host"], tmp_path / "out.csv")
     monkeypatch.setattr(codon_dialog.QFileDialog, "getOpenFileName", lambda *a, **k: (str(tmp_path / "out.csv"), ""))
     cu.delete_user("Recoded host")
     dialog.tables = cu.all_tables()
     dialog.import_csv()
     assert dialog.current.name == "Recoded host" and dialog.current.per_thousand["TTT"] == 99.5
+
+
+def test_one_csv_carries_the_usage_table_and_the_genetic_code(clean, monkeypatch, tmp_path):
+    """Export writes the frequencies and the code shown to one file; importing it back brings both, and a code already here that says
+    the same thing is used instead of a second copy of it. A file with no letters (an older one) brings the table alone."""
+    import codon_dialog
+    holder = codon_dialog.CodonDialog()
+    page = holder.page
+    aas, starts = genetic_code.recoded(11, ["AGA", "AGG"])
+    id = genetic_code.save_code("Export test code", aas, starts)
+    path = tmp_path / "both.csv"
+    try:
+        cu.save_user(flat("Export test host", CTG=50.0, CTA=0.5))
+        page.tables = cu.all_tables()
+        page._fill_usage("Export test host")
+        page._fill_codes(id)
+        monkeypatch.setattr(codon_dialog.QFileDialog, "getSaveFileName", lambda *a, **k: (str(path), ""))
+        page.export_csv()
+        text = path.read_text(encoding="utf-8")
+        assert "# code: Export test code" in text and "codon,aa,per_thousand,start" in text
+        assert "AGA,X," in text and "ATG,M," in text   # the removed codon and the start codon travel too
+        # read back: the frequencies and the letters both come through
+        back = cu.read_csv(path)
+        assert back.aas == aas and back.starts == starts and back.code_name == "Export test code"
+        assert back.per_thousand["CTG"] == 50.0 and back.per_thousand["CTA"] == 0.5
+        # importing it finds the code that already says the same thing instead of adding another
+        cu.delete_user("Export test host")
+        page.tables = cu.all_tables()
+        monkeypatch.setattr(codon_dialog.QFileDialog, "getOpenFileName", lambda *a, **k: (str(path), ""))
+        before = set(genetic_code.TABLES)
+        page.import_csv()
+        assert set(genetic_code.TABLES) == before and page.current_code.id == id
+        assert page.current.per_thousand["CTG"] == 50.0
+    finally:
+        genetic_code.delete_code(id)
+    # the same file once that code is gone: the code comes back as one of yours, named as the file says
+    page.import_csv()
+    new = page.current_code
+    try:
+        assert new.id >= genetic_code.FIRST_USER and new.name == "Export test code" and new.aas == aas
+        assert "AGA" in genetic_code.removed_codons(new.id)
+    finally:
+        genetic_code.delete_code(new.id)
+    # a file with no amino-acid column is still just a usage table
+    plain = tmp_path / "plain.csv"
+    plain.write_text("codon,per_thousand\n" + "\n".join(f"{c},{15.625}" for c in cu.CODONS), encoding="utf-8")
+    assert cu.read_csv(plain).aas is None
+
+
+def test_a_csv_with_a_bad_amino_acid_is_refused(tmp_path):
+    rows = "\n".join(f"{c},{'B' if c == 'TTT' else 'F'},15.6" for c in cu.CODONS)
+    path = tmp_path / "bad.csv"
+    path.write_text("codon,aa,per_thousand\n" + rows, encoding="utf-8")
+    with pytest.raises(ValueError, match="not an amino acid"):
+        cu.read_csv(path)
 
 
 def test_the_editor_says_so_when_a_table_cannot_be_saved(clean, monkeypatch):
@@ -150,7 +205,7 @@ def test_the_editor_says_so_when_a_table_cannot_be_saved(clean, monkeypatch):
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Locked one", True))
     holder = codon_dialog.CodonDialog()
     monkeypatch.setattr(fileio, "replace", lambda *a, **k: (_ for _ in ()).throw(PermissionError(13, "being used by another process")))
-    holder.usage.new()
+    holder.page.new()
     assert shown and "could not be saved" in shown[0] and "being used by another process" in shown[0]
     assert cu.all_tables() == {}
 
@@ -201,18 +256,21 @@ def test_the_quick_switch_lists_recoded_codes_after_a_divider_and_has_a_manage_e
     assert heard == [1]
 
 
-def test_the_genetic_codes_tab_makes_a_recoded_code_of_yours(monkeypatch):
+def test_the_chart_makes_a_recoded_code_of_yours(monkeypatch):
     from PySide6.QtWidgets import QInputDialog
     import codon_dialog
-    holder = codon_dialog.CodonDialog(tab=1)
-    page = holder.codes
-    assert holder.tabs.currentWidget() is page and page.current.id == genetic_code.table_id()
-    page._fill(101)
+    holder = codon_dialog.CodonDialog()
+    page = holder.page
+    assert page.current_code.id == genetic_code.table_id()
+    # The 64 codons are the chart, not a column: sixteen rows of four, each cell the codon with its letter, start box and frequency.
+    assert (page.grid.rowCount(), page.grid.columnCount()) == (16, 4) and len(page.boxes) == 64
+    assert codon_dialog.row_label(0) == "TT" and cu.CODONS[5] == "TCC" and page.grid.cellWidget(1, 1) is not None
+    page._fill_codes(101)
     assert "built in" in page.title.text() and not page.boxes[0][0].isEnabled() and not page.save_button.isEnabled()
     assert page.note.text().startswith("61 codons used; not used: TCA, TCG, TAG") and "Fredens" in page.note.text()
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Editor test code", True))
     page.duplicate()
-    id = page.current.id
+    id = page.current_code.id
     try:
         assert id >= genetic_code.FIRST_USER and page.boxes[0][0].isEnabled() and page.name.text() == "Editor test code"
         page.boxes[cu.CODONS.index("TTT")][0].setCurrentText("X")   # TTT is not used either

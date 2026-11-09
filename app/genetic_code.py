@@ -43,6 +43,7 @@ LABELS = [f"{t.id} – {t.name}" for t in TABLES.values()]
 DEFAULT_LABEL = LABELS[0]   # "1 – Standard"
 
 REMOVED = "X"        # the letter of a codon the organism no longer uses
+LETTERS = "ACDEFGHIKLMNPQRSTVWY*" + REMOVED   # what a codon may code for: an amino acid, the stop, or nothing any more
 FIRST_CUSTOM = 100   # ids of the codes that are not NCBI's: 100-109 are built in, yours start at 110
 FIRST_USER = 110
 LAST_ID = 254

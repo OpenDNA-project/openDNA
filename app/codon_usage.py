@@ -32,9 +32,13 @@ def _table(name, per_thousand, source="", note=""):
 
 # ---- reading and writing a CSV ---------------------------------------------------------------------------------------------
 def read_csv(path, name=None):
-    """A table from a CSV file: `# key: value` comment lines (name, source...), then `codon,aa,per_thousand[,count]`. Also accepts
-    a plain list of codon,frequency pairs. Raises ValueError with a sentence when the file is not a codon table."""
-    meta, rows = {}, {}
+    """A table from a CSV file: `# key: value` comment lines (name, source, code...), then `codon,aa,per_thousand[,start]`. Also
+    accepts a plain list of codon,frequency pairs. Raises ValueError with a sentence when the file is not a codon table.
+
+    The genetic code travels in the same file: when every row carries an amino-acid letter, the table comes back with `aas` and
+    `starts` (64 letters each, TCAG order, as genetic_code writes them) and `code_name` from `# code:`. A file written before that,
+    or by another program, has no letters to trust and comes back with `aas = None`."""
+    meta, rows, aas, starts = {}, {}, {}, {}
     text = Path(path).read_text(encoding="utf-8-sig")
     for line in text.splitlines():
         line = line.strip()
@@ -55,24 +59,42 @@ def read_csv(path, name=None):
             rows[codon] = float(cells[2] if len(cells) > 2 else cells[1])
         except (IndexError, ValueError):
             raise ValueError(f"No frequency for codon {codon}.") from None
+        if len(cells) > 2 and cells[1]:          # the amino acid, when the file writes one
+            letter = cells[1].upper()
+            if letter not in genetic_code.LETTERS:
+                raise ValueError(f"'{cells[1]}' is not an amino acid for codon {codon} "
+                                 f"(a letter, * for a stop, or {genetic_code.REMOVED} for a codon that is not used).")
+            aas[codon] = letter
+            starts[codon] = "M" if len(cells) > 3 and cells[3].strip().upper() in ("M", "1", "YES", "TRUE") else "-"
     if len(rows) != 64:
         raise ValueError(f"A codon table has 64 codons; this file has {len(rows)}.")
     source = " · ".join(x for x in (meta.get("source"), meta.get("citation")) if x)   # a file may say where it comes from
-    return _table(name or meta.get("name") or meta.get("organism") or Path(path).stem, rows, source, meta.get("note", ""))
+    table = _table(name or meta.get("name") or meta.get("organism") or Path(path).stem, rows, source, meta.get("note", ""))
+    whole = len(aas) == 64
+    table.aas = "".join(aas[c] for c in CODONS) if whole else None
+    table.starts = "".join(starts[c] for c in CODONS) if whole else None
+    table.code_name = meta.get("code", "")
+    return table
 
 
-def write_csv(table, path):
-    code = genetic_code.codon_map(1)
+def write_csv(table, path, code=None):
+    """Write `table` as CSV. `code` (a genetic_code TABLES entry) travels in the same file: its name in `# code:`, its letters in the
+    `aa` column and its start codons in `start`, so one file carries both. Without it the standard table's letters are written, as
+    before, and the file says nothing about a code."""
+    letters = genetic_code.codon_map(1) if code is None else code.codons
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(f"# name: {table.name}\n")
+        if code is not None:
+            f.write(f"# code: {code.name}\n")
         if table.source:
             f.write(f"# source: {table.source}\n")
         if table.note:
             f.write(f"# note: {table.note}\n")
         w = csv.writer(f, lineterminator="\n")
-        w.writerow(["codon", "aa", "per_thousand"])
-        for c in CODONS:
-            w.writerow([c, code[c], f"{table.per_thousand[c]:.2f}"])
+        w.writerow(["codon", "aa", "per_thousand", "start"])
+        for i, c in enumerate(CODONS):
+            start = "-" if code is None else code.starts[i]
+            w.writerow([c, letters[c], f"{table.per_thousand[c]:.2f}", start])
 
 
 # ---- the tables ------------------------------------------------------------------------------------------------------------
