@@ -7,7 +7,10 @@ does not use it any more), whether it can start a protein, and how often the org
 
 The letters and the start flags belong to the genetic code, the frequencies to the codon usage table, and the two are still chosen
 separately above the chart: one code is read with any organism's usage, and a table imported from a CSV or carried in a project stays
-usable with every code. Built-in codes are read-only (Duplicate to change one); the frequencies of a table of yours are always editable.
+usable with every code. Every table can be edited, a built-in one into a copy of itself: changing a letter or a start codon on an NCBI
+table or a recoded one renames it "… (edited)" and Save writes a code of your own, so the tables themselves never change and a file
+translates today to what it translated to yesterday. Only the usual NCBI tables are listed, with the recoded codes and yours; "All
+tables" brings back the other twenty (a CDS with /transl_table=N is read with table N whatever the list shows).
 
 Import and Export carry both at once: one CSV holds the frequencies and the code (its name in `# code:`, its letters in the `aa` column,
 its start codons in `start`). Importing one adds the table and, unless a code already here says the very same thing, the code too.
@@ -23,6 +26,10 @@ import genetic_code
 import tool_settings
 
 LETTERS = genetic_code.LETTERS   # the amino acids, the stop, and "X": the codon is not used any more
+# The NCBI tables the chart offers: the standard one, the two mitochondrial ones most asked for, and the bacterial table the recoded
+# codes are built from. The other twenty are a tick away ("Show all NCBI tables"), never gone: a file with /transl_table=5 is still
+# read with table 5 whatever this list shows.
+SHORT_CODES = (1, 2, 3, 11)
 PER_ROW = 4            # the chart: four columns, one per third base
 ROWS = 64 // PER_ROW
 
@@ -41,12 +48,15 @@ class CodonPage(QWidget):
         self.current = None        # the usage table shown
         self.current_code = None   # the genetic code shown
         self.edited = False        # its frequencies were changed and not saved yet
+        self.dirty = False         # its letters or start codons were changed and not saved yet
         self.boxes = []            # per codon, in codon_usage.CODONS order: (amino acid, can start, per thousand)
 
         self.code = QComboBox(toolTip="The genetic code: what each codon means")
         self.code.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)   # not as wide as the longest NCBI table name
         self.code.setMinimumContentsLength(24)
         self.code.currentIndexChanged.connect(lambda _i: self._show_code())
+        self.show_all = QCheckBox("All tables", toolTip="List every NCBI translation table, not just the ones most used")
+        self.show_all.toggled.connect(lambda _on: self._fill_codes(self.code.currentData()))
         self.name = QLineEdit(placeholderText="Name of the code")
         self.save_button = QPushButton("Save", toolTip="Keep the changes to this code", clicked=self.save)
         self.duplicate_code = QPushButton("Duplicate", toolTip="A copy you can edit", clicked=self.duplicate)
@@ -83,6 +93,7 @@ class CodonPage(QWidget):
         code_row = QHBoxLayout()
         code_row.addWidget(QLabel("Genetic code"))
         code_row.addWidget(self.code, 1)
+        code_row.addWidget(self.show_all)
         code_row.addWidget(self.name, 1)
         for b in (self.save_button, self.duplicate_code, self.delete_code):
             code_row.addWidget(b)
@@ -105,8 +116,9 @@ class CodonPage(QWidget):
         """One cell of the chart: the codon, its amino acid, whether it can start, and its frequency."""
         aa = QComboBox(toolTip=f"The amino acid {codon} codes for ({genetic_code.REMOVED}: not used any more)")
         aa.addItems(list(LETTERS))
-        aa.currentTextChanged.connect(self._note)
+        aa.currentTextChanged.connect(self._code_edited)
         start = QCheckBox(toolTip=f"{codon} can start a protein")
+        start.toggled.connect(self._code_edited)
         freq = QLineEdit(alignment=Qt.AlignRight, toolTip=f"How often the organism uses {codon}, per thousand codons")
         freq.setFixedWidth(54)
         freq.textChanged.connect(lambda text, k=i: self._usage_edited(k, text))
@@ -122,24 +134,35 @@ class CodonPage(QWidget):
         return box
 
     # ---- the genetic code -------------------------------------------------------------------------------------------------
+    def _listed(self, select):
+        """The code ids the dropdown offers: the usual NCBI tables, the recoded ones, yours — and whatever is selected, so a code
+        chosen elsewhere is never silently swapped for another one."""
+        return sorted(t.id for t in genetic_code.TABLES.values()
+                      if self.show_all.isChecked() or t.id in SHORT_CODES or t.id >= genetic_code.FIRST_CUSTOM or t.id == select)
+
     def _fill_codes(self, select=None):
+        want = genetic_code.table_id() if select is None else select
         self.code.blockSignals(True)
         self.code.clear()
-        for id, t in sorted(genetic_code.TABLES.items()):
-            self.code.addItem(f"{id} – {t.name}" + ("  🔒" if id < genetic_code.FIRST_USER else ""), id)
+        previous = None
+        for id in self._listed(want):
+            if previous is not None and previous < genetic_code.FIRST_CUSTOM <= id:
+                self.code.insertSeparator(self.code.count())   # the NCBI tables, then the recoded ones and yours
+            self.code.addItem(f"{id} – {genetic_code.TABLES[id].name}", id)
+            previous = id
         self.code.blockSignals(False)
-        found = self.code.findData(genetic_code.table_id() if select is None else select)
-        self.code.setCurrentIndex(max(0, found))
+        self.code.setCurrentIndex(max(0, self.code.findData(want)))
         self._show_code()
 
     def _show_code(self):
+        # shortcut: changing the dropdown drops an unsaved letter or start change without asking, as it did before any table could be
+        # edited; ask to keep it (or save it like the frequencies are) if anyone loses work this way.
         t = genetic_code.TABLES.get(self.code.currentData())
         self.current_code = t
+        self.dirty = False
         if t is None:
             return
-        editable = t.id >= genetic_code.FIRST_USER
         self.name.setText(t.name)
-        self.name.setReadOnly(not editable)
         for i, c in enumerate(codon_usage.CODONS):
             aa, start, _freq = self.boxes[i]
             for w in (aa, start):
@@ -148,19 +171,42 @@ class CodonPage(QWidget):
             start.setChecked(t.starts[i] != "-")
             for w in (aa, start):
                 w.blockSignals(False)
-                w.setEnabled(editable)
-        self.save_button.setEnabled(editable)
-        self.delete_code.setEnabled(editable)
+                w.setEnabled(True)      # every table can be edited; a built-in one into a copy of itself (see _code_edited)
+        self.delete_code.setEnabled(t.id >= genetic_code.FIRST_USER)
+        self._update_save()
         self._titles()
         self._note()
+
+    def _code_edited(self, *_):
+        """A letter or a start codon was changed. On a built-in table the edit starts a copy — NCBI's tables and the recoded ones are
+        never altered, so what a file translated to yesterday it still translates to today."""
+        t = self.current_code
+        if t is not None and not self.dirty:
+            self.dirty = True
+            if t.id < genetic_code.FIRST_USER:
+                self.name.setText(f"{t.name} (edited)")
+            self._update_save()
+            self._titles()
+        self._note()
+
+    def _update_save(self):
+        own = self.current_code is not None and self.current_code.id >= genetic_code.FIRST_USER
+        self.save_button.setEnabled(own or self.dirty)
+        self.save_button.setToolTip("Keep the changes to this code" if own else "Save these changes as a genetic code of your own")
 
     def _strings(self):
         aas = "".join(aa.currentText() for aa, _s, _f in self.boxes)
         return aas, "".join("M" if start.isChecked() else "-" for _a, start, _f in self.boxes)
 
     def save(self):
+        """Keep the changes: on a code of yours in place, on a built-in table as a new code of your own."""
+        t = self.current_code
+        if t is None:
+            return
+        own = t.id >= genetic_code.FIRST_USER
         try:
-            id = genetic_code.save_code(self.name.text(), *self._strings(), id=self.current_code.id)
+            id = genetic_code.save_code(self.name.text(), *self._strings(), id=t.id if own else None,
+                                        note="" if own else f"Edited copy of {t.id} – {t.name}.")
         except ValueError as e:
             QMessageBox.warning(self, "Genetic code", str(e))
             return
@@ -229,7 +275,16 @@ class CodonPage(QWidget):
 
     def _titles(self):
         t, code = self.current, self.current_code
-        code_text = "no genetic code" if code is None else f"<b>{code.id} – {code.name}</b>" + ("" if code.id >= genetic_code.FIRST_USER else " (built in: Duplicate to change it)")
+        if code is None:
+            code_text = "no genetic code"
+        else:
+            code_text = f"<b>{code.id} – {code.name}</b>"
+            if code.id >= genetic_code.FIRST_USER:
+                pass                      # a code of yours: Save writes it back
+            elif self.dirty:
+                code_text += " · built in, so this is a copy: <b>Save</b> makes it yours"
+            else:
+                code_text += " · built in: editing it starts a copy of your own"
         if t is None:
             self.title.setText(code_text + " · No codon usage table yet. <b>New</b> makes one; <b>Import…</b> reads a CSV "
                                            "(codon, amino acid, per thousand).")

@@ -141,6 +141,45 @@ def test_the_editor_starts_empty_makes_edits_and_saves_a_table_of_yours(clean, m
     assert dialog.current.name == "Recoded host" and dialog.current.per_thousand["TTT"] == 99.5
 
 
+def test_the_dropdown_lists_the_usual_tables_and_all_of_them_on_request():
+    """Only the standard, the two mitochondrial and the bacterial tables are offered, with the recoded ones and yours after a divider;
+    "All tables" brings the other NCBI tables back, and a code chosen elsewhere is listed even when the short list would hide it."""
+    import codon_dialog
+    holder = codon_dialog.CodonDialog()   # kept: the dialog owns the page, and Qt deletes it with the dialog
+    page = holder.page
+    ids = lambda: [page.code.itemData(i) for i in range(page.code.count()) if page.code.itemData(i) is not None]
+    assert [i for i in ids() if i < genetic_code.FIRST_CUSTOM] == list(codon_dialog.SHORT_CODES)
+    assert 101 in ids() and 102 in ids() and 5 not in ids()     # the syn tables stay, the rare ones go
+    assert any(page.code.itemData(i) is None for i in range(page.code.count())), "a divider before the recoded codes"
+    page.show_all.setChecked(True)
+    assert 5 in ids() and len(ids()) == len(genetic_code.TABLES)
+    page.show_all.setChecked(False)
+    page._fill_codes(5)   # a table the short list hides, but selected: listed anyway, never swapped for another
+    assert 5 in ids() and page.current_code.id == 5
+
+
+def test_editing_a_built_in_table_saves_a_copy_and_leaves_the_table_alone(monkeypatch):
+    """Changing a letter on an NCBI table renames it "… (edited)" and Save writes a code of your own; table 11 itself is untouched."""
+    import codon_dialog
+    holder = codon_dialog.CodonDialog()   # kept: the dialog owns the page
+    page = holder.page
+    page._fill_codes(11)
+    before = genetic_code.TABLES[11].codons["TTT"]
+    assert not page.dirty and not page.save_button.isEnabled()
+    page.boxes[cu.CODONS.index("TTT")][0].setCurrentText("X")
+    assert page.dirty and page.save_button.isEnabled() and page.name.text().endswith("(edited)")
+    assert "Save" in page.title.text() and "copy" in page.title.text()
+    page.save()
+    id = page.current_code.id
+    try:
+        assert id >= genetic_code.FIRST_USER and page.current_code.codons["TTT"] == "X"
+        assert genetic_code.TABLES[11].codons["TTT"] == before, "the built-in table must not change"
+        assert "Edited copy of 11" in genetic_code.TABLES[id].note
+        assert not page.dirty and page.save_button.isEnabled()   # a code of yours now: Save writes it back
+    finally:
+        genetic_code.delete_code(id)
+
+
 def test_one_csv_carries_the_usage_table_and_the_genetic_code(clean, monkeypatch, tmp_path):
     """Export writes the frequencies and the code shown to one file; importing it back brings both, and a code already here that says
     the same thing is used instead of a second copy of it. A file with no letters (an older one) brings the table alone."""
@@ -266,7 +305,8 @@ def test_the_chart_makes_a_recoded_code_of_yours(monkeypatch):
     assert (page.grid.rowCount(), page.grid.columnCount()) == (16, 4) and len(page.boxes) == 64
     assert codon_dialog.row_label(0) == "TT" and cu.CODONS[5] == "TCC" and page.grid.cellWidget(1, 1) is not None
     page._fill_codes(101)
-    assert "built in" in page.title.text() and not page.boxes[0][0].isEnabled() and not page.save_button.isEnabled()
+    # A built-in table can be typed in, but Save is off until something changes and then it saves a copy, never the table itself.
+    assert "built in" in page.title.text() and page.boxes[0][0].isEnabled() and not page.save_button.isEnabled()
     assert page.note.text().startswith("61 codons used; not used: TCA, TCG, TAG") and "Fredens" in page.note.text()
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Editor test code", True))
     page.duplicate()
