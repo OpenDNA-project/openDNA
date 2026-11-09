@@ -760,6 +760,14 @@ fn genetic_codes() -> Vec<(u8, String, String, String)> {
     code::TABLES.iter().map(|t| (t.id, t.name.to_string(), t.aas.to_string(), t.starts.to_string())).collect()
 }
 
+/// `opendna_core.register_genetic_code(id, name, aas, starts)`: add or replace a code of id 100 or more (a recoded organism's, or
+/// one the user wrote), in the same 64-letter form as `genetic_codes()`; 'X' in `aas` marks a codon the organism no longer uses.
+/// Every function that takes a `table` then accepts that id.
+#[pyfunction]
+fn register_genetic_code(id: u8, name: &str, aas: &str, starts: &str) -> PyResult<()> {
+    code::register(id, name, aas, starts).map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
 /// `opendna_core.translate(seq, table=1)`: amino acids of `seq` read from its first base ('X' for a codon with an N,
 /// '*' for a stop). An unknown table id falls back to the standard code.
 #[pyfunction]
@@ -849,6 +857,7 @@ fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(find_motif, m)?)?;
     m.add_function(wrap_pyfunction!(find_protein, m)?)?;
     m.add_function(wrap_pyfunction!(genetic_codes, m)?)?;
+    m.add_function(wrap_pyfunction!(register_genetic_code, m)?)?;
     m.add_function(wrap_pyfunction!(translate, m)?)?;
     m.add_function(wrap_pyfunction!(dimer, m)?)?;
     m.add_function(wrap_pyfunction!(hairpin, m)?)?;

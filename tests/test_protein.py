@@ -89,6 +89,78 @@ def test_follows_the_selection_and_selecting_residues_selects_codons():
     assert "tiny" in view.title.text()                    # the CDS stays shown
 
 
+def test_structure_in_3d_follows_the_selection_both_ways():
+    """A structure got for the CDS shows under its letters, the selection is highlighted on it, a click on a residue selects its
+    codons (Shift+click: up to it), and another protein hides it."""
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    import structure
+    ed = make()
+    view = protein.ProteinView(ed)
+    view.resize(500, 700)
+    view.show()
+    ed.select_feature(next(f for f in ed.features if f.kind == "CDS").index)
+    view.refresh()
+    assert not view.view3d.isVisible()
+    atoms = [("CA", 3.8 * i, i % 2, 0.0, 90.0 - 20 * i, res) for i, res in enumerate(("MET", "LYS", "TRP", "HIS"))] + [("CB", 7.6, 1.5, 0.0, 50.0, "TRP")]
+    model = "\n".join(f"ATOM  {n + 1:5d}  {name:<3s} {res} A{['MET', 'LYS', 'TRP', 'HIS'].index(res) + 1:4d}    {x:8.3f}{y:8.3f}{z:8.3f}  1.00{b:6.2f}"
+                      for n, (name, x, y, z, b, res) in enumerate(atoms))
+    view._got_structure("MKWH", structure.Structure(model, "ESMFold", "test model", True))
+    canvas = view.view3d.canvas
+    assert view.view3d.isVisible() and view.view3d.mode.currentText() == "Confidence"
+    assert canvas.highlight == set(), "the whole CDS is selected: nothing to point out"
+    ed.select_feature(next(f for f in ed.features if f.kind == "misc_feature").index)   # covers W and H
+    view.refresh()
+    assert canvas.highlight == {2, 3}
+    view.grab()   # draws the tube, the highlighted residues and their atoms
+    # --- a click on a residue selects its codon, Shift+click selects up to another
+    def click(k, modifier=Qt.NoModifier):
+        x, y, _ = canvas.project(canvas.cas[k])
+        QTest.mouseClick(canvas, Qt.LeftButton, modifier, QPoint(round(x), round(y)))
+    click(1)                                              # K
+    assert (ed.start, ed.end) == (13, 16) and canvas.highlight == {1}
+    click(3, Qt.ShiftModifier)                            # through H
+    assert (ed.start, ed.end) == (13, 22) and canvas.highlight == {1, 2, 3}
+    # --- another protein: no structure for it, the view hides
+    ed.select(0, 9)
+    view.refresh()
+    assert not view.view3d.isVisible()
+
+
+def test_letter_colours():
+    """The letters are coloured by property, hydrophobicity, size or charge, or like the 3D view; the 3D view has the same schemes."""
+    import structure
+    from structure_view import PROPERTY, aa_colour
+    assert aa_colour("Hydrophobicity", "I") == "#e8544e" and aa_colour("Hydrophobicity", "R") == "#5b9be0"
+    assert aa_colour("Size", "G") == "#fff6d5" and aa_colour("Size", "W") == "#a0581c"
+    assert aa_colour("Charge", "A") is None and aa_colour("Property", "*") is None
+    ed = make()
+    view = protein.ProteinView(ed)
+    view.show()
+    ed.select_feature(next(f for f in ed.features if f.kind == "CDS").index)
+    view.refresh()
+
+    def backgrounds():
+        """The background colour of each letter of the first line."""
+        block = view.text.document().firstBlock()
+        return {block.text()[r.start]: r.format.background().color().name() for r in block.layout().formats()}
+    assert backgrounds() == {}, "plain letters to begin with"
+    view.colour_by.setCurrentText("Property")
+    assert backgrounds() == {"M": PROPERTY["M"].lower(), "K": PROPERTY["K"].lower(), "W": PROPERTY["W"].lower(), "H": PROPERTY["H"].lower()}
+    view.colour_by.setCurrentText("Charge")
+    assert set(backgrounds()) == {"K", "H"}
+    # --- like the 3D view: only the residues in the model, in its colours
+    view.colour_by.setCurrentText("Same as 3D")
+    assert backgrounds() == {}, "no structure: nothing to copy"
+    model = "\n".join(f"ATOM  {i + 1:5d}  CA  {res} A{i + 1:4d}    {3.8 * i:8.3f}{0.0:8.3f}{0.0:8.3f}  1.00{b:6.2f}"
+                      for i, (res, b) in enumerate((("MET", 95.0), ("LYS", 40.0))))   # M and K only
+    view._got_structure("MKWH", structure.Structure(model, "ESMFold", "half a model", True))
+    assert backgrounds() == {"M": "#0053d6", "K": "#ff7d45"}, "pLDDT colours, as on the model"
+    view.view3d.mode.setCurrentText("Size")
+    assert backgrounds() == {"M": aa_colour("Size", "M"), "K": aa_colour("Size", "K")}
+    assert view.view3d.canvas.colour(0) == aa_colour("Size", "M")
+
+
 def test_a_pane_in_the_window(monkeypatch):
     from main import MainWindow
     errors = []

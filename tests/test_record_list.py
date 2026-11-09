@@ -215,3 +215,24 @@ def test_the_new_record_is_shown_and_laid_out_before_painting_comes_back(tmp_pat
     views = ws.views(SequenceView, build=False)
     assert win.editor.fasta_record == b and win.updatesEnabled()
     assert ws.isVisible() and views and all(v.isVisible() and v.width() > 100 and v.height() > 100 for v in views)
+
+
+def test_a_save_that_cannot_replace_the_file_is_reported_and_the_file_is_untouched(tmp_path, monkeypatch):
+    """The rename that ends a save can still fail after its retries (the file is locked for good): the user is told ("Save Failed"),
+    the save returns False, nothing is half written, and the edit is still pending."""
+    from PySide6.QtWidgets import QMessageBox
+    import fileio
+    path = three_records(tmp_path)
+    before = path.read_bytes()
+    win = opened(path)
+    win.editor.select(3, 5)
+    win.editor.replace_selection("GG") if hasattr(win.editor, "replace_selection") else win.editor.doc.replace(3, 5, "GG")
+    shown = []
+    monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda parent, title, text, *a, **k: shown.append((title, text))))
+    def locked(tmp, target, *a, **k):
+        raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+    monkeypatch.setattr(fileio, "replace", locked)
+    assert win.save() is False
+    assert shown and shown[0][0] == "Save Failed" and "being used by another process" in shown[0][1] and str(path) in shown[0][1]
+    assert path.read_bytes() == before, "the file on disk is exactly as it was"
+    assert not list(tmp_path.glob("*.saving")), "no stray temporary file"

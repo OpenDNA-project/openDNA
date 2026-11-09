@@ -60,6 +60,13 @@ PANELS = {
          "10.1016/S0168-9525(00)02024-2",
          "The pKa values of the isoelectric point and charge (those of EMBOSS's iep). The mass is the sum of average residue masses "
          "(as on ExPASy) plus water; both are estimates for the free chain."),
+        ("Kyte J, Doolittle RF. A simple method for displaying the hydropathic character of a protein. J Mol Biol 157, 105-132 (1982).",
+         "10.1016/0022-2836(82)90515-0", "The hydrophobicity colours of the letters and of the 3D view (the Kyte-Doolittle scale)."),
+        ("Zamyatnin AA. Protein volume in solution. Prog Biophys Mol Biol 24, 107-123 (1972).", "10.1016/0079-6107(72)90005-3",
+         "The size colours (the volumes of the amino acids)."),
+        ("Waterhouse AM, Procter JB, Martin DMA, Clamp M, Barton GJ. Jalview Version 2 - a multiple sequence alignment editor and "
+         "analysis workbench. Bioinformatics 25, 1189-1191 (2009).", "10.1093/bioinformatics/btp033",
+         "The property colours (Jalview's Zappo scheme: aliphatic, aromatic, positive, negative, polar, P and G, C)."),
     ],
     "Import from NCBI": [
         ("Entrez Programming Utilities Help [Internet]. Bethesda (MD): National Center for Biotechnology Information (US); 2010-.", None,
@@ -108,7 +115,10 @@ PANELS = {
         ("Berman HM, Westbrook J, Feng Z, et al. The Protein Data Bank. Nucleic Acids Res 28, 235-242 (2000).", "10.1093/nar/28.1.235",
          "RCSB PDB (rcsb.org): experimental structures found by sequence search (90 % identity or more) and downloaded."),
         ("Rego N, Koes D. 3Dmol.js: molecular visualization with WebGL. Bioinformatics 31, 1322-1324 (2015).",
-         "10.1093/bioinformatics/btu829", "The 3D view (3Dmol.js, BSD-3-Clause, bundled in app/vendor)."),
+         "10.1093/bioinformatics/btu829", "The 3D page in the browser (3Dmol.js, BSD-3-Clause, bundled in app/vendor)."),
+        ("Labesse G, Colloc'h N, Pothier J, Mornon JP. P-SEA: a new efficient assignment of secondary structure from C alpha trace of "
+         "proteins. Comput Appl Biosci 13, 291-295 (1997).", "10.1093/bioinformatics/13.3.291",
+         "Helices and strands of the 3D view of the Protein panel, from the alpha carbons alone (its distance criteria)."),
     ],
     "Genetic code (translation, ORFs, protein search)": [
         ("Elzanowski A, Ostell J. The Genetic Codes. NCBI Taxonomy, https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi "

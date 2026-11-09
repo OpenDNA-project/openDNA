@@ -33,10 +33,10 @@ def test_every_picker_view_has_a_guide_and_an_options_entry():
         assert sum(len(x.split()) for x in lines) <= 130, f"{name}: the guide is too long"
         assert name in view_help.OPTIONS, name
     assert set(view_help.HELP) == set(view_help.OPTIONS) == set(picker_views())
-    # --- options targets exist ---
-    for name, target in view_help.OPTIONS.items():
-        if target and target[0] == "settings":
-            assert target[1] in tool_settings.TOOLS, f"{name}: no settings tab {target[1]}"
+    # --- every view has a page in Tools > Settings ---
+    pages = {p for _, names in tool_settings.page_layout() for p in names}
+    for name, page in view_help.OPTIONS.items():
+        assert page in pages, f"{name}: no settings page {page}"
 
 
 def test_cog_and_help_buttons_in_every_pane(monkeypatch):
@@ -47,21 +47,14 @@ def test_cog_and_help_buttons_in_every_pane(monkeypatch):
     try:
         opened = []
         monkeypatch.setattr(tool_settings.SettingsDialog, "exec",
-                            lambda self: opened.append(self.tabs.tabText(self.tabs.currentIndex())))
-        monkeypatch.setattr(w, "primer_options", lambda: opened.append("Primer options"))
+                            lambda self: opened.append(self.tabs.currentPage()))
         pane = w.workspace.panes(w.workspace.currentWidget())[0]
         for name in workspace.VIEWS:
             pane.set_view(name)
-            target = view_help.OPTIONS[name]
-            assert pane.cog.isEnabled() == (target is not None), name
-            assert pane.cog.toolTip() == view_help.options_tip(name)
-            if target is None:
-                assert pane.cog.toolTip() == "No options for this view"
-                continue
+            assert pane.cog.isEnabled() and pane.cog.toolTip() == view_help.options_tip(name)
             opened.clear()
             pane.cog.click()
-            expected = tool_settings.LABELS.get(target[1], target[1]) if target[0] == "settings" else "Primer options"
-            assert opened == [expected], name
+            assert opened == [name], name   # the cog opens the page of its own view
     finally:
         close(w)
 

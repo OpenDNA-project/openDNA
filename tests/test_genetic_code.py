@@ -65,7 +65,7 @@ def test_the_embedded_tables_match_biopython_and_differ_where_they_should():
     """The embedded tables are the expected ones; every codon of every table on both strands and the start / stop
     sets match Biopython; tables differ where they should; Rust and Python agree on the data; the citation."""
     # --- the embedded tables are the expected ones
-    assert sorted(genetic_code.TABLES) == IDS
+    assert [i for i in sorted(genetic_code.TABLES) if not genetic_code.is_custom(i)] == IDS   # (the recoded codes, 100+, are not NCBI's)
     assert IDS[0] == 1 and 11 in IDS and 4 in IDS and 2 in IDS
     # --- every codon of every table matches Biopython on both strands, and the start and stop sets
     for table in IDS:
@@ -187,7 +187,7 @@ def test_the_setting_persists_shows_in_the_dialog_and_drives_views_and_exports(c
     choose(1)   # back to the standard code, alternative starts off
     dialog = tool_settings.SettingsDialog(None, genetic_code.TOOL)
     p, combo = dialog.widgets[(genetic_code.TOOL, "table")]
-    assert combo.count() == len(IDS) and combo.itemText(0) == "1 – Standard"
+    assert combo.count() == len(genetic_code.TABLES) >= len(IDS) + 2 and combo.itemText(0) == "1 – Standard"
     page = dialog.tabs.currentWidget()
     from PySide6.QtWidgets import QLabel
     lines = [w.text() for w in page.findChildren(QLabel) if w.text().startswith("Stop codons")]
@@ -387,3 +387,54 @@ def test_features_menu_toggle_save_autosave_and_update_now(tmp_path, keep_settin
         assert trans(ed, "cs2") == STALE and trans(ed, "g") == "MK"
     finally:
         close(win)
+
+
+def test_the_toolbar_quick_switch_follows_the_setting_and_can_be_hidden(code_setting):
+    """The quick switch shows the table in use, changes the same setting as Tools > Settings, and hides with its checkbox."""
+    import code_switch
+    saved_show = tool_settings.value(genetic_code.TOOL, "show_switch")
+    try:
+        choose(1)
+        heard = []
+        tool_settings.notifier.changed.connect(heard.append)
+        switch = code_switch.CodeSwitch()
+        assert switch.text() == "Code 1" and len(switch.actions_by_label) == len(genetic_code.LABELS)
+        label = next(x for x in genetic_code.LABELS if x.split()[0] == "11")
+        switch.choose(label)
+        assert genetic_code.table_id() == 11 and switch.text() == "Code 11" and genetic_code.TOOL in heard
+        assert switch.actions_by_label[label].isChecked()
+        choose(2)   # changed in the Settings: the switch follows
+        tool_settings.notifier.changed.emit(genetic_code.TOOL)
+        assert switch.text() == "Code 2"
+        assert code_switch.shown() is True   # shown by default
+        tool_settings.set_value(genetic_code.TOOL, "show_switch", False)
+        assert code_switch.shown() is False
+        tool_settings.notifier.changed.disconnect(heard.append)
+    finally:
+        tool_settings.set_value(genetic_code.TOOL, "show_switch", saved_show)
+
+
+def test_settings_pages_follow_the_new_tab_picker(code_setting):
+    """Tools > Settings lists one page per view or tool in the picker's groups, then General; a page without options says so,
+    only the opened page's group is unfolded, and Primers holds the primer options and the check limits."""
+    import primer_panel
+    import workspace
+    from PySide6.QtWidgets import QLabel
+    layout = tool_settings.page_layout()
+    assert [g for g, _ in layout] == ["Views", "Annotations", "Tools", "General"]
+    picker = [(g, [n for n in names if n]) for g, names in workspace.grouped_views()]
+    assert layout[:3] == picker
+    assert layout[3][1][:4] == ["Genetic code", "Display", "History", "Updates"]
+    dialog = tool_settings.SettingsDialog(None, "Digest")
+    tree = dialog.tabs.tree
+    assert dialog.tabs.currentPage() == "Digest"
+    assert [tree.topLevelItem(i).isExpanded() for i in range(tree.topLevelItemCount())] == [False, False, True, False]
+    assert any(w.text() == tool_settings.NO_OPTIONS for w in dialog.tabs.currentWidget().findChildren(QLabel))
+    dialog.tabs.show_page("Genetic code")   # General unfolds, Tools folds
+    assert [tree.topLevelItem(i).isExpanded() for i in range(tree.topLevelItemCount())] == [False, False, False, True]
+    primers = tool_settings.SettingsDialog(None, "Primers")
+    page = primers.tabs.currentWidget()
+    assert isinstance(primers.custom["Primers"], primer_panel.OptionsForm) and primers.page_for(primer_panel.CHECKS) is page
+    assert (primer_panel.CHECKS, "tm_low") in primers.widgets
+    assert tool_settings.SettingsDialog(None, "Alignments").tabs.currentPage() == "Alignment"   # a tool key opens its view's page
+    assert tool_settings.SettingsDialog(None, "Spacer Finder").tabs.currentPage() == "Spacer Finder"

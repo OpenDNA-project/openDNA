@@ -104,14 +104,14 @@ def test_primer_dialogs(win, tmp_path):
             assert tm("ATGCATGCATGCATGCATGC", **primer_panel.conditions()) > 0
         finally:
             s.remove(f"pcr/{key}")
-    box = primer_panel.OptionsDialog(None).boxes
+    form = primer_panel.OptionsForm(None)
+    box = form.boxes
     assert box["na_mm"].minimum() >= 1 and box["primer_nm"].minimum() >= 1
     # --- options dialog ---
-    d = primer_panel.OptionsDialog(win)
+    d = primer_panel.OptionsForm(win)
     d.genome_check.setChecked(True)
     d.genome.setText(str(tmp_path / "nope.fa"))
-    d.accept()
-    assert "no file" in win.messages[-1].lower() and d.result() != QDialog.Accepted
+    assert d.save() is False and "no file" in win.messages[-1].lower()
 
 
 # ---- feature dialog -------------------------------------------------------------------------------------------------------

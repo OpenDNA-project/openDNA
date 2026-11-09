@@ -16,6 +16,9 @@
 //! Left out on purpose: tables 27, 28 and 31 (Karyorelict, Condylostoma, Blastocrithidia nuclear codes), where the
 //! meaning of a codon (stop or amino acid) depends on its position in the gene: one letter per codon cannot say that.
 
+use std::collections::HashMap;
+use std::sync::{OnceLock, RwLock};
+
 use gb_io::seq::{Feature, Location};
 
 use crate::primers::revcomp;
@@ -61,9 +64,33 @@ pub fn standard() -> &'static GeneticCode {
     &TABLES[0]
 }
 
-/// The table with this NCBI id, if we have it.
+/// The table with this id, if we have it: an NCBI table, or a code the app registered (ids from 100).
 pub fn by_id(id: u8) -> Option<&'static GeneticCode> {
-    TABLES.iter().find(|t| t.id == id)
+    TABLES.iter().find(|t| t.id == id).or_else(|| custom().read().ok()?.get(&id).copied())
+}
+
+/// First id of the codes registered at run time (the recoded and user-made codes); NCBI's are below.
+pub const FIRST_CUSTOM_ID: u8 = 100;
+
+fn custom() -> &'static RwLock<HashMap<u8, &'static GeneticCode>> {
+    static CUSTOM: OnceLock<RwLock<HashMap<u8, &'static GeneticCode>>> = OnceLock::new();
+    CUSTOM.get_or_init(Default::default)
+}
+
+/// Add (or replace) a code made at run time: a recoded organism's, or one the user wrote. `aas` and `starts` are the 64-letter
+/// strings of the tables above; a codon the organism no longer uses is written 'X' in `aas`, which reads as an unknown amino acid.
+/// The strings are leaked on purpose (like the NCBI ones, they live for the whole program); only an edit of a code leaks again.
+pub fn register(id: u8, name: &str, aas: &str, starts: &str) -> Result<(), String> {
+    if id < FIRST_CUSTOM_ID {
+        return Err(format!("code ids below {FIRST_CUSTOM_ID} belong to the NCBI tables"));
+    }
+    if aas.len() != 64 || starts.len() != 64 || !aas.is_ascii() || !starts.is_ascii() {
+        return Err("a genetic code is two strings of 64 letters (TCAG order)".to_string());
+    }
+    let leak = |s: &str| -> &'static str { Box::leak(s.to_string().into_boxed_str()) };
+    let code: &'static GeneticCode = Box::leak(Box::new(GeneticCode { id, name: leak(name), aas: leak(aas), starts: leak(starts) }));
+    custom().write().map_err(|_| "the code registry is locked".to_string())?.insert(id, code);
+    Ok(())
 }
 
 /// Like `by_id`, but an unknown id falls back to the standard code (used for the app's setting, which must never fail).
@@ -324,6 +351,22 @@ mod tests {
             location: Location::from_gb_format(location).unwrap(),
             qualifiers: quals.iter().map(|(k, v)| ((*k).to_string().into(), Some((*v).to_string()))).collect(),
         }
+    }
+
+    #[test]
+    fn a_registered_code_is_found_by_id_and_a_removed_codon_reads_x() {
+        // Table 11 with TCG and TAG no longer used (T,C,A,G order: TCG is index 7, TAG is index 11).
+        let mut aas: Vec<u8> = by_id(11).unwrap().aas.bytes().collect();
+        aas[7] = b'X';
+        aas[11] = b'X';
+        let aas = String::from_utf8(aas).unwrap();
+        assert!(register(5, "too low", &aas, by_id(11).unwrap().starts).is_err());
+        assert!(register(100, "short", "FFLL", "----").is_err());
+        register(100, "Test recoded", &aas, by_id(11).unwrap().starts).unwrap();
+        let code = by_id(100).unwrap();
+        assert_eq!(code.name, "Test recoded");
+        assert_eq!(code.translate(b"ATGTCGTAGTCATAA"), b"MXXS*".to_vec());
+        assert!(by_id(101).is_none() && by_id_or_standard(101).id == 1);
     }
 
     #[test]

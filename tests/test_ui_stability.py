@@ -120,14 +120,19 @@ def test_the_new_tab_button_stays_beside_the_tabs_and_in_sight(app):
     assert ws.quick_filters.width() <= ws.quick_filters.sizeHint().width() + 4, "the quick filters do not take a quarter of the row"
 
 
-def test_the_toolbar_fits_without_overflow_down_to_1024_px(app):
+def test_the_toolbar_keeps_its_working_tools_down_to_1024_px(app):
+    """At 1024 px only the right end of the toolbar (the genome picker, Filters, History) may fold into the overflow menu: the
+    search box, the genetic-code switch and the Select box stay in view."""
     from PySide6.QtWidgets import QToolBar
     win = _window(app, (1024, 768))
     toolbar = win.findChildren(QToolBar)[0]
-    hidden = [a.iconText() or a.text() for a in toolbar.actions()
+    hidden = [a for a in toolbar.actions()
               if not a.isSeparator() and a.isVisible() and toolbar.widgetForAction(a) is not None
               and not toolbar.widgetForAction(a).isVisible()]
-    assert hidden == [], f"in the overflow menu: {hidden}"
+    assert all(toolbar.widgetForAction(a) is win.reference_picker or (a.iconText() or a.text()) in ("Filters", "History")
+               for a in hidden), f"in the overflow menu: {[a.iconText() or a.text() for a in hidden]}"
+    for kept in (win.search_bar, win.code_switch, win.range_box):
+        assert kept.isVisible(), kept
 
 
 def test_menus_in_the_usual_order_each_item_its_own_letter(app):

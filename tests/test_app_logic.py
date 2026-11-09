@@ -828,7 +828,7 @@ def settings_sandbox():
 
 
 def tab_button(dialog, tool, text):
-    page = dialog.tabs.widget(list(tool_settings.TOOLS).index(tool))
+    page = dialog.page_for(tool)
     return next(b for b in page.findChildren(QPushButton) if b.text() == text)
 
 
@@ -858,7 +858,7 @@ def test_settings(settings_sandbox):
     tool_settings._cache.clear()
     dialog =tool_settings.SettingsDialog(None, TOOL)
     widgets = {k: w for (name, k), (_, w) in dialog.widgets.items() if name == TOOL}
-    assert dialog.tabs.currentIndex() == list(tool_settings.TOOLS).index(TOOL)
+    assert dialog.tabs.currentPage() == TOOL
     assert widgets["ratio"].value() == 1.5 and widgets["count"].value() == 3 and widgets["flag"].isChecked()
     dialog.accept()                                                    # nothing changed: nothing saved, nobody told
     assert heard == []

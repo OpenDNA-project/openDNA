@@ -33,7 +33,7 @@ from primer_panel import PrimerPanel
 from protein import ProteinView
 import wip
 from sequence_view import SequenceView
-from view_help import ViewHelpDialog, open_options, options_tip, OPTIONS
+from view_help import ViewHelpDialog, open_options, options_tip
 from view_picker import ViewPicker
 from tools import DigestDialog, OrfDialog, PcrDialog
 
@@ -150,7 +150,7 @@ class Pane(QWidget):
 
     def _update_helpers(self):
         """The cog is enabled only when the view has options; its tooltip says where they are."""
-        self.cog.setEnabled(OPTIONS.get(self.view_name) is not None)
+        self.cog.setEnabled(True)
         self.cog.setToolTip(options_tip(self.view_name))
 
     def showEvent(self, event):

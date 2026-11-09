@@ -184,3 +184,22 @@ def test_imported_and_made_primers_survive_save_and_reload_as_on_sequence_primer
     assert not sites(made)["madehere"].provisional
     made.save(tmp_path / "m.gb")
     assert "madehere" in {f.label for f in Document(str(tmp_path / "m.gb")).features() if f.kind == "primer_bind"}
+
+
+def test_opening_a_primer_does_not_rebuild_the_list(tmp_path):
+    """Issue #9: opening a primer's sites used to redo the whole list, which scrolled back to the top. Now only that primer's
+    genome group is added: the other rows stay the very same items."""
+    from PySide6.QtCore import QCoreApplication, QTimer
+    from primer_panel import PrimerPanel
+    ed = make(tmp_path)
+    panel = PrimerPanel(ed)
+    before = [panel.tree.topLevelItem(i) for i in range(panel.tree.topLevelItemCount())]
+    reloads = []
+    panel._reload_later.timeout.connect(lambda: reloads.append(1))
+    panel.tree.topLevelItem(0).setExpanded(True)
+    QCoreApplication.processEvents()
+    QTimer.singleShot(0, lambda: None)
+    QCoreApplication.processEvents()
+    after = [panel.tree.topLevelItem(i) for i in range(panel.tree.topLevelItemCount())]
+    assert after == before and not reloads
+    assert panel.tree.topLevelItem(0).data(0, 0x0100) in panel.expanded

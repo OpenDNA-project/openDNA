@@ -28,7 +28,7 @@ from primer_panel import structure
 from local_align import INVERTED_TEXT, LocalAlignDialog
 from workspace import Pane
 from tools import DigestDialog, OrfDialog, PcrDialog, fragments, pcr_product
-from primer_panel import (OptionsDialog, PrimerDialog, binding_report, import_primers,
+from primer_panel import (OptionsForm, PrimerDialog, binding_report, import_primers,
                           melting_temp, parse_primer_list)
 
 from sample_files import GENOME as GENOME_DNA, PLASMID as PLASMID_DNA, DNA_FILE   # copies (see sample_files.py)
@@ -349,7 +349,7 @@ def test_primers_clipboard_design_pcr_orfs_and_digest(app, errors, monkeypatch, 
     names = [root.child(i).text(0) for i in range(root.childCount())]
     assert {"testF", "testR", "junk", "oAC1345"} <= set(names) and len(names) == len(db().rows)
     assert win.workspace.currentWidget() is tab
-    OptionsDialog(win)
+    OptionsForm(win)
 
     # Binding report: one exact site; the genome line when the BW25113 file is present.
     report = binding_report(ed, ed.doc.sequence(3000, 3020))
@@ -1459,7 +1459,7 @@ def test_gene_groups_and_detect_common_features(app, errors, tmp_path):
     tool_settings.set_value(annotation.TOOL, "group_genes", True)
     ed.undo()
     settings = tool_settings.SettingsDialog(win, annotation.TOOL)
-    assert settings.tabs.tabText(settings.tabs.currentIndex()) == tool_settings.LABELS.get(annotation.TOOL, annotation.TOOL)
+    assert settings.tabs.currentPage() == annotation.TOOL
     p, w = settings.widgets[(annotation.TOOL, "min_length")]
     w.setValue(31)  # the 30-bp Lac promoter is now too short to look for
     settings.accept()  # saves and tells open tools: the dialog re-runs

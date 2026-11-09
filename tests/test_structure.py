@@ -1,5 +1,7 @@
-"""3D structures: the sources (with the network replaced by fakes), the cache, Auto's order, the local command, the page, the window."""
+"""3D structures: the sources (with the network replaced by fakes), the cache, Auto's order, the local command, the page, the window,
+and the model read for the 3D view (secondary structure, residues matched to the protein)."""
 import json
+import math
 import os
 import sys
 import tempfile
@@ -25,6 +27,12 @@ def atom(i, b):
     return f"ATOM  {i:5d}  CA  THR A{i:4d}      -8.418  -7.381   3.408  1.00{b:6.2f}           C  "
 
 
+def line(serial, res, chain, num, xyz, b=50.0, name="CA", record="ATOM  ", element="C"):
+    """One atom record, in the PDB's columns."""
+    return (f"{record}{serial:5d}  {name:<3s} {res} {chain}{num:4d}    {xyz[0]:8.3f}{xyz[1]:8.3f}{xyz[2]:8.3f}  1.00{b:6.2f}"
+            f"          {element:>2s}")
+
+
 def pdb(b):
     return "\n".join(atom(i, b) for i in range(1, 4)) + "\n"
 
@@ -45,8 +53,20 @@ class Net:
             return pdb(91.5).encode()
         if "search.rcsb.org" in url:
             body = json.loads(data)
-            assert body["query"]["parameters"]["value"] == PROTEIN and body["query"]["parameters"]["identity_cutoff"] == 0.9
-            return json.dumps({"result_set": [{"identifier": "1ABC_1", "score": 1.0}]}).encode() if self.pdb_hits else b""
+            assert body["query"]["parameters"]["value"] == PROTEIN and body["query"]["parameters"]["identity_cutoff"] in (0.9, 0.5)
+            match = {"sequence_identity": 0.95, "query_beg": 1, "query_end": len(PROTEIN) // 2}
+            found = [{"identifier": "1ABC_1", "score": 1.0, "services": [{"nodes": [{"match_context": [match]}]}]},
+                     {"identifier": "2XYZ_2", "score": 0.8},             # no match context: the score stands for the identity
+                     {"identifier": "1ABC_2", "score": 0.7},             # the same entry again: listed once
+                     {"identifier": "../etc_1", "score": 0.6}]           # not a PDB code: left out
+            return json.dumps({"result_set": found}).encode() if self.pdb_hits else b""
+        if "data.rcsb.org/graphql" in url:
+            assert "1ABC" in json.loads(data)["query"]
+            return json.dumps({"data": {
+                "entries": [{"rcsb_id": "1ABC", "struct": {"title": "Crambin"}, "exptl": [{"method": "X-RAY DIFFRACTION"}],
+                             "rcsb_entry_info": {"resolution_combined": [1.5]}}],
+                "polymer_entities": [{"rcsb_id": "1ABC_1", "rcsb_entity_source_organism": [{"ncbi_scientific_name": "Crambe hispanica"}],
+                                      "rcsb_polymer_entity_container_identifiers": {"auth_asym_ids": ["A", "B"]}}]}}).encode()
         if "files.rcsb.org" in url:
             return pdb(12.0).encode()
         if "esmatlas" in url:
@@ -148,9 +168,27 @@ def test_accession_page_and_script_tag_safety(monkeypatch):
     assert "<script>alert(1)" not in html and html.count("</script>") == 2
 
 
+def test_pdb_search_list_and_user_agent(net):
+    """The PDB search lists each entry once with its identity, coverage and details, and gets the one picked; the requests say
+    which program and version they come from (AlphaFold DB refuses a bare "openDNA")."""
+    assert structure.USER_AGENT.startswith("openDNA/") and structure.USER_AGENT != "openDNA"
+    hits = structure.search_pdb(PROTEIN)
+    assert [h.entry for h in hits] == ["1ABC", "2XYZ"]
+    first = hits[0]
+    assert (first.identity, round(first.covered, 2), first.title, first.organism, first.chains, first.resolution) == \
+        (0.95, 0.5, "Crambin", "Crambe hispanica", "A, B", 1.5)
+    assert hits[1].identity == 0.8 and hits[1].title == "", "an entry the data API did not describe is still listed"
+    found = structure.pdb_entry(first)
+    assert found.source == "PDB" and "PDB 1ABC: Crambin" in found.detail and "95% identity" in found.detail and "chains A, B" in found.detail
+    with pytest.raises(StructureError, match="25 amino acids"):
+        structure.search_pdb("MKWV")
+
+
 def test_window(net, monkeypatch):
     from structure_dialog import StructureDialog
     d = StructureDialog(None, "tiny", PROTEIN, "P12345")
+    got = []
+    d.found.connect(lambda protein, found: got.append((protein, found.source)))   # the Protein panel shows what comes in 3D
     assert not d.open.isEnabled() and "ESM" in structure.NOTICE["ESMFold"]
     d.source.setCurrentText("ESMFold")
     assert not d.accession.isEnabled() and "sent to api.esmatlas.com" in d.notice.text()
@@ -159,6 +197,7 @@ def test_window(net, monkeypatch):
     while not d.get.isEnabled() and time.perf_counter() - t < 5:
         QTest.qWait(20)
     assert d.open.isEnabled() and d.save.isEnabled() and "ESMFold" in d.status.text()
+    assert got == [(PROTEIN, "ESMFold")]
     page = d.view_file()
     assert page.exists() and "3Dmol" in page.read_text(encoding="utf-8")
     d.source.setCurrentText("AlphaFold DB")
@@ -168,4 +207,53 @@ def test_window(net, monkeypatch):
     while not d.get.isEnabled() and time.perf_counter() - t < 5:
         QTest.qWait(20)
     assert "404" in d.status.text()
+    # --- PDB: a list of the entries found, the one picked is shown (and cached for Auto)
+    d.source.setCurrentText("PDB")
+    assert d.get.text() == "Search PDB"
+    d.start()
+    t = time.perf_counter()
+    while not d.get.isEnabled() and time.perf_counter() - t < 5:
+        QTest.qWait(20)
+    assert d.table.isVisibleTo(d) and d.table.rowCount() == 2 and d.table.item(0, 3).text() == "Crambin"
+    assert d.table.item(0, 1).text() == "95%" and d.pick.isEnabled()
+    d.table.selectRow(1)
+    d.show_hit()
+    t = time.perf_counter()
+    while not d.get.isEnabled() and time.perf_counter() - t < 5:
+        QTest.qWait(20)
+    assert got[-1] == (PROTEIN, "PDB") and "PDB 2XYZ" in d.status.text()
+    assert "2XYZ" in structure.cached(PROTEIN, "", "PDB").detail, "the entry picked is the one kept for this protein"
     d.settings.clear()
+
+
+def test_model_secondary_structure_and_residue_map():
+    """The model of a PDB text (first model only, ligands without water), helices and paired strands found from the alpha carbons
+    alone, and the residues of the protein found on chains with their own numbering, a missing residue and a substitution."""
+    helix = [(2.3 * math.cos(math.radians(100 * i)), 2.3 * math.sin(math.radians(100 * i)), 1.5 * i) for i in range(12)]   # ideal alpha helix
+
+    def strand(z):   # an extended chain, zigzag along x
+        return [(3.3 * i, 0.9 if i % 2 else -0.9, z) for i in range(6)]
+    lines = [line(i + 1, "ALA", "A", i + 1, p) for i, p in enumerate(helix)]
+    lines += [line(100 + i, "VAL", "B", i + 1, p) for i, p in enumerate(strand(30))]
+    lines += [line(200 + i, "VAL", "C", i + 1, p) for i, p in enumerate(strand(34.8))]   # beside B: a sheet
+    lines += [line(300 + i, "VAL", "D", i + 1, p) for i, p in enumerate(strand(80))]     # alone: a loop
+    lines += [line(400, "HEM", "A", 900, (0, 0, 0), name="FE", record="HETATM", element="FE"),
+              line(401, "HOH", "A", 901, (1, 1, 1), name="O", record="HETATM", element="O"),
+              "ENDMDL", line(500, "ALA", "E", 1, (9, 9, 9))]
+    residues, ligands = structure.model_of("\n".join(lines))
+    assert ligands == [("FE", (0.0, 0.0, 0.0))], "water and the second model are left out"
+    ss = {c: "".join(r.ss for r in residues if r.chain == c) for c in "ABCDE"}
+    assert ss == {"A": "H" * 12, "B": "EEEEEE", "C": "EEEEEE", "D": "------", "E": ""}
+    # --- the protein on three chains: A numbered from 10 without its W and with an A for an L, B whole, C unrelated
+    protein = "MKWHLLEGRS"
+    three = {one: name for name, one in structure.THREE.items() if name != "MSE"}
+
+    def chain(c, seq, start):
+        return [line(i + 1, three[a], c, start + i, (3.8 * i, 0, 0)) for i, a in enumerate(seq)]
+    model, _ = structure.model_of("\n".join(chain("A", "MKHLAEGRS", 10) + chain("B", protein, 1) + chain("C", "GGGG", 1)))
+    found = structure.residue_map(protein, model)
+    names = {i: [model[k].chain + model[k].number for k in ks] for i, ks in found.items()}
+    assert len(names) == 10 and names[0] == ["A10", "B1"]
+    assert names[2] == ["B3"], "W is missing from chain A"
+    assert names[5] == ["A14", "B6"], "a substitution keeps its place"
+    assert not any(n.startswith("C") for ns in names.values() for n in ns), "a chain that does not match is left out"

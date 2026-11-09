@@ -24,7 +24,7 @@ import opendna_core as core
 
 from cut_sites import CAS9_KEY, NUCLEASES, cas9_mark_tip, cas9_qualifier, cut_places
 from editor import reverse_complement, site_location
-from primer_panel import MARKS, OptionsDialog, genome, genome_label_text
+from primer_panel import MARKS, genome, genome_label_text, open_options
 from reference import as_reference
 from tools import ToolDialog
 from uikit import fit_columns, no_auto_default, plural, right_aligned, run_busy
@@ -245,6 +245,10 @@ class Cas9Dialog(ToolDialog):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=8)
+        self.table.horizontalHeaderItem(5).setToolTip(   # how the score is made: the rules of score_guide
+            "A rule-of-thumb checklist, not a measured activity. Starts at 100; minus 40 if GC is under 25 % or over 80 %, "
+            "or minus 15 if it is outside 40-70 %; minus 40 for TTTT (stops transcription from a U6 promoter); "
+            "minus 15 for a run of 5 identical bases. 70 or more passes the verdict.")
         self.table.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)   # unsorted until a header is clicked
         self.table.currentCellChanged.connect(lambda row, *_: self._select(self._index(row)))
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -311,7 +315,7 @@ class Cas9Dialog(ToolDialog):
                               "guides of the list are counted automatically; “Check specificity” does the rest.")
 
     def genome_options(self):
-        if OptionsDialog(self).exec():
+        if open_options(self):
             self.update_genome_label()
             if self.win is not None and hasattr(self.win, "primer_options_changed"):
                 self.win.primer_options_changed()

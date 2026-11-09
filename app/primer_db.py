@@ -13,6 +13,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QSettings, QStandardPaths, Signal
 
+import fileio
+
 FIELDS = ["name", "sequence", "note", "added"]
 MAX_PRIMER, MAX_NAME, MAX_NOTE = 200, 60, 200   # a longer "primer" is a sequence (and would stall the checks); a name this long is a mistake
 PRIMER_BASES = set("ACGTRYSWKMBDHVNacgtryswkmbdhvn")   # DNA and the IUPAC ambiguity codes, either case (a lowercase 5' tail is fine)
@@ -101,7 +103,7 @@ class PrimerDB:
             writer = csv.DictWriter(fh, FIELDS, delimiter="\t")
             writer.writeheader()
             writer.writerows(self.rows)
-        os.replace(tmp, self.path)
+        fileio.replace(tmp, self.path)
         notifier.changed.emit()
 
     def find(self, name):

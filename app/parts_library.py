@@ -29,6 +29,7 @@ from types import SimpleNamespace
 
 from PySide6.QtCore import QObject, Signal
 
+import fileio
 import tool_settings
 from primer_db import data_dir
 
@@ -256,6 +257,6 @@ def remove_parts(keys):
     if gone:
         tmp = path.with_suffix(".tmp")   # write then rename: never a half-written library
         tmp.write_text("".join(kept), encoding="utf-8", newline="")
-        tmp.replace(path)
+        fileio.replace(tmp, path)
         notifier.changed.emit()
     return gone
