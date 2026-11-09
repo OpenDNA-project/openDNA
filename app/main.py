@@ -36,6 +36,7 @@ from citations import CitationsDialog
 from editor import remember_hidden_primers
 from sourcefiles import add_recent, pinned_files, recent_files
 from local_align import LocalAlignDialog
+from codon_tools import CompareDialog, RecodeDialog
 from tools import DigestDialog, OrfDialog, PcrDialog
 import updater
 import exports
@@ -400,6 +401,8 @@ class MainWindow(QMainWindow):
         tools.addSeparator()
         action(tools, "Detect Common &Features…", "Ctrl+Shift+A", lambda: DetectDialog(self, self.editor).exec())
         action(tools, "Detect &ORFs…", None, lambda: OrfDialog(self, self.editor).exec())
+        action(tools, "&Recode CDS for a Codon Usage Table…", None, lambda: RecodeDialog(self, self.editor).exec())
+        action(tools, "Compare CDS Under Another &Genetic Code…", None, lambda: CompareDialog(self, self.editor).exec())
         action(tools, "Plasmid C&heckup (expression of each CDS)…", None, self.open_checkup)
         tools.addAction(QAction("&Import Features to Features Database…", self, triggered=self.import_parts))
         tools.addSeparator()

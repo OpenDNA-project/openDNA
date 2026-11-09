@@ -177,6 +177,30 @@ is a start codon of the table is shown as Met (as GenBank writes `/translation`)
 `/transl_except` (`(pos:100..102,aa:Sec)`, also `complement(...)`) is applied. A `/transl_except` that cannot be followed (for example a stop
 completed by poly-A) leaves the CDS drawn plainly and its tooltip says "translation not reproducible".
 
+**Recode a CDS for a codon usage table.** Tools → *Recode CDS for a Codon Usage Table…* rewrites the codons of the selected CDS (or of a
+selected stretch of DNA that is a whole number of codons, read from its first base on the top strand) so that the protein stays exactly
+the same while the DNA suits another host. A CDS is read as annotated (its strand, `/codon_start`, `/transl_table`); one made of several
+parts, or with a `/transl_except`, is refused with a sentence saying so. Choose the *Codon usage table* to aim at (the ones in Tools →
+Settings → Codon usage; with none, the dialog says to import or make one first) and the *Method*: **Frequency matched** (the default)
+picks each codon at random in proportion to the table, which avoids the long runs and the tRNA depletion that always taking the best
+codon causes; **Highest frequency** always takes the most used synonymous codon. A codon the table never uses is not chosen unless it
+is the only one for that amino acid. The rules, all optional: restriction sites to avoid (tick enzymes in the list; both strands are
+checked, and across the edges of the CDS too), a GC range that must hold in every window of the chosen length (35–65 % in 50 bases to
+begin with), no run of more than 5 identical bases, and no internal ribosome binding site (`AGGAGG`). *Preview recoding* shows how many
+codons changed, the GC before and after, and any rule that could not be met, with where (for example a site made of Met and Trp codons,
+which have no synonym); press it again for a new draw. Changing an option clears the preview. *Apply to sequence* writes the new bases
+as one ordinary edit: Edit → Undo gives back the original bases exactly, and no feature moves. The program checks, before it shows
+anything, that the recoded CDS translates to the identical protein, and writes nothing if it does not.
+
+**Compare a CDS under another genetic code.** Tools → *Compare CDS Under Another Genetic Code…* shows the protein of the selected CDS (or
+stretch of whole codons) under two codes, one row above the other in groups of ten with the position at the end of each row, and
+marks the residues that differ with a red bold letter and a ▲ beneath. Stops are part of the comparison (shown `*`). The line above
+the rows says how many residues differ, whether the gene **gains an internal stop** under the second code (it would be cut short:
+a gene written for *Mycoplasma* or a mitochondrion, where TGA is Trp, moved into a standard-code host) and whether the second code
+reads an internal stop of the first as an amino acid (read-through, as in an amber-suppressor strain). The final stop codon is not
+counted as internal. The first code starts as the CDS's own table, the second as table 4; both can be any table of the list, the
+recoded and your own codes included. Nothing is changed in the sequence.
+
 **Keeping `/translation` right.** Feature → *Keep /translation up to Date* (on by default, remembered between sessions): whenever a
 GenBank file is saved (File → Save, Save As), the `/translation` of every CDS that already has one is recomputed from its own bases, its
 `/codon_start` and its `/transl_table` (else the Genetic code setting), without the final `*`, like GenBank writes it. A CDS with no

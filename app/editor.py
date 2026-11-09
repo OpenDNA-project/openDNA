@@ -1017,6 +1017,16 @@ class Editor(QObject):
             return self._edit(lambda: self.doc.paste(s, e, bases, features), s + len(bases))
         return self._edit(lambda: self.doc.replace(s, e, bases), s + len(bases))
 
+    def overwrite_bases(self, pos, bases):
+        """Replace the bases from `pos` by `bases` of the same length (a recoded CDS): nothing moves, so no feature changes. One
+        undo step. The new bases stay selected."""
+        if not self.dna_editable():
+            return False
+        done = self._edit(lambda: self.doc.overwrite(pos, bases), pos)
+        if done:
+            self.select(pos, pos + len(bases))
+        return done
+
     def copy(self):
         """Selected bases as text (for the clipboard), remembering their features."""
         bases = self.selected_sequence()
