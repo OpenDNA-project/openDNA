@@ -132,9 +132,10 @@ class StructureCanvas(QWidget):
         self.atoms = {k: [(name, el, tuple(c - m for c, m in zip(xyz, centre))) for name, el, xyz in r.atoms]
                       for k, r in enumerate(self.residues)}
         self.ligands = [(el, tuple(c - m for c, m in zip(xyz, centre))) for el, xyz in self.ligands]
-        # fit 95 % of the backbone: a floppy tail (a signal peptide in a prediction) would leave the folded part tiny
+        # fit the folded part: a floppy tail (a signal peptide in a prediction, a tenth of the chain) would leave it tiny, so the
+        # radius is that of 85 % of the backbone, plus a little
         far = sorted(math.sqrt(sum(c * c for c in p)) for p in self.points)
-        self.radius = (far[int(0.95 * (len(far) - 1))] if far else 1.0) or 1.0
+        self.radius = (1.15 * far[int(0.85 * (len(far) - 1))] if far else 1.0) or 1.0
         self.mode = "Confidence" if found.plddt else "Rainbow"
         self.highlight = set()
         self.reset_view()
@@ -386,12 +387,12 @@ class StructureView(QWidget):
             text = escape(value)
             if key == "Entry" and link.startswith("https://"):
                 text = f"<a href='{escape(link)}'>{text}</a>"   # opens the database's page in the browser
-            shown = QLabel(text, openExternalLinks=True, wordWrap=True, toolTip=value,
+            shown = QLabel(text, openExternalLinks=True, toolTip=value,   # one line (the whole text in the tooltip if it is cut)
                            textInteractionFlags=Qt.TextBrowserInteraction | Qt.TextSelectableByMouse)
             shown.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             row, column = divmod(n, 2)
             self.fields.addWidget(name, row, column * 2, Qt.AlignRight | Qt.AlignTop)
-            self.fields.addWidget(shown, row, column * 2 + 1)
+            self.fields.addWidget(shown, row, column * 2 + 1, Qt.AlignLeft | Qt.AlignTop)   # (top: in line with its name)
         self.fields.setColumnStretch(1, 1)
         self.fields.setColumnStretch(3, 1)
 

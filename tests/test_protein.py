@@ -131,33 +131,34 @@ def test_structure_in_3d_follows_the_selection_both_ways():
 
 
 def test_tracks_under_the_letters():
-    """Tracks under each line of letters: the selection always, the others switched with the buttons (and remembered); the model's
-    tracks only when the protein has a 3D model; each cell says its value on hover."""
+    """Tracks under each line of letters: the selection always, the others switched in the legend (and remembered); the model's
+    tracks only when the protein has a 3D model (Confidence only for a prediction); each cell says its value on hover."""
     from PySide6.QtCore import QPoint
     import protein_tracks
     import structure
     from structure_view import aa_colour
-    from protein_tracks import GAP, PAD, ROW
-    assert aa_colour("Hydrophobicity", "I") == "#e8544e" and aa_colour("Hydrophobicity", "R") == "#5b9be0"
-    assert aa_colour("Size", "G") == "#fff6d5" and aa_colour("Size", "W") == "#a0581c"
-    assert aa_colour("Charge", "A") is None and aa_colour("Property", "*") is None
+    from protein_tracks import GAP, PAD, ROW, SMALL
+    assert aa_colour("Hydrophobicity", "I") == "#e8544e" and aa_colour("Size", "W") == "#a0581c" and aa_colour("Charge", "A") is None
     ed = make()
     view = protein.ProteinView(ed)
     view.resize(700, 500)
     view.show()
     ed.select_feature(next(f for f in ed.features if f.kind == "CDS").index)
     view.refresh()
-    text, buttons = view.text, view.tracks.buttons
-    assert text.tracks == ["Selection", "Hydrophobicity", "Size"], "Structure is on, but there is no model yet"
+    text, legend = view.text, view.tracks
+    buttons = legend.buttons
+    assert text.tracks == ["Selection", "Hydrophobicity", "Charge"], "Structure is on, but there is no model yet"
     assert not buttons["Structure"].isEnabled() and "Get a 3D structure first" in buttons["Structure"].toolTip()
-    room = text.document().firstBlock().blockFormat().bottomMargin()
-    assert room == PAD + 3 * (ROW + GAP), "room under each line for the three tracks"
+    assert not legend.keys["Structure"].isEnabled() and legend.keys["Charge"].isEnabled(), "the legend of a track not drawn is greyed"
+    fmt = text.document().firstBlock().blockFormat()
+    assert fmt.bottomMargin() == PAD + 3 * (ROW + GAP) + 2 * SMALL + 8, "room for numbers and three tracks"
     # --- switching a track on makes room for it and is remembered
+    buttons["Size"].setChecked(True)
+    assert text.tracks == ["Selection", "Hydrophobicity", "Size", "Charge"] and "Size" in protein_tracks.saved_tracks()
+    assert text.document().firstBlock().blockFormat().bottomMargin() == PAD + 4 * (ROW + GAP) + 2 * SMALL + 8
+    buttons["Charge"].setChecked(False)
+    assert "Charge" not in text.tracks and "Charge" not in protein_tracks.saved_tracks() and not legend.keys["Charge"].isEnabled()
     buttons["Charge"].setChecked(True)
-    assert text.tracks == ["Selection", "Hydrophobicity", "Size", "Charge"] and "Charge" in protein_tracks.saved_tracks()
-    assert text.document().firstBlock().blockFormat().bottomMargin() == PAD + 4 * (ROW + GAP)
-    buttons["Size"].setChecked(False)
-    assert "Size" not in text.tracks and "Size" not in protein_tracks.saved_tracks()
     # --- hovering a cell: the track and the amino acid under it
     xs, w, y0 = text._rows(text.document().firstBlock())
 
@@ -165,9 +166,14 @@ def test_tracks_under_the_letters():
         return text.track_at(QPoint(round(xs[i] + w / 2), round(y0 + text.tracks.index(track) * (ROW + GAP) + ROW / 2)))
     assert at("Hydrophobicity", 2) == ("Hydrophobicity", 2) and at("Charge", 1) == ("Charge", 1)
     assert text.track_at(QPoint(round(xs[0]), round(y0 - 8))) is None, "over the letters: no track"
-    assert text.describe("Hydrophobicity", 2) == "Hydrophobicity · W3: -0.9 (Kyte-Doolittle)"
+    assert text.describe("Hydrophobicity", 2).startswith("Hydrophobicity · W3: -0.9 (Kyte-Doolittle")
     assert text.describe("Charge", 1) == "Charge · K2: positive" and text.describe("Size", 2) == "Size · W3: 228 Å³"
-    view.grab()   # draws every track
+    # --- a selection: marked on its track, bracketed (drawn), the letters plain
+    motif = next(f for f in ed.features if f.kind == "misc_feature")
+    ed.select_feature(motif.index)
+    view.refresh()
+    assert text.marked == {2, 3} and text.extraSelections() == []
+    view.grab()   # draws the numbers, the brackets and every track
     # --- a model: its structure track, and its confidence when it is a prediction (M and K only are in it)
     model = "\n".join(f"ATOM  {i + 1:5d}  CA  {res} A{i + 1:4d}    {3.8 * i:8.3f}{0.0:8.3f}{0.0:8.3f}  1.00{b:6.2f}"
                       for i, (res, b) in enumerate((("MET", 95.0), ("LYS", 40.0))))
@@ -177,10 +183,48 @@ def test_tracks_under_the_letters():
     assert text.tracks[:3] == ["Selection", "Structure", "Confidence"]
     assert text.describe("Confidence", 1) == "Confidence · K2: pLDDT 40" and text.describe("Structure", 3) == "Structure · H4: not in the model"
     view.grab()
+    view._got_structure("MKWH", structure.Structure(model, "PDB", "an experimental one", False))
+    assert "Confidence" not in text.tracks and not buttons["Confidence"].isEnabled() and "no pLDDT" in buttons["Confidence"].toolTip()
     # --- another protein, without a model: its tracks go
     ed.select(0, 9)
     view.refresh()
     assert "Structure" not in text.tracks and not buttons["Structure"].isEnabled() and text.model == {}
+
+
+def test_rows_follow_the_width():
+    """A row holds as many groups of ten as the width allows; selecting letters still selects their codons; the row at the top stays."""
+    from opendna_core import Document
+    protein_dna = "ATG" + "GCA" * 299 + "TAA"   # M + 299 A + stop: 300 amino acids
+    ed = FragmentEditor(Document.new_sequence("t", protein_dna, False), Path("t.gb"))
+    ed.add_features([("CDS", f"1..{len(protein_dna)}", [("label", "long")])])
+    view = protein.ProteinView(ed)
+    view.resize(500, 600)
+    view.show()
+    ed.select_feature(next(f for f in ed.features if f.kind == "CDS").index)
+    view.refresh()
+    narrow = view.text.per_line
+    assert narrow % 10 == 0 and narrow == view.text.wanted_per_line()
+    view.resize(1400, 600)
+    QApplication.processEvents()
+    wide = view.text.per_line
+    assert wide > narrow and wide % 10 == 0, (narrow, wide)
+    lines = view.text.toPlainText().split("\n")
+    assert len(lines) == -(-301 // wide) and lines[1].lstrip().startswith(f"{wide + 1}"), "each row numbered from its first residue"
+    # selecting letters on the second row selects their codons
+    cursor = view.text.textCursor()
+    row = view.text.document().findBlockByNumber(1)
+    cursor.setPosition(row.position() + protein.offset_of(wide, wide)[1])
+    cursor.setPosition(row.position() + protein.offset_of(wide + 1, wide)[1] + 1, cursor.MoveMode.KeepAnchor)
+    view.text.setTextCursor(cursor)
+    assert (ed.start, ed.end) == (3 * wide, 3 * wide + 6)
+    # scrolled to the end, the last row's tracks are on screen (Qt drops the room under a document's last line)
+    view.resize(500, 300)
+    QApplication.processEvents()
+    bar = view.text.verticalScrollBar()
+    bar.setValue(bar.maximum())
+    from protein_tracks import GAP, ROW
+    _, _, y0 = view.text._rows(view.text.document().lastBlock())
+    assert y0 + len(view.text.tracks) * (ROW + GAP) <= view.text.viewport().height()
 
 
 def test_a_pane_in_the_window(monkeypatch):

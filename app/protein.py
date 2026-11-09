@@ -1,10 +1,12 @@
-"""The Protein view: the amino acids of the selected CDS, or of the translation of the selected DNA, numbered in blocks of ten, with
+"""The Protein view: the amino acids of the selected CDS, or of the translation of the selected DNA, in groups of ten (as many a row as
+the width allows, each row numbered, every group's end numbered above it), with
 the protein's length, mass, isoelectric point and charge, and the features that lie inside the CDS.
 
 Select a CDS (click it) or a stretch of DNA (a frame is chosen beside it) and the view follows. Select letters of the protein to select
 their codons in the sequence. Under each line of letters, tracks (protein_tracks.py) show the residues of the selection in the sequence,
-the secondary structure and confidence of the 3D model, hydrophobicity, size, charge and property; the buttons beside the letters
-switch them on and off. A structure got with "3D structure…" shows beside the letters (structure_view.py) for as long as that protein
+the secondary structure and confidence of the 3D model, hydrophobicity, size, charge and property; the legend beside the letters
+says what each colour and symbol means and switches the tracks on and off. A selection is bracketed as in the DNA view, its first and
+last positions at the brackets. A structure got with "3D structure…" shows beside the letters (structure_view.py) for as long as that protein
 is shown: the selection is highlighted on it too, and clicking a residue on it selects its codons. While a CDS is shown, a selection
 inside it (a feature, a stretch) keeps it shown.
 
@@ -26,10 +28,10 @@ import structure
 import tool_settings
 from sequence_view import cds_codons, codons
 from structure_dialog import StructureDialog
-from protein_tracks import TrackButtons, TrackText
+from protein_tracks import TrackLegend, TrackText
 from structure_view import StructureView
 
-PER_LINE, BLOCK, MARGIN = 50, 10, 8          # amino acids per line, per block, and the width of the number column
+PER_LINE, BLOCK, MARGIN = 50, 10, 8          # amino acids per line (to begin with: then as the width allows), per block, and the width of the number column
 MAX_BASES = 300_000                          # a longer selection is not translated here
 FRAMES = ["+1", "+2", "+3", "−1", "−2", "−3"]
 RESIDUE_MASS = {   # average mass of an amino acid in a chain (Da), as on ExPASy
@@ -68,23 +70,23 @@ def isoelectric_point(protein):
     return (low + high) / 2
 
 
-def index_at(offset, block_number):
-    """The amino acid (0-based) at `offset` characters into the line `block_number` of the text."""
+def index_at(offset, block_number, per_line=PER_LINE):
+    """The amino acid (0-based) at `offset` characters into the line `block_number` of the text (`per_line` amino acids a line)."""
     col = max(0, offset - MARGIN)
-    return block_number * PER_LINE + min(col - col // (BLOCK + 1), PER_LINE - 1)
+    return block_number * per_line + min(col - col // (BLOCK + 1), per_line - 1)
 
 
-def offset_of(i):
-    """(line, characters into the line) of amino acid `i` in the text."""
-    line, col = divmod(i, PER_LINE)
+def offset_of(i, per_line=PER_LINE):
+    """(line, characters into the line) of amino acid `i` in the text (`per_line` amino acids a line)."""
+    line, col = divmod(i, per_line)
     return line, MARGIN + col + col // BLOCK
 
 
-def layout(protein):
-    """The text: numbered lines of PER_LINE amino acids in blocks of BLOCK."""
+def layout(protein, per_line=PER_LINE):
+    """The text: numbered lines of `per_line` amino acids in blocks of BLOCK."""
     lines = []
-    for start in range(0, len(protein), PER_LINE):
-        chunk = protein[start:start + PER_LINE]
+    for start in range(0, len(protein), per_line):
+        chunk = protein[start:start + per_line]
         lines.append(f"{start + 1:>{MARGIN - 2}}  " + " ".join(chunk[i:i + BLOCK] for i in range(0, len(chunk), BLOCK)))
     return "\n".join(lines)
 
@@ -144,7 +146,7 @@ class ProteinView(QWidget):
         self.frame.addItems(FRAMES)
         self.frame.setToolTip("Reading frame of the selected DNA (a selected CDS has its own)")
         self.frame.currentIndexChanged.connect(lambda _: self.refresh(True))
-        self.text = TrackText(PER_LINE, offset_of, index_at)
+        self.text = TrackText(offset_of, index_at, self._relayout, PER_LINE, BLOCK, MARGIN)
         self.text.setFont(mono_font(max(9, round(self.font().pointSizeF()))))   # (the system's fixed font is a thin Courier on Windows)
         self.text.selectionChanged.connect(self._text_selected)
         self.props = QLabel(wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse)
@@ -155,7 +157,7 @@ class ProteinView(QWidget):
         self.features.hide()   # shown when the CDS has features inside (see _features)
         self.fold = QPushButton("3D structure…", clicked=self.show_structure, enabled=False,
                                 toolTip="Look up or predict the 3D structure of this protein")
-        self.tracks = TrackButtons(self._update_tracks)
+        self.tracks = TrackLegend(self._update_tracks)
         letters = QWidget()   # the letters and, on their right, the buttons of the tracks
         row = QHBoxLayout(letters)
         row.setContentsMargins(0, 0, 0, 0)
@@ -192,7 +194,7 @@ class ProteinView(QWidget):
             self.split.setOrientation(wide)
             if wide == Qt.Horizontal:   # the letters get a whole line (number, 50 amino acids, spaces), the 3D view the rest
                 line = (self.text.fontMetrics().horizontalAdvance("0" * (MARGIN + PER_LINE + PER_LINE // BLOCK)) + 30
-                        + self.tracks.sizeHint().width())
+                        + self.tracks.width())
                 self.split.setSizes([line, max(self.width() - line, 1)])
 
     # ---- what to show ---------------------------------------------------------------------------------------------------------------
@@ -270,7 +272,7 @@ class ProteinView(QWidget):
         # what is shown: a CDS, or a stretch read in a frame (another stretch is another text, read from its top)
         key = ("CDS", src["feature"]) if src["kind"] == "CDS" else ("selection", src["extent"], self.frame.currentIndex())
         self.protein = self.text.protein = protein   # (before the text: its tracks are read from it)
-        self._set_text(key, layout(protein))
+        self._set_text(key, layout(protein, self.text.per_line))
         chain = until_stop(protein)
         # A stop codon is not an amino acid: count the residues before it, like the properties line below.
         self.title.setText(f"{src['title']} · {len(chain):,} aa" + (" + stop" if len(chain) < len(protein) else ""))
@@ -326,6 +328,19 @@ class ProteinView(QWidget):
             for bar, value in zip((self.text.verticalScrollBar(), self.text.horizontalScrollBar()), place[0]):
                 bar.setValue(value)
 
+    def _relayout(self):
+        """The width calls for another number of groups of ten a row: lay the letters out again, the row at the top staying in view."""
+        text = self.text
+        top_residue = text.cursorForPosition(text.viewport().rect().topLeft()).block().blockNumber() * text.per_line
+        text.per_line = text.wanted_per_line()
+        self.places.clear()   # (the places noted were character offsets of the old rows)
+        if self.src is None:
+            return
+        self.shown = None
+        self._show(self.src)
+        row = text.document().findBlockByNumber(top_residue // text.per_line)
+        text.verticalScrollBar().setValue(int(text.document().documentLayout().blockBoundingRect(row).top()))
+
     def show_structure(self):
         """The 3D structure window for the protein shown (it stays open while you go on selecting)."""
         chain = until_stop("".join(aa for _, aa, _, _ in self.src["cods"]))
@@ -364,7 +379,7 @@ class ProteinView(QWidget):
         res = canvas.residues
         text.model = {i: (res[ks[0]].ss, res[ks[0]].b) for i, ks in canvas.to_model.items()} if has_model else {}
         text.plddt = has_model and canvas.plddt
-        self.tracks.set_model(has_model)
+        self.tracks.set_model(has_model, text.plddt)
         on = [n for n in self.tracks.on() if has_model or n not in ("Structure", "Confidence")]
         if not text.plddt and "Confidence" in on:   # an experimental structure has no pLDDT
             on.remove("Confidence")
@@ -411,8 +426,9 @@ class ProteinView(QWidget):
             return
         doc = self.text.document()
         a, b = cur.selectionStart(), cur.selectionEnd() - 1
-        ia = index_at(a - doc.findBlock(a).position(), doc.findBlock(a).blockNumber())
-        ib = index_at(b - doc.findBlock(b).position(), doc.findBlock(b).blockNumber())
+        per_line = self.text.per_line
+        ia = index_at(a - doc.findBlock(a).position(), doc.findBlock(a).blockNumber(), per_line)
+        ib = index_at(b - doc.findBlock(b).position(), doc.findBlock(b).blockNumber(), per_line)
         cods = self.src["cods"]
         self._select_residues(min(ia, len(cods) - 1), min(max(ib, ia), len(cods) - 1))
 
