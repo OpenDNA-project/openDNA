@@ -343,11 +343,13 @@ def test_sidewinder():
     assert [j.kind for j in d.joints] == ["toehold", "toehold"] and [(j.left, j.right) for j in d.joints] == [("a", "b"), ("b", "c")]
     for j, b in zip(d.joints, bounds):
         assert len(j.seq) == A.TOEHOLD
-        assert j.seq == product[b - half:b + half]                   # half of each neighbour's end: scarless
-        assert product.count(j.seq) == 1 and j.pos == b - half
+        assert j.seq == product[j.pos:j.pos + A.TOEHOLD]             # taken from the product itself: scarless
+        assert abs(j.pos + half - b) <= A.MAX_SHIFT                  # straddles the boundary, or slid a little to dodge a repeat
+        assert product.count(j.seq) == 1
     # The coding strands tile the product: each ends with its toehold, the next starts right after it.
     coding = {r[0]: r[1] for r in d.rows if r[0].endswith("-coding")}
-    assert [coding[n] for n in ("a-coding", "b-coding", "c-coding")] == [product[:105], product[105:225], product[225:]]
+    ends = [j.pos + A.TOEHOLD for j in d.joints]
+    assert [coding[n] for n in ("a-coding", "b-coding", "c-coding")] == [product[:ends[0]], product[ends[0]:ends[1]], product[ends[1]:]]
     assert "".join(coding.values()) == product
     assert coding["a-coding"].endswith(d.joints[0].seq) and coding["b-coding"].endswith(d.joints[1].seq)
     # The barcode strand is the reverse complement plus an 18 nt arm (none on the last fragment); the arms differ.
@@ -390,6 +392,47 @@ def bad_checks(d):
 
 def find_text(d, name):
     return next(t for n, _, t in d.checks if n == name)
+
+
+def sidewinder_arms(d):
+    """The barcode arms: what each barcode strand carries past the reverse complement of its coding strand."""
+    coding = {r[0]: r[1] for r in d.rows if r[0].endswith("-coding")}
+    arms = [r[1][len(coding[r[0].replace("-barcode", "-coding")]):] for r in d.rows if r[0].endswith("-barcode")]
+    return [a for a in arms if a]
+
+
+def test_sidewinder_toeholds_and_barcodes():
+    """A toehold that occurs twice in the product slides along the junction until it is unique (still scarless);
+    the barcodes share no 8-mer with each other or with a toehold; the same fragments give the same oligos, and
+    two products of the same length do not share barcodes."""
+    # --- a repeat at the first junction: the toehold slides off it ---
+    a, b = random_dna(100, 7), random_dna(120, 8)
+    planted = (a + b)[95:105]                   # the toehold the boundary itself would give
+    parts = [piece("a", a), piece("b", b), piece("c", random_dna(40, 9) + planted + random_dna(40, 10))]
+    d = A.analyse(parts, 2, False)
+    product = d.product()
+    assert product.count(planted) == 2, "the repeat must really be in the product"
+    assert d.joints[0].seq != planted and product.count(d.joints[0].seq) == 1
+    assert abs(d.joints[0].pos + A.TOEHOLD // 2 - 100) <= A.MAX_SHIFT     # slid, not moved somewhere else entirely
+    assert find_text(d, "Toehold 1 unique") == "occurs once in the product"
+    coding = [r[1] for r in d.rows if r[0].endswith("-coding")]
+    assert "".join(coding) == product, "sliding only moves which oligo carries the bases: the product is unchanged"
+
+    # --- the barcodes are orthogonal to each other and to every toehold ---
+    kmers = lambda s: {x[i:i + 8] for x in (s, reverse_complement(s)) for i in range(len(x) - 7)}
+    arms = sidewinder_arms(d)
+    assert len(arms) == 2 and all(len(x) == A.BARCODE for x in arms)
+    assert not kmers(arms[0]) & kmers(arms[1])
+    for arm in arms:
+        assert 8 <= sum(c in "GC" for c in arm) <= 10 and not any(c * 4 in arm for c in "ACGT")
+        assert all(not kmers(arm) & kmers(j.seq) for j in d.joints)
+
+    # --- same fragments, same oligos; two products of the same length, different barcodes ---
+    again = A.analyse([piece(f.name, f.seq) for f in parts], 2, False)
+    assert [r[1] for r in again.rows] == [r[1] for r in d.rows], "an order must be reproducible"
+    one, two = A.analyse(sidewinder_parts(11), 2, False), A.analyse(sidewinder_parts(12), 2, False)
+    assert len(one.product()) == len(two.product())        # same length, different sequence
+    assert sidewinder_arms(one) != sidewinder_arms(two), "barcodes are drawn from the product, not from its length"
 
 
 def test_assembly_bad_input():
