@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 import pytest
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 import structure
 from structure import StructureError
@@ -51,6 +51,24 @@ class Net:
             return json.dumps([{"modelEntityId": "AF-P1-F1", "globalMetricValue": 91.5, "pdbUrl": "https://alphafold.ebi.ac.uk/files/x.pdb"}]).encode()
         if url.endswith("x.pdb"):
             return pdb(91.5).encode()
+        if "search.rcsb.org" in url and json.loads(data)["query"]["type"] == "group":   # the entries mapped to a UniProt accession
+            nodes = json.loads(data)["query"]["nodes"]
+            assert nodes[0]["parameters"]["value"] == "P12345" and nodes[1]["parameters"]["value"] == "UniProt"
+            return json.dumps({"result_set": [{"identifier": "3DEF"}, {"identifier": "1ABC"}]}).encode()
+        if "data.rcsb.org/graphql" in url and "entity_poly" in json.loads(data)["query"]:   # the linked entries, with their chains
+            asked = json.loads(data)["query"]
+            assert "1ABC" in asked and "3DEF" in asked and asked.count("1ABC") == 1, "each entry asked about once"
+
+            def entity(seq, chains, organism):
+                return {"entity_poly": {"pdbx_seq_one_letter_code_can": seq}, "rcsb_entity_source_organism": [{"ncbi_scientific_name": organism}],
+                        "rcsb_polymer_entity_container_identifiers": {"auth_asym_ids": chains}}
+            return json.dumps({"data": {"entries": [
+                {"rcsb_id": "1ABC", "struct": {"title": "Unrelated"}, "exptl": [{"method": "X-RAY DIFFRACTION"}],
+                 "rcsb_entry_info": {"resolution_combined": [2.0]}, "polymer_entities": [entity("GGGGGGGG", ["A"], "Mus musculus")]},
+                {"rcsb_id": "3DEF", "struct": {"title": "The protein in a complex"}, "exptl": [{"method": "ELECTRON MICROSCOPY"}],
+                 "rcsb_entry_info": {"resolution_combined": [3.1]},
+                 "polymer_entities": [entity("WWWWWWWWWW", ["X"], "Homo sapiens"), entity(PROTEIN[10:], ["B", "D"], "Crambe hispanica")]},
+            ]}}).encode()
         if "search.rcsb.org" in url:
             body = json.loads(data)
             assert body["query"]["parameters"]["value"] == PROTEIN and body["query"]["parameters"]["identity_cutoff"] in (0.9, 0.5)
@@ -180,8 +198,40 @@ def test_pdb_search_list_and_user_agent(net):
     assert hits[1].identity == 0.8 and hits[1].title == "", "an entry the data API did not describe is still listed"
     found = structure.pdb_entry(first)
     assert found.source == "PDB" and "PDB 1ABC: Crambin" in found.detail and "95% identity" in found.detail and "chains A, B" in found.detail
+    assert found.info == {"Protein": "Crambin", "Source": "RCSB PDB (experimental)", "Entry": "1ABC", "Method": "X-ray diffraction",
+                          "Resolution": "1.50 Å", "Organism": "Crambe hispanica", "Identity": "95%", "Chain covers": "50% of the protein",
+                          "Chains": "A, B", "Link": "https://www.rcsb.org/structure/1ABC"}
+    # --- shown above the 3D view: the name, then the fields, the entry a link to its page
+    from structure_view import StructureView
+    view = StructureView()
+    view.set_structure(found, PROTEIN)
+    assert view.title.text() == "Crambin" and "Link" not in view.shown_fields and "Protein" not in view.shown_fields
+    assert view.shown_fields["Method"] == "X-ray diffraction" and view.shown_fields["In the model"] == "3 of 46 aa (7%)"
+    assert any("https://www.rcsb.org/structure/1ABC" in label.text() for label in view.findChildren(QLabel))
+    old = structure.Structure(pdb(50.0), "ESMFold", "cached before the fields existed", True)
+    view.set_structure(old, PROTEIN)
+    assert view.title.text() == "cached before the fields existed" and list(view.shown_fields) == ["Source", "In the model"]
     with pytest.raises(StructureError, match="25 amino acids"):
         structure.search_pdb("MKWV")
+
+
+def test_linked_entries(net):
+    """The feature's PDB links and the entries the PDB maps to its UniProt accession, each compared with the protein on its best chain,
+    the closest first: a link to another protein shows as such."""
+    quals = [("db_xref", "PDB:1abc"), ("db_xref", "PDB:1ABC"), ("db_xref", "UniProtKB/Swiss-Prot:P12345"), ("db_xref", "PDB:2xyz_A"),
+             ("db_xref", "PDB:bad"), ("note", "PDB:9ZZZ")]
+    assert structure.pdb_links(quals) == ["1ABC", "2XYZ"]
+    assert structure.similarity("MKWHLLEGRS", "KWHLLEGRS") == (1.0, 0.9)
+    assert structure.similarity("MKWHLLEGRS", "") == (0.0, 0.0)
+    hits = structure.linked_pdb(PROTEIN, ["1ABC"], "P12345")
+    assert [h.entry for h in hits] == ["3DEF", "1ABC"], "the entry that holds the protein first"
+    best = hits[0]
+    assert (best.identity, round(best.covered, 2), best.chains, best.organism, best.title) == \
+        (1.0, round((len(PROTEIN) - 10) / len(PROTEIN), 2), "B, D", "Crambe hispanica", "The protein in a complex"), "its best chain counts"
+    assert hits[1].identity < 0.5
+    assert structure.linked_pdb(PROTEIN) == []
+    with pytest.raises(StructureError, match="6 to 10"):
+        structure.linked_pdb(PROTEIN, accession="P1")
 
 
 def test_window(net, monkeypatch):
@@ -223,6 +273,19 @@ def test_window(net, monkeypatch):
         QTest.qWait(20)
     assert got[-1] == (PROTEIN, "PDB") and "PDB 2XYZ" in d.status.text()
     assert "2XYZ" in structure.cached(PROTEIN, "", "PDB").detail, "the entry picked is the one kept for this protein"
+    assert structure.cached(PROTEIN, "", "PDB").info["Entry"] == "2XYZ", "its fields are kept with it"
+    # --- linked entries: chosen to begin with when the feature links some; without links nor accession it says what to do
+    linked = StructureDialog(None, "tiny", PROTEIN, "P12345", ["1ABC"])
+    assert linked.source.currentText() == "Linked entries" and linked.get.text() == "List entries" and "1ABC" in linked.notice.text()
+    linked.start()
+    t = time.perf_counter()
+    while not linked.get.isEnabled() and time.perf_counter() - t < 5:
+        QTest.qWait(20)
+    assert linked.table.rowCount() == 2 and linked.table.item(0, 0).text() == "3DEF" and linked.table.item(0, 1).text() == "100%"
+    bare = StructureDialog(None, "tiny", PROTEIN)
+    bare.source.setCurrentText("Linked entries")
+    bare.start()
+    assert "no UniProt accession" in bare.status.text() and bare.job is None
     d.settings.clear()
 
 

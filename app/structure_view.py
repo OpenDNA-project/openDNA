@@ -10,10 +10,13 @@ Mouse: drag to turn, right or middle drag to move, wheel to zoom, double-click t
 it), hover for its name. Keys: arrows turn, + and - zoom, Home fits.
 """
 import math
+from html import escape
 
 from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPalette, QPen
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QToolTip, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox, QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QToolTip, QVBoxLayout, QWidget,
+)
 
 import structure
 
@@ -22,7 +25,7 @@ WIDTH = {"H": 1.7, "E": 1.3, "-": 0.55}     # tube width (Å) in helices, strand
 SS_COLOURS = {"H": "#D6457A", "E": "#E8B62C", "-": "#9AA0A6"}
 CHAIN_COLOURS = ["#4E79A7", "#F28E2B", "#59A14F", "#B07AA1", "#76B7B2", "#EDC948", "#FF9DA7", "#9C755F"]
 ELEMENT_COLOURS = {"N": "#3050F8", "O": "#E03030", "S": "#D8B020", "P": "#FF8000", "FE": "#C06030"}
-# Colours by the kind of amino acid: the letters of the Protein panel use them too (protein.ResidueColours).
+# Colours by the kind of amino acid: the tracks under the letters of the Protein panel use them too (protein_tracks.py).
 KYTE_DOOLITTLE = {"I": 4.5, "V": 4.2, "L": 3.8, "F": 2.8, "C": 2.5, "M": 1.9, "A": 1.8, "G": -0.4, "T": -0.7, "S": -0.8, "W": -0.9,
                   "Y": -1.3, "P": -1.6, "H": -3.2, "E": -3.5, "Q": -3.5, "D": -3.5, "N": -3.5, "K": -3.9, "R": -4.5}
 VOLUME = {"G": 60.1, "A": 88.6, "S": 89.0, "C": 108.5, "D": 111.1, "P": 112.7, "N": 114.1, "T": 116.1, "E": 138.4, "V": 140.0,
@@ -129,7 +132,9 @@ class StructureCanvas(QWidget):
         self.atoms = {k: [(name, el, tuple(c - m for c, m in zip(xyz, centre))) for name, el, xyz in r.atoms]
                       for k, r in enumerate(self.residues)}
         self.ligands = [(el, tuple(c - m for c, m in zip(xyz, centre))) for el, xyz in self.ligands]
-        self.radius = max((math.sqrt(sum(c * c for c in p)) for p in self.points), default=1.0) or 1.0
+        # fit 95 % of the backbone: a floppy tail (a signal peptide in a prediction) would leave the folded part tiny
+        far = sorted(math.sqrt(sum(c * c for c in p)) for p in self.points)
+        self.radius = (far[int(0.95 * (len(far) - 1))] if far else 1.0) or 1.0
         self.mode = "Confidence" if found.plddt else "Rainbow"
         self.highlight = set()
         self.reset_view()
@@ -322,7 +327,8 @@ class StructureCanvas(QWidget):
 
 
 class StructureView(QWidget):
-    """The canvas with a line above it: where the structure comes from, the colouring, and a button that hides it."""
+    """The canvas under what the database says about the structure (its name, then its fields two by two: source, entry with a link to
+    its page, method, resolution, organism...), with the colouring and a button that hides it."""
     picked = Signal(int, bool)
     closed = Signal()
 
@@ -330,36 +336,64 @@ class StructureView(QWidget):
         super().__init__()
         self.canvas = StructureCanvas()
         self.canvas.picked.connect(self.picked)
-        self.detail = QLabel(textInteractionFlags=Qt.TextSelectableByMouse)
-        self.detail.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.title = QLabel(wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse)
+        self.title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        font = self.title.font()
+        font.setBold(True)
+        self.title.setFont(font)
         self.mode = QComboBox(toolTip="Colour the structure by", sizeAdjustPolicy=QComboBox.AdjustToContents)
         self.mode.currentTextChanged.connect(lambda m: self.mode.setToolTip(AA_SCHEMES.get(m, "Colour the structure by")))
         self.mode.currentTextChanged.connect(self.canvas.set_mode)
         close = QToolButton(text="✕", toolTip="Hide the 3D view", autoRaise=True, clicked=self._close)
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
-        top.addWidget(self.detail, 1)
-        top.addWidget(self.mode)
-        top.addWidget(close)
+        top.addWidget(self.title, 1)
+        top.addWidget(self.mode, 0, Qt.AlignTop)
+        top.addWidget(close, 0, Qt.AlignTop)
+        self.fields = QGridLayout()
+        self.fields.setContentsMargins(0, 0, 0, 4)
+        self.fields.setHorizontalSpacing(8)
+        self.fields.setVerticalSpacing(1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(top)
+        layout.addLayout(self.fields)
         layout.addWidget(self.canvas, 1)
         self.protein = None   # the amino acids shown
+        self.shown_fields = {}   # field -> text, as shown
 
     def set_structure(self, found, protein):
         self.protein = protein
         self.canvas.set_structure(found, protein)
-        self.detail.setText(found.detail)
-        self.detail.setToolTip(found.detail)
         self.mode.blockSignals(True)
         self.mode.clear()
         self.mode.addItems(MODES if found.plddt else MODES[1:])
         self.mode.setCurrentText(self.canvas.mode)
         self.mode.blockSignals(False)
+        info = dict(found.info)
+        link = info.pop("Link", "")
+        self.title.setText(info.pop("Protein", "") or (found.detail if not info else found.source))
+        if not info:   # a structure cached before the fields existed: its one line says it all
+            info = {"Source": found.source}
         mapped = len(self.canvas.to_model)
-        if mapped < len(protein):
-            self.detail.setText(f"{found.detail} · {mapped:,} of {len(protein):,} aa in the model")
+        info["In the model"] = f"{mapped:,} of {len(protein):,} aa" + (f" ({mapped / len(protein):.0%})" if mapped < len(protein) else "")
+        self.shown_fields = info
+        while self.fields.count():
+            self.fields.takeAt(0).widget().deleteLater()
+        muted = self.palette().color(QPalette.PlaceholderText).name()
+        for n, (key, value) in enumerate(info.items()):
+            name = QLabel(f"<span style='color:{muted}'>{escape(key)}</span>")
+            text = escape(value)
+            if key == "Entry" and link.startswith("https://"):
+                text = f"<a href='{escape(link)}'>{text}</a>"   # opens the database's page in the browser
+            shown = QLabel(text, openExternalLinks=True, wordWrap=True, toolTip=value,
+                           textInteractionFlags=Qt.TextBrowserInteraction | Qt.TextSelectableByMouse)
+            shown.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            row, column = divmod(n, 2)
+            self.fields.addWidget(name, row, column * 2, Qt.AlignRight | Qt.AlignTop)
+            self.fields.addWidget(shown, row, column * 2 + 1)
+        self.fields.setColumnStretch(1, 1)
+        self.fields.setColumnStretch(3, 1)
 
     def set_highlight(self, indices):
         self.canvas.set_highlight(indices)

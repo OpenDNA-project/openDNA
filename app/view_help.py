@@ -58,7 +58,7 @@ HELP = {
         "Shows the amino acids of the selected CDS, or of the selected DNA in the frame you choose.",
         "Click a CDS (or select DNA) in any view to show it.",
         "Length, mass, isoelectric point and charge are shown above the sequence.",
-        "Select letters to select their codons in the DNA. Colour colours them by property, hydrophobicity, size or charge.",
+        "Select letters to select their codons in the DNA. The buttons on the right switch the tracks under the letters.",
         "Click a feature inside the CDS to select it.",
         "3D structure... gets a model (AlphaFold, PDB, ESMFold or your own command) and shows it beside the letters: drag to turn, click a residue to select it.",
         "Options chooses the genetic code (a CDS with /transl_table keeps its own).",

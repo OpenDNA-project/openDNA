@@ -23,7 +23,8 @@ SEQ = "CCCCCCCCCC" + "ATGAAATGGCATTAA" + "GGGGGGGGGG"
 
 def make():
     ed = FragmentEditor(Document.new_sequence("t", SEQ, False), Path("t.gb"))
-    ed.add_features([("CDS", "11..25", [("label", "tiny"), ("codon_start", "1")]), ("misc_feature", "17..22", [("label", "motif")])])
+    ed.add_features([("CDS", "11..25", [("label", "tiny"), ("codon_start", "1"), ("db_xref", "PDB:1abc")]),
+                     ("misc_feature", "17..22", [("label", "motif")])])
     return ed
 
 
@@ -60,7 +61,8 @@ def test_follows_the_selection_and_selecting_residues_selects_codons():
     motif = next(f for f in ed.features if f.kind == "misc_feature")
     ed.select_feature(motif.index)
     view.refresh()
-    assert "tiny" in view.title.text() and [s.cursor.selectedText() for s in view.text.extraSelections()] == ["WH"]
+    assert "tiny" in view.title.text() and view.text.marked == {2, 3} and view.text.extraSelections() == [], \
+        "W and H are on the Selection track; the letters themselves stay plain"
     # a stretch of DNA outside it is translated in the chosen frame
     ed.select(0, 9)
     view.refresh()
@@ -102,7 +104,8 @@ def test_structure_in_3d_follows_the_selection_both_ways():
     ed.select_feature(next(f for f in ed.features if f.kind == "CDS").index)
     view.refresh()
     assert not view.view3d.isVisible()
-    atoms = [("CA", 3.8 * i, i % 2, 0.0, 90.0 - 20 * i, res) for i, res in enumerate(("MET", "LYS", "TRP", "HIS"))] + [("CB", 7.6, 1.5, 0.0, 50.0, "TRP")]
+    assert view.src["links"] == ["1ABC"], "the feature's PDB links go to the 3D structure window"
+    atoms =[("CA", 3.8 * i, i % 2, 0.0, 90.0 - 20 * i, res) for i, res in enumerate(("MET", "LYS", "TRP", "HIS"))] + [("CB", 7.6, 1.5, 0.0, 50.0, "TRP")]
     model = "\n".join(f"ATOM  {n + 1:5d}  {name:<3s} {res} A{['MET', 'LYS', 'TRP', 'HIS'].index(res) + 1:4d}    {x:8.3f}{y:8.3f}{z:8.3f}  1.00{b:6.2f}"
                       for n, (name, x, y, z, b, res) in enumerate(atoms))
     view._got_structure("MKWH", structure.Structure(model, "ESMFold", "test model", True))
@@ -127,38 +130,57 @@ def test_structure_in_3d_follows_the_selection_both_ways():
     assert not view.view3d.isVisible()
 
 
-def test_letter_colours():
-    """The letters are coloured by property, hydrophobicity, size or charge, or like the 3D view; the 3D view has the same schemes."""
+def test_tracks_under_the_letters():
+    """Tracks under each line of letters: the selection always, the others switched with the buttons (and remembered); the model's
+    tracks only when the protein has a 3D model; each cell says its value on hover."""
+    from PySide6.QtCore import QPoint
+    import protein_tracks
     import structure
-    from structure_view import PROPERTY, aa_colour
+    from structure_view import aa_colour
+    from protein_tracks import GAP, PAD, ROW
     assert aa_colour("Hydrophobicity", "I") == "#e8544e" and aa_colour("Hydrophobicity", "R") == "#5b9be0"
     assert aa_colour("Size", "G") == "#fff6d5" and aa_colour("Size", "W") == "#a0581c"
     assert aa_colour("Charge", "A") is None and aa_colour("Property", "*") is None
     ed = make()
     view = protein.ProteinView(ed)
+    view.resize(700, 500)
     view.show()
     ed.select_feature(next(f for f in ed.features if f.kind == "CDS").index)
     view.refresh()
+    text, buttons = view.text, view.tracks.buttons
+    assert text.tracks == ["Selection", "Hydrophobicity", "Size"], "Structure is on, but there is no model yet"
+    assert not buttons["Structure"].isEnabled() and "Get a 3D structure first" in buttons["Structure"].toolTip()
+    room = text.document().firstBlock().blockFormat().bottomMargin()
+    assert room == PAD + 3 * (ROW + GAP), "room under each line for the three tracks"
+    # --- switching a track on makes room for it and is remembered
+    buttons["Charge"].setChecked(True)
+    assert text.tracks == ["Selection", "Hydrophobicity", "Size", "Charge"] and "Charge" in protein_tracks.saved_tracks()
+    assert text.document().firstBlock().blockFormat().bottomMargin() == PAD + 4 * (ROW + GAP)
+    buttons["Size"].setChecked(False)
+    assert "Size" not in text.tracks and "Size" not in protein_tracks.saved_tracks()
+    # --- hovering a cell: the track and the amino acid under it
+    xs, w, y0 = text._rows(text.document().firstBlock())
 
-    def backgrounds():
-        """The background colour of each letter of the first line."""
-        block = view.text.document().firstBlock()
-        return {block.text()[r.start]: r.format.background().color().name() for r in block.layout().formats()}
-    assert backgrounds() == {}, "plain letters to begin with"
-    view.colour_by.setCurrentText("Property")
-    assert backgrounds() == {"M": PROPERTY["M"].lower(), "K": PROPERTY["K"].lower(), "W": PROPERTY["W"].lower(), "H": PROPERTY["H"].lower()}
-    view.colour_by.setCurrentText("Charge")
-    assert set(backgrounds()) == {"K", "H"}
-    # --- like the 3D view: only the residues in the model, in its colours
-    view.colour_by.setCurrentText("Same as 3D")
-    assert backgrounds() == {}, "no structure: nothing to copy"
+    def at(track, i):
+        return text.track_at(QPoint(round(xs[i] + w / 2), round(y0 + text.tracks.index(track) * (ROW + GAP) + ROW / 2)))
+    assert at("Hydrophobicity", 2) == ("Hydrophobicity", 2) and at("Charge", 1) == ("Charge", 1)
+    assert text.track_at(QPoint(round(xs[0]), round(y0 - 8))) is None, "over the letters: no track"
+    assert text.describe("Hydrophobicity", 2) == "Hydrophobicity · W3: -0.9 (Kyte-Doolittle)"
+    assert text.describe("Charge", 1) == "Charge · K2: positive" and text.describe("Size", 2) == "Size · W3: 228 Å³"
+    view.grab()   # draws every track
+    # --- a model: its structure track, and its confidence when it is a prediction (M and K only are in it)
     model = "\n".join(f"ATOM  {i + 1:5d}  CA  {res} A{i + 1:4d}    {3.8 * i:8.3f}{0.0:8.3f}{0.0:8.3f}  1.00{b:6.2f}"
-                      for i, (res, b) in enumerate((("MET", 95.0), ("LYS", 40.0))))   # M and K only
+                      for i, (res, b) in enumerate((("MET", 95.0), ("LYS", 40.0))))
     view._got_structure("MKWH", structure.Structure(model, "ESMFold", "half a model", True))
-    assert backgrounds() == {"M": "#0053d6", "K": "#ff7d45"}, "pLDDT colours, as on the model"
-    view.view3d.mode.setCurrentText("Size")
-    assert backgrounds() == {"M": aa_colour("Size", "M"), "K": aa_colour("Size", "K")}
-    assert view.view3d.canvas.colour(0) == aa_colour("Size", "M")
+    assert buttons["Structure"].isEnabled() and "Structure" in text.tracks and text.model == {0: ("-", 95.0), 1: ("-", 40.0)}
+    buttons["Confidence"].setChecked(True)
+    assert text.tracks[:3] == ["Selection", "Structure", "Confidence"]
+    assert text.describe("Confidence", 1) == "Confidence · K2: pLDDT 40" and text.describe("Structure", 3) == "Structure · H4: not in the model"
+    view.grab()
+    # --- another protein, without a model: its tracks go
+    ed.select(0, 9)
+    view.refresh()
+    assert "Structure" not in text.tracks and not buttons["Structure"].isEnabled() and text.model == {}
 
 
 def test_a_pane_in_the_window(monkeypatch):

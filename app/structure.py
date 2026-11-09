@@ -5,6 +5,8 @@ Sources (`SOURCES`; "Auto" tries them in this order, stopping at the first that 
 - AlphaFold DB: a predicted structure for a UniProt accession (alphafold.ebi.ac.uk; only the accession is sent);
 - PDB: RCSB's sequence search for an experimental (or modelled) structure of 90 % identity or more, then its PDB file (the window
   lists the entries found, down to 50 % identity, to pick one: search_pdb and pdb_entry);
+- Linked entries (the window only): the PDB entries the feature links (db_xref "PDB:1BTL", as in ENA records) and those the PDB maps
+  to its UniProt accession, listed to pick one (linked_pdb); only the codes and the accession are sent;
 - ESMFold: a prediction from the sequence alone (the ESM Metagenomic Atlas API; up to 400 amino acids);
 - Local command: a command of the user's (AlphaFold, ColabFold, Boltz... installed here) with {fasta} and {pdb} in it.
 Every source gives PDB text; AlphaFold DB and ESMFold put the pLDDT confidence (0-100) in the B-factor column, which the page colours by.
@@ -27,11 +29,13 @@ from types import SimpleNamespace
 from primer_db import data_dir
 import project
 
-SOURCES = ["Auto", "PDB", "AlphaFold DB", "ESMFold", "Local command"]
+SOURCES = ["Auto", "PDB", "Linked entries", "AlphaFold DB", "ESMFold", "Local command"]
 NOTICE = {
     "Auto": "Tries the cache, then AlphaFold DB (if there is a UniProt accession), then PDB, then ESMFold: so the sequence may be "
             "sent to RCSB PDB and to the ESM Atlas (Meta).",
     "PDB": "The sequence is sent to RCSB PDB (search.rcsb.org) to look for a matching structure.",
+    "Linked entries": "Lists the PDB entries the feature links (PDB:…) and those the PDB maps to the UniProt accession: only the codes "
+                      "and the accession are sent to RCSB, the sequence stays here.",
     "AlphaFold DB": "Only the UniProt accession is sent (to alphafold.ebi.ac.uk).",
     "ESMFold": "The sequence is sent to api.esmatlas.com (the ESM Metagenomic Atlas of Meta) to be predicted.",
     "Local command": "Nothing leaves this computer: your command runs here.",
@@ -57,6 +61,7 @@ class Structure:
     detail: str          # "AlphaFold DB AF-P69905-F1, mean pLDDT 98.1"
     plddt: bool          # the B-factor column holds pLDDT (0-100)
     cached: bool = False
+    info: dict = field(default_factory=dict)   # what the database says, field -> text, in order ("Link": its page); see structure_view
 
 
 # ---- the network ---------------------------------------------------------------------------------------------------------------------
@@ -137,7 +142,14 @@ def from_alphafold(accession):
         raise StructureError(f"AlphaFold DB has no model for {acc} ({e})") from None
     except (ValueError, KeyError, IndexError, TypeError):
         raise StructureError(f"AlphaFold DB's answer for {acc} could not be read.") from None
-    return Structure(pdb, "AlphaFold DB", f"AlphaFold DB {entry.get('modelEntityId', acc)}, mean pLDDT {entry.get('globalMetricValue', '?')}", True)
+    found = Structure(pdb, "AlphaFold DB", f"AlphaFold DB {entry.get('modelEntityId', acc)}, mean pLDDT {entry.get('globalMetricValue', '?')}", True)
+    start, end = entry.get("uniprotStart"), entry.get("uniprotEnd")
+    found.info = _fields(Protein=entry.get("uniprotDescription"), Source="AlphaFold DB (predicted)", Entry=entry.get("modelEntityId"),
+                         UniProt=acc, Gene=entry.get("gene"), Organism=entry.get("organismScientificName"),
+                         Residues=f"{start}–{end} of the UniProt sequence" if start and end else None,
+                         **{"Mean pLDDT": entry.get("globalMetricValue"), "Model date": str(entry.get("modelCreatedDate") or "")[:10]},
+                         Link=f"https://alphafold.ebi.ac.uk/entry/{acc}")
+    return found
 
 
 @dataclass
@@ -207,6 +219,88 @@ def _pdb_details(hits, entities):
             h.chains = ", ".join((e.get("rcsb_polymer_entity_container_identifiers") or {}).get("auth_asym_ids") or [])
 
 
+def pdb_links(qualifiers):
+    """The PDB codes a feature links in its db_xref ("PDB:1BTL"; ENA records list them), in order, each once."""
+    codes = []
+    for key, value in qualifiers:
+        if key == "db_xref" and value.upper().startswith("PDB:"):
+            code = re.match(r"[0-9][0-9A-Z]{3}", value[4:].strip().upper())
+            if code and code.group() not in codes:
+                codes.append(code.group())
+    return codes
+
+
+def similarity(protein, other):
+    """(identity, covered) of the amino acids `other` against `protein`: identity over the stretch of the protein they line up with
+    (the same letters / its length), covered = that stretch / the protein."""
+    same, ends = 0, []
+    for op, a1, a2, b1, b2 in SequenceMatcher(None, protein, other, autojunk=False).get_opcodes():
+        if op == "equal" or (op == "replace" and a2 - a1 == b2 - b1):
+            same += (a2 - a1) if op == "equal" else 0
+            ends += [a1, a2]
+    if not ends:
+        return 0.0, 0.0
+    span = max(ends) - min(ends)
+    return same / span, span / len(protein)
+
+
+def linked_pdb(sequence, codes=(), accession="", most=100):
+    """[PdbHit] of the PDB entries linked to the protein: `codes` (the feature's PDB links) and the entries whose chains the PDB maps
+    to the UniProt `accession` (curated by UniProt and the PDB: SIFTS), best match first. Each is compared with `sequence` here, on its
+    chain that matches best; only the codes and the accession are sent.
+    shortcut: the first `most` entries only (a well studied protein has hundreds); raise it if one is missed."""
+    codes = list(codes)
+    acc = accession.strip().upper()
+    if acc:
+        if not re.fullmatch(r"[A-Z0-9]{6,10}", acc):
+            raise StructureError("A UniProt accession is 6 to 10 letters and digits (such as P62593).")
+        query = {"query": {"type": "group", "logical_operator": "and", "nodes": [
+                     {"type": "terminal", "service": "text", "parameters": {
+                         "attribute": "rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_accession",
+                         "operator": "exact_match", "value": acc}},
+                     {"type": "terminal", "service": "text", "parameters": {
+                         "attribute": "rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_name",
+                         "operator": "exact_match", "value": "UniProt"}}]},
+                 "return_type": "entry", "request_options": {"paginate": {"start": 0, "rows": most}}}
+        try:
+            answer = fetch("https://search.rcsb.org/rcsbsearch/v2/query", json.dumps(query).encode(), {"Content-Type": "application/json"})
+            found = json.loads(answer).get("result_set", []) if answer else []
+        except (StructureError, ValueError) as e:
+            raise StructureError(f"The PDB could not be asked about {acc} ({e})") from None
+        codes += [str(item.get("identifier", "")).upper() for item in found]
+    codes = [c for i, c in enumerate(codes) if re.fullmatch(r"[0-9A-Z]{4,12}", c) and c not in codes[:i]][:most]
+    if not codes:
+        return []
+    graphql = ("{ entries(entry_ids: %s) { rcsb_id struct { title } exptl { method } rcsb_entry_info { resolution_combined } "
+               "polymer_entities { entity_poly { pdbx_seq_one_letter_code_can } rcsb_entity_source_organism { ncbi_scientific_name } "
+               "rcsb_polymer_entity_container_identifiers { auth_asym_ids } } } }") % json.dumps(codes)
+    try:
+        data = json.loads(fetch("https://data.rcsb.org/graphql", json.dumps({"query": graphql}).encode(),
+                                {"Content-Type": "application/json"}))["data"]
+        hits = []
+        for e in data.get("entries") or []:
+            best = None
+            for entity in e.get("polymer_entities") or []:
+                chain_seq = "".join(((entity.get("entity_poly") or {}).get("pdbx_seq_one_letter_code_can") or "").split())
+                score = similarity(sequence, chain_seq)
+                if best is None or score > best[0]:
+                    best = (score, entity)
+            if best is None:
+                continue   # no protein chain (a nucleic acid only)
+            (identity, covered), entity = best
+            hits.append(PdbHit(
+                e["rcsb_id"], identity, covered, ((e.get("struct") or {}).get("title") or "").strip(),
+                ", ".join(x["method"] for x in e.get("exptl") or [] if x.get("method")),
+                ((e.get("rcsb_entry_info") or {}).get("resolution_combined") or [None])[0],
+                ", ".join(sorted({o["ncbi_scientific_name"] for o in entity.get("rcsb_entity_source_organism") or []
+                                  if o.get("ncbi_scientific_name")})),
+                ", ".join((entity.get("rcsb_polymer_entity_container_identifiers") or {}).get("auth_asym_ids") or [])))
+    except (StructureError, ValueError, KeyError, TypeError, AttributeError) as e:
+        raise StructureError(f"The linked PDB entries could not be described ({e})") from None
+    hits.sort(key=lambda h: (-round(h.identity, 2), -round(h.covered, 2), h.resolution or 99))
+    return hits
+
+
 def pdb_entry(hit):
     """The Structure of the PDB entry of `hit` (a PdbHit): its PDB file, the whole entry with its ligands and other chains."""
     pdb = fetch(f"https://files.rcsb.org/download/{hit.entry}.pdb").decode("utf-8", "replace")
@@ -214,11 +308,21 @@ def pdb_entry(hit):
         raise StructureError(f"PDB {hit.entry} has no PDB-format file (very large entries only come as mmCIF): pick another.")
     about = (f"{hit.identity:.0%} identity" + (f", {hit.method.lower()}" if hit.method else "")
              + (f", {hit.resolution:.2f} Å" if hit.resolution else "") + (f"; chain{'s' if ',' in hit.chains else ''} {hit.chains}" if hit.chains else ""))
-    return Structure(pdb, "PDB", f"PDB {hit.entry}" + (f": {hit.title}" if hit.title else "") + f" ({about})", False)
+    found = Structure(pdb, "PDB", f"PDB {hit.entry}" + (f": {hit.title}" if hit.title else "") + f" ({about})", False)
+    found.info = _fields(Protein=hit.title, Source="RCSB PDB (experimental)", Entry=hit.entry, Method=hit.method.capitalize(),
+                         Resolution=f"{hit.resolution:.2f} Å" if hit.resolution else None, Organism=hit.organism,
+                         Identity=f"{hit.identity:.0%}", Chain_covers=f"{hit.covered:.0%} of the protein", Chains=hit.chains,
+                         Link=f"https://www.rcsb.org/structure/{hit.entry}")
+    return found
+
+
+def _fields(**values):
+    """The info of a Structure: the fields that have a value, in the order given (keyword names, "_" for a space)."""
+    return {key.replace("_", " "): str(value) for key, value in values.items() if value not in (None, "", [])}
 
 
 def from_pdb(sequence):
-    for hit in search_pdb(sequence, 0.9, 5, details=False):
+    for hit in search_pdb(sequence, 0.9, 5):
         try:
             return pdb_entry(hit)
         except StructureError:
@@ -234,7 +338,9 @@ def from_esmfold(sequence):
         raise StructureError("The ESM Atlas did not return a structure.")
     if (mean_bfactor(pdb) or 0) <= 1.0:
         pdb = scale_bfactors(pdb, 100)   # it gives pLDDT as 0-1; the page and AlphaFold use 0-100
-    return Structure(pdb, "ESMFold", f"ESMFold prediction, mean pLDDT {mean_bfactor(pdb) or 0:.1f}", True)
+    found = Structure(pdb, "ESMFold", f"ESMFold prediction, mean pLDDT {mean_bfactor(pdb) or 0:.1f}", True)
+    found.info = _fields(Source="ESMFold (predicted, ESM Atlas of Meta)", **{"Mean pLDDT": f"{mean_bfactor(pdb) or 0:.1f}"})
+    return found
 
 
 def from_local(sequence, command, job=None):
@@ -267,7 +373,9 @@ def from_local(sequence, command, job=None):
         done = SimpleNamespace(returncode=proc.returncode, stderr=stderr or "")
         if not out.exists() or not looks_like_pdb(out.read_text(errors="replace")):
             raise StructureError(f"The local command wrote no PDB file (exit code {done.returncode}). {done.stderr.strip()[-300:]}")
-        return Structure(out.read_text(errors="replace"), "Local command", f"Local command ({words[0]})", False)
+        found = Structure(out.read_text(errors="replace"), "Local command", f"Local command ({words[0]})", False)
+        found.info = _fields(Source="Local command (predicted here)", Command=command)
+        return found
 
 
 # ---- the cache ------------------------------------------------------------------------------------------------------------------------
@@ -288,7 +396,7 @@ def cached(sequence, accession, source):
     base = cache_key(sequence, accession, source)
     try:
         meta = json.loads(base.with_suffix(".json").read_text())
-        return Structure(base.with_suffix(".pdb").read_text(), meta["source"], meta["detail"], meta["plddt"], True)
+        return Structure(base.with_suffix(".pdb").read_text(), meta["source"], meta["detail"], meta["plddt"], True, meta.get("info", {}))
     except (OSError, ValueError, KeyError):
         return None
 
@@ -296,7 +404,8 @@ def cached(sequence, accession, source):
 def store(sequence, accession, structure):
     base = cache_key(sequence, accession, structure.source)
     base.with_suffix(".pdb").write_text(structure.pdb)
-    base.with_suffix(".json").write_text(json.dumps({"source": structure.source, "detail": structure.detail, "plddt": structure.plddt}))
+    base.with_suffix(".json").write_text(json.dumps({"source": structure.source, "detail": structure.detail, "plddt": structure.plddt,
+                                                     "info": structure.info}))
 
 
 # ---- asking ---------------------------------------------------------------------------------------------------------------------------

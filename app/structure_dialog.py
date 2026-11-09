@@ -1,6 +1,7 @@
 """The 3D structure window: choose where the structure comes from (see structure.py), get it in a worker thread (the Protein panel
 then shows it in 3D: structure_view.py), open it in the browser as a self-contained 3Dmol.js page, or save it as a PDB file. It says before asking which service the sequence goes to.
-With the PDB source it first lists the entries found (title, identity, method, resolution, organism) and you pick the one to show."""
+With the PDB and Linked entries sources it first lists the entries (title, identity, method, resolution, organism) and you pick the one
+to show; Linked entries is chosen to begin with when the feature links PDB entries."""
 import threading
 from html import escape
 from pathlib import Path
@@ -33,16 +34,17 @@ _relay = _Relay()
 class StructureDialog(QDialog):
     found = Signal(str, object)   # the amino acids, the Structure got for them (the Protein panel shows it in 3D)
 
-    def __init__(self, parent, name, protein, accession=""):
+    def __init__(self, parent, name, protein, accession="", links=()):
         super().__init__(parent)
         self.name, self.protein, self.result, self.token = name, protein, None, None
+        self.links = list(links)   # the PDB codes the feature links (structure.pdb_links)
         self.job = None   # the request under way: its local command can be stopped (see cancel)
         self.settings = QSettings(str(data_dir() / "structure.ini"), QSettings.IniFormat)
         self.setWindowTitle(f"3D Structure of {name}")
         self.resize(560, 330)
         self.source = QComboBox()
         self.source.addItems(structure.SOURCES)
-        self.source.setCurrentText(self.settings.value("source", "Auto"))
+        self.source.setCurrentText("Linked entries" if self.links else self.settings.value("source", "Auto"))
         self.accession = QLineEdit(accession, placeholderText="UniProt accession, e.g. P69905 (for AlphaFold DB)")
         self.command = QLineEdit(self.settings.value("command", ""),
                                  placeholderText="e.g. colabfold_batch {fasta} outdir …  (must write {pdb})")
@@ -94,10 +96,12 @@ class StructureDialog(QDialog):
         self._source_changed(self.source.currentText())
 
     def _source_changed(self, source):
-        self.notice.setText(f"<i>{structure.NOTICE[source]}</i>")
-        self.accession.setEnabled(source in ("Auto", "AlphaFold DB"))
+        linked = (f" The feature links {len(self.links)} entr{'y' if len(self.links) == 1 else 'ies'} ({', '.join(self.links[:4])}"
+                  f"{'…' if len(self.links) > 4 else ''})." if source == "Linked entries" and self.links else "")
+        self.notice.setText(f"<i>{structure.NOTICE[source]}{escape(linked)}</i>")
+        self.accession.setEnabled(source in ("Auto", "AlphaFold DB", "Linked entries"))
         self.command.setEnabled(source == "Local command")
-        self.get.setText("Search PDB" if source == "PDB" else "Get structure")
+        self.get.setText({"PDB": "Search PDB", "Linked entries": "List entries"}.get(source, "Get structure"))
 
     # ---- getting it -------------------------------------------------------------------------------------------------------------
     def start(self):
@@ -107,6 +111,13 @@ class StructureDialog(QDialog):
         protein, accession, command = self.protein, self.accession.text(), self.command.text()
         if source == "PDB":   # a list to pick from: see show_hit
             self._run(lambda job: structure.search_pdb(protein), "Searching the PDB…")
+        elif source == "Linked entries":
+            links = self.links
+            if not links and not accession.strip():
+                self.status.setText("The feature links no PDB entry (db_xref PDB:…) and there is no UniProt accession: type one, or "
+                                    "use PDB to search by sequence.")
+                return
+            self._run(lambda job: structure.linked_pdb(protein, links, accession), "Looking up the linked entries…")
         else:
             self._run(lambda job: structure.get(protein, source, accession, command, job=job), "Working… (a prediction can take a minute)")
 
@@ -193,7 +204,8 @@ class StructureDialog(QDialog):
         self.table.setVisible(bool(hits))
         self.pick.setVisible(bool(hits))
         if not hits:
-            self.status.setText("No entry of the PDB has a chain like this protein (50 % identity or more).")
+            self.status.setText("No PDB entry is linked to this protein." if self.source.currentText() == "Linked entries" else
+                                "No entry of the PDB has a chain like this protein (50 % identity or more).")
             return
         for h in hits:
             row = self.table.rowCount()

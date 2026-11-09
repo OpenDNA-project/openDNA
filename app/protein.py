@@ -2,10 +2,10 @@
 the protein's length, mass, isoelectric point and charge, and the features that lie inside the CDS.
 
 Select a CDS (click it) or a stretch of DNA (a frame is chosen beside it) and the view follows. Select letters of the protein to select
-their codons in the sequence; the residues of the selection in the sequence are highlighted here. The letters can be coloured by property, hydrophobicity, size or charge
-(structure_view.AA_SCHEMES), or like the 3D view. A structure got with "3D structure…"
-shows under the letters (structure_view.py) for as long as that protein is shown: the selection is highlighted on it too, and
-clicking a residue on it selects its codons. While a CDS is shown, a selection
+their codons in the sequence. Under each line of letters, tracks (protein_tracks.py) show the residues of the selection in the sequence,
+the secondary structure and confidence of the 3D model, hydrophobicity, size, charge and property; the buttons beside the letters
+switch them on and off. A structure got with "3D structure…" shows beside the letters (structure_view.py) for as long as that protein
+is shown: the selection is highlighted on it too, and clicking a residue on it selects its codons. While a CDS is shown, a selection
 inside it (a feature, a stretch) keeps it shown.
 
 Mass: sum of the average residue masses + water. Isoelectric point and charge: Henderson-Hasselbalch with the pKa values of EMBOSS's
@@ -15,26 +15,23 @@ free chain (no signal peptide cut, no modification).
 from html import escape
 
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QColor, QPainter, QPalette, QSyntaxHighlighter, QTextCharFormat, QTextCursor, QTextDocument
+from PySide6.QtGui import QPainter, QPalette, QTextCursor, QTextDocument
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPlainTextEdit, QPushButton, QSizePolicy, QSplitter, QTextEdit,
-    QVBoxLayout, QWidget,
+    QComboBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QSizePolicy, QSplitter, QVBoxLayout, QWidget,
 )
 
 from editor import HIDDEN_KINDS, mono_font
 import genetic_code
-import theme
 import structure
 import tool_settings
 from sequence_view import cds_codons, codons
 from structure_dialog import StructureDialog
-from structure_view import AA_SCHEMES, StructureView, aa_colour
+from protein_tracks import TrackButtons, TrackText
+from structure_view import StructureView
 
 PER_LINE, BLOCK, MARGIN = 50, 10, 8          # amino acids per line, per block, and the width of the number column
 MAX_BASES = 300_000                          # a longer selection is not translated here
 FRAMES = ["+1", "+2", "+3", "−1", "−2", "−3"]
-LETTER_SCHEMES = {"None": "Plain letters", **AA_SCHEMES,
-                  "Same as 3D": "The colours of the 3D view (confidence, secondary structure...), on the residues that are in the model"}
 RESIDUE_MASS = {   # average mass of an amino acid in a chain (Da), as on ExPASy
     "G": 57.0519, "A": 71.0788, "S": 87.0782, "P": 97.1167, "V": 99.1326, "T": 101.1051, "C": 103.1388, "L": 113.1594, "I": 113.1594,
     "N": 114.1038, "D": 115.0886, "Q": 128.1307, "K": 128.1741, "E": 129.1155, "M": 131.1926, "H": 137.1411, "F": 147.1766,
@@ -133,29 +130,6 @@ class TitleLabel(QLabel):
         p.end()
 
 
-class ResidueColours(QSyntaxHighlighter):
-    """Colours the letters of the Protein view by the scheme chosen above them (LETTER_SCHEMES), a line at a time."""
-
-    def __init__(self, view):
-        super().__init__(view.text.document())
-        self.view, self.formats = view, {}
-
-    def highlightBlock(self, text):
-        view = self.view
-        scheme = view.colour_by.currentText()
-        if scheme == "None" or not view.protein:
-            return
-        first = self.currentBlock().blockNumber() * PER_LINE
-        for i in range(first, min(first + PER_LINE, len(view.protein))):
-            colour = view.residue_colour(scheme, i)
-            if colour:
-                if colour not in self.formats:
-                    fmt = self.formats[colour] = QTextCharFormat()
-                    fmt.setBackground(QColor(colour))
-                    fmt.setForeground(QColor("black"))   # the backgrounds are light, in a dark theme too
-                self.setFormat(offset_of(i)[1], 1, self.formats[colour])
-
-
 class ProteinView(QWidget):
     def __init__(self, editor):
         super().__init__()
@@ -170,7 +144,7 @@ class ProteinView(QWidget):
         self.frame.addItems(FRAMES)
         self.frame.setToolTip("Reading frame of the selected DNA (a selected CDS has its own)")
         self.frame.currentIndexChanged.connect(lambda _: self.refresh(True))
-        self.text = QPlainTextEdit(readOnly=True, lineWrapMode=QPlainTextEdit.NoWrap)
+        self.text = TrackText(PER_LINE, offset_of, index_at)
         self.text.setFont(mono_font(max(9, round(self.font().pointSizeF()))))   # (the system's fixed font is a thin Courier on Windows)
         self.text.selectionChanged.connect(self._text_selected)
         self.props = QLabel(wordWrap=True, textInteractionFlags=Qt.TextSelectableByMouse)
@@ -181,26 +155,22 @@ class ProteinView(QWidget):
         self.features.hide()   # shown when the CDS has features inside (see _features)
         self.fold = QPushButton("3D structure…", clicked=self.show_structure, enabled=False,
                                 toolTip="Look up or predict the 3D structure of this protein")
-        self.colour_by = QComboBox(toolTip="Colour the letters by")
-        for name, about in LETTER_SCHEMES.items():
-            self.colour_by.addItem(name)
-            self.colour_by.setItemData(self.colour_by.count() - 1, about, Qt.ToolTipRole)
-        self.colour_by.currentTextChanged.connect(self._recolour)
-        self.colours = ResidueColours(self)
+        self.tracks = TrackButtons(self._update_tracks)
+        letters = QWidget()   # the letters and, on their right, the buttons of the tracks
+        row = QHBoxLayout(letters)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.text, 1)
+        row.addWidget(self.tracks)
         top = QHBoxLayout()
         top.addWidget(self.title, 1)
         top.addWidget(self.fold)
-        top.addWidget(QLabel("Colour"))
-        top.addWidget(self.colour_by)
         top.addWidget(QLabel("Frame"))
         top.addWidget(self.frame)
         self.view3d = StructureView()
         self.view3d.picked.connect(self._picked)
-        self.view3d.mode.currentTextChanged.connect(lambda _: self.colour_by.currentText() == "Same as 3D" and self._recolour())
-        self.view3d.closed.connect(self._recolour)
         self.view3d.hide()
         self.split = QSplitter(Qt.Vertical, childrenCollapsible=False)   # side by side in a wide pane: see resizeEvent
-        self.split.addWidget(self.text)
+        self.split.addWidget(letters)
         self.split.addWidget(self.view3d)
         self.split.setStretchFactor(1, 1)
         layout_ = QVBoxLayout(self)
@@ -221,7 +191,8 @@ class ProteinView(QWidget):
         if wide != self.split.orientation():
             self.split.setOrientation(wide)
             if wide == Qt.Horizontal:   # the letters get a whole line (number, 50 amino acids, spaces), the 3D view the rest
-                line = self.text.fontMetrics().horizontalAdvance("0" * (MARGIN + PER_LINE + PER_LINE // BLOCK)) + 30
+                line = (self.text.fontMetrics().horizontalAdvance("0" * (MARGIN + PER_LINE + PER_LINE // BLOCK)) + 30
+                        + self.tracks.sizeHint().width())
                 self.split.setSizes([line, max(self.width() - line, 1)])
 
     # ---- what to show ---------------------------------------------------------------------------------------------------------------
@@ -241,7 +212,8 @@ class ProteinView(QWidget):
         plan = genetic_code.cds_plan(ed.doc, f)     # /transl_table, /codon_start and /transl_except of this CDS
         cods = cds_codons(ed.doc, f)
         extent = (min(s for s, _ in f.spans), max(e for _, e in f.spans))
-        return dict(kind="CDS", feature=f.index, name=f.label or "CDS", accession=structure.accession_of(f.qualifiers), cods=cods, extent=extent, version=ed.version,
+        return dict(kind="CDS", feature=f.index, name=f.label or "CDS", accession=structure.accession_of(f.qualifiers),
+                    links=structure.pdb_links(f.qualifiers), cods=cods, extent=extent, version=ed.version,
                     title=f"<b>{escape(f.label or 'CDS')}</b> · CDS {extent[0] + 1:,}–{extent[1]:,}, {'reverse' if f.strand < 0 else 'forward'} strand"
                           + genetic_code.table_note(plan.table) + (" · translation not reproducible" if plan.why else ""))
 
@@ -253,7 +225,7 @@ class ProteinView(QWidget):
         strand = 1 if k < 3 else -1
         table = genetic_code.table_id()
         cods = codons(ed.doc, ed.selected_spans(), strand, k % 3, table)
-        return dict(kind="selection", feature=None, name=f"translation {ed.start + 1}", accession="", cods=cods, extent=(ed.start, ed.end), version=ed.version,
+        return dict(kind="selection", feature=None, name=f"translation {ed.start + 1}", accession="", links=[], cods=cods, extent=(ed.start, ed.end), version=ed.version,
                     title=f"Translation of {ed.start + 1:,}–{ed.end - (ed.length if ed.wraps else 0):,} in frame {FRAMES[k]}" + genetic_code.table_note(table))
 
     def refresh(self, force=False):
@@ -286,7 +258,9 @@ class ProteinView(QWidget):
         self.title.setText(message)
         self.fold.setEnabled(False)
         self.view3d.hide()
+        self.text.protein = ""
         self.text.setPlainText("")
+        self._update_tracks()
         self.props.setText("")
         self.features.clear()
         self.features.hide()
@@ -295,7 +269,7 @@ class ProteinView(QWidget):
         protein = "".join(aa for _, aa, _, _ in src["cods"])
         # what is shown: a CDS, or a stretch read in a frame (another stretch is another text, read from its top)
         key = ("CDS", src["feature"]) if src["kind"] == "CDS" else ("selection", src["extent"], self.frame.currentIndex())
-        self.protein = protein   # (before the text: its colours are read from it)
+        self.protein = self.text.protein = protein   # (before the text: its tracks are read from it)
         self._set_text(key, layout(protein))
         chain = until_stop(protein)
         # A stop codon is not an amino acid: count the residues before it, like the properties line below.
@@ -355,7 +329,7 @@ class ProteinView(QWidget):
     def show_structure(self):
         """The 3D structure window for the protein shown (it stays open while you go on selecting)."""
         chain = until_stop("".join(aa for _, aa, _, _ in self.src["cods"]))
-        dialog = StructureDialog(self.window(), self.src["name"], chain, self.src["accession"])
+        dialog = StructureDialog(self.window(), self.src["name"], chain, self.src["accession"], self.src["links"])
         dialog.found.connect(self._got_structure)
         self.dialogs = [d for d in self.dialogs if d.isVisible()] + [dialog]
         dialog.show()
@@ -374,29 +348,27 @@ class ProteinView(QWidget):
         """The 3D view of the protein shown, when a structure was got for it; hidden otherwise."""
         found = self.structures.get(chain)
         if found is None:
-            if not self.view3d.isHidden():
-                self.view3d.hide()
-                if self.colour_by.currentText() == "Same as 3D":
-                    self._recolour()
-            return
-        if self.view3d.protein != chain:
-            self.view3d.set_structure(found, chain)
-            self.anchor = None
-        self.view3d.show()
-        if self.colour_by.currentText() == "Same as 3D":
-            self._recolour()
+            self.view3d.hide()
+        else:
+            if self.view3d.protein != chain:
+                self.view3d.set_structure(found, chain)
+                self.anchor = None
+            self.view3d.show()
+        self._update_tracks()
 
-    def residue_colour(self, scheme, i):
-        """The colour of the letter of amino acid `i` in `scheme` (see LETTER_SCHEMES), or None."""
-        if scheme != "Same as 3D":
-            return aa_colour(scheme, self.protein[i])
-        canvas = self.view3d.canvas
-        ks = canvas.to_model.get(i) if self.view3d.isVisibleTo(self) and self.protein.startswith(self.view3d.protein or "\0") else None
-        return canvas.colour(ks[0]) if ks else None
-
-    def _recolour(self, *_):
-        self.colour_by.setToolTip(LETTER_SCHEMES.get(self.colour_by.currentText(), ""))
-        self.colours.rehighlight()
+    def _update_tracks(self):
+        """The tracks under the letters: the model's (structure, confidence) when this protein has one, and those switched on."""
+        canvas, text = self.view3d.canvas, self.text
+        chain = until_stop(self.protein)
+        has_model = bool(chain) and self.view3d.protein == chain and chain in self.structures
+        res = canvas.residues
+        text.model = {i: (res[ks[0]].ss, res[ks[0]].b) for i, ks in canvas.to_model.items()} if has_model else {}
+        text.plddt = has_model and canvas.plddt
+        self.tracks.set_model(has_model)
+        on = [n for n in self.tracks.on() if has_model or n not in ("Structure", "Confidence")]
+        if not text.plddt and "Confidence" in on:   # an experimental structure has no pLDDT
+            on.remove("Confidence")
+        text.set_tracks(["Selection", *on])
 
     def _picked(self, i, extend):
         """A residue clicked on the 3D view: select its codons (with Shift, from the residue clicked before)."""
@@ -424,24 +396,12 @@ class ProteinView(QWidget):
         self.features.setVisible(self.features.count() > 0)   # an empty list is not left taking room
 
     def _highlight(self):
-        """Mark the residues of the selection in the sequence."""
+        """Mark the residues of the selection in the sequence: on the Selection track (the letters stay plain) and on the 3D view."""
         ed, src = self.editor, self.src
-        marks, hit = [], []
-        if src and ed.end > ed.start:
-            hit = [i for i, c in enumerate(src["cods"]) if c[2] < ed.end and c[3] > ed.start]
-            if hit:
-                fmt = QTextCharFormat()
-                fmt.setBackground(QColor(theme.selection_color()).lighter(150))
-                for lo, hi in _runs(hit):
-                    sel = QTextEdit.ExtraSelection()
-                    sel.format = fmt
-                    sel.cursor = QTextCursor(self.text.document())
-                    (l1, o1), (l2, o2) = offset_of(lo), offset_of(hi)
-                    block = self.text.document().findBlockByNumber
-                    sel.cursor.setPosition(block(l1).position() + o1)
-                    sel.cursor.setPosition(block(l2).position() + o2 + 1, QTextCursor.KeepAnchor)
-                    marks.append(sel)
-        self.text.setExtraSelections(marks)
+        hit = [i for i, c in enumerate(src["cods"]) if c[2] < ed.end and c[3] > ed.start] if src and ed.end > ed.start else []
+        if set(hit) != self.text.marked:
+            self.text.marked = set(hit)
+            self.text.viewport().update()
         self.view3d.set_highlight(hit)
 
     # ---- selecting residues selects their codons ------------------------------------------------------------------------------
@@ -468,13 +428,3 @@ class ProteinView(QWidget):
                 self.own = False
             self._highlight()
 
-
-def _runs(indices):
-    """[(first, last)] of the runs of consecutive numbers in the sorted list `indices`, each within one line of the text."""
-    out = []
-    for i in indices:
-        if out and i == out[-1][1] + 1 and i % PER_LINE:
-            out[-1][1] = i
-        else:
-            out.append([i, i])
-    return [tuple(r) for r in out]

@@ -123,14 +123,21 @@ Selection…): opens the designer in its own window over the main one, already r
 blocks of ten, with the length, mass (kDa), isoelectric point and charge at pH 7 (up to the first stop codon; estimates for the free chain),
 and the features inside the CDS (click one to select it). For a stretch of DNA, choose the reading frame (+1 to −3) beside the title. Select
 letters of the protein to select their codons in the sequence; the residues of whatever you select in the sequence are highlighted. While a
-CDS is shown, selecting inside it keeps it shown. *Colour* colours the letters by property (Jalview's Zappo colours: aliphatic, aromatic,
-positive, negative, polar, P and G, C), hydrophobicity (Kyte-Doolittle), size (side-chain volume) or charge, or *Same as 3D* (the colours
-of the 3D view, on the residues that are in the model); hover a choice for what its colours mean. The 3D view has the same four schemes.
+CDS is shown, selecting inside it keeps it shown. Under each line of letters, tracks show the
+*Selection* (the residues of whatever you select in the sequence; the letters stay plain), the *Structure* of the 3D model (helices pink,
+strands gold, the rest a thin line, nothing where the model has no residue), its *Confidence* (pLDDT, for a prediction), *Hydrophobicity*
+(Kyte-Doolittle), *Size* (side-chain volume: the taller the bar, the larger), *Charge* and *Property* (Jalview's Zappo colours). The
+buttons on the right of the letters switch each track on or off (remembered); hover a cell for its value. The 3D view can be coloured by
+the same schemes. Above the 3D view, what the database says about the structure: its name, source, entry (a link to its page), method,
+resolution, organism, identity, coverage, chains, mean pLDDT, and how much of the protein is in the model.
 **3D structure** (the *3D structure…* button of the Protein view): a window to choose the source: *Auto* (the cache, then AlphaFold DB when the
 CDS has a UniProt accession in its db_xref or you type one, then the PDB, then ESMFold), *PDB* (*Search PDB* lists the entries with a chain
 like the protein, 50 % identity or more, 25 amino acids or more, the closest first, with their identity, how much of the protein the chain
 covers, title, organism, method, resolution and chains: pick one and *Show this entry*, or double-click it; it is then the one kept for this
-protein. *Auto* takes the closest entry of 90 % identity or more by itself), *AlphaFold DB* (by UniProt accession; only the accession is sent), *ESMFold* (a prediction from the sequence
+protein. *Auto* takes the closest entry of 90 % identity or more by itself), *Linked entries* (*List entries* lists the PDB entries the
+CDS links in its db_xref, `PDB:1BTL` as ENA records have them, and those the PDB maps to its UniProt accession; each is compared with the
+protein here, on its closest chain, so a link to another protein shows a low identity; only the codes and the accession are sent; it is
+chosen to begin with when the CDS has PDB links; NCBI records carry no PDB links but often a UniProt accession), *AlphaFold DB* (by UniProt accession; only the accession is sent), *ESMFold* (a prediction from the sequence
 alone, up to 400 amino acids, on Meta's ESM Atlas server) or *Local command* (your own AlphaFold / ColabFold / Boltz: a command with
 {fasta} and {pdb} in it). The window says which service the sequence goes to before you press *Get structure*; nothing is sent until then,
 and the sequence only leaves this computer for the PDB, ESMFold and Auto sources. Structures are kept in the `structures` folder of the
