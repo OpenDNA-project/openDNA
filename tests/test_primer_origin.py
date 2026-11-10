@@ -203,3 +203,26 @@ def test_opening_a_primer_does_not_rebuild_the_list(tmp_path):
     after = [panel.tree.topLevelItem(i) for i in range(panel.tree.topLevelItemCount())]
     assert after == before and not reloads
     assert panel.tree.topLevelItem(0).data(0, 0x0100) in panel.expanded
+
+
+def test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle(tmp_path):
+    """On a circular sequence the designer looks through the origin: a target at base 1, at the last base, or one that passes
+    the origin gets pairs whose primers are the template's own bases and whose product holds the whole target. A linear
+    sequence has nothing before base 1."""
+    from primer_design import design
+    from editor import reverse_complement
+    rnd = random.Random(5)
+    seq = "".join(rnd.choice("ACGT") for _ in range(3000))
+    n = len(seq)
+    ed = Editor(Document.new_sequence("c", seq, True), tmp_path / "c.gb")
+    for start, end in [(0, 200), (n - 200, n), (n - 100, n + 100)]:
+        pairs = design(ed, start, end)
+        assert pairs, (start, end)
+        for p in pairs:
+            f, r = p["fwd"], p["rev"]
+            assert (seq * 2)[f["start"]:f["end"]] == f["seq"] and (seq * 2)[r["start"]:r["end"]] == reverse_complement(r["seq"])
+            before, after = (start - f["end"]) % n, (r["start"] - end) % n   # template between each primer and the target
+            assert before <= 150 and after <= 150
+            assert p["size"] == len(f["seq"]) + before + (end - start) + after + len(r["seq"])
+    linear = Editor(Document.new_sequence("l", seq, False), tmp_path / "l.gb")
+    assert design(linear, 0, 200) == [] and design(linear, 500, 700)

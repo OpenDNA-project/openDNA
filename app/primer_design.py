@@ -72,6 +72,13 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=15
     seq = editor.doc.sequence().upper()
     cond = conditions()
     fwds, revs = [], []
+    off, total = 0, n
+    if editor.doc.circular:
+        # Three laps with the target in the middle one, so primers (and the target) may pass through the origin.
+        # The two search windows must not meet on the other side of the circle.
+        off, total, seq = n, 3 * n, seq * 3
+        window = max(0, min(window, (n - (end - start)) // 2))
+        start, end = start + off, end + off
     # Forward: 3' end at p (bases [p - L, p)), p in [start - window, start].
     for p in range(max(min_len, start - window), start + 1):
         for length in range(min_len, max_len + 1):
@@ -79,16 +86,16 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=15
                 break
             c = candidate(seq[p - length:p], tm_target, cond)
             if c:
-                c.update(start=p - length, end=p)
+                c.update(start=(p - length) % n, end=(p - length) % n + length, raw=p - length)   # as binding sites: end may pass n
                 fwds.append(c)
     # Reverse: anneals [q, q + L) with its 3' end at q, q in [end, end + window].
-    for q in range(end, min(n - min_len, end + window) + 1):
+    for q in range(end, min(total - min_len, end + window) + 1):
         for length in range(min_len, max_len + 1):
-            if q + length > n:
+            if q + length > total:
                 break
             c = candidate(reverse_complement(seq[q:q + length]), tm_target, cond)
             if c:
-                c.update(start=q, end=q + length)
+                c.update(start=q % n, end=q % n + length, raw=q + length)
                 revs.append(c)
     seed, _ = homology_settings()
     for side in (fwds, revs):
@@ -107,7 +114,7 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=15
             notes = [f"F: {x}" for x in f["notes"]] + [f"R: {x}" for x in r["notes"]]
             if cross3 < -5:
                 notes.append(f"cross-dimer {cross3:.1f}")
-            pairs.append({"fwd": f, "rev": r, "size": r["end"] - f["start"], "penalty": penalty, "notes": notes})
+            pairs.append({"fwd": f, "rev": r, "size": r["raw"] - f["raw"], "penalty": penalty, "notes": notes})
     pairs.sort(key=lambda p: p["penalty"])
     return pairs[:count]
 
@@ -175,11 +182,6 @@ class DesignDialog(ToolDialog):
         if self.end <= self.start:
             QMessageBox.warning(self, "No target", "Select the region to amplify first.")
             return
-        if self.end > self.editor.length:
-            # shortcut: design() reads one linear stretch; rotate the template to support this.
-            QMessageBox.warning(self, "Across the origin", "Designing primers across the origin is not supported "
-                                "yet: select a region that does not pass base 1.")
-            return
         self._forget(self.editor)
         args = (self.editor, self.start, self.end, self.tm.value(), self.min_len.value(),
                 max(self.min_len.value(), self.max_len.value()), self.window.value())
@@ -227,7 +229,7 @@ class DesignDialog(ToolDialog):
         if 0 <= row < len(self.pairs):
             p = self.pairs[row]
             self.editor.set_extra([], self.temporary(row))
-            self.editor.reveal.emit((p["fwd"]["start"] + p["rev"]["end"]) // 2)
+            self.editor.reveal.emit((p["fwd"]["start"] + p["size"] // 2) % self.editor.length)
             fwd, rev = (primer_checks(self.editor, p[k]["seq"], "cached") for k in ("fwd", "rev"))
             self.details.setText("<table width='100%'><tr>"
                                  f"<td valign='top'><b>Forward</b>{checks_html(fwd)}</td>"
