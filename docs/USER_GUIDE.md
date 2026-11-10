@@ -233,7 +233,7 @@ accepted, only the first FASTA record is used, up to 200,000 bp); anything else,
 Tools → Align Clipboard… opens Local Align with the clipboard already aligned.
 
 Tools → Assembly opens the Assembly tab (a tool tab next to the others, not a pane: not in the pane drop-down, never split; closing it keeps
-its content). Choose the method (Gibson/HiFi, Golden Gate with BsaI, BsmBI, BbsI or SapI, or Sidewinder) and the number of fragments
+its content). Choose the method (Gibson/HiFi, Golden Gate with BsaI, BsmBI, BbsI or SapI, Sidewinder, or Restriction / ligation) and the number of fragments
 (1-12); each is a gray box. Right-click a fragment for everything that can be done to it (source, move left or right, reverse complement, destination vector, clear); the actions are a column on the right of the map (the verdict, Design primers, Save fragments, Save primers to database and, last and highlighted, Perform assembly), and the controls for what the fragment is made of are a column on the right of the sequence view. Click a box to take its DNA from a currently open file, a recent file or a file you browse to; the file is
 shown in the bottom half with the editor's own sequence view (read-only), where you select a stretch or click a primer and shift-click the one on the
 other strand (primers of the file or of the primer database) to use their PCR product, tails included. The junctions are checked as soon as every box is filled, on the real ends of the fragments: Gibson needs the end of one
@@ -246,6 +246,25 @@ the product beside the map (a ring for a circle, a bar for a line, each fragment
 a GenBank file; *Save primers to database* keeps the oligos. Sidewinder uses coding/barcode oligos with 10 nt toeholds (after Robinson et al.,
 Nature 2026; simplified). Help → Citations lists the references (engine `app/assembly.py`, panel `app/assembly_panel.py`, overhang data
 `app/overhangs.py`).
+
+**Restriction / ligation** is the plain cut-and-paste cloning most existing plasmids were made with, as one more method of the Assembly tab. Pick
+*Restriction / ligation*, then the two enzymes (*Enzyme 1*, *Enzyme 2*; the same one twice is allowed). Fragment 1 is normally the vector: a whole
+circular file is taken as a vector automatically (right-click → *Vector* to change it), cut as a ring at its one site (opened) or its two (the longer
+arc is the backbone; the stretch between the sites is thrown away, and the check list says how long it is). Every other fragment is cut at its
+outermost sites; one with no site is used with its own ends, and one cut only once is refused (it would fall into two pieces; select the stretch
+you want first). There is nothing to design, so *Design primers* rests. Junctions are read the same way as in the other methods: a pill per join
+with what joins (a *4 bp overhang*, or *blunt end*), its GC and its verdict. Two ends fit when they are the same kind (5′, 3′ or blunt) and leave
+the same bases, whichever enzymes made them, so **compatible but different enzymes are recognised** (BamHI with BglII, XbaI with SpeI, EcoRI with
+MfeI...); such a **hybrid junction destroys both sites**, and the junction's checks say so (an ordinary join says that its site is restored).
+Ends that do not fit are red with the two ends spelled out; reverse-complement a fragment (right-click) when it is simply the wrong way round.
+Two global checks are shown beside the verdict because they are the usual reasons a cloning fails: **Orientation** warns when a fragment's two ends
+are identical or compatible (one enzyme, blunt ends, BamHI with BglII), so it can go in either direction and the ligation gives two different
+products (the product shown has every fragment as given: screen the clones by colony PCR or a diagnostic digest, or use two different enzymes);
+and **Vector self-ligation** warns when the vector's two ends fit each other, so it can close on itself without an insert, and advises
+dephosphorylating the cut vector (CIP or rSAP). The product opened by *Perform assembly* is an ordinary document with the features of the vector
+and the insert carried over (a feature in the discarded stretch goes with it).
+
+All four methods read alike: a junction's pill, inspector title and report line are always *what joins · length · Tm · GC* (for example *20 bp homology · 58 °C · GC 45 %*), the first check of every junction is *ends fit*, and a problem is written as *reason: details*.
 
 **Spacer Finder** (Tools → Spacer Finder…, or the *Spacer Finder* view in any pane): Cas9 / Cas12a guides.: lists every guide of SpCas9 (NGG, 20 nt), SaCas9
 (NNGRRT, 21 nt) or Cas12a (TTTV, 23 nt) in the selection or the whole sequence, on both strands, best first, with where the nuclease cuts (Cas9: 3 bp from the PAM, both strands at once; Cas12a: the PAM is on the 5′ side, shown first, and the two strands are cut in different places, 18 and 23 bases after the PAM, leaving a 5 nt 5′ overhang; both drawn on the sequence), GC
