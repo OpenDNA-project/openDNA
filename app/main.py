@@ -68,6 +68,7 @@ from parts_library import user_library
 from cas9 import Cas9Dialog
 from tool_settings import SettingsDialog
 import genetic_code
+import fileio
 import shutil
 from file_history import FileHistory
 import add_record
@@ -1910,7 +1911,7 @@ def write_smoke_report(win, path):
               "platform": sys.platform, "qt": qVersion()}
     tmp = Path(path).with_suffix(".tmp")
     tmp.write_text(json.dumps(report, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
+    fileio.replace(tmp, path)
 
 
 def app_icon():

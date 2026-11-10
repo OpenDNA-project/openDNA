@@ -396,7 +396,7 @@ impl Document {
             gb_io::writer::write(&mut out, record)?;
             out.flush()?;
         }
-        let renamed = std::fs::rename(&tmp, path);
+        let renamed = replace_file(Path::new(&tmp), path);
         if renamed.is_err() {
             let _ = std::fs::remove_file(&tmp); // e.g. the target is a folder: leave no stray .tmp file behind
         }
@@ -1187,6 +1187,26 @@ fn canonical(key: &str, value: &str) -> String {
 fn is_iupac(b: u8) -> bool {
     matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T' | b'U' | b'R' | b'Y' | b'S' | b'W'
         | b'K' | b'M' | b'B' | b'D' | b'H' | b'V' | b'N' | b'-')
+}
+
+/// Rename `from` over `to`. On Windows a rename over a file is refused (PermissionDenied) while another thread of the app still
+/// has `to` open (the background search for primer sites reads the file's other records), and that reader lets go in a moment:
+/// so it is retried for about 5 s, only when `to` is a writable file. Any other error is returned at once.
+fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
+    let mut tries = 0;
+    loop {
+        match std::fs::rename(from, to) {
+            Err(e) if e.kind() == io::ErrorKind::PermissionDenied && tries < 49 && waiting_may_help(to) => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            other => return other,
+        }
+    }
+}
+
+fn waiting_may_help(to: &Path) -> bool {
+    std::fs::metadata(to).map(|m| m.is_file() && !m.permissions().readonly()).unwrap_or(false)
 }
 
 #[cfg(test)]

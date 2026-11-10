@@ -11,7 +11,9 @@ from pathlib import Path
 
 from opendna_core import Document
 
+import fileio
 from reference import genbank_records, is_fasta_file
+
 
 GENBANK_EXT = {".gb", ".gbk", ".gbff", ".genbank", ".gen"}
 
@@ -156,7 +158,7 @@ def _write_appended(path, write_more):
             if last and not last.endswith(b"\n"):
                 out.write(eol)   # the old last line had no line ending
             write_more(out, eol)
-        os.replace(tmp, path)
+        fileio.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -253,7 +255,7 @@ def rewrite_records(path, names):
                     last = block
                 if not last.endswith(b"\n"):
                     out.write(eol)   # the old last record had no line ending: it may not be last any more
-        os.replace(tmp, path)
+        fileio.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
     if is_fasta_file(path):
@@ -276,6 +278,6 @@ def write_record(path, name, text):
                     out.writelines(lines)
         if not replaced:
             raise OSError(f"{path.name}: no record named {name}")
-        os.replace(tmp, path)
+        fileio.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
