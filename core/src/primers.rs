@@ -8,6 +8,8 @@
 //! - Tm = ΔH / (ΔS + R·ln(C)) with C = primer concentration / 4 (or / 1 if the primer
 //!   is its own reverse complement).
 
+use crate::search::pattern_mask;
+
 /// Reaction conditions for Tm. Defaults are Primer3's.
 #[derive(Clone, Copy, Debug)]
 pub struct Conditions {
@@ -75,6 +77,71 @@ pub fn tm(seq: &[u8], c: &Conditions) -> Option<f64> {
     Some(dh * 1000.0 / (ds + R * k.ln()) - 273.15)
 }
 
+/// Lowest and highest Tm (°C) of a primer that may contain IUPAC codes: it is a mixture of every oligo the codes
+/// stand for, and each one melts differently. `None` under the same conditions as `tm`, or for a letter that is
+/// not a base or an IUPAC code. Not found by expanding the combinations (8 N's are 65,536 oligos): Tm = ΔH/(ΔS + c)
+/// is optimised exactly over the choices with Dinkelbach's method, each round a small dynamic programme along the primer.
+/// shortcut: the symmetric (self-complementary) correction is applied to the whole bracket when some expansion could be
+/// self-complementary, so then the range may be a little wider than the true one; it always still contains every oligo.
+pub fn tm_range(seq: &[u8], c: &Conditions) -> Option<(f64, f64)> {
+    let s: Vec<u8> = seq.iter().map(|b| match b.to_ascii_uppercase() { b'U' => b'T', x => x }).collect();
+    let masks: Vec<u8> = s.iter().map(|&b| pattern_mask(b, true)).collect();
+    if s.len() < 2 || masks.contains(&0) {
+        return None;
+    }
+    let n = s.len();
+    let na_eq = c.na_mm + 120.0 * (c.mg_mm - c.dntp_mm).max(0.0).sqrt();
+    let salt = 0.368 * (n - 1) as f64 * (na_eq / 1000.0).ln();
+    let ct = c.primer_nm * 1e-9;
+    let end = |b: u8| if b == b'A' || b == b'T' { (2.3, 4.1) } else { (0.1, -2.8) };
+    let options = |m: u8| -> Vec<u8> { b"ACGT".iter().enumerate().filter(|(i, _)| m >> i & 1 == 1).map(|(_, &b)| b).collect() };
+    // Best (ΔH, ΔS) of any expansion for the objective ΔH·1000 − t·ΔS: smallest when `up`, else largest.
+    let best = |t: f64, up: bool| -> (f64, f64) {
+        let sign = if up { 1.0 } else { -1.0 };
+        let cost = |(h, e): (f64, f64)| sign * (h * 1000.0 - t * e);
+        let mut layer: Vec<(u8, f64, f64)> = options(masks[0]).into_iter().map(|b| (b, end(b).0, end(b).1)).collect();
+        for &m in &masks[1..] {
+            layer = options(m)
+                .into_iter()
+                .map(|b| {
+                    let (_, h, e) = layer
+                        .iter()
+                        .map(|&(a, h, e)| { let (dh, de) = nn(&[a, b]); (a, h + dh, e + de) })
+                        .min_by(|x, y| cost((x.1, x.2)).total_cmp(&cost((y.1, y.2))))
+                        .unwrap();
+                    (b, h, e)
+                })
+                .collect();
+        }
+        let (_, h, e) = layer
+            .into_iter()
+            .map(|(b, h, e)| (b, h + end(b).0, e + end(b).1))
+            .min_by(|x, y| cost((x.1, x.2)).total_cmp(&cost((y.1, y.2))))
+            .unwrap();
+        (h, e)
+    };
+    let extreme = |up: bool, extra_ds: f64, k: f64| -> f64 {
+        let tm_of = |(h, e): (f64, f64)| h * 1000.0 / (e + extra_ds + salt + R * k.ln());
+        let mut t = 0.0;
+        for _ in 0..100 {
+            let next = tm_of(best(t, up));
+            if (next - t).abs() < 1e-9 {
+                break;
+            }
+            t = next;
+        }
+        t - 273.15
+    };
+    let (mut lo, mut hi) = (extreme(false, 0.0, ct / 4.0), extreme(true, 0.0, ct / 4.0));
+    // Could some expansion be its own reverse complement? Then position i must allow the complement of position n-1-i.
+    let comp = |m: u8| ((m & 1) << 3) | ((m & 2) << 1) | ((m & 4) >> 1) | ((m & 8) >> 3);
+    if n % 2 == 0 && (0..n).all(|i| masks[i] & comp(masks[n - 1 - i]) != 0) {
+        lo = lo.min(extreme(false, -1.4, ct));
+        hi = hi.max(extreme(true, -1.4, ct));
+    }
+    Some((lo, hi))
+}
+
 /// Where a primer anneals on the template. Coordinates are on the top strand, 0-based:
 /// bases `[start, start + len)`; on a circular template `start + len` may pass the end
 /// (the site wraps through the origin).
@@ -101,6 +168,8 @@ const EXACT_3P: usize = 3;
 /// whole-genome primer lists become slow.
 pub fn binding_sites(template: &[u8], primer: &[u8], circular: bool, seed: usize, max_mismatches: usize) -> Vec<Site> {
     let p: Vec<u8> = primer.iter().map(|b| match b.to_ascii_uppercase() { b'U' => b'T', x => x }).collect();
+    // A degenerate base in the primer (R, N, ...) matches every base it stands for; the template is compared letter for letter.
+    let same = |t: u8, q: u8| t == q || (b"ACGT".iter().position(|&x| x == t).map_or(0, |i| 1u8 << i) & pattern_mask(q, true)) != 0;
     let n = template.len();
     if p.len() < 8 || n == 0 || seed < 4 {
         return Vec::new(); // too short to bind specifically
@@ -130,15 +199,15 @@ pub fn binding_sites(template: &[u8], primer: &[u8], circular: bool, seed: usize
     let rev_seed = &rc[..seed];
     for i in 0..last_start {
         // Forward: mismatches allowed except in the last EXACT_3P bases of the seed.
-        if let Some(mm) = seed_mismatches(&base, i as i64, fwd_seed, max_mismatches, |k| k + EXACT_3P >= seed) {
-            let (ext, ext_mm) = extend(reach, |j| Some((base(i as i64 - 1 - j as i64)?, p[p.len() - seed - 1 - j])));
+        if let Some(mm) = seed_mismatches(&base, i as i64, fwd_seed, max_mismatches, &same, |k| k + EXACT_3P >= seed) {
+            let (ext, ext_mm) = extend(reach, &same, |j| Some((base(i as i64 - 1 - j as i64)?, p[p.len() - seed - 1 - j])));
             let len = (seed + ext).min(n);
             let start = (i as i64 - ext as i64).rem_euclid(n as i64) as usize;
             sites.push(Site { start, len, forward: true, mismatches: mm + ext_mm });
         }
         // Reverse: the primer's 3' end is the first EXACT_3P bases of `rev_seed`.
-        if let Some(mm) = seed_mismatches(&base, i as i64, rev_seed, max_mismatches, |k| k < EXACT_3P) {
-            let (ext, ext_mm) = extend(reach, |j| Some((base((i + seed + j) as i64)?, rc[seed + j])));
+        if let Some(mm) = seed_mismatches(&base, i as i64, rev_seed, max_mismatches, &same, |k| k < EXACT_3P) {
+            let (ext, ext_mm) = extend(reach, &same, |j| Some((base((i + seed + j) as i64)?, rc[seed + j])));
             sites.push(Site { start: i, len: (seed + ext).min(n), forward: false, mismatches: mm + ext_mm });
         }
     }
@@ -151,11 +220,11 @@ pub fn binding_sites(template: &[u8], primer: &[u8], circular: bool, seed: usize
 /// by matching bases is crossed (they still anneal), two in a row end the site (the rest
 /// is a 5' tail). `pair(j)` = (template base, primer base) j steps past the seed, None
 /// past the template's end.
-fn extend(reach: usize, pair: impl Fn(usize) -> Option<(u8, u8)>) -> (usize, usize) {
+fn extend(reach: usize, same: &impl Fn(u8, u8) -> bool, pair: impl Fn(usize) -> Option<(u8, u8)>) -> (usize, usize) {
     let (mut score, mut best, mut best_len, mut mm, mut best_mm) = (0i64, 0i64, 0, 0, 0);
     for j in 0..reach {
         let Some((t, q)) = pair(j) else { break };
-        if t == q {
+        if same(t, q) {
             score += 1;
         } else {
             score -= 2;
@@ -179,11 +248,12 @@ fn seed_mismatches(
     at: i64,
     seed: &[u8],
     max: usize,
+    same: &impl Fn(u8, u8) -> bool,
     exact: impl Fn(usize) -> bool,
 ) -> Option<usize> {
     let mut mm = 0;
     for (k, &b) in seed.iter().enumerate() {
-        if base(at + k as i64)? != b {
+        if !same(base(at + k as i64)?, b) {
             if exact(k) || mm == max {
                 return None;
             }
@@ -309,7 +379,15 @@ pub fn revcomp(seq: &[u8]) -> Vec<u8> {
             b'T' => b'A',
             b'C' => b'G',
             b'G' => b'C',
-            x => x,
+            b'R' => b'Y',
+            b'Y' => b'R',
+            b'K' => b'M',
+            b'M' => b'K',
+            b'B' => b'V',
+            b'V' => b'B',
+            b'D' => b'H',
+            b'H' => b'D',
+            x => x, // S, W, N pair with themselves
         })
         .collect()
 }
@@ -330,6 +408,85 @@ mod tests {
         // More salt or more primer = higher Tm.
         let salty = Conditions { na_mm: 200.0, ..c };
         assert!(tm(b"AGCGGATAACAATTTCACACAGGA", &salty).unwrap() > t);
+    }
+
+    /// Every plain oligo a degenerate primer stands for (test helper; only for short ones).
+    fn expand(seq: &str) -> Vec<String> {
+        let mut out = vec![String::new()];
+        for ch in seq.bytes() {
+            let m = pattern_mask(ch, true);
+            out = out
+                .iter()
+                .flat_map(|p| b"ACGT".iter().enumerate().filter(move |(i, _)| m >> i & 1 == 1).map(move |(_, &b)| format!("{p}{}", b as char)))
+                .collect();
+        }
+        out
+    }
+
+    #[test]
+    fn tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos() {
+        let c = Conditions::default();
+        for degenerate in ["AGCGGRTAACAATYTCACACNGGA", "ACGTSACGTWACGTKACGT", "GAATTCNNGAATTC", "RYGCGCRY"] {
+            let tms: Vec<f64> = expand(degenerate).iter().map(|o| tm(o.as_bytes(), &c).unwrap()).collect();
+            let (lo, hi) = tm_range(degenerate.as_bytes(), &c).unwrap();
+            let (min, max) = (tms.iter().cloned().fold(f64::MAX, f64::min), tms.iter().cloned().fold(f64::MIN, f64::max));
+            assert!(lo <= min + 1e-9 && hi >= max - 1e-9, "{degenerate}: [{lo}, {hi}] must bracket [{min}, {max}]");
+            // tight unless the self-complementary widening applied
+            if degenerate != "GAATTCNNGAATTC" && degenerate != "RYGCGCRY" {
+                assert!((lo - min).abs() < 1e-6 && (hi - max).abs() < 1e-6, "{degenerate}: [{lo}, {hi}] vs [{min}, {max}]");
+            }
+        }
+    }
+
+    #[test]
+    fn tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none() {
+        let c = Conditions::default();
+        let t = tm(b"AGCGGATAACAATTTCACACAGGA", &c).unwrap();
+        let (lo, hi) = tm_range(b"AGCGGATAACAATTTCACACAGGA", &c).unwrap();
+        assert!((lo - t).abs() < 1e-6 && (hi - t).abs() < 1e-6);
+        assert!(tm_range(b"ACGTX", &c).is_none() && tm_range(b"A", &c).is_none());
+        assert!(tm(b"ACGTN", &c).is_none(), "tm itself stays plain-ACGT only");
+    }
+
+    #[test]
+    fn a_degenerate_primer_binds_every_site_it_matches_with_no_mismatch() {
+        let flank = "T".repeat(20);
+        let (a, g) = ("ACGTTGCAGGCTAGCTAGGA", "ACGTTGCAGGCTAGCTAGGA");
+        // three degenerate positions: R (A/G), N, Y (C/T); the template carries three variants of the site
+        let variant = |r: char, n: char, y: char| {
+            let mut v: Vec<char> = a.chars().collect();
+            (v[2], v[8], v[12]) = (r, n, y);
+            v.into_iter().collect::<String>()
+        };
+        let template = format!("{flank}{}{flank}{}{flank}{}{flank}", variant('A', 'C', 'C'), variant('G', 'T', 'T'), variant('G', 'A', 'C'));
+        let primer = {
+            let mut v: Vec<char> = g.chars().collect();
+            (v[2], v[8], v[12]) = ('R', 'N', 'Y');
+            v.into_iter().collect::<String>()
+        };
+        let sites = binding_sites(template.as_bytes(), primer.as_bytes(), false, SEED, 0);
+        let starts: Vec<usize> = sites.iter().filter(|s| s.forward).map(|s| s.start).collect();
+        assert_eq!(starts, vec![20, 60, 100]);
+        assert!(sites.iter().all(|s| s.len == 20 && s.mismatches == 0));
+        // a base outside the code is still a mismatch (template has A where Y allows only C/T)
+        let off = template.replacen(&variant('A', 'C', 'C'), &variant('A', 'C', 'A'), 1);
+        let starts: Vec<usize> = binding_sites(off.as_bytes(), primer.as_bytes(), false, SEED, 0).iter().map(|s| s.start).collect();
+        assert_eq!(starts, vec![60, 100]);
+        // a degenerate base in the template still matches only the identical letter
+        let n_template = template.replacen(&variant('A', 'C', 'C'), &variant('A', 'C', 'N'), 1);
+        let starts: Vec<usize> = binding_sites(n_template.as_bytes(), primer.as_bytes(), false, SEED, 0).iter().map(|s| s.start).collect();
+        assert_eq!(starts, vec![60, 100]);
+    }
+
+    #[test]
+    fn a_degenerate_reverse_primer_binds_the_opposite_strand_using_complemented_codes() {
+        let site = "ACGTTGCAGGCTAGCTAGGA";
+        let template = format!("{0}{site}{0}", "T".repeat(20));
+        // reverse primer = reverse complement of the site, with R in place of the base opposite the site's Y-compatible C/T
+        let mut rc = revcomp(site.as_bytes());
+        rc[5] = b'R'; // opposite a T on the top strand? R = A/G pairs with T/C
+        let sites = binding_sites(template.as_bytes(), &rc, false, SEED, 0);
+        assert_eq!(sites.iter().filter(|s| !s.forward).map(|s| (s.start, s.len, s.mismatches)).collect::<Vec<_>>(), vec![(20, 20, 0)]);
     }
 
     #[test]

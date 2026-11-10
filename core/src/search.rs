@@ -31,7 +31,7 @@ pub struct MotifHit {
 const NOT_IUPAC_N: u8 = 0x80;
 
 /// The bits of the pattern letter `c`, or 0 when it is not a letter we can search for.
-fn pattern_mask(c: u8, iupac: bool) -> u8 {
+pub(crate) fn pattern_mask(c: u8, iupac: bool) -> u8 {
     match c.to_ascii_uppercase() {
         b'A' => 1,
         b'C' => 2,

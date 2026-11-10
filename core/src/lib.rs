@@ -686,6 +686,13 @@ fn tm(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64, primer_nm: f64) -> Option
     primers::tm(seq.as_bytes(), &primers::Conditions { na_mm, mg_mm, dntp_mm, primer_nm })
 }
 
+/// `opendna_core.tm_range("ARGT...")`: (lowest, highest) Tm in °C of a primer with IUPAC codes (a mixture of oligos).
+#[pyfunction]
+#[pyo3(signature = (seq, na_mm=50.0, mg_mm=1.5, dntp_mm=0.6, primer_nm=50.0))]
+fn tm_range(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64, primer_nm: f64) -> Option<(f64, f64)> {
+    primers::tm_range(seq.as_bytes(), &primers::Conditions { na_mm, mg_mm, dntp_mm, primer_nm })
+}
+
 /// `opendna_core.find_primers(template, circular, primers, max_mismatches, seed)`:
 /// binding sites of every primer on a sequence string, as one list of
 /// (start, end, strand, mismatches) per primer. Takes a copy of the sequence (not a
@@ -850,6 +857,7 @@ fn hairpin(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64) -> (f64, f64) {
 #[pymodule]
 fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tm, m)?)?;
+    m.add_function(wrap_pyfunction!(tm_range, m)?)?;
     m.add_function(wrap_pyfunction!(quick_align, m)?)?;
     m.add_function(wrap_pyfunction!(find_primers, m)?)?;
     m.add_function(wrap_pyfunction!(find_parts, m)?)?;
