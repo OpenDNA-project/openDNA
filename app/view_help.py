@@ -63,6 +63,14 @@ HELP = {
         "3D structure... gets a model (AlphaFold, PDB, ESMFold or your own command) and shows it beside the letters: drag to turn, click a residue to select it.",
         "Options chooses the genetic code (a CDS with /transl_table keeps its own).",
     ],
+    "MSA": [
+        "Compares several sequences at once: one row per sequence, columns coloured by how conserved they are, a consensus row below.",
+        "Sequences: the records of this file, files you pick, or the open sequence plus the selection.",
+        "Method: MAFFT or Clustal Omega when installed, else the built-in aligner (a few kb).",
+        "The percentage by each name is its identity to the reference (or the consensus): change it with Identity to.",
+        "Click a column to put the cursor there, in every sequence; drag to select columns.",
+        "Selecting in another view marks its columns here.",
+    ],
     "PCR": [
         "Shows the product of two primers that bind this sequence.",
         "Pick a forward and a reverse primer from the lists.",

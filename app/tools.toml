@@ -33,3 +33,19 @@ label = "Long reads, PacBio HiFi (minimap2 -x map-hifi)"
 needs = ["minimap2", "samtools"]
 run = "minimap2 -ax map-hifi -t {threads} {ref} {reads1} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
 result = "{out}.bam"
+
+# Multiple sequence alignment (the Multiple Alignment view). {ref} is a FASTA of the sequences to align, `kind = "msa"` keeps
+# these out of the mapper list of Map Reads, and `result` is the aligned FASTA the view reads back.
+[mafft]
+kind = "msa"
+label = "MAFFT"
+needs = ["mafft"]
+run = "mafft --auto --thread {threads} {ref} > {out}.fa"
+result = "{out}.fa"
+
+[clustalo]
+kind = "msa"
+label = "Clustal Omega"
+needs = ["clustalo"]
+run = "clustalo -i {ref} -o {out}.fa --outfmt=fa --force --threads={threads}"
+result = "{out}.fa"

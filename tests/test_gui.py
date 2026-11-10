@@ -757,7 +757,7 @@ def test_workspace_tabs_and_view_picker(app, errors):
     ws = win.workspace
     groups = workspace.grouped_views()
     assert [g for g, _ in groups] == ["Views", "Annotations", "Tools"]
-    assert groups[0][1] == ["Alignment", "Map", "Protein", "Sequence"]
+    assert groups[0][1] == ["Alignment", "Map", "MSA", "Protein", "Sequence"]
     assert groups[1][1] == ["Features", "Primers", workspace.SEPARATOR, "Detect Features", "Detect ORFs"]
     tools = groups[2][1]
     assert tools == sorted(tools) and {"Assembly", "Digest", "Local Align", "PCR", "Spacer Finder"} <= set(tools)
