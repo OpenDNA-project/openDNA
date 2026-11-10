@@ -324,7 +324,7 @@ The Features Database lists each feature with its **Source** instead of a locati
 the column by values goes by the source's name); **Measured** appears only when a source measured a
 strength. *Sources* in the header ticks the sources that Detect Common Features and the Plasmid Checkup look for. Right-click a
 feature to delete it, which is only possible for Local features: a published source is switched off whole. The Primer Database adds
-the **Note** and the day each primer was **Added**; open a primer (its ▸) to see where it binds in the background genome; its header has New, Edit, Delete, Import, Export and Options (double-click a
+the **Note** and the day each primer was **Added**; open a primer (its ▸) to see where it binds in the background genome; its header has New, Edit, Delete, Import, Export, Export for Ordering and Options (double-click a
 primer to edit it). **Help** explains the tab and shows where the database is kept, how many entries it holds and what is wrong in it
 (rows with no sequence, letters that are not bases, names used twice), with *Open Folder*; Databases → Database Status shows the same.
 The restriction enzymes are listed in Tools → Restriction Digest, with the Owned box of the enzyme inventory.
@@ -451,3 +451,18 @@ for each.
 **Input checks.** Every field that takes a value was audited (`docs/INPUT_AUDIT.md`): sequence fields take pasted FASTA or
 numbered blocks and say why when the text is not DNA, numbers outside the possible range are refused with a message, long text
 has a maximum length, and a dialog that finds a mistake stays open with what you typed.
+
+## Exporting primers for ordering
+
+**Export for Ordering…** (the Primer Database header, or Export → Primers → For Ordering) writes the primers as a file an oligo
+supplier accepts, so an order is not retyped. It exports the primers **selected** in the Primer Database, or all of them when none is
+selected. A small dialog asks for the format:
+
+- **IDT plate (CSV)**: one row per oligo with *Well Position, Name, Sequence, Scale, Purification*. Wells fill a 96-well plate down the
+  columns (A1, B1 … H1, A2 …), the order IDT expects. Scale (default 25nm) and purification (default STD) apply to every oligo. Past 96
+  oligos the list continues on a second plate, and **each plate is its own file**: choosing `order.csv` writes `order_plate1.csv`,
+  `order_plate2.csv` and so on (a single plate is just `order.csv`). The dialog says how many plates there will be.
+- **Name and sequence (CSV)**: two columns, no header, for any other supplier.
+
+Sequences are written in capitals; degenerate bases (N, R, Y…) are kept, as suppliers take them. A tab or line break in a name becomes a
+space, and a comma or quote in a name is quoted properly in the CSV.

@@ -185,6 +185,49 @@ class PrimerDB:
             writer.writerows(self.rows)
 
 
+ORDER_FORMATS = ["IDT plate (CSV)", "Name and sequence (CSV)"]
+SCALES = ["25nm", "100nm", "250nm", "1um", "2um", "5um", "10um"]   # IDT's synthesis scales
+PURIFICATIONS = ["STD", "PAGE", "HPLC", "IEHPLC", "RNASE", "PAGE_HPLC"]
+PLATE_SIZE = 96
+
+
+def well(i):
+    """Well of the i-th oligo (from 0) on a 96-well plate, filled down the columns: A1, B1 … H1, A2 … (the order IDT expects)."""
+    return f"{'ABCDEFGH'[i % 8]}{i // 8 % 12 + 1}"
+
+
+def order_rows(rows):
+    """[(name, sequence)] ready for a supplier's importer. A tab, line break or other control character in a name becomes a space
+    (it would split the field); commas and quotes are left alone, the CSV writer quotes them. Degenerate bases are kept."""
+    return [(" ".join("".join(c if c.isprintable() else " " for c in r["name"]).split()), "".join(r["sequence"].split()).upper())
+            for r in rows]
+
+
+def export_order(rows, path, fmt=ORDER_FORMATS[0], scale="25nm", purification="STD"):
+    """Writes `rows` (primer-database rows) as an order file. Returns the files written: one for the plain CSV; for the IDT format
+    one per 96 oligos (a single file keeps `path`, several become name_plate1.csv, name_plate2.csv …). ValueError when empty."""
+    primers = order_rows(rows)
+    if not primers:
+        raise ValueError("There are no primers to export.")
+    path = Path(path)
+    if fmt == ORDER_FORMATS[1]:
+        chunks = [primers]
+    else:
+        chunks = [primers[i:i + PLATE_SIZE] for i in range(0, len(primers), PLATE_SIZE)]
+    written = []
+    for n, chunk in enumerate(chunks, 1):
+        target = path if len(chunks) == 1 else path.with_name(f"{path.stem}_plate{n}{path.suffix}")
+        with open(target, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.writer(fh)
+            if fmt == ORDER_FORMATS[1]:
+                writer.writerows(chunk)
+            else:
+                writer.writerow(["Well Position", "Name", "Sequence", "Scale", "Purification"])
+                writer.writerows((well(i), name, seq, scale, purification) for i, (name, seq) in enumerate(chunk))
+        written.append(target)
+    return written
+
+
 _db = None
 
 
