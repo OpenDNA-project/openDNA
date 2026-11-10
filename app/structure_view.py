@@ -13,9 +13,10 @@ import math
 from html import escape
 
 from PySide6.QtCore import QPointF, Qt, Signal
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPalette, QPen
+from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QToolButton, QToolTip, QVBoxLayout, QWidget,
+    QComboBox, QGridLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSizePolicy, QToolButton, QToolTip, QVBoxLayout,
+    QWidget,
 )
 
 import structure
@@ -110,6 +111,7 @@ class StructureCanvas(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.residues, self.ligands, self.to_model, self.to_protein = [], [], {}, {}
         self.highlight, self.mode, self.plddt = set(), "Rainbow", False
+        self.hidden = set()   # chains ("A") and ligand groups ("HEM A900") not drawn
         self.points, self.owner, self.links, self.cas, self.atoms = [], [], [], [], {}
         self.reset_view()
 
@@ -131,7 +133,8 @@ class StructureCanvas(QWidget):
         self.cas = [tuple(c - m for c, m in zip(r.ca, centre)) for r in self.residues]
         self.atoms = {k: [(name, el, tuple(c - m for c, m in zip(xyz, centre))) for name, el, xyz in r.atoms]
                       for k, r in enumerate(self.residues)}
-        self.ligands = [(el, tuple(c - m for c, m in zip(xyz, centre))) for el, xyz in self.ligands]
+        self.ligands = [(el, tuple(c - m for c, m in zip(xyz, centre)), group) for el, xyz, group in self.ligands]
+        self.hidden = set()
         # fit the folded part: a floppy tail (a signal peptide in a prediction, a tenth of the chain) would leave it tiny, so the
         # radius is that of 85 % of the backbone, plus a little
         far = sorted(math.sqrt(sum(c * c for c in p)) for p in self.points)
@@ -148,6 +151,11 @@ class StructureCanvas(QWidget):
         if wanted != self.highlight:
             self.highlight = wanted
             self.update()
+
+    def set_shown(self, key, shown):
+        """Show or hide the chain or ligand group `key`."""
+        (self.hidden.discard if shown else self.hidden.add)(key)
+        self.update()
 
     def set_mode(self, mode):
         self.mode = mode
@@ -194,6 +202,8 @@ class StructureCanvas(QWidget):
         """Index in `residues` of the alpha carbon under `pos` (the nearest to the viewer), or None."""
         best = None
         for k, ca in enumerate(self.cas):
+            if self.residues[k].chain in self.hidden:
+                continue
             x, y, z = self.project(ca)
             if (x - pos.x()) ** 2 + (y - pos.y()) ** 2 <= PICK_RADIUS ** 2 and (best is None or z > best[0]):
                 best = (z, k)
@@ -229,9 +239,13 @@ class StructureCanvas(QWidget):
         items = []   # (depth, kind, ...): drawn far to near
         for a, b in self.links:
             k = self.owner[a]
+            if self.residues[k].chain in self.hidden:
+                continue
             w = WIDTH[self.residues[k].ss] * (1.4 if k in self.highlight else 1.0)
             items.append(((screen[a][2] + screen[b][2]) / 2, 0, a, b, colours[k], w * s, dim and k not in self.highlight))
         for k in self.highlight:
+            if self.residues[k].chain in self.hidden:
+                continue
             atoms = self.atoms[k]
             seen = [self.project(xyz) for _, _, xyz in atoms]
             for i in range(len(atoms)):
@@ -240,7 +254,9 @@ class StructureCanvas(QWidget):
                         items.append(((seen[i][2] + seen[j][2]) / 2, 1, seen[i], seen[j], "#808080", 0.3 * s))
             for (_, el, _), pa in zip(atoms, seen):
                 items.append((pa[2] + 0.01, 2, pa, ELEMENT_COLOURS.get(el, colours.get(k, "#909090")), 0.35 * s))
-        for el, xyz in self.ligands:
+        for el, xyz, group in self.ligands:
+            if group in self.hidden:
+                continue
             pa = self.project(xyz)
             items.append((pa[2], 2, pa, ELEMENT_COLOURS.get(el, "#5FAE57"), 0.45 * s, dim))
         items.sort(key=lambda item: item[0])
@@ -359,7 +375,17 @@ class StructureView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(top)
         layout.addLayout(self.fields)
-        layout.addWidget(self.canvas, 1)
+        # what the model holds, a click on a row shows or hides it: the chains, then the other molecules (cofactors, ions...)
+        self.parts = QListWidget(toolTip="Click to show or hide", selectionMode=QListWidget.NoSelection)
+        self.parts.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.parts.setMaximumWidth(150)
+        self.parts.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)   # long names are cut short (whole in the tooltip)
+        self.parts.itemClicked.connect(self._toggle)
+        middle = QHBoxLayout()
+        middle.setContentsMargins(0, 0, 0, 0)
+        middle.addWidget(self.canvas, 1)
+        middle.addWidget(self.parts)
+        layout.addLayout(middle, 1)
         self.protein = None   # the amino acids shown
         self.shown_fields = {}   # field -> text, as shown
 
@@ -395,6 +421,30 @@ class StructureView(QWidget):
             self.fields.addWidget(shown, row, column * 2 + 1, Qt.AlignLeft | Qt.AlignTop)   # (top: in line with its name)
         self.fields.setColumnStretch(1, 1)
         self.fields.setColumnStretch(3, 1)
+        self.parts.clear()
+        residues = self.canvas.residues
+        chains = sorted({r.chain for r in residues})
+        for n, c in enumerate(chains):
+            swatch = QPixmap(10, 10)
+            swatch.fill(QColor(CHAIN_COLOURS[n % len(CHAIN_COLOURS)]))   # the colours of the "Chain" colouring
+            self._add_part(f"Chain {c} · {sum(r.chain == c for r in residues):,} aa", c, QIcon(swatch))
+        for group in dict.fromkeys(g for _, _, g in self.canvas.ligands):
+            self._add_part(group, group)
+        self.parts.setVisible(self.parts.count() > 1)   # one chain alone: nothing to choose
+
+    def _add_part(self, text, key, icon=None):
+        item = QListWidgetItem(text, self.parts)
+        item.setToolTip(f"{text}: click to show or hide")
+        if icon:
+            item.setIcon(icon)
+        item.setData(Qt.UserRole, key)
+        item.setFlags(Qt.ItemIsEnabled)   # not user-checkable: the click anywhere on the row toggles it (_toggle), once
+        item.setCheckState(Qt.Checked)
+
+    def _toggle(self, item):
+        shown = item.checkState() != Qt.Checked
+        item.setCheckState(Qt.Checked if shown else Qt.Unchecked)
+        self.canvas.set_shown(item.data(Qt.UserRole), shown)
 
     def set_highlight(self, indices):
         self.canvas.set_highlight(indices)

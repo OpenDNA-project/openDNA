@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 import pytest
 from PySide6.QtTest import QTest
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtWidgets import QApplication, QLabel
 
 import structure
@@ -304,7 +305,7 @@ def test_model_secondary_structure_and_residue_map():
               line(401, "HOH", "A", 901, (1, 1, 1), name="O", record="HETATM", element="O"),
               "ENDMDL", line(500, "ALA", "E", 1, (9, 9, 9))]
     residues, ligands = structure.model_of("\n".join(lines))
-    assert ligands == [("FE", (0.0, 0.0, 0.0))], "water and the second model are left out"
+    assert ligands == [("FE", (0.0, 0.0, 0.0), "HEM A900")],"water and the second model are left out"
     ss = {c: "".join(r.ss for r in residues if r.chain == c) for c in "ABCDE"}
     assert ss == {"A": "H" * 12, "B": "EEEEEE", "C": "EEEEEE", "D": "------", "E": ""}
     # --- the protein on three chains: A numbered from 10 without its W and with an A for an L, B whole, C unrelated
@@ -320,3 +321,22 @@ def test_model_secondary_structure_and_residue_map():
     assert names[2] == ["B3"], "W is missing from chain A"
     assert names[5] == ["A14", "B6"], "a substitution keeps its place"
     assert not any(n.startswith("C") for ns in names.values() for n in ns), "a chain that does not match is left out"
+
+
+def test_view_parts_toggle():
+    """The list beside the 3D view: one row per chain, then one per ligand; a click on a row hides it from the drawing and the picking."""
+    from structure_view import StructureView
+    lines = [line(i + 1, "ALA", c, i + 1, (3.8 * i, 5.0 * n, 0)) for n, c in enumerate("AB") for i in range(4)]
+    lines += [line(90, "HEM", "A", 900, (0, 0, 9), name="FE", record="HETATM", element="FE"),
+              line(91, "HEM", "A", 900, (1, 0, 9), name="NA", record="HETATM", element="N")]
+    view = StructureView()
+    view.set_structure(structure.Structure("\n".join(lines), "PDB", "two chains and a heme", False), "AAAA")
+    rows = [view.parts.item(i) for i in range(view.parts.count())]
+    assert [r.text() for r in rows] == ["Chain A · 4 aa", "Chain B · 4 aa", "HEM A900"]
+    view.parts.itemClicked.emit(rows[0])
+    view.parts.itemClicked.emit(rows[2])
+    assert view.canvas.hidden == {"A", "HEM A900"} and rows[0].checkState() == Qt.Unchecked
+    assert view.canvas.residue_at(QPointF(*view.canvas.project(view.canvas.cas[0])[:2])) is None, "a hidden chain is not picked"
+    view.canvas.grab()   # draws without the hidden parts
+    view.parts.itemClicked.emit(rows[0])
+    assert view.canvas.hidden == {"HEM A900"}

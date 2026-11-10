@@ -504,7 +504,8 @@ class Residue:
 
 def model_of(pdb):
     """(residues, ligand atoms) of the first model of the PDB text: the amino acids that have an alpha carbon, in file order (first
-    alternate location only), and [(element, (x, y, z))] of the other HETATM records, water left out."""
+    alternate location only), and [(element, (x, y, z), group)] of the other HETATM records, water left out; `group` names the molecule
+    the atom is part of ("HEM A900": its name, chain and number)."""
     residues, ligands, by_key = [], [], {}
     for line in pdb.splitlines():
         if line.startswith("ENDMDL"):
@@ -531,7 +532,7 @@ def model_of(pdb):
                 except ValueError:
                     pass
         elif line.startswith("HETATM") and kind not in WATER:
-            ligands.append((element.upper(), xyz))
+            ligands.append((element.upper(), xyz, f"{kind} {line[21]}{line[22:27].strip()}"))
     residues = [r for r in residues if r.ca]
     secondary(residues)
     return residues, ligands
