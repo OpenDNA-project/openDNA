@@ -233,6 +233,15 @@ accepted, only the first FASTA record is used, up to 200,000 bp); anything else,
 *Paste from clipboard* replaces the query with the clipboard's DNA (a message says when the clipboard is empty or has no DNA), and
 Tools → Align Clipboard… opens Local Align with the clipboard already aligned.
 
+Tools → Folder Search… answers "which of my plasmids carries this sequence?". Give it a query (the selection of the open
+sequence if it is 12 bp or longer, else the clipboard's DNA; or paste bases, FASTA or a primer) and a folder, and it aligns the query
+(both strands, mismatches and gaps allowed, like Local Align) against every record of every GenBank, `.dna` and FASTA file in the
+folder and its sub-folders, including each record inside a multi-record file. No index is built; a few hundred plasmids take seconds,
+in the background with a progress bar and a Cancel button. The list shows file, record, position, strand, identity and length, best
+first (identity, then length), at most 5 hits per file so one repetitive genome cannot flood it. Double-click a row (or press Enter)
+to open that file at that position with the match selected. Files that cannot be read are skipped and counted in the status line.
+*Copy results* puts the list on the clipboard as tab-separated text for a lab notebook or a spreadsheet. The last folder is remembered.
+
 Tools → Assembly opens the Assembly tab (a tool tab next to the others, not a pane: not in the pane drop-down, never split; closing it keeps
 its content). Choose the method (Gibson/HiFi, Golden Gate with BsaI, BsmBI, BbsI or SapI, Sidewinder, or Restriction / ligation) and the number of fragments
 (1-12); each is a gray box. Right-click a fragment for everything that can be done to it (source, move left or right, reverse complement, destination vector, clear); the actions are a column on the right of the map (the verdict, Design primers, Save fragments, Save primers to database and, last and highlighted, Perform assembly), and the controls for what the fragment is made of are a column on the right of the sequence view. Click a box to take its DNA from a currently open file, a recent file or a file you browse to; the file is
