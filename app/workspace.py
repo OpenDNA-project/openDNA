@@ -28,6 +28,7 @@ from display_panel import QuickFilters
 from feature_table import FeatureTable
 from genome_view import GenomeView
 from map_view import MapView
+from msa_view import MsaView
 from local_align import LocalAlignDialog
 from primer_panel import PrimerPanel
 from protein import ProteinView
@@ -45,6 +46,7 @@ VIEWS = {
     "Features": lambda w: FeatureTable(w.editor),
     "Primers": lambda w: PrimerPanel(w.editor),
     "Protein": lambda w: ProteinView(w.editor),
+    "MSA": lambda w: MsaView(w.editor),
     "PCR": lambda w: PcrDialog(w, w.editor).embed(w.open_pcr_product),
     "Spacer Finder": lambda w: Cas9Dialog(w, w.editor).embed(),
     "Local Align": lambda w: LocalAlignDialog(w, w.editor).embed(),
@@ -58,7 +60,7 @@ VIEWS = {
 # The picker lists the views by group, in the order written here (None = a thin dividing line); every view not named here
 # is a tool (listed alphabetically).
 SEPARATOR = None
-GROUPS = [("Views", ["Alignment", "Map", "Protein", "Sequence"]),
+GROUPS = [("Views", ["Alignment", "Map", "MSA", "Protein", "Sequence"]),
           ("Annotations", ["Features", "Primers", SEPARATOR, "Detect Features", "Detect ORFs"])]
 # Tools that are tabs, not panes: choosing one in a picker opens (or shows) its tab and leaves the pane as it was.
 TAB_TOOLS = {"Assembly": lambda window: window.show_assembly()}
@@ -577,4 +579,4 @@ class Workspace(QTabWidget):
 
 
 NAME_OF = {SequenceView: "Sequence", MapView: "Map", GenomeView: "Alignment", FeatureTable: "Features",
-           PrimerPanel: "Primers", ProteinView: "Protein"}
+           PrimerPanel: "Primers", ProteinView: "Protein", MsaView: "MSA"}

@@ -209,6 +209,8 @@ class MapReadsDialog(QDialog):
         self.recipes = recipes()
         self.recipe = QComboBox()
         for key, r in self.recipes.items():
+            if r.get("kind") == "msa":   # an aligner, not a mapper
+                continue
             self.recipe.addItem(r.get("label", key), key)
         self.reads1, self.reads2 = QLineEdit(), QLineEdit(placeholderText="optional: mate reads (paired-end)")
         self.out = QLineEdit()
