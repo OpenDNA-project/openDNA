@@ -119,18 +119,37 @@ over 100 million are not fetched (use NCBI Datasets).
 Selection…): opens the designer in its own window over the main one, already run on the selection; the selected pair is drawn in the sequence view as **temporary primers** (teal, "pair1_F" /
 "pair1_R": they are not in the primer database and have no menu yet) so you see where each one binds, and each row you click shows its pair.
 *Save pair to database…* names them and makes them regular primers; closing the tab forgets the unsaved ones.
-**Protein view** (pick *Protein* in any pane's view picker): click a CDS, or select a stretch of DNA, and the view shows its amino acids numbered in
-blocks of ten, with the length, mass (kDa), isoelectric point and charge at pH 7 (up to the first stop codon; estimates for the free chain),
+**Protein view** (pick *Protein* in any pane's view picker): click a CDS, or select a stretch of DNA, and the view shows its amino acids in
+groups of ten, as many to a row as the pane is wide (each row numbered on the left, the end of each group numbered above it), with the length, mass (kDa), isoelectric point and charge at pH 7 (up to the first stop codon; estimates for the free chain),
 and the features inside the CDS (click one to select it). For a stretch of DNA, choose the reading frame (+1 to −3) beside the title. Select
 letters of the protein to select their codons in the sequence; the residues of whatever you select in the sequence are highlighted. While a
-CDS is shown, selecting inside it keeps it shown.
+CDS is shown, selecting inside it keeps it shown. A selection is bracketed as in the DNA view: "[" before its
+first residue with that position above it, "]" after its last with that position below. Under each line of letters, tracks, each
+labelled at the start of its row: *Selection* (a bar under the selected residues; the letters stay plain), *Structure* of the 3D model
+(a pink wave for a helix, a gold arrow for a strand, a thin line for the rest, nothing where the model has no residue), *Confidence*
+(pLDDT of a prediction: a bar, taller is surer, in AlphaFold DB's colours), *Hydrophobicity* (Kyte-Doolittle: a bar up and red for
+hydrophobic, down and blue for hydrophilic), *Size* (a bar as tall as the side chain is large), *Charge* (+ for K and R, a pale + for H,
+− for D and E) and *Property* (Jalview's Zappo colours). The legend on the right of the letters shows each track's label, colours and
+symbols, and its check box switches the track on or off (remembered); hover a cell for its value. The 3D view can be coloured by
+the same schemes. Above the 3D view, what the database says about the structure: its name, source, entry (a link to its page), method,
+resolution, organism, identity, coverage, chains, mean pLDDT, and how much of the protein is in the model.
 **3D structure** (the *3D structure…* button of the Protein view): a window to choose the source: *Auto* (the cache, then AlphaFold DB when the
-CDS has a UniProt accession in its db_xref or you type one, then the PDB, then ESMFold), *PDB* (RCSB's sequence search, 90 % identity or
-more, 25 amino acids or more), *AlphaFold DB* (by UniProt accession; only the accession is sent), *ESMFold* (a prediction from the sequence
+CDS has a UniProt accession in its db_xref or you type one, then the PDB, then ESMFold), *PDB* (*Search PDB* lists the entries with a chain
+like the protein, 50 % identity or more, 25 amino acids or more, the closest first, with their identity, how much of the protein the chain
+covers, title, organism, method, resolution and chains: pick one and *Show this entry*, or double-click it; it is then the one kept for this
+protein. *Auto* takes the closest entry of 90 % identity or more by itself), *Linked entries* (*List entries* lists the PDB entries the
+CDS links in its db_xref, `PDB:1BTL` as ENA records have them, and those the PDB maps to its UniProt accession; each is compared with the
+protein here, on its closest chain, so a link to another protein shows a low identity; only the codes and the accession are sent; it is
+chosen to begin with when the CDS has PDB links; NCBI records carry no PDB links but often a UniProt accession), *AlphaFold DB* (by UniProt accession; only the accession is sent), *ESMFold* (a prediction from the sequence
 alone, up to 400 amino acids, on Meta's ESM Atlas server) or *Local command* (your own AlphaFold / ColabFold / Boltz: a command with
 {fasta} and {pdb} in it). The window says which service the sequence goes to before you press *Get structure*; nothing is sent until then,
 and the sequence only leaves this computer for the PDB, ESMFold and Auto sources. Structures are kept in the `structures` folder of the
-app data (the same sequence is not asked for twice; delete the folder to forget them). *Open 3D view in the browser* shows a self-contained
+app data (the same sequence is not asked for twice; delete the folder to forget them). The structure then shows in the Protein view, beside
+the letters (under them in a tall pane), for as long as that protein is shown: a tube through the backbone, thick in helices, medium in
+strands, coloured by confidence, rainbow, chain or secondary structure. The residues of the selection are highlighted on it with their atoms;
+click a residue to select its codons (Shift+click selects up to it), drag to turn, right-drag to move, wheel to zoom, double-click to fit,
+hover for its name. On a PDB entry the chains are aligned to the protein, so their own numbering and missing residues do not matter; the
+line above the model says when only part of the protein is in it. *Open 3D view in the browser* shows a self-contained
 page (3Dmol.js): cartoon, sticks or surface, coloured by confidence (pLDDT, as AlphaFold DB does), rainbow or chain. *Save PDB…* keeps the
 file. A prediction is a model, not a measurement: low-confidence (orange) parts are not reliable.
 **Right-click a primer** (sequence view, map, alignment view or Primers panel) for *Edit…* and *Delete from Primer Database*. *Hide in This File* stops drawing that primer on this file only (it stays in the primer database, and the

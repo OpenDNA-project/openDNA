@@ -596,14 +596,15 @@ class PrimerDialog(QDialog):
         super().accept()
 
 
-class OptionsDialog(QDialog):
-    """PCR conditions for Tm, which near-matches to show, and the 3' mis-priming check."""
+class OptionsForm(QWidget):
+    """PCR conditions for Tm, which near-matches to show, and the 3' mis-priming check: the Primers page of Tools > Settings.
+    `save()` stores them (False, with a message, when the genome file is wrong); `defaults()` puts the declared values back."""
 
-    def __init__(self, parent):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Primer Options")
-        self.setMinimumWidth(540)
         form = QFormLayout(self)
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
         current = conditions()
         self.boxes = {}
         for key, label, _, maximum in CONDITIONS:
@@ -636,13 +637,6 @@ class OptionsDialog(QDialog):
                                  else "No readable background genome now. A FASTA or GenBank file with several sequences "
                                  "(chromosomes) is searched in full.")
         form.addRow("", self.genome_note)
-        form.addRow("✓ / ? / ✗ limits", QPushButton("Check thresholds (Tm, GC, hairpin…)…",
-                                                   clicked=lambda: SettingsDialog(self, CHECKS).exec()))
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel | QDialogButtonBox.RestoreDefaults)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        buttons.button(QDialogButtonBox.RestoreDefaults).clicked.connect(self._defaults)
-        form.addRow(buttons)
 
     def _browse(self):
         path, _ = QFileDialog.getOpenFileName(self, "Genome for off-target check", "",
@@ -650,7 +644,7 @@ class OptionsDialog(QDialog):
         if path:
             self.genome.setText(path)
 
-    def _defaults(self):
+    def defaults(self):
         for key, _, default, _ in CONDITIONS:
             self.boxes[key].setValue(default)
         self.binding_mm.setValue(1)
@@ -659,13 +653,13 @@ class OptionsDialog(QDialog):
         self.genome_check.setChecked(True)
         self.genome.clear()
 
-    def accept(self):
+    def save(self):
         path = self.genome.text().strip()
         if self.genome_check.isChecked() and path and not Path(path).is_file():
             QMessageBox.warning(self, "Genome file", f"There is no file '{path}'. Browse for the genome (FASTA or GenBank), "
                                 "or clear the box to use the default.")
             self.genome.setFocus()
-            return
+            return False
         s = settings()
         for key, box in self.boxes.items():
             s.setValue(f"pcr/{key}", box.value())
@@ -678,7 +672,15 @@ class OptionsDialog(QDialog):
             import reference_picker
             reference_picker.remember(self.genome.text().strip())   # the toolbar's box lists it
         notifier.changed.emit()  # re-match primers with the new rules
-        super().accept()
+        return True
+
+
+tool_settings.register_page("Primers", OptionsForm)
+
+
+def open_options(parent):
+    """Tools > Settings on the Primers page; True when OK was pressed (the primer lists then redo their matching)."""
+    return SettingsDialog(parent, "Primers").exec() == QDialog.Accepted
 
 
 def import_file(parent, editor):
@@ -707,6 +709,7 @@ def export_file(parent):
 
 
 MISMATCHES = Qt.UserRole + 2   # on a site's sequence cell: the indices of its bases that do not pair (drawn red)
+GENOME_KIND = "genome"   # the GROUP_ROLE value of the genome group, the only one redone alone when a primer is opened or its search ends
 GROUP_ROLE = Qt.UserRole + 3   # on the rows that group a primer's sites ("On this sequence", "On the reference genome")
 MISMATCH_COLOR, MISMATCH_COLOR_SELECTED = "#d32f2f", "#ffcdd2"
 _PAIRS = {"A": "A", "C": "C", "G": "G", "T": "T", "U": "T", "R": "AG", "Y": "CT", "S": "CG", "W": "AT", "K": "GT", "M": "AC",
@@ -947,9 +950,7 @@ class PrimerPanel(QWidget):
                     item.setTextAlignment(col, Qt.AlignRight | Qt.AlignVCenter)
             self.tree.addTopLevelItem(group)
             group.setExpanded(name in self.expanded)  # collapsed unless the user opened it
-            for i in range(group.childCount()):   # the groups of sites (this sequence, the genome) open with it
-                group.child(i).setExpanded(True)
-                group.child(i).setFirstColumnSpanned(True)   # their label across the row (only once it is in the tree)
+            self._open_groups(group)
             if name == keep:   # the primer picked stays picked (its row only: the sites may have moved)
                 self.tree.setCurrentItem(group)
         self._apply_sort()
@@ -994,11 +995,11 @@ class PrimerPanel(QWidget):
             return
         result = genome_cached(self.editor, seq)
         if result is None and seq.upper() in self._failed:
-            self._group(group, f"On the background genome: the search failed ({self._failed[seq.upper()]})", [])
+            self._group(group, f"On the background genome: the search failed ({self._failed[seq.upper()]})", [], GENOME_KIND)
             return
         if result is None:
             self._search_genome(seq)
-            self._group(group, "On the background genome: searching…", [])
+            self._group(group, "On the background genome: searching…", [], GENOME_KIND)
             return
         rows = []
         for whole, hits in ((True, result.whole), (False, result.hits)):
@@ -1014,7 +1015,7 @@ class PrimerPanel(QWidget):
             label += ": not searched to the end"
         if not rows:
             label = f"On the background genome, {q[0].name}: no site" + ("" if result.complete else " in the part searched")
-        self._group(group, label, rows)
+        self._group(group, label, rows, GENOME_KIND)
 
     def _site_row(self, where, bound, template, sort_key, data, kind=""):
         """One binding site: where, the primer's annealing bases (mismatches red when the template is known), length, Tm, match."""
@@ -1030,12 +1031,12 @@ class PrimerPanel(QWidget):
             row.setToolTip(1, "Red: the primer's base does not pair with the template there")
         return row
 
-    def _group(self, parent, label, rows):
+    def _group(self, parent, label, rows, kind=None):
         g = QTreeWidgetItem([label])
         f = g.font(0)
         f.setItalic(True)
         g.setFont(0, f)
-        g.setData(0, GROUP_ROLE, True)
+        g.setData(0, GROUP_ROLE, kind or True)
         parent.addChild(g)
         g.addChildren(rows)
         return g
@@ -1063,16 +1064,41 @@ class PrimerPanel(QWidget):
         self._searching.discard(key)
         if error:
             self._failed[key] = error   # not searched again at each refresh: the group says why
-        self._reload_later.start()
+        for i in range(self.tree.topLevelItemCount()):   # the primers opened that have this sequence: only their genome group changes
+            item = self.tree.topLevelItem(i)
+            if item.text(1).upper() == key and item.data(0, Qt.UserRole) in self.expanded:
+                self._refresh_genome(item)
 
     def _expanded(self, item):
         if item.parent() is None:
             name = item.data(0, Qt.UserRole)
             if name not in self.expanded:
                 self.expanded.add(name)
-                # Its sites in the reference genome: searched now. The list is redone after this event, not inside it (Qt may be
-                # opening the primer to show a site being selected: deleting that row now would crash).
-                self._reload_later.start()
+                # Its sites in the reference genome: searched now. Only that group is added to the row (the list is not rebuilt: it
+                # would scroll back to the top), after this event, not inside it.
+                QTimer.singleShot(0, lambda: self._refresh_genome_of(name))
+
+    def _refresh_genome_of(self, name):
+        for i in range(self.tree.topLevelItemCount()):
+            if self.tree.topLevelItem(i).data(0, Qt.UserRole) == name:
+                self._refresh_genome(self.tree.topLevelItem(i))
+                return
+
+    def _refresh_genome(self, item):
+        """Redo the genome group under the primer `item` alone, the rest of the list (and its scroll position) untouched."""
+        self.tree.blockSignals(True)   # no site gets selected by the change
+        for i in reversed(range(item.childCount())):
+            if item.child(i).data(0, GROUP_ROLE) == GENOME_KIND:
+                item.removeChild(item.child(i))
+        self._genome_group(item, item.text(1))
+        self._open_groups(item)
+        self.tree.setRootIsDecorated(True)
+        self.tree.blockSignals(False)
+
+    def _open_groups(self, group):
+        for i in range(group.childCount()):   # the groups of sites (this sequence, the genome) open with it
+            group.child(i).setExpanded(True)
+            group.child(i).setFirstColumnSpanned(True)   # their label across the row (only once it is in the tree)
 
     def _sort_by(self, column):
         """A header clicked: sort by it, ascending; clicked again: descending."""
@@ -1136,7 +1162,7 @@ class PrimerPanel(QWidget):
         db_tabs.open_tab(self.window(), "primers")
 
     def edit_options(self):
-        if OptionsDialog(self).exec() == QDialog.Accepted:
+        if open_options(self):
             self._failed.clear()   # another genome, other rules: searched again
             self.reload()
             self.editor.selection_changed.emit()  # status bar Tm

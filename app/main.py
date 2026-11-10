@@ -30,7 +30,7 @@ from map_view import MapView
 from editor import primer_sequence
 from primer_db import copy_old_data, data_dir, db
 from perf import PerfWindow
-from primer_panel import OptionsDialog, PrimerDialog, PrimerPanel, annealed, melting_temp
+from primer_panel import PrimerDialog, PrimerPanel, annealed, melting_temp
 from assembly_panel import AssemblyPanel
 from citations import CitationsDialog
 from editor import remember_hidden_primers
@@ -66,7 +66,12 @@ from workspace import DEFAULT as DEFAULT_LAYOUT, Workspace, pane, split
 from annotation import DetectDialog, import_files
 from parts_library import user_library
 from cas9 import Cas9Dialog
+import tool_settings
+import codon_dialog
+import codon_usage
+from code_switch import CodeSwitch, shown as code_switch_shown
 from tool_settings import SettingsDialog
+
 import genetic_code
 import fileio
 import shutil
@@ -75,6 +80,8 @@ import add_record
 from add_record import AddRecordsDialog
 import multigb
 from uikit import plural, run_busy
+
+tool_settings.register_page(genetic_code.TOOL, codon_dialog.UsageBox)   # the codon usage line of the Genetic code page
 
 FASTA_EXT = {".fa", ".fasta", ".fna", ".fas", ".ffn", ".frn", ".mfa"}
 OPEN_FILTER = ("Sequence files (*.gb *.gbk *.gbff *.genbank *.dna *.fa *.fasta *.fna *.fas *.odp);;"
@@ -401,7 +408,7 @@ class MainWindow(QMainWindow):
             self, "Mapping tools", [runner.CHECK]).exec()), "mapping"))
         tools.addAction(wip.mark_action(QAction("I&nstall Mapping Tools (conda)…", self, triggered=self.install_tools), "mapping"))
         tools.addSeparator()
-        tools.addAction(QAction("&Settings…", self, triggered=lambda: SettingsDialog(self).exec()))
+        tools.addAction(QAction("&Settings…", self, triggered=lambda: self.open_settings()))
 
         view = self.menuBar().addMenu("&View")
         self.enzymes_action = action(view, "&Restriction Sites", None,
@@ -482,6 +489,12 @@ class MainWindow(QMainWindow):
         self.range_box.returnPressed.connect(self.select_range)
         pipe = toolbar.addSeparator  # tools apart
         pipe()
+        # The genetic code in use, a click away (hidden by Tools > Settings > General > Genetic code).
+        self.code_switch = CodeSwitch(self)
+        self.code_switch.manage.connect(lambda: codon_dialog.CodonDialog(self).exec())
+        self.code_switch_actions = [toolbar.addWidget(self.code_switch), pipe()]
+        self._show_code_switch()
+        tool_settings.notifier.changed.connect(lambda tool: tool == genetic_code.TOOL and self._show_code_switch())
         toolbar.addWidget(self.range_box)
         self.doc_actions.append(self.range_box)
         pipe()
@@ -851,6 +864,9 @@ class MainWindow(QMainWindow):
             else:
                 self.load_track(found, entry.get("seqid"))
         self.set_dna_locked(bool(meta.get("dna_locked")))
+        said = [m for m in (genetic_code.adopt(meta.get("genetic_code")), codon_usage.adopt(meta.get("codon_usage"))) if m]
+        if said:
+            self.statusBar().showMessage(" ".join(said), 8000)
         for name in meta.get("hidden_primers", []):
             ed.set_primer_hidden(name, True)
         if missing:
@@ -1152,8 +1168,16 @@ class MainWindow(QMainWindow):
             self.tool_host = None
             self.setCentralWidget(QLabel("Open a GenBank or .dna file (Ctrl+O)", alignment=Qt.AlignCenter))
 
+    def _show_code_switch(self):
+        for action in self.code_switch_actions:   # the button and the line after it
+            action.setVisible(code_switch_shown())
+
     def primer_options(self):
-        if OptionsDialog(self).exec() == QDialog.Accepted:
+        self.open_settings("Primers")
+
+    def open_settings(self, page=None):
+        """Tools > Settings, on `page` (a view or tool name) when given; the primer lists redo their matching after OK."""
+        if SettingsDialog(self, page).exec() == QDialog.Accepted and self.editor is not None:
             self.primer_options_changed()
 
     def primer_options_changed(self):

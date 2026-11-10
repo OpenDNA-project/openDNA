@@ -421,3 +421,56 @@ def test_tab_image_export(win, tmp_path, monkeypatch):
             assert (img.width(), img.height()) == (root.width() * 2, root.height() * 2), fmt
             assert round(img.dotsPerMeterX() * 0.0254) == 300, fmt
             assert len({img.pixel(x, y) for x in range(0, img.width(), 37) for y in range(0, img.height(), 37)}) > 3, fmt
+
+
+def test_a_project_carries_the_genetic_code_and_the_codon_table_in_use(win, tmp_path):
+    """A .odp holds the code and the codon usage table in use: on another machine (here: after deleting them) they are added and
+    used; a table or code of the same name with other numbers is kept beside, as "(from project)"."""
+    import codon_usage
+    import genetic_code
+    import tool_settings
+    saved = (tool_settings.value(genetic_code.TOOL, "table"), codon_usage.active_name())
+    aas, starts = genetic_code.recoded(11, ["AGA"])
+    code_id = genetic_code.save_code("Shared recoded host", aas, starts)
+    table = codon_usage._table("Shared usage", {c: 10.0 + i for i, c in enumerate(codon_usage.CODONS)})
+    codon_usage.save_user(table)
+    try:
+        tool_settings.set_value(genetic_code.TOOL, "table", f"{code_id} – Shared recoded host")
+        codon_usage.set_active("Shared usage")
+        project = tmp_path / "shared.odp"
+        assert win._write(project)
+        with zipfile.ZipFile(project) as z:
+            meta = json.loads(z.read("project.json"))
+        assert meta["genetic_code"]["name"] == "Shared recoded host" and meta["genetic_code"]["aas"] == aas
+        assert meta["codon_usage"]["name"] == "Shared usage" and meta["codon_usage"]["per_thousand"]["TTT"] == 10.0
+        # another machine: neither is there, and the standard code is in use
+        genetic_code.delete_code(code_id)
+        codon_usage.delete_user("Shared usage")
+        assert genetic_code.table_id() == 1 and "Shared usage" not in codon_usage.all_tables()
+        other = MainWindow()
+        assert other.load(project)
+        assert genetic_code.TABLES[genetic_code.table_id()].name == "Shared recoded host" and genetic_code.removed_codons(genetic_code.table_id()) == ["AGA"]
+        assert codon_usage.active_name() == "Shared usage" and codon_usage.active().per_thousand["TTT"] == 10.0
+        assert "Genetic code set to" in other.statusBar().currentMessage() and "Codon usage table set to" in other.statusBar().currentMessage()
+        other.close()
+        # the same names with other numbers: both are kept
+        mine = genetic_code.table_id()
+        other_aas, other_starts = genetic_code.recoded(11, ["AGG"])
+        genetic_code.delete_code(mine)
+        genetic_code.save_code("Shared recoded host", other_aas, other_starts)
+        codon_usage.save_user(codon_usage._table("Shared usage", {c: 1.0 for c in codon_usage.CODONS}))
+        tool_settings.set_value(genetic_code.TOOL, "table", genetic_code.DEFAULT_LABEL)
+        again = MainWindow()
+        assert again.load(project)
+        names = {t.name for t in genetic_code.TABLES.values()}
+        assert {"Shared recoded host", "Shared recoded host (from project)"} <= names
+        assert codon_usage.active_name() == "Shared usage (from project)" and codon_usage.active().per_thousand["TTT"] == 10.0
+        assert codon_usage.all_tables()["Shared usage"].per_thousand["TTT"] == 1.0   # yours is untouched
+        again.close()
+    finally:
+        for t in [t for t in genetic_code.TABLES.values() if t.id >= genetic_code.FIRST_USER and t.name.startswith("Shared recoded host")]:
+            genetic_code.delete_code(t.id)
+        for name in [n for n in codon_usage.all_tables() if n.startswith("Shared usage")]:
+            codon_usage.delete_user(name)
+        tool_settings.set_value(genetic_code.TOOL, "table", saved[0])
+        codon_usage.set_active(saved[1])

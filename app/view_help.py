@@ -2,8 +2,7 @@
 TAB_TOOLS). Edit the texts here; tests/test_view_help.py checks that every view has one.
 
 HELP[view]    - the short guide: 5-8 bullet lines, plain language (keep it near 120 words).
-OPTIONS[view] - where the view's options live: ("settings", tab) is that tab of Tools > Settings, ("primers", None) is the
-                Primers options dialog (it holds the background genome), None means the view has no options.
+OPTIONS[view] - the page of Tools > Settings that holds the view's options (an empty page says it has none).
 Every key gesture below is one the code handles (see also shortcuts.py, which lists them for Help > Keyboard Shortcuts).
 """
 from PySide6.QtCore import Qt
@@ -11,7 +10,6 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
 
 import tool_settings
 
-NO_OPTIONS = "No options for this view"
 MORE = "More: Help > Keyboard Shortcuts (F1) and docs/USER_GUIDE.md."
 
 HELP = {
@@ -60,9 +58,9 @@ HELP = {
         "Shows the amino acids of the selected CDS, or of the selected DNA in the frame you choose.",
         "Click a CDS (or select DNA) in any view to show it.",
         "Length, mass, isoelectric point and charge are shown above the sequence.",
-        "Select letters to select their codons in the DNA.",
+        "Select letters to select their codons in the DNA. The legend on the right explains and switches the tracks under them.",
         "Click a feature inside the CDS to select it.",
-        "3D structure... gets a model (AlphaFold, PDB, ESMFold or your own command).",
+        "3D structure... gets a model (AlphaFold, PDB, ESMFold or your own command) and shows it beside the letters: drag to turn, click a residue to select it.",
         "Options chooses the genetic code (a CDS with /transl_table keeps its own).",
     ],
     "PCR": [
@@ -126,23 +124,8 @@ HELP = {
     ],
 }
 
-# Where each view's options live. Views that act on the sequence's display share the "Display" tab (hover delay).
-OPTIONS = {
-    "Sequence": ("settings", "Display"),
-    "Map": ("settings", "Display"),
-    "Alignment": ("settings", "Alignments"),
-    "Features": None,
-    "Primers": ("primers", None),
-    "Protein": ("settings", "Genetic code"),
-    "PCR": None,
-    "Spacer Finder": ("primers", None),
-    "Local Align": None,
-    "Detect ORFs": ("settings", "Genetic code"),
-    "Digest": None,
-    "Detect Features": ("settings", "Detect Features"),
-    "Plasmid Checkup": ("settings", "Plasmid Checkup"),
-    "Assembly": None,
-}
+# Where each view's options live: the page of the view's own name in Tools > Settings (its group is the picker's).
+OPTIONS = {name: name for name in HELP}
 
 
 def help_text(view):
@@ -151,24 +134,13 @@ def help_text(view):
 
 
 def options_tip(view):
-    """Tooltip of the cog: what it opens, or why it is disabled."""
-    target = OPTIONS.get(view)
-    if target is None:
-        return NO_OPTIONS
-    if target[0] == "settings":
-        return f"Options of this view (Tools > Settings > {target[1]})"
-    return "Options of this view (Primers > Options)"
+    """Tooltip of the cog: what it opens."""
+    return f"Options of this view (Tools > Settings > {tool_settings.LABELS.get(view, view)})"
 
 
 def open_options(window, view):
-    """Open the options page of `view`; False when it has none. Settings go to the matching tab of Tools > Settings."""
-    target = OPTIONS.get(view)
-    if target is None:
-        return False
-    if target[0] == "settings":
-        tool_settings.SettingsDialog(window, target[1]).exec()
-    else:
-        window.primer_options()
+    """Open the Settings page of `view` (it says so when the view has no options)."""
+    window.open_settings(view)
     return True
 
 

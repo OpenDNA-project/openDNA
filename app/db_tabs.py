@@ -466,8 +466,8 @@ class DatabaseTab(QWidget):
         export_file(self)
 
     def primer_options(self):
-        from primer_panel import OptionsDialog
-        if OptionsDialog(self).exec() == QDialog.Accepted:
+        from primer_panel import open_options
+        if open_options(self):
             self.table.reload()
 
 

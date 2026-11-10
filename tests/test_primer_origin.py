@@ -184,3 +184,45 @@ def test_imported_and_made_primers_survive_save_and_reload_as_on_sequence_primer
     assert not sites(made)["madehere"].provisional
     made.save(tmp_path / "m.gb")
     assert "madehere" in {f.label for f in Document(str(tmp_path / "m.gb")).features() if f.kind == "primer_bind"}
+
+
+def test_opening_a_primer_does_not_rebuild_the_list(tmp_path):
+    """Issue #9: opening a primer's sites used to redo the whole list, which scrolled back to the top. Now only that primer's
+    genome group is added: the other rows stay the very same items."""
+    from PySide6.QtCore import QCoreApplication, QTimer
+    from primer_panel import PrimerPanel
+    ed = make(tmp_path)
+    panel = PrimerPanel(ed)
+    before = [panel.tree.topLevelItem(i) for i in range(panel.tree.topLevelItemCount())]
+    reloads = []
+    panel._reload_later.timeout.connect(lambda: reloads.append(1))
+    panel.tree.topLevelItem(0).setExpanded(True)
+    QCoreApplication.processEvents()
+    QTimer.singleShot(0, lambda: None)
+    QCoreApplication.processEvents()
+    after = [panel.tree.topLevelItem(i) for i in range(panel.tree.topLevelItemCount())]
+    assert after == before and not reloads
+    assert panel.tree.topLevelItem(0).data(0, 0x0100) in panel.expanded
+
+
+def test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle(tmp_path):
+    """On a circular sequence the designer looks through the origin: a target at base 1, at the last base, or one that passes
+    the origin gets pairs whose primers are the template's own bases and whose product holds the whole target. A linear
+    sequence has nothing before base 1."""
+    from primer_design import design
+    from editor import reverse_complement
+    rnd = random.Random(5)
+    seq = "".join(rnd.choice("ACGT") for _ in range(3000))
+    n = len(seq)
+    ed = Editor(Document.new_sequence("c", seq, True), tmp_path / "c.gb")
+    for start, end in [(0, 200), (n - 200, n), (n - 100, n + 100)]:
+        pairs = design(ed, start, end)
+        assert pairs, (start, end)
+        for p in pairs:
+            f, r = p["fwd"], p["rev"]
+            assert (seq * 2)[f["start"]:f["end"]] == f["seq"] and (seq * 2)[r["start"]:r["end"]] == reverse_complement(r["seq"])
+            before, after = (start - f["end"]) % n, (r["start"] - end) % n   # template between each primer and the target
+            assert before <= 150 and after <= 150
+            assert p["size"] == len(f["seq"]) + before + (end - start) + after + len(r["seq"])
+    linear = Editor(Document.new_sequence("l", seq, False), tmp_path / "l.gb")
+    assert design(linear, 0, 200) == [] and design(linear, 500, 700)

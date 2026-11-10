@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 import annotation
+import codon_usage
 import genetic_code
 import tool_settings
 from editor import COLOR_KEYS, reverse_complement, site_location
@@ -491,7 +492,29 @@ def protein_problems(dna):
         out.append(f"stop codon at codon {early + 1} of {len(codons)}: truncated protein")
     if codons and code.get(codons[-1]) != "*":
         out.append("does not end with a stop codon")
+    forbidden = sorted({c for c in codons if code.get(c) == genetic_code.REMOVED})   # a recoded organism does not use them
+    if forbidden:
+        out.append(f"uses codons this genetic code does not use: {', '.join(forbidden)}")
     return out
+
+
+LOW_CAI = 0.5      # a coding sequence below this codon adaptation index gets a note
+MANY_RARE = 0.05   # ... and one with this share of rare codons or more
+
+
+def codon_notes(dna):
+    """Notes on how well the codons of a coding sequence suit the codon usage table chosen in Tools > Settings (empty when it
+    suits it, or when no table is available): the adaptation index, and the rare codons."""
+    table = codon_usage.active()
+    index = codon_usage.cai(dna, table) if table is not None else None
+    if index is None:
+        return []
+    rare = codon_usage.rare_codons(dna, table)
+    scored = max(1, len(dna) // 3)
+    if index >= LOW_CAI and len(rare) / scored < MANY_RARE:
+        return []
+    shown = ", ".join(dict.fromkeys(c for _, c in rare[:50]))
+    return [f"codon adaptation index {index:.2f} for {table.name}" + (f", {len(rare)} rare codons ({shown})" if rare else "")]
 
 
 def kozak(st, a):
@@ -580,7 +603,7 @@ def check_host(f, host, units, elements, strands, reach):
     if problems:
         reasons += problems
         verdict = {YES: UNLIKELY, LIKELY: UNLIKELY}.get(verdict, verdict)
-    return SimpleNamespace(verdict=verdict, unit=unit, rbs=rbs, reasons=reasons)
+    return SimpleNamespace(verdict=verdict, unit=unit, rbs=rbs, reasons=reasons + codon_notes(st.slice(a, b)))
 
 
 RANK = {YES: 0, LIKELY: 1, UNLIKELY: 2, NO: 3}

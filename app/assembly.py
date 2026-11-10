@@ -23,6 +23,7 @@ GG_ENZYMES = {"BsaI": ("BsaI", "GGTCTC", 1, 4), "BsmBI / Esp3I": ("BsmBI", "CGTC
 PAD = "ttt"                # extra bases 5' of a Golden Gate site so the enzyme can bind near an end
 MIN_EXISTING = 15          # bp: adjacent fragments overlapping at least this much need no tail
 TOEHOLD, BARCODE, MAX_OLIGO = 10, 18, 165   # Sidewinder: toehold nt, barcode nt, longest oligo
+MAX_SHIFT = 20             # nt a Sidewinder toehold may slide from the fragment boundary to dodge a repeat
 # Orange is kept for what a primer adds (TAIL_COLOR, like the tails written in orange in the sequence view), so no fragment is orange;
 # a junction (the homology, overhang or toehold) is a dark slate no fragment has.
 FRAG_COLORS = ["#4fc3f7", "#9ccc65", "#fdd835", "#ba68c8", "#4db6ac", "#f06292", "#a1887f", "#7986cb"]
@@ -572,6 +573,27 @@ def design_golden_gate(frags, circular, enzyme, target=60.0):
 # ---- Sidewinder ---------------------------------------------------------------------------------
 
 
+def toehold_cuts(product, bounds, lengths):
+    """Where each coding strand ends: half a toehold past the fragment boundary, slid by up to
+    MAX_SHIFT nt when the toehold there occurs more than once in the product or sits within 2 bases
+    of one already chosen. The toehold is taken from the product wherever it sits, so sliding stays
+    scarless: it only moves which oligo carries those bases. Fragments too short to give the slide
+    room keep the boundary itself, so a tiny or empty one still fails the toehold checks."""
+    # shortcut: greedy left to right, so a clash only a later junction could resolve is left for the checks to report;
+    # upgrade to a search over all junctions together if real designs hit it.
+    half, cuts, chosen = TOEHOLD // 2, [], []
+    for j, b in enumerate(bounds):
+        room = max(0, min(MAX_SHIFT, lengths[j] // 2, lengths[j + 1] // 2))
+        low = (cuts[-1] if cuts else 0) + TOEHOLD      # every coding strand must hold a whole toehold
+        wanted = [b + half + s for s in sorted(range(-room, room + 1), key=abs) if low <= b + half + s <= len(product)]
+        fits = lambda t: occurrences(product, t, False) == 1 and all(
+            min(sum(x != y for x, y in zip(t, r)) for r in (u, rc(u))) >= 3 for u in chosen)
+        cut = next((c for c in wanted if fits(product[c - TOEHOLD:c])), wanted[0] if wanted else b + half)
+        cuts.append(cut)
+        chosen.append(product[max(0, cut - TOEHOLD):cut])
+    return cuts
+
+
 def design_sidewinder(frags, target=60.0):
     """Sidewinder (Robinson et al., Nature 2026; bioRxiv 2026 oligo-pool follow-up): each fragment is
     two annealed oligos, a coding strand (the final sequence) and a barcode strand (its reverse
@@ -583,13 +605,15 @@ def design_sidewinder(frags, target=60.0):
     against the paper before ordering."""
     d = Design(frags, False)
     d.vectors = [False] * len(frags)
-    n, product, half = len(frags), None, TOEHOLD // 2
+    n = len(frags)
     product = d.product()
     bounds = [sum(map(len, d.seqs[:i + 1])) for i in range(n - 1)]
-    toeholds = [product[max(0, b - half):b + half] for b in bounds]   # shorter than TOEHOLD only next to an empty fragment
-    cuts = [0] + [b + half for b in bounds] + [len(product)]
-    coding = [product[cuts[i]:cuts[i + 1]] for i in range(n)]
-    rng, barcodes = random.Random(len(product)), []
+    cuts = toehold_cuts(product, bounds, [len(s) for s in d.seqs])
+    toeholds = [product[max(0, c - TOEHOLD):c] for c in cuts]   # shorter than TOEHOLD only next to an empty fragment
+    coding = [product[a:b] for a, b in zip([0] + cuts, cuts + [len(product)])]
+    # Seeded on the product itself, not its length: two designs of the same length must not share barcodes,
+    # or their arms could cross-hybridise when the oligos are pooled.
+    rng, barcodes = random.Random(product), []
     taboo = {x[i:i + 8] for t in toeholds for x in (t, rc(t)) for i in range(len(x) - 7)}
     while len(barcodes) < n - 1:   # random 18-mers: balanced GC, no repeats, no shared 8-mer
         for _ in range(5000):
@@ -601,16 +625,17 @@ def design_sidewinder(frags, target=60.0):
                 taboo |= kmers
                 break
         else:
-            raise ValueError("could not find enough orthogonal barcodes")
+            break               # too few: a bad check below, not an exception, so the panel still shows the design
     for i in range(n):
         d.rows.append((f"{d.names[i]}-coding", coding[i], 0, "Sidewinder oligo"))
-        d.rows.append((f"{d.names[i]}-barcode", rc(coding[i]) + (barcodes[i] if i < n - 1 else ""), 0, "Sidewinder oligo"))
+        d.rows.append((f"{d.names[i]}-barcode", rc(coding[i]) + (barcodes[i] if i < len(barcodes) else ""), 0, "Sidewinder oligo"))
     add_primers(d, "Sidewinder product", product, "", "", target, "Sidewinder PCR")   # removes the barcode arms
     d.note = ("Each fragment is a coding strand (top) annealed to its barcode strand (bottom). A coding strand ends "
               "with the toehold it shares with the next one, and the next coding strand starts right after it.")
     for j, t in enumerate(toeholds):
-        d.junctions.append(f"{d.names[j]} → {d.names[j + 1]}: toehold {t}, barcode {barcodes[j]}")
-        top = bounds[j] + half   # the coding strand of fragment j ends with the toehold
+        arm = barcodes[j] if j < len(barcodes) else "none found"
+        d.junctions.append(f"{d.names[j]} → {d.names[j + 1]}: toehold {t}, barcode {arm}")
+        top = cuts[j]            # the coding strand of fragment j ends with the toehold
         d.joints.append(Joint(d.names[j], d.names[j + 1], "toehold", t, top - TOEHOLD, (top, top, None), (top, top, None)))
         gc = 100 * sum(c in "GC" for c in t) / max(1, len(t))
         d.check(f"Toehold {j + 1} GC", band(gc, 30, 70, 10), f"{gc:.0f} %", junction=j, short="GC")
@@ -626,13 +651,25 @@ def design_sidewinder(frags, target=60.0):
         d.check(f"Toehold {j + 1} distinct", "bad" if near else "ok",
                 f"fewer than 3 bases from toehold {', '.join(map(str, near))}" if near else "3 or more bases from every other toehold",
                 junction=j, short="distinct")
-        d.cuts.append([f"barcode {barcodes[j]}"])
+        d.cuts.append([f"barcode {arm}"])
     long = [r[0] for r in d.rows if r[3] == "Sidewinder oligo" and len(r[1]) > MAX_OLIGO]
     d.check(f"Oligos at most {MAX_OLIGO} nt", "bad" if long else "ok",
             "too long (split the fragment): " + ", ".join(long) if long else "every strand fits in one oligo")
+    # The oligo that is ordered is the whole strand, barcode arm included: the arm can fold back on the
+    # coding strand it is joined to, which screening the barcode on its own does not see.
+    risky = []
+    for name, seq, _, kind in d.rows:
+        if kind == "Sidewinder oligo":
+            warnings = structure(seq)["warnings"]
+            if warnings:
+                risky.append(f"{name} ({', '.join(warnings)})")
+    d.check("Oligo structure", "warn" if risky else "ok",
+            "folds or self-dimerises: " + "; ".join(risky) if risky else "no hairpin or self-dimer worth reporting")
     tiny = [name for name, s in zip(d.names[1:-1], d.seqs[1:-1]) if len(s) < 2 * TOEHOLD]
     d.check("Fragments hold two toeholds", "warn" if tiny else "ok", "short: " + ", ".join(tiny) if tiny else "ok")
-    d.check("Barcodes orthogonal", "ok", f"{len(barcodes)} × {BARCODE} nt, 8-10 G/C, no 8-mer shared with another barcode or toehold")
+    d.check("Barcodes orthogonal", "bad" if len(barcodes) < n - 1 else "ok",
+            f"only {len(barcodes)} of {n - 1} found: use fewer fragments" if len(barcodes) < n - 1 else
+            f"{len(barcodes)} × {BARCODE} nt, 8-10 G/C, no 8-mer shared with another barcode or toehold")
     d.check("Linear product", "info", "Sidewinder gives a linear product: clone it into a vector afterwards")
     check_product(d)
     return d

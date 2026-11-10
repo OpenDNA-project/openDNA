@@ -2,7 +2,7 @@
 //! the template, on either strand, with mismatches and gaps?
 //!
 //! Seed and extend, per strand:
-//!   1. Index the query's k-mers (k = 11; smaller for short queries).
+//!   1. Index the query's k-mers (k = 11; 9 or less for queries under 200 bases).
 //!   2. Scan the template once; every shared k-mer is a "seed", sitting on a diagonal
 //!      (diagonal = template position - query position; an ungapped match stays on one).
 //!   3. Seeds on nearby diagonals are grouped into clusters. The clusters with the most
@@ -54,6 +54,8 @@ const LOW_WINDOW: usize = 40;
 /// An alignment must start and end with this many exact matches in a row (see the trimming in
 /// `smith_waterman`).
 const TRIM_RUN: usize = 12;
+/// Exact matches needed beyond a lone mismatch for the trimming to keep it (chance gives 5 in a row once in 1000).
+const KEEP_RUN: usize = 5;
 /// Safety stop for degenerate input (e.g. poly-A query on a poly-A template).
 const MAX_SEEDS: usize = 5_000_000;
 /// "Minus infinity" that cannot overflow when a gap penalty is added.
@@ -279,7 +281,23 @@ fn smith_waterman(text: &[u8], query: &[u8], lo: i64, hi: i64) -> Option<(Hit, O
         let is_run = |k: usize| ops[k..k + TRIM_RUN].iter().all(|o| matches!(o, Op::Match));
         let first = (0..=ops.len() - TRIM_RUN).find(|&k| is_run(k));
         let last = (0..=ops.len() - TRIM_RUN).rev().find(|&k| is_run(k)).map(|k| k + TRIM_RUN);
-        if let (Some(f), Some(l)) = (first, last) {
+        if let (Some(mut f), Some(mut l)) = (first, last) {
+            // A lone mismatch near an end is a real difference (a SNP 8 bases from the end of a read), not a
+            // ragged end: keep it when KEEP_RUN exact matches lie beyond it, and the matches before those.
+            let exact = |o: &Op| matches!(o, Op::Match);
+            while f > KEEP_RUN && matches!(ops[f - 1], Op::Mismatch(..)) && ops[f - 1 - KEEP_RUN..f - 1].iter().all(exact) {
+                f -= 1 + KEEP_RUN;
+                while f > 0 && exact(&ops[f - 1]) { f -= 1; }
+            }
+            while l + KEEP_RUN < ops.len() && matches!(ops[l], Op::Mismatch(..)) && ops[l + 1..l + 1 + KEEP_RUN].iter().all(exact) {
+                l += 1 + KEEP_RUN;
+                while l < ops.len() && exact(&ops[l]) { l += 1; }
+            }
+            // A ragged end is a few columns. A cut of over a quarter of them is a short query with several
+            // mismatches near its ends (a 45-mer with 3), which would be reported as a stub or not at all: keep it whole.
+            if (l - f) * 4 < ops.len() * 3 {
+                (f, l) = (0, ops.len());
+            }
             // Every cut column used query and/or template bases; give them back.
             for op in &ops[..f] {
                 match op {
@@ -452,7 +470,8 @@ pub fn align(template: &[u8], query: &[u8], circular: bool, max_hits: usize) -> 
     if circular {
         text.extend_from_slice(&template[..n.min(m + 2 * BAND as usize)]);
     }
-    let k = if m >= 40 { 11 } else { (m / 4).clamp(4, 11) };
+    // Short queries get short k-mers: a 60-mer with 3 mismatches often has no two shared 11-mers.
+    let k = if m >= 200 { 11 } else { (m / 4).clamp(4, 9) };
     let min_score = (m as i32 * 6 / 5).min(40); // random matches score ~20-30 on long queries
     let mut hits: Vec<Hit> = Vec::new();
     for forward in [true, false] {
@@ -528,6 +547,30 @@ mod tests {
         // Same on the other strand.
         let hits = align(&t, &revcomp(&q), false, 10);
         assert!(!hits[0].forward && hits[0].start == 1000 && hits[0].end == 1300);
+    }
+
+    #[test]
+    fn a_mismatch_near_either_end_of_a_long_query_is_reported_not_trimmed_away() {
+        let t = random_dna(3000, 12);
+        for at in [6, 11, 288, 293] {
+            let mut q = t[1000..1300].to_vec();
+            let wrong = if q[at] == b'A' { b'C' } else { b'A' };
+            q[at] = wrong;
+            let h = &align(&t, &q, false, 10)[0];
+            assert_eq!((h.start, h.end, h.qstart, h.qend), (1000, 1300, 0, 300), "mismatch at {at}");
+            assert_eq!(h.mismatches, vec![(1000 + at, wrong)]);
+        }
+    }
+
+    #[test]
+    fn a_short_query_with_mismatches_near_both_ends_is_still_one_whole_hit() {
+        let t = random_dna(3000, 13);
+        let mut q = t[1000..1045].to_vec();
+        for at in [9, 13, 35] {
+            q[at] = if q[at] == b'A' { b'C' } else { b'A' };
+        }
+        let hits = align(&t, &q, false, 10);
+        assert_eq!((hits[0].start, hits[0].end, hits[0].mismatches.len()), (1000, 1045, 3), "{hits:?}");
     }
 
     #[test]

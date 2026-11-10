@@ -190,6 +190,88 @@ Rendering rule: each view asks the core for its visible window only; repaint on 
 
 Rough total to a strong daily-driver (Phases 0–4): **~3–4 months** solo part-time-heavy; Phase 2 alone is the first big payoff.
 
+### Phase 7 — A design tool for the lab
+
+The beta does editing, annotation, primers, assembly, guides and read mapping. What a lab still leaves openDNA for is
+designing *changes* (mutagenesis, recoding, classic cloning), comparing many sequences at once, and doing any of it in
+bulk. Each item below is independent: it ends in its own tool or view, with its own tests, and nothing else waits for it.
+Items touching `core/src/primers.rs` are done one at a time (the compiled core is shared by the whole environment).
+
+**A. Degenerate primers (IUPAC).** `tm()` returns `None` and `binding_sites()` finds nothing as soon as a primer holds
+N, R, Y or W, so a degenerate oligo is invisible in the whole program. In `core/src/primers.rs`: a degenerate base pairs
+with every base it stands for (`search.rs` already has the IUPAC table), and Tm becomes a *range* (lowest and highest Tm
+over the combinations, computed from the per-position extremes, not by expanding 4ⁿ oligos). The primer panel and the
+primer dialog show "58.1–61.4 °C" instead of a blank. Test: a primer with 3 degenerate positions binds every matching
+site and its range brackets the Tm of each expansion.
+
+**B. Real dimer and hairpin ΔG.** Both scorers only count *perfectly* paired stems, so a dimer with one internal
+mismatch scores 0.0 and a primer that really does self-prime passes the check. Replace them with a nearest-neighbour
+alignment that allows internal mismatches, 1–3 base internal loops and dangling ends (the Primer3 `thal` model, which is
+published and re-implementable; do not vendor its GPL code). Keep the current two-number answer (ΔG, 3′-end ΔG) so
+nothing above changes. Test: known dimers from the literature within ~1 kcal/mol, and the designer's verdicts on the
+demo plasmids do not get worse.
+
+**C. Mutagenesis primer design.** New tool, `app/mutagenesis.py`, built like `primer_design.py`:
+- Input: the selection as the site, plus the bases to put there (empty = deletion, selection empty = insertion).
+  Substitution, insertion up to ~60 bp and deletion of any length are the same operation on a circle.
+- Two layouts: **back-to-back** (Q5/KLD style — the two primers point away from each other, the product is the whole
+  plasmid, the change rides in the forward primer's 5′ tail) and **overlapping** (QuikChange style — both primers carry
+  the change). Back-to-back is the default.
+- Scoring must use the **annealing Tm** (the 3′ part that matches the template), never the whole-oligo Tm with its tail:
+  that is the mistake that makes hand-designed SDM primers fail. GC clamp and uniqueness on the annealing part only;
+  tails capped at 30 bases, split between the two oligos for a long insert.
+- Must work through the origin (`design()` now does; reuse its three-lap trick).
+- Test: apply the designed pair back to the template (the existing `pcr_product` + circularisation) and assert the
+  product equals the mutant the user asked for, for all three edit kinds and across the origin.
+
+**D. Pairs that are actually different.** On pBAD30_eilR the five rows the designer returns start within 17 bases of each
+other and end within 26 — five copies of one pair. Keep the best pair, then only accept a next pair whose forward and
+reverse 3′ ends both sit ≥ 10 bases from every pair already kept. Add a product-size range (min/max bp) to the dialog,
+since "a product between 400 and 600 bp" is how a verification PCR is actually specified. Small change in
+`app/primer_design.py`, visible every time the tool is used.
+
+**E. Codon optimisation and translation between genetic codes.** The codon editor and the usage tables are already there
+and already hold per-organism usage. Add, in `app/codon_tools.py`: (1) **recode a CDS** for a chosen usage table —
+highest-frequency or frequency-matched sampling, with forbidden sites (restriction enzymes), GC window, no runs > 5, no
+internal RBS; (2) **translate a CDS under another genetic code** and show both proteins side by side with the
+differences marked, which is what moving a gene between an amber-suppressor strain, a mitochondrion or *Mycoplasma*
+needs; (3) **silent-site editing**: remove or add a restriction site without changing the protein. All three write back
+as a normal edit, so undo and the feature shifts come free. Test: the recoded CDS translates to the identical protein
+under the chosen table, holds none of the forbidden sites, and round-trips through save/load.
+
+**F. Restriction–ligation cloning, and a UX pass over every assembly tool.** Gibson, Golden Gate and Sidewinder are
+supported; plain cut-and-ligate is not, and it is still how most freezer plasmids were made. Vector + insert + chosen
+enzymes → compatible-end check (sticky/blunt, orientation, how many ways it can ligate), then the product with its
+features carried over, as one more mode of the existing assembly panel rather than a new window. Same pass over the
+other three modes while in there: the cards, the junction detail and the error messages must read the same whichever
+mode is chosen.
+
+**G. Multiple sequence alignment view.** A real view (`app/msa_view.py`) over several sequences — clones against the
+reference, homologues, a part across constructs: columns coloured by conservation, a consensus row, per-sequence
+identity, click a column to jump every sequence there. Alignment itself comes from MAFFT or Clustal Omega through the
+existing `tools.toml` runner (one recipe each, no code), with a built-in progressive aligner for the 2–10 short
+sequences case so it works with nothing installed.
+
+**H. Search a folder of plasmids.** "Which of my plasmids carries this?" — point the tool at a folder, it aligns the
+query against every record with the existing `align()` (0.02 s per plasmid, so a 500-file freezer takes seconds) and
+lists file, position, strand and identity; click a row to open that file there. Optionally NCBI BLAST for the
+"what is this?" case, through the online code that already talks to NCBI.
+
+**I. Oligo order export.** The primer database already exports TSV/CSV/FASTA. Add the two formats a supplier actually
+takes: IDT's plate format (well, name, sequence, scale) and a plain name/sequence CSV, with the pending-order selection
+coming from the primer panel's tick boxes. Half a day, saves retyping every order.
+
+**J. Repeat finder and dot plot.** Direct, inverted and tandem repeats over one sequence (seeded like `align.rs`, which
+already does the hard part), listed with their copies and drawn as a self-vs-self dot plot. This is what flags a
+construct that will recombine or that synthesis will refuse, before it is ordered.
+
+**K. Command line.** A prototype exists (path to be confirmed) and should be built on, not replaced: `opendna digest`,
+`opendna pcr`, `opendna align`, `opendna translate`, reading and writing the same files as the GUI and sharing its code
+in `app/`, so a lab protocol becomes a script and the same checks can run in CI.
+
+**Dropped.** `.ab1` trace view and the sequencing-primer walker: Sanger verification is no longer used here, so neither
+earns its keep.
+
 ---
 
 ## 6b. External command-line tools (bwa, samtools, minimap2, …), planned for Phase 5

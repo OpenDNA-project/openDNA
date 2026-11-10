@@ -3,3 +3,5 @@ pytest
 biopython  # independent GenBank parser used only to check our output in tests
 pyflakes
 pyinstaller
+pytest-xdist   # run test files in parallel: scripts/test_changed.py
+pytest-timeout

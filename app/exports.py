@@ -24,6 +24,8 @@ from pathlib import Path
 from cut_sites import CAS9_KEYS
 from units import TU_KEYS
 from editor import COLOR_KEYS
+import fileio
+import codon_usage
 import genetic_code
 from sequence_view import cds_codons
 
@@ -146,6 +148,8 @@ def project_meta(editor, project_path, layout=None):
         "version": PROJECT_VERSION,
         "layout": layout,   # the tabs this project opens with (every other file opens with the standard ones)
         "dna_locked": ed.dna_locked,
+        "genetic_code": genetic_code.project_entry(),   # the code and the codon table in use travel with the project
+        "codon_usage": codon_usage.project_entry(),
         "hidden_primers": sorted(ed.hidden_primers),
         "tracks": [{"path": t.path, "relative": _relative(t.path, project_path), "seqid": t.seqid}
                    for t in ed.tracks if getattr(t, "path", None)],
@@ -169,7 +173,7 @@ def save_project(editor, path, layout=None):
         with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as z:
             z.write(gb, "sequence.gb")
             z.writestr("project.json", json.dumps(project_meta(editor, path, layout), indent=1))
-        part.replace(path)
+        fileio.replace(part, path)
 
 
 def read_project(path, folder):
