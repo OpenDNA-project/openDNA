@@ -1,5 +1,13 @@
 # Phase 7 — what changed, and what a reviewer must check
 
+> **Merged.** Everything below is on `main` as of `c687874`: the seven Phase 7 branches, the file-writing fix, and the
+> alignment, primer-origin and protein-view work that was still loose in the working tree. Measured on merged `main`:
+> **417 passed, 2 skipped**, pyflakes clean, `cargo test` 102 passed, and the app opens the 4.6 Mb demo genome with no
+> missing bundled files. The merge turned up two collisions no branch could see on its own — Alt+R claimed by both the
+> Repeats and the Recode tools, and a folder-search test whose "random" query was `demo/msa_demo.fasta`'s first 60
+> bases, both generated from `random.seed(7)` — fixed in `c687874`. The `claude/*` branches and their worktrees are
+> still there; nothing is pushed.
+
 Phase 7 of [PLAN.md](PLAN.md) is being built by several Claude sessions, each in its own git worktree under
 `.claude/worktrees/` and on its own branch. This file is the ledger: what each one touched, what is still unverified, and
 what a reviewer should check before any of it is merged. **Keep it current** — a session that reports back gets its row
