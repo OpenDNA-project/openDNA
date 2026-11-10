@@ -34,7 +34,7 @@ def test_a_piece_of_a_demo_plasmid_is_found_in_its_file_at_its_place_and_strand(
 
 
 def test_random_dna_finds_nothing_in_the_demo_folder():
-    random.seed(7)
+    random.seed(4171)   # not a seed any generated demo file uses: seed(7) is demo/msa_demo.fasta's own first 60 bases
     query = "".join(random.choice("ACGT") for _ in range(60))
     assert search_folder(DEMO, query)[0] == []
 
