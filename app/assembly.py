@@ -1,5 +1,5 @@
 """Assembly engine: what a set of fragments (PCR products, or plain stretches) joins into with
-Gibson / HiFi, Golden Gate or Sidewinder: the junctions found at their real ends, the checks, the
+Gibson / HiFi, Golden Gate, Sidewinder or restriction / ligation: the junctions found at their real ends, the checks, the
 primers that would add what is missing, and the exact product. The widgets are in assembly_panel.py."""
 import random
 from bisect import bisect_right
@@ -13,7 +13,7 @@ from opendna_core import Document, find_primers
 
 import overhangs as OH
 from editor import MAX_SITES, reverse_complement as rc, site_location
-from enzymes import find_sites
+from enzymes import COMMON, find_cuts, find_sites, site_spans
 from primer_panel import MARKS, band, limit, melting_temp, structure, worst
 import theme
 
@@ -247,7 +247,17 @@ def joints_html(d):
     return f"<table cellspacing='1' cellpadding='1'>{head}{''.join(rows)}</table>"
 
 
-JOINED_BY = {"existing overlap": "homology", "added overlap": "homology", "overhang": "overhang", "toehold": "toehold"}
+JOINED_BY = {"existing overlap": "homology", "added overlap": "homology", "overhang": "overhang", "toehold": "toehold", "blunt end": "blunt end"}
+
+
+def joint_line(jt):
+    """What joins two fragments, in the one form every method and every view uses: what joins, how long, how warm, how GC-rich
+    ("20 bp homology · 58 °C · GC 45 %"); a blunt join has no bases, so it is just "blunt end"."""
+    word = JOINED_BY[jt.kind]
+    if not jt.seq:
+        return word
+    t, gc = joint_tm(jt.seq), 100 * sum(c in "GC" for c in jt.seq.upper()) / len(jt.seq)
+    return f"{len(jt.seq)} {'nt' if jt.kind == 'toehold' else 'bp'} {word}" + (f" · {t:.0f} °C" if t is not None else "") + f" · GC {gc:.0f} %"
 TAIL_BG, TAIL_FG = "#fff3e0", "#bf360c"   # bases a primer tail adds: lowercase, orange on cream
 
 
@@ -309,14 +319,12 @@ def junction_html(d, context=16, only=None):
         lo, hi = jt.pos - context, jt.pos + L + context
         word = JOINED_BY[jt.kind]
         inside = lambda q: jt.pos <= q < jt.pos + L
-        t = joint_tm(jt.seq)
-        gc = 100 * sum(c in "GC" for c in jt.seq.upper()) / max(L, 1)
         level = d.jlevels[j] if j < len(d.jlevels) else "ok"
         mark = {"ok": "✓", "warn": "⚠", "bad": "✗"}.get(level, "")
         colour = theme.hex({"ok": "status_ok", "warn": "status_warn", "bad": "status_bad"}.get(level, "status_info"))
         out.append(f"<p><b>{j + 1}. {escape(jt.left)} → {escape(jt.right)}</b> — <span style='color:{colour};font-weight:600'>{mark}</span> "
-                   f"{jt.kind}, {L} bp" + (f", Tm {t:.1f} °C" if t is not None else "") + f", GC {gc:.0f} %<br>"
-                   f"{orient(ia)} &nbsp;·&nbsp; {orient(ib)}</p>")
+                   f"{escape(joint_line(jt))}<br>"
+                   f"{orient(ia)} &nbsp;·&nbsp; {orient(ib)}</p><p>{escape(junction_summary(d, j))}</p>")
         out.append(sketch_html(d, j))
         if j < len(d.cuts) and d.cuts[j]:
             out.append("<p><tt>" + "<br>".join(escape(line).replace(" ", "&nbsp;") for line in d.cuts[j]) + "</tt></p>")
@@ -334,12 +342,13 @@ def junction_html(d, context=16, only=None):
         marks = [" "] * (hi - lo)
         for q in range(jt.pos, jt.pos + L):
             marks[q - lo] = "─"
-        marks[jt.pos - lo], marks[jt.pos + L - 1 - lo] = ("│", "│") if L == 1 else ("└", "┘")
-        label = f" {L} bp {word} "
+        label = f" {L} bp {word} " if L else f" {word} "
+        if L:
+            marks[jt.pos - lo], marks[jt.pos + L - 1 - lo] = ("│", "│") if L == 1 else ("└", "┘")
         if len(label) <= L - 2:
             start = jt.pos - lo + 1 + (L - 2 - len(label)) // 2
             marks[start:start + len(label)] = label
-        else:   # too short to hold it: write it just after the bracket
+        else:   # too short to hold it (a blunt join has no bases at all): write it just after the bracket
             start = jt.pos + L - lo + 1
             marks[start:] = label.strip()[:len(marks) - start]
         rows.append(("", None, escape("".join(marks)).replace(" ", "&nbsp;")))
@@ -479,7 +488,7 @@ def backbone(seq, enzyme, doc_length):
     name, _, _, k = GG_ENZYMES[enzyme]
     cuts = find_sites(seq, True).get(name, [])
     if len(cuts) != 2:
-        return None, 0, f"destination vector has {len(cuts)} {name} cut(s), needs exactly 2"
+        return None, 0, f"destination vector has {len(cuts)} {name} site(s), needs exactly 2"
     c1, c2 = cuts
     arcs = [(c1, c2 - c1 + k), (c2, len(seq) - c2 + c1 + k)]
     arcs = [((seq + seq)[s:s + n], s) for s, n in arcs]
@@ -638,6 +647,7 @@ def design_sidewinder(frags, target=60.0):
         top = cuts[j]            # the coding strand of fragment j ends with the toehold
         d.joints.append(Joint(d.names[j], d.names[j + 1], "toehold", t, top - TOEHOLD, (top, top, None), (top, top, None)))
         gc = 100 * sum(c in "GC" for c in t) / max(1, len(t))
+        d.check(f"Toehold {j + 1} ends", "ok", f"{d.names[j]} and {d.names[j + 1]} meet at {t}", junction=j, short="ends fit")
         d.check(f"Toehold {j + 1} GC", band(gc, 30, 70, 10), f"{gc:.0f} %", junction=j, short="GC")
         if len(t) < TOEHOLD:
             d.check(f"Toehold {j + 1} length", "bad", f"only {len(t)} of {TOEHOLD} nt: a fragment next to it is empty or too short",
@@ -760,11 +770,12 @@ def analyse_gibson(frags, circular, min_ov=20, min_tm=52.0):
     for j, jt in enumerate(d.joints):
         label = f"{jt.left} → {jt.right}"
         if jt.kind == "none":
-            d.check(f"Homology ({label})", "bad", d.problems[j], junction=j, short="homology")
+            d.check(f"Homology ({label})", "bad", d.problems[j], junction=j, short="ends fit")
             continue
         ov, t = jt.seq, melting_temp(jt.seq)
         gc = 100 * sum(c in "GC" for c in ov) / len(ov)
         hits = occurrences(product, ov, circular)
+        d.check(f"Ends fit ({label})", "ok", f"the end of {jt.left} is the start of {jt.right} over {len(ov)} bp", junction=j, short="ends fit")
         d.check(f"Homology ({label})", "ok" if len(ov) >= min_ov else "warn", f"{len(ov)} bp: {ov}"
                 + ("" if len(ov) >= min_ov else f" (shorter than {min_ov} bp: lower efficiency)"), junction=j, short="length")
         d.check(f"Homology Tm ({label})", band(t, min_tm, 80, 4) if t else "warn", f"{t:.1f} °C" if t else "?", junction=j, short="Tm")
@@ -871,9 +882,9 @@ def analyse_golden_gate(frags, circular, enzyme):
             good.append(ro)
         else:
             reason = (f"overhangs differ: {d.names[a]} ends with {ro}, {d.names[b]} starts with {lo}" if ro and lo else
-                      f"{d.names[a]} has no {ename} site at its right end" if lo else
-                      f"{d.names[b]} has no {ename} site at its left end" if ro else
-                      f"no {ename} site at {d.names[a]}'s right end or at {d.names[b]}'s left end")
+                      f"no {ename} site: {d.names[a]} has none at its right end" if lo else
+                      f"no {ename} site: {d.names[b]} has none at its left end" if ro else
+                      f"no {ename} site: neither {d.names[a]}'s right end nor {d.names[b]}'s left end has one")
             d.joints.append(Joint(d.names[a], d.names[b], "none", "", p, (p, p, None), (p, p, None)))
             d.problems.append(reason)
             d.junctions.append(f"{d.names[a]} → {d.names[b]}: {reason}")
@@ -906,6 +917,167 @@ def analyse_golden_gate(frags, circular, enzyme):
     return d
 
 
+# ---- restriction / ligation -----------------------------------------------------------------------
+
+
+RESTRICTION = {e.name: e for e in COMMON}   # the enzymes the Restriction / ligation mode cuts with, by name
+AS_IS = "end as is"                         # the "enzyme" of an end nothing cut: a PCR product's own flush end
+
+# One end of a cut fragment. `kind`: "5′", "3′" or "blunt"; `seq`: the overhang as the fragment's top strand reads it, so two ends join
+# when their kind and seq are equal (an overhang is the same bases on whichever strand carries it); `top` / `bottom`: where each strand is
+# cut, on the fragment's own numbering; `around`: the bases each side of the cut, with the cut marked, for the card.
+End = namedtuple("End", "enzyme kind seq top bottom around")
+
+
+def end_words(e):
+    return "blunt" if e.kind == "blunt" else f"{e.kind} {e.seq} overhang"
+
+
+def ends_fit(a, b):
+    """Can end `a` (the right end of one fragment) be ligated to end `b` (the left end of the next)? Sticky ends need the same kind and the
+    same bases (BamHI and BglII both leave GATC); a blunt end joins a blunt end. Which enzyme made them does not matter."""
+    return a.kind == b.kind and a.seq == b.seq
+
+
+def flipped_end(e):
+    """The same end of the fragment read from the other strand (which turns its left end into its right end)."""
+    return e._replace(seq=rc(e.seq))
+
+
+def cut_end(text, base, enzyme, top, bottom):
+    """The End made by `enzyme` cutting the strands of `text` at top / bottom (positions on the fragment; `base` is where position 0 is in `text`)."""
+    lo, hi = min(top, bottom) + base, max(top, bottom) + base
+    seq = text[lo:hi]
+    kind = "blunt" if top == bottom else "5′" if top < bottom else "3′"
+    return End(enzyme, kind, seq, top, bottom, f"…{text[max(lo - 8, 0):lo]}|{seq + '|' if seq else ''}{text[hi:hi + 8]}…")
+
+
+def cut_fragment(f, enzymes):
+    """How a fragment is cut: (bases kept, where they start on its document, left End, right End, further cuts inside, note).
+    A plain fragment is cut at its outermost sites (none: its own ends are used as they are). A vector is a circle, cut at its one site
+    (opened) or its two (the longer arc is the backbone; the stretch between the sites is thrown away)."""
+    names = list(dict.fromkeys(enzymes))
+    found = find_cuts(f.seq, f.vector, [RESTRICTION[x] for x in names])
+    seq, n = f.seq, len(f.seq)
+    if not f.vector:
+        cuts = sorted((t, b, name) for name, pairs in found.items() for t, b in pairs)
+        if len(cuts) == 1:
+            raise ValueError(f"{f.name}: cut once by {cuts[0][2]}, which leaves two pieces; it needs two sites, or none to use its ends as they are")
+        if not cuts:
+            return (seq, 0, End(AS_IS, "blunt", "", 0, 0, f"{seq[:8]}…"), End(AS_IS, "blunt", "", n, n, f"…{seq[-8:]}"), [], "")
+        (t1, b1, n1), (t2, b2, n2) = cuts[0], cuts[-1]
+        return seq[t1:t2], t1, cut_end(seq, 0, n1, t1, b1), cut_end(seq, 0, n2, t2, b2), cuts[1:-1], ""
+    # a circle: the bottom cut is kept as an offset from the top one, so it may fall either side of the origin
+    cuts = sorted((t, ((b - t + n // 2) % n) - n // 2, name) for name, pairs in found.items() for t, b in pairs)
+    if len(cuts) not in (1, 2):
+        raise ValueError(f"{f.name}: vector has {len(cuts)} {' / '.join(names)} site(s), needs 1 or 2")
+    first, last = cuts[0], cuts[-1]
+    if len(cuts) == 1:
+        (t1, d1, n1), (t2, d2, n2) = first, (first[0] + n, first[1], first[2])
+        note = f"opened at its one {n1} site"
+    else:   # shortcut: the longer arc is the backbone; a vector whose short arc is the one to keep needs sites that leave it the longer
+        (t1, d1, n1), (t2, d2, n2) = (first, last) if last[0] - first[0] >= n - (last[0] - first[0]) else (last, (first[0] + n, first[1], first[2]))
+        note = f"the {n - (t2 - t1):,} bp between its two sites is discarded"
+    ring = seq * 3
+    return ring[t1:t2], t1, cut_end(ring, n, n1, t1, t1 + d1), cut_end(ring, n, n2, t2, t2 + d2), [], note
+
+
+def site_survives(product, circular, enzyme, pos, length):
+    """Is there a recognition site of `enzyme` across the junction at `pos` of the product (`length` bases of overhang; 0 = a blunt join)?"""
+    n = len(product)
+    first = pos - 12 if circular else max(pos - 12, 0)
+    text = "".join(product[q % n] for q in range(first, pos + length + 12) if circular or 0 <= q < n)
+    z = pos - first
+    return any((s <= z and e >= z + length) if length else (s < z < e) for s, e, _ in site_spans(text, False, RESTRICTION[enzyme]))
+
+
+def analyse_restriction(frags, circular, enzymes):
+    """Restriction / ligation: each fragment is cut with the chosen enzymes (a vector as a circle); neighbours fit when the end of one can be
+    ligated to the start of the next. Checks the junctions, which sites the joins destroy, whether a fragment fits in both orientations and
+    whether the vector can close on itself; the product is exactly what the ligase makes."""
+    d = Design(frags, circular)
+    d.vectors = [f.vector for f in frags]
+    n = len(frags)
+    pairs, extras, notes = [], [], []
+    for i, f in enumerate(frags):
+        kept, start, left, right, extra, note = cut_fragment(f, enzymes)
+        d.seqs[i], d.offsets[i], d.ranges[i] = kept, start, (start, start + len(kept))
+        # A 3′ overhang at the left end, or a 5′ overhang at the right one, is bases of this fragment that the neighbour's top strand carries.
+        d.shared[i] = (min(abs(left.top - left.bottom), start) if left.kind == "3′" else 0, abs(right.top - right.bottom) if right.kind == "5′" else 0)
+        pairs.append((left, right))
+        extras.append(extra)
+        notes.append(note)
+    d.note = ("Each fragment is cut at its sites. A sticky end is a short single strand: two ends join when they are the same bases "
+              "(whichever enzyme made them) and the ligase seals the nicks. A blunt end joins any blunt end. Lowercase = a tail a primer added.")
+    ends, total = [], 0
+    for i in range(n):
+        total += len(d.seqs[i])
+        ends.append(total)
+    for j in range(n if circular else n - 1):
+        a, b = j, (j + 1) % n
+        ro, lo = pairs[a][1], pairs[b][0]
+        edge = ends[j]
+        if ends_fit(ro, lo):
+            size = len(ro.seq)   # the overhang sits after the edge (5′) or before it (3′): the left fragment's bottom strand ends at `other`
+            other = edge + (size if ro.kind == "5′" else -size)
+            d.joints.append(Joint(d.names[a], d.names[b], "overhang" if size else "blunt end", ro.seq, edge - size if ro.kind == "3′" else edge,
+                                  (edge, other, None), (edge, other, None)))
+            d.problems.append(None)
+            d.junctions.append(f"{d.names[a]} → {d.names[b]}: {ro.enzyme} end joined to {lo.enzyme} end ({end_words(ro)})")
+            d.cuts.append([ro.around, lo.around])
+        else:
+            d.joints.append(Joint(d.names[a], d.names[b], "none", "", edge, (edge, edge, None), (edge, edge, None)))
+            d.problems.append(f"ends do not match: {d.names[a]} ends with {ro.enzyme} ({end_words(ro)}), "
+                              f"{d.names[b]} starts with {lo.enzyme} ({end_words(lo)})")
+            d.junctions.append(f"{d.names[a]} → {d.names[b]}: {d.problems[-1].split(': ', 1)[1]}")
+            d.cuts.append(None)
+    tail_intervals(d, frags)
+    product = d.product()
+    for j, jt in enumerate(d.joints):
+        ro, lo = pairs[j][1], pairs[(j + 1) % n][0]
+        if jt.kind == "none":
+            d.check(f"Junction {j + 1}: {jt.left} → {jt.right}", "bad", d.problems[j], junction=j, short="ends fit")
+            continue
+        same = ro.enzyme == lo.enzyme
+        d.check(f"Junction {j + 1} ends", "ok", f"both ends are {end_words(ro)}" if same or AS_IS in (ro.enzyme, lo.enzyme)
+                else f"{ro.enzyme} and {lo.enzyme} both leave {end_words(ro)}", junction=j, short="ends fit")
+        real = [e for e in dict.fromkeys((ro.enzyme, lo.enzyme)) if e != AS_IS]
+        if real:
+            kept = [e for e in real if site_survives(product, circular, e, jt.pos, len(jt.seq))]
+            lost = [e for e in real if e not in kept]
+            if not same and not kept:
+                text = f"hybrid junction: neither {ro.enzyme} nor {lo.enzyme} cuts it again (both sites destroyed)"
+            else:
+                text = ("hybrid junction: " if not same else "") + ", ".join(
+                    [f"{' and '.join(kept)} site restored"] * bool(kept) + [f"{' and '.join(lost)} site destroyed"] * bool(lost))
+            d.check(f"Junction {j + 1} sites", "info", text, junction=j, short="sites")
+    for i, f in enumerate(frags):
+        if extras[i]:
+            d.check(f"Sites inside {f.name}", "bad", "also cut at " + ", ".join(f"{t + 1:,} ({name})" for t, _, name in extras[i])
+                    + ": the fragment would fall into pieces", fragment=i, short="extra site")
+        if notes[i]:
+            d.check(f"{f.name} cut", "info", notes[i])
+        if f.vector:
+            left, right = pairs[i]
+            fits = ends_fit(right, left)
+            d.check(f"Vector self-ligation ({f.name})", "warn" if fits else "ok",
+                    f"its two ends ({right.enzyme} and {left.enzyme}) are both {end_words(right)}: the vector can close on itself without an "
+                    "insert, the commonest reason a cloning fails. Dephosphorylate the cut vector (CIP or rSAP) so that only an insert can close it"
+                    if fits else f"its two ends ({right.enzyme}: {end_words(right)}, {left.enzyme}: {end_words(left)}) cannot join each other")
+    both = []
+    for i, f in enumerate(frags):
+        if not f.vector and n > 1 and (circular or 0 < i < n - 1):   # a fragment at the end of a line has only one neighbour to fit
+            before, after = pairs[(i - 1) % n][1], pairs[(i + 1) % n][0]
+            if ends_fit(before, flipped_end(pairs[i][1])) and ends_fit(flipped_end(pairs[i][0]), after):
+                both.append(f.name)
+    d.check("Orientation", "warn" if both else "ok",
+            f"{', '.join(both)} can go in either orientation, so the ligation gives {2 ** len(both)} different products; the one shown has each "
+            "fragment as given. Screen the clones (colony PCR or a diagnostic digest), or cut with two different enzymes to fix the direction"
+            if both else "every fragment fits one way only")
+    check_product(d)
+    return d
+
+
 def junction_cards(d):
     """What the map shows in place of each junction: SimpleNamespace(level, title, brief, lines, chips, closing, text).
     `brief`: (what joins, "Tm · GC"), the two short lines of the compact form; the full card is `title`, `lines` and `chips`.
@@ -922,13 +1094,13 @@ def junction_cards(d):
             L, t = len(jt.seq), joint_tm(jt.seq)
             gc = 100 * sum(c in "GC" for c in jt.seq.upper()) / max(L, 1)
             unit, word = "nt" if jt.kind == "toehold" else "bp", JOINED_BY[jt.kind]
-            title = f"{L} {unit} {word}" + (f" · {t:.0f} °C" if t is not None else "") + f" · GC {gc:.0f} %"
+            title = joint_line(jt)
             # Gibson joins by homology only, so the word adds nothing there; the other methods say what they join by.
-            brief = (f"{L} {unit}" + ("" if word == "homology" else f" {word}"),
-                     f"{t:.0f} °C · {gc:.0f} %" if t is not None else f"GC {gc:.0f} %")
+            brief = (word if not L else f"{L} {unit}" + ("" if word == "homology" else f" {word}"),
+                     "" if not L else f"{t:.0f} °C · {gc:.0f} %" if t is not None else f"GC {gc:.0f} %")
             lines = [jt.seq, "|" * L, jt.seq.translate(COMP)]
             if j < len(d.cuts) and d.cuts[j]:
-                lines = list(d.cuts[j]) if jt.kind == "overhang" else lines + list(d.cuts[j])
+                lines = list(d.cuts[j]) if jt.kind in ("overhang", "blunt end") else lines + list(d.cuts[j])
         tip = "\n".join(f"{MARKS[level][0]} {name}: {text}" for name, level, text in chips)
         cards.append(SimpleNamespace(level=d.jlevels[j] if j < len(d.jlevels) else "ok", title=title, brief=brief, lines=lines, chips=chips,
                                      closing=d.circular and j == n - 1 and n > 1 or (n == 1 and d.circular),
@@ -936,15 +1108,17 @@ def junction_cards(d):
     return cards
 
 
-def analyse(frags, method, circular, enzyme="BsaI", min_ov=20, min_tm=52.0, tm=60.0):
-    """Check `frags` as they are (0 Gibson, 1 Golden Gate, 2 Sidewinder). Raises ValueError for a setup that
-    cannot be analysed at all (e.g. a destination vector without two sites)."""
+def analyse(frags, method, circular, enzyme="BsaI", min_ov=20, min_tm=52.0, tm=60.0, enzymes=("EcoRI", "BamHI")):
+    """Check `frags` as they are (0 Gibson, 1 Golden Gate, 2 Sidewinder, 3 restriction / ligation with the two `enzymes`). Raises
+    ValueError for a setup that cannot be analysed at all (e.g. a destination vector without two sites)."""
     if method == 2:
         if len(frags) < 2:
-            raise ValueError("Sidewinder needs at least two fragments")
+            raise ValueError("Sidewinder: needs at least two fragments")
         d = design_sidewinder(frags, tm)
         d.problems = [None] * len(d.joints)
         tail_intervals(d, frags)
+    elif method == 3:
+        d = analyse_restriction(frags, circular, enzymes)
     else:
         d = analyse_golden_gate(frags, circular, enzyme) if method == 1 else analyse_gibson(frags, circular, min_ov, min_tm)
     # One verdict per junction: the worst of its checks (an end that does not fit is always red).

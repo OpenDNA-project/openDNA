@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 
 import runner
 from assembly import (
-    FRAG_COLORS, GG_ENZYMES, JOINED_BY, JOINT_COLOR, TAIL_COLOR, Frag, analyse, auto_primers, joint_tm, joints_html, junction_cards,
+    FRAG_COLORS, GG_ENZYMES, JOINT_COLOR, RESTRICTION, TAIL_COLOR, Frag, analyse, auto_primers, joint_line, joints_html, junction_cards,
     junction_html, junction_summary, junction_window, oligo_checks, piece_doc, simulate, snapshot,
 )
 from editor import Editor, feature_color, primer_sequence, reverse_complement as rc
@@ -376,7 +376,7 @@ class AssemblyMap(QWidget):
             feature = self._feature_at(i, event.position())
             flags = "\n".join(f"{MARKS[lv][0]} {t}" for _, lv, t in self.fchecks.get(i, []))
             self.setToolTip((f"{feature}\n\n" if feature else "") + f"{f.name}\n{len(f.seq):,} bp, {plural(len(f.doc.features()), 'feature')}"
-                            + ("\nreverse-complemented" if f.flipped else "") + ("\nGolden Gate destination vector" if f.vector else "")
+                            + ("\nreverse-complemented" if f.flipped else "") + ("\nvector (kept whole, cut by the design)" if f.vector else "")
                             + (f"\n\n{flags}" if flags else ""))
         else:
             self.setToolTip(self.HELP)
@@ -579,12 +579,10 @@ class JunctionDialog(QDialog):
         if jt.kind == "none":
             what = "✗ the two ends do not fit"
         else:
-            unit, word = ("nt", "toehold") if jt.kind == "toehold" else ("bp", JOINED_BY[jt.kind])
-            tm, gc = joint_tm(jt.seq), 100 * sum(c in "GC" for c in jt.seq.upper()) / max(len(jt.seq), 1)
-            what = f"{MARKS.get(level, ('', ''))[0]} {jt.kind}, {len(jt.seq)} {unit} {word}" + (f" · Tm {tm:.1f} °C" if tm is not None else "") + f" · GC {gc:.0f} %"
+            what = f"{MARKS.get(level, ('', ''))[0]} {joint_line(jt)}"
         head = QLabel(f"<b>Junction {j + 1}</b> &nbsp;Fragment {a + 1} → Fragment {b + 1} &nbsp;<span style='color:{colour};font-weight:600'>{escape(what)}</span>")
         orient = lambda i: f"Fragment {i + 1} = {escape(d.names[i])} {'◀ reverse-complemented' if d.flipped[i] else '▶ as given'}"
-        summary = QLabel(f"{escape(junction_summary(d, j))}<br><span style='color:gray'>{orient(a)} &nbsp;·&nbsp; {orient(b)}</span>", wordWrap=True)
+        summary = QLabel(f"<span style='color:gray'>{orient(a)} &nbsp;·&nbsp; {orient(b)}</span><br>{escape(junction_summary(d, j))}", wordWrap=True)
         box = QVBoxLayout(self)
         self.view, labels = None, [head, summary]
         if jt.kind == "none":   # no product to show: the two ends as they are, under the reason above
@@ -622,7 +620,7 @@ class JunctionDialog(QDialog):
 # ---- the panel ---------------------------------------------------------------------------------------------
 
 
-METHOD_WIP = [None, "golden_gate", "sidewinder"]   # per method of the list: its feature in wip.FEATURES, if unfinished
+METHOD_WIP = [None, "golden_gate", "sidewinder", None]   # per method of the list: its feature in wip.FEATURES, if unfinished
 
 
 class AssemblyPanel(QWidget):
@@ -636,7 +634,7 @@ class AssemblyPanel(QWidget):
         self.design, self.error, self.dialogs = None, "", []
         self.product_view, self.product_shown = None, False   # the preview of the product, in the sequence stack
         self.method = QComboBox()
-        self.method.addItems(["Gibson / HiFi", "Golden Gate", "Sidewinder"])
+        self.method.addItems(["Gibson / HiFi", "Golden Gate", "Sidewinder", "Restriction / ligation"])
         # The unfinished methods carry the "WIP" tag: in the list, and beside the box while one is chosen (wip.FEATURES).
         self.method.setItemDelegate(wip.Delegate(lambda index: METHOD_WIP[index.row()], self.method))
         self.method_wip = wip.Badge(None)
@@ -654,18 +652,24 @@ class AssemblyPanel(QWidget):
         self.count = QSpinBox(minimum=1, maximum=MAX_FRAGMENTS, value=3)
         self.enzyme = QComboBox()
         self.enzyme.addItems(list(GG_ENZYMES))
+        self.enz_a, self.enz_b = QComboBox(), QComboBox()   # restriction / ligation: the two enzymes (the same one twice is allowed)
+        for box, name in ((self.enz_a, "EcoRI"), (self.enz_b, "BamHI")):
+            box.addItems(list(RESTRICTION))
+            box.setCurrentText(name)
         self.circular = QCheckBox("Circular product (plasmid)", checked=True)
         self.min_ov = QSpinBox(minimum=15, maximum=60, value=20, suffix=" bp")
         self.max_ov = QSpinBox(minimum=15, maximum=80, value=40, suffix=" bp")
         self.ov_tm = QDoubleSpinBox(minimum=40, maximum=75, value=52, suffix=" °C")
         self.anneal_tm = QDoubleSpinBox(minimum=45, maximum=72, value=60, suffix=" °C")
         self.report_button = QPushButton("Full report…", clicked=self.show_report, toolTip="Every junction, check and oligo in detail")
-        self.options = []   # (label, widget, method it belongs to) shown only for that method
+        self.options = []   # (label, widget, methods it belongs to) shown only for those methods
         grid = QGridLayout()
         grid.setHorizontalSpacing(8)
-        for col, (label, w, only) in enumerate((("Method", method_box, None), ("Fragments", self.count, None), ("Enzyme", self.enzyme, 1),
-                                                ("Overlap", self.min_ov, 0), ("to", self.max_ov, 0), ("Overlap Tm ≥", self.ov_tm, 0),
-                                                ("Annealing Tm", self.anneal_tm, None))):
+        # (label, widget, methods, column): the options of different methods share columns, only one of them is shown at a time
+        for label, w, only, col in (("Method", method_box, None, 0), ("Fragments", self.count, None, 1), ("Enzyme", self.enzyme, (1,), 2),
+                                    ("Enzyme 1", self.enz_a, (3,), 2), ("Enzyme 2", self.enz_b, (3,), 3),
+                                    ("Overlap", self.min_ov, (0,), 3), ("to", self.max_ov, (0,), 4), ("Overlap Tm ≥", self.ov_tm, (0,), 5),
+                                    ("Annealing Tm", self.anneal_tm, (0, 1, 2), 6)):
             lab = QLabel(label)
             grid.addWidget(lab, 0, col)
             grid.addWidget(w, 1, col)
@@ -779,7 +783,8 @@ class AssemblyPanel(QWidget):
         outer.addWidget(split)
         self.method.currentIndexChanged.connect(self._method_changed)
         self.count.valueChanged.connect(self._count_changed)
-        self.enzyme.currentIndexChanged.connect(self.analyse)
+        for box in (self.enzyme, self.enz_a, self.enz_b):
+            box.currentIndexChanged.connect(self.analyse)
         self.circular.toggled.connect(self.analyse)
         # The shortest overlap never exceeds the longest: moving one pushes the other along.
         self.min_ov.valueChanged.connect(lambda v: self.max_ov.setValue(max(v, self.max_ov.value())))
@@ -805,12 +810,13 @@ class AssemblyPanel(QWidget):
     def _method_changed(self):
         m = self.method.currentIndex()
         for lab, w, only in self.options:
-            lab.setVisible(only is None or only == m)
-            w.setVisible(only is None or only == m)
+            lab.setVisible(only is None or m in only)
+            w.setVisible(only is None or m in only)
         self.circular.setEnabled(m != 2)
         self.buttons["homology"].setToolTip(
             "Design new primers that carry what the method needs at each junction (an overlap tail for Gibson, a site + "
-            "spacer + overhang for Golden Gate)" if m != 2 else "Sidewinder oligos are designed for you")
+            "spacer + overhang for Golden Gate)" if m < 2 else "Sidewinder oligos are designed for you" if m == 2 else
+            "Restriction / ligation uses the sites the fragments already have: there is nothing to design")
         self.analyse()
 
     def _count_changed(self, n):
@@ -869,8 +875,9 @@ class AssemblyPanel(QWidget):
             menu.addAction("Move left", lambda: self._move_to(i, i - 1)).setEnabled(i > 0)
             menu.addAction("Move right", lambda: self._move_to(i, i + 1)).setEnabled(i < len(self.slots) - 1)
             menu.addAction("Reverse complement", lambda: self._flip_at(i))
-            if self.method.currentIndex() == 1:
-                vector = menu.addAction("Destination vector (cut at its two sites)")
+            if self.method.currentIndex() in (1, 3):
+                vector = menu.addAction("Destination vector (cut at its two sites)" if self.method.currentIndex() == 1
+                                        else "Vector (cut at its one or two sites)")
                 vector.setCheckable(True)
                 vector.setChecked(f.vector)
                 vector.triggered.connect(lambda _checked=False: self._toggle_vector_at(i))
@@ -1106,7 +1113,9 @@ class AssemblyPanel(QWidget):
         src, old = self.sources[i], self.slots[i]
         stem = Path(src.label).stem
         name = self._free_name(stem if (start, end) == (0, src.doc.length) else f"{stem} {start + 1}-{end}", i)
-        f = Frag(name, src.doc, start, end, fwd, rev, vector=bool(old and old.vector), source=src.label)
+        # A whole circular file is a vector in restriction / ligation: cut as a ring, not as a line.
+        vector = bool(old and old.vector) or (self.method.currentIndex() == 3 and src.doc.circular and (start, end) == (0, src.doc.length))
+        f = Frag(name, src.doc, start, end, fwd, rev, vector=vector, source=src.label)
         self.slots[i] = f
         self.analyse()
         self.chosen.setText(f"Fragment {i + 1} = {src.label} {start + 1:,}–{end:,} ({f.doc.length:,} bp"
@@ -1157,7 +1166,8 @@ class AssemblyPanel(QWidget):
     # -- analysis
     def params(self):
         return dict(method=self.method.currentIndex(), circular=self.is_circular(), enzyme=self.enzyme.currentText(),
-                    min_ov=self.min_ov.value(), min_tm=self.ov_tm.value(), tm=self.anneal_tm.value())
+                    min_ov=self.min_ov.value(), min_tm=self.ov_tm.value(), tm=self.anneal_tm.value(),
+                    enzymes=(self.enz_a.currentText(), self.enz_b.currentText()))
 
     def analyse(self):
         """Check the junctions of the fragments as they are now and show everything that follows from it."""
@@ -1203,13 +1213,14 @@ class AssemblyPanel(QWidget):
             missing = sum(j.kind == "none" for j in d.joints)
             product = d.product()
             if d.ok:
-                text, color = (f"✓ Every junction checks out: {len(product):,} bp {'circular' if d.circular else 'linear'} product, "
-                               f"{len(d.rows)} oligos. Perform assembly is ready."), "ok"
+                text, color = (f"✓ Every junction checks out: {len(product):,} bp {'circular' if d.circular else 'linear'} product"
+                               + (f", {len(d.rows)} oligos" if d.rows else "") + ". Perform assembly is ready."), "ok"
             else:
                 bad = [c for c, level, _ in d.checks if level == "bad"]
                 text, color = (f"✗ {plural(missing, 'junction')} {'does' if missing == 1 else 'do'} not fit" if missing else "✗ A check failed") + \
                     (": press \"Design primers\" to give the ends what the method needs, or change the fragments."
-                     if missing and self.method.currentIndex() != 2 else f" ({', '.join(bad[:3])})."), "bad"
+                     if missing and self.method.currentIndex() < 2 else
+                     ": change the fragments or the enzymes." if missing and self.method.currentIndex() == 3 else f" ({', '.join(bad[:3])})."), "bad"
             # What is not about one junction or one fragment (the circle, leftover sites...); the rest is on the cards and boxes.
             notes = "<br>".join(f"<span style='color:{LEVEL_COLORS[lv]}'>{MARKS[lv][0]} <b>{escape(n)}</b>: {escape(t)}</span>"
                                 for n, lv, t in d.global_checks if lv in ("warn", "bad"))
@@ -1220,7 +1231,7 @@ class AssemblyPanel(QWidget):
     def buttons_update(self):
         filled = [f for f in self.slots if f]
         m = self.method.currentIndex()
-        self.buttons["homology"].setEnabled(m != 2 and len(filled) == len(self.slots))
+        self.buttons["homology"].setEnabled(m < 2 and len(filled) == len(self.slots))
         self.buttons["perform"].setEnabled(bool(self.design and self.design.ok))
         self.buttons["save"].setEnabled(bool(filled))
         self.buttons["primers"].setEnabled(bool(self.design and self.design.rows))
@@ -1228,7 +1239,7 @@ class AssemblyPanel(QWidget):
 
     # -- actions
     def add_homology(self):
-        if None in self.slots or self.method.currentIndex() == 2:
+        if None in self.slots or self.method.currentIndex() > 1:
             return
         p = self.params()
         n = auto_primers(self.slots, p["method"], p["circular"], p["enzyme"], self.min_ov.value(), self.max_ov.value(), p["min_tm"], p["tm"])

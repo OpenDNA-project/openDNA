@@ -469,7 +469,7 @@ def test_panel_boxes_check_design_perform_and_golden_gate_vector():
     """The panel starts with gray boxes and follows the fragment count; clicking a gray box asks for a source; it checks, designs and performs automatically; Golden Gate vector and enzyme."""
     # --- gray boxes and the fragment count ---
     panel = P.AssemblyPanel(Win())
-    assert panel.method.count() == 3 and len(panel.slots) == 3 and panel.slots == [None] * 3
+    assert panel.method.count() == 4 and len(panel.slots) == 3 and panel.slots == [None] * 3
     assert "still empty" in panel.status.text() and not panel.buttons["perform"].isEnabled()
     panel.count.setValue(5)
     assert len(panel.slots) == 5 and len(panel.strip.slots) == 5
@@ -689,7 +689,7 @@ def test_every_method_puts_its_junction_info_on_a_card_and_the_map_shows_them():
     for c, j in zip(gib, A.analyse(g, 0, True).joints):
         assert j.seq in c.lines and j.seq.translate(A.COMP) in c.lines, "the joining bases on both strands"
         assert "bp homology" in c.title and "°C" in c.title and "GC" in c.title
-        assert [n for n, _, _ in c.chips] == ["length", "Tm", "GC", "unique", "hairpin", "distinct"]
+        assert [n for n, _, _ in c.chips] == ["ends fit", "length", "Tm", "GC", "unique", "hairpin", "distinct"]
         assert c.brief[0] == f"{len(j.seq)} bp" and "°C" in c.brief[1] and "%" in c.brief[1], "the two lines of the compact pill"
     h = [vector_frag(), frag("i", dna(500)), frag("t", dna(300))]
     A.auto_primers(h, 1, True)
@@ -700,7 +700,7 @@ def test_every_method_puts_its_junction_info_on_a_card_and_the_map_shows_them():
     sw = A.junction_cards(A.analyse([frag("a", dna(100)), frag("b", dna(100)), frag("c", dna(100))], 2, False))
     assert len(sw) == 2 and all("toehold" in c.title and c.lines[-1].startswith("barcode ") for c in sw)
     assert all(c.brief[0].endswith(" nt toehold") for c in sw)
-    assert [n for n, _, _ in sw[0].chips] == ["GC", "unique", "distinct"]
+    assert [n for n, _, _ in sw[0].chips] == ["ends fit", "GC", "unique", "distinct"]
     # An end that does not fit is a red card that says why.
     red = A.junction_cards(A.analyse(frags(), 0, True))
     assert all(c.level == "bad" and "do not fit" in c.title and c.chips[0][1] == "bad" and c.text for c in red)
@@ -1127,3 +1127,169 @@ def test_actions_menu_pointer_product_box_and_sidewinder_panel():
     assert panel.product_shown and [f for f in panel.product_view.editor.doc.features() if "toehold" in f.label]
     panel.perform()
     assert panel.win.opened.length == 300
+
+
+# ---- restriction / ligation ---------------------------------------------------------------------------------------
+
+SITES = {"EcoRI": "GAATTC", "BamHI": "GGATCC", "BglII": "AGATCT", "XhoI": "CTCGAG", "EcoRV": "GATATC", "SmaI": "CCCGGG", "PstI": "CTGCAG",
+         "NsiI": "ATGCAT", "HindIII": "AAGCTT"}
+
+
+def clean(n):
+    """Random bases with none of the sites these tests cut with, on either strand."""
+    while True:
+        s = dna(n)
+        if not any(site in s or rc(site) in s for site in SITES.values()):
+            return s
+
+
+def ligation(vector, insert, enzymes, features=(), insert_features=()):
+    """The fragments (a circular vector cut as a ring, a linear insert) and their design with the two enzymes."""
+    v = frag("vec", vector, features, vector=True)
+    v.doc.circular = True
+    i = frag("ins", insert, insert_features)
+    return [v, i], A.analyse([v, i], 3, True, enzymes=enzymes)
+
+
+def directional():
+    """A vector with an EcoRI and a BamHI site 20 bases apart, and an insert cut from EcoRI to BamHI."""
+    vec = clean(300) + "GAATTC" + clean(20) + "GGATCC" + clean(400)
+    mid = clean(200)
+    return vec, clean(5) + "GAATTC" + mid + "GGATCC" + clean(5), mid
+
+
+def test_restriction_ligation_gives_exactly_the_sequence_the_ligase_makes():
+    vec, ins, mid = directional()
+    (v, i), d = ligation(vec, ins, ("EcoRI", "BamHI"))
+    assert d.ok and [j.kind for j in d.joints] == ["overhang", "overhang"] and [j.seq for j in d.joints] == ["AATT", "GATC"]
+    # EcoRI G^AATTC and BamHI G^GATCC: the backbone is the long arc, from the BamHI cut round to the EcoRI cut, then the insert as cut.
+    expected = vec[327:] + vec[:301] + "AATTC" + mid + "G"
+    assert d.product() == expected and d.circular
+    assert [joined_bases(d, j) for j in d.joints] == ["AATT", "GATC"], "the overhangs sit where the joints say"
+    assert "GAATTC" in expected and "GGATCC" in expected + expected[:5], "both sites come back, one at each end of the insert (BamHI across the origin)"
+    assert A.simulate([v, i], d).sequence(0, None).upper() == expected
+    assert all(c.title.startswith("4 bp overhang") for c in A.junction_cards(d)) and d.cuts[0][0].count("|") == 2
+
+
+def test_sticky_ends_join_only_when_their_bases_and_kind_agree_and_blunt_joins_blunt():
+    cuts = {"EcoRI": (11, 15), "BamHI": (11, 15), "XhoI": (11, 15), "EcoRV": (13, 13), "SmaI": (13, 13), "PstI": (15, 11), "NsiI": (15, 11)}
+    end = lambda name: A.cut_end("A" * 10 + SITES[name] + "C" * 10, 0, name, *cuts[name])
+    assert A.ends_fit(end("EcoRI"), end("EcoRI")), "the same sticky end"
+    assert not A.ends_fit(end("EcoRI"), end("BamHI")), "AATT is not GATC"
+    assert not A.ends_fit(end("EcoRI"), end("EcoRV")), "sticky never joins blunt"
+    assert A.ends_fit(end("EcoRV"), end("SmaI")), "blunt joins blunt, whichever enzyme"
+    assert A.ends_fit(end("PstI"), end("NsiI")) and end("PstI").kind == "3′", "a 3′ overhang pairs with the same 3′ overhang"
+    assert not A.ends_fit(end("PstI"), A.End("x", "5′", end("PstI").seq, 0, 0, "")), "the same bases on the other strand do not pair"
+
+
+def test_compatible_but_different_enzymes_join_and_the_hybrid_site_is_cut_by_neither():
+    vec = clean(300) + "GGATCC" + clean(400)
+    insert = clean(5) + "AGATCT" + clean(200) + "AGATCT" + clean(5)   # BglII at both ends, BamHI on the vector
+    (v, i), d = ligation(vec, insert, ("BamHI", "BglII"))
+    assert d.ok and [j.seq for j in d.joints] == ["GATC", "GATC"]
+    assert all({"BamHI", "BglII"} <= set(t.split()) and "5′ GATC overhang" in t for j in range(2) for s, _, t in d.jchecks[j] if s == "ends fit")
+    assert all("hybrid junction" in t and "both sites destroyed" in t for j in range(2) for s, _, t in d.jchecks[j] if s == "sites")
+    product = d.product() + d.product()[:5]   # a circle: a join can sit over the origin
+    assert "GGATCT" in product and "AGATCC" in product and "GGATCC" not in product and "AGATCT" not in product, "neither enzyme cuts the joins"
+
+
+def test_a_fragment_with_two_identical_ends_goes_in_either_orientation_and_the_user_is_told():
+    vec = clean(300) + "GAATTC" + clean(400)
+    insert = clean(5) + "GAATTC" + clean(200) + "GAATTC" + clean(5)
+    _, d = ligation(vec, insert, ("EcoRI", "EcoRI"))
+    orientation = find_check(d, "Orientation")
+    assert d.ok and orientation[1] == "warn" and "ins" in orientation[2] and "2 different products" in orientation[2]
+    assert orientation in d.global_checks, "it is shown on the panel, not hidden on a card"
+    vec, ins, _ = directional()
+    assert find_check(ligation(vec, ins, ("EcoRI", "BamHI"))[1], "Orientation")[1] == "ok", "two different ends fix the direction"
+    blunt = clean(300) + "GATATC" + clean(400)
+    assert find_check(ligation(blunt, clean(5) + "GATATC" + clean(200) + "GATATC" + clean(5), ("EcoRV", "EcoRV"))[1], "Orientation")[1] == "warn"
+
+
+def test_a_vector_whose_two_ends_are_compatible_can_close_on_itself_and_dephosphorylation_is_advised():
+    _, d = ligation(clean(300) + "GAATTC" + clean(400), clean(5) + "GAATTC" + clean(200) + "GAATTC" + clean(5), ("EcoRI", "EcoRI"))
+    check = find_check(d, "Vector self-ligation (vec)")
+    assert check[1] == "warn" and "close on itself" in check[2] and "Dephosphorylate" in check[2] and check in d.global_checks
+    # BamHI and BglII leave the same ends: a vector cut with both can close on itself too.
+    both = clean(300) + "GGATCC" + clean(20) + "AGATCT" + clean(400)
+    assert find_check(ligation(both, clean(5) + "GGATCC" + clean(100) + "AGATCT" + clean(5), ("BamHI", "BglII"))[1], "Vector self-ligation (vec)")[1] == "warn"
+    vec, ins, _ = directional()
+    assert find_check(ligation(vec, ins, ("EcoRI", "BamHI"))[1], "Vector self-ligation (vec)")[1] == "ok", "EcoRI and BamHI ends cannot join each other"
+
+
+def test_restriction_ligation_says_which_ends_do_not_match_and_flipping_the_insert_fixes_it():
+    vec, ins, _ = directional()
+    (v, i), d = ligation(vec, A.rc(ins), ("EcoRI", "BamHI"))
+    assert not d.ok and d.joints[0].kind == "none" and "ends do not match" in d.problems[0] and "EcoRI" in d.problems[0] and "BamHI" in d.problems[0]
+    assert A.junction_cards(d)[0].level == "bad" and A.junction_cards(d)[0].brief == ("ends do not fit", "")
+    i.flip()
+    assert A.analyse([v, i], 3, True, enzymes=("EcoRI", "BamHI")).ok
+    _, blunt = ligation(clean(300) + "GATATC" + clean(400), clean(5) + "GAATTC" + clean(100) + "GAATTC" + clean(5), ("EcoRV", "EcoRI"))
+    assert not blunt.ok, "a blunt vector end does not take a sticky insert"
+    with pytest.raises(ValueError, match="needs 1 or 2"):
+        ligation(clean(500), clean(100), ("EcoRI", "BamHI"))
+    with pytest.raises(ValueError, match="cut once"):
+        ligation(vec, clean(50) + "GAATTC" + clean(50), ("EcoRI", "BamHI"))
+
+
+def test_a_blunt_ligation_has_no_overhang_and_still_gives_the_exact_product():
+    vec = clean(300) + "GATATC" + clean(400)
+    mid = clean(150)
+    (v, i), d = ligation(vec, clean(5) + "CCCGGG" + mid + "CCCGGG" + clean(5), ("EcoRV", "SmaI"))
+    assert d.ok and [j.kind for j in d.joints] == ["blunt end", "blunt end"] and A.junction_cards(d)[0].title == "blunt end"
+    assert d.product() == vec[303:] + vec[:303] + "GGG" + mid + "CCC"
+    assert "blunt end" in A.junction_html(d) and A.simulate([v, i], d, preview=True).length == len(d.product())
+
+
+def test_restriction_ligation_carries_the_features_of_the_vector_and_the_insert_into_the_product():
+    vec, ins, mid = directional()
+    # a vector gene that runs over the origin, one in the discarded stretch, and an insert gene on its bottom strand
+    feats = [("CDS", "join(700..720,1..30)", "wraps"), ("misc_feature", "310..320", "dropped"), ("CDS", "40..100", "plain")]
+    (v, i), d = ligation(vec, ins, ("EcoRI", "BamHI"), feats, [("CDS", "complement(20..120)", "gene")])
+    doc = A.simulate([v, i], d)
+    found = {x.label: x for x in doc.features()}
+    assert "dropped" not in found, "a feature only in the stretch that is thrown away goes with it"
+    wraps = sum(e - s for x in doc.features() if x.label == "wraps" for s, e in x.spans)
+    for label, src_seq in (("plain", vec[39:100]), ("gene", ins[19:120])):
+        s, e = found[label].spans[0]
+        assert doc.sequence(s, e).upper() == src_seq.upper(), label
+    assert found["gene"].strand < 0 and found["plain"].strand > 0
+    assert wraps == 51 and d.product().upper() == doc.sequence(0, None).upper()
+
+
+def test_restriction_ligation_designs_a_real_cut_and_ligate_from_the_demo_files():
+    demo = Path(__file__).resolve().parent.parent / "demo"
+    vector, whole = Document(str(demo / "pBAD30_RC.gb")), Document(str(demo / "pBAD30_eilR.gb"))
+    seq = whole.sequence(0, None).upper()
+    bam, xho = seq.index("GGATCC"), seq.index("CTCGAG")
+    v = A.Frag("pBAD30", A.snapshot(vector), vector=True)
+    ins = A.Frag("eilR cassette", A.snapshot(whole), bam - 4, xho + 10)   # BamHI to XhoI, cut out of the other file as a linear fragment
+    d = A.analyse([v, ins], 3, True, enzymes=("BamHI", "XhoI"))
+    assert d.ok, [c for c in d.checks if c[1] == "bad"]
+    # The vector is cut at BamHI and XhoI and its long arc (XhoI round the origin to BamHI) kept; the cassette, BamHI to XhoI, closes it.
+    assert d.product().upper() == seq[xho + 1:] + seq[:bam + 1] + seq[bam + 1:xho + 1] and len(d.product()) == len(seq)
+    doc = A.simulate([v, ins], d)
+    assert any(x.label == "eilR" and doc.sequence(*x.spans[0]).upper().startswith("ATG") for x in doc.features()), "the eilR gene is in the product"
+    assert find_check(d, "Vector self-ligation (pBAD30)")[1] == "ok" and find_check(d, "Orientation")[1] == "ok"
+
+
+def test_the_panel_offers_restriction_ligation_with_two_enzymes_and_treats_a_whole_circular_file_as_the_vector():
+    vec, ins, mid = directional()
+    docs = [Document.new_sequence("vec", vec, True), Document.new_sequence("ins", ins, False)]
+    panel = P.AssemblyPanel(Win(docs))
+    panel.count.setValue(2)
+    panel.method.setCurrentIndex(3)
+    assert panel.method.currentText() == "Restriction / ligation" and (panel.enz_a.currentText(), panel.enz_b.currentText()) == ("EcoRI", "BamHI")
+    for k, doc in enumerate(docs):
+        panel._set_source(k, A.snapshot(doc), f"{doc.name}.gb", None)
+    assert panel.slots[0].vector and not panel.slots[1].vector
+    assert panel.design.ok and "checks out" in panel.status.text() and "oligos" not in panel.status.text()
+    assert not panel.buttons["homology"].isEnabled(), "there is nothing to design: the sites are already there"
+    panel.perform()
+    assert panel.win.opened.sequence(0, None).upper() == vec[327:] + vec[:301] + "AATTC" + mid + "G" and panel.win.opened.circular
+    panel.enz_b.setCurrentText("XhoI")   # the insert has no XhoI site, so only its EcoRI end is cut
+    assert panel.error and "cut once" in panel.error and not panel.buttons["perform"].isEnabled()
+    panel.enz_b.setCurrentText("BamHI")
+    panel._flip_at(1)
+    assert not panel.design.ok and "do not fit" in panel.status.text() and "change the fragments or the enzymes" in panel.status.text()
+    assert "Vector (cut at its one or two sites)" in [a.text() for a in panel._build_context_menu(0).actions()]
