@@ -36,6 +36,7 @@ from citations import CitationsDialog
 from editor import remember_hidden_primers
 from sourcefiles import add_recent, pinned_files, recent_files
 from local_align import LocalAlignDialog
+from folder_search import FolderSearchDialog
 from tools import DigestDialog, OrfDialog, PcrDialog
 import updater
 import exports
@@ -396,6 +397,7 @@ class MainWindow(QMainWindow):
         tools.addAction(QAction("&Assembly", self, triggered=self.show_assembly))  # needs no open file
         action(tools, "&Local Align…", "Ctrl+Shift+B", lambda: LocalAlignDialog(self, self.editor).exec())
         action(tools, "Align &Clipboard…", None, lambda: LocalAlignDialog.align_clipboard(self, self.editor))
+        action(tools, "Folder S&earch…", None, lambda: FolderSearchDialog(self, self.editor).exec())
         action(tools, "Restriction &Digest…", None, lambda: DigestDialog(self, self.editor).exec())
         tools.addSeparator()
         action(tools, "Detect Common &Features…", "Ctrl+Shift+A", lambda: DetectDialog(self, self.editor).exec())
