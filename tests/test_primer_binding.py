@@ -465,14 +465,16 @@ def test_lower_case_u_and_other_letters_in_primer_or_template():
     assert sites(template, core.replace("T", "U"), False, 0) == expected, "U reads as T"
     doc = Document.new_sequence("t", template.lower(), False)        # a document keeps the case it is given
     assert doc.binding_sites(core, 0) == expected
-    # N or an IUPAC letter in the primer is a base that differs: counted as a mismatch, allowed only where a mismatch is
-    assert sites(template, core[:15] + "N" + core[16:], False, 0) == []
-    assert sites(template, core[:15] + "N" + core[16:], False, 1) == [(20, 40, 1, 1)]
+    # a letter that is not a base or an IUPAC code is a base that differs, allowed only where a mismatch is
+    assert sites(template, core[:15] + "X" + core[16:], False, 0) == []
+    assert sites(template, core[:15] + "X" + core[16:], False, 1) == [(20, 40, 1, 1)]
+    # an IUPAC code in the primer matches every base it stands for (a match, not a mismatch), even at the 3' end
+    assert sites(template, core[:15] + "N" + core[16:], False, 0) == expected
+    assert sites(template, core[:15] + "Y" + core[16:], False, 0) == [(20, 40, 1, 0)], "Y is C or T: the template has T"
+    assert sites(template, core[:15] + "R" + core[16:], False, 0) == [], "R is A or G: the template has T"
     assert sites(template, core[:15] + "R" + core[16:], False, 1) == [(20, 40, 1, 1)]
-    assert sites(template, core[:15] + "Y" + core[16:], False, 1) == [(20, 40, 1, 1)], "IUPAC letters do not match a base they include"
-    # at the 3' end it never binds, N included
-    assert sites(template, core[:-1] + "N", False, 3) == []
-    assert sites(template, core[:-1] + "R", False, 3) == []
+    assert sites(template, core[:-1] + "N", False, 0) == expected
+    assert sites(template, core[:-1] + "Y", False, 3) == [], "Y excludes the template's A"
     # an N (or a letter that is not a base) in the template never matches
     with_n = flank + core[:10] + "N" + core[11:] + flank
     assert sites(with_n, core, False, 0) == []
@@ -872,3 +874,63 @@ def test_primer_sites_written_on_save_do_not_change_the_document_or_its_undo_sta
     ed2.save(tmp_path / "t2.gb")
     moved = Document(str(tmp_path / "t2.gb"))
     assert [(f.label, tuple(f.spans)) for f in moved.features() if f.kind == "primer_bind"] == [("pFwd", ((110, 134),))]
+
+
+# ---- degenerate (IUPAC) primers ------------------------------------------------------------------------------------------------------
+
+def test_a_primer_with_three_degenerate_positions_binds_every_site_it_matches_on_both_strands():
+    core = dna(30)
+    # the same 30 bases with the three degenerate positions (4, 17, 25) taking each allowed base in turn
+    def variant(r, y, n):
+        v = list(core)
+        v[4], v[17], v[25] = r, y, n
+        return "".join(v)
+    primer = variant("R", "Y", "N")
+    template = "".join(dna(60, "T") + v for v in (variant("A", "C", "G"), variant("G", "T", "T"), variant("A", "T", "A"))) + dna(60, "T")
+    forward = [(60, 90, 1, 0), (150, 180, 1, 0), (240, 270, 1, 0)]
+    assert sites(template, primer, False, 0) == forward
+    # on the reverse-complemented template the same primer binds the other strand (R pairs with Y there), still no mismatch
+    found = sites(rc(template), primer, False, 0)
+    assert len(found) == 3 and all(strand == -1 and mm == 0 for _, _, strand, mm in found)
+    # a base the code does not allow, inside the 3' seed, is still a mismatch: Y (C or T) against an A
+    off = template[:60] + variant("A", "A", "G") + template[90:]
+    assert [x[0] for x in sites(off, primer, False, 0)] == [150, 240]
+
+
+def test_a_degenerate_base_in_the_template_still_matches_only_the_same_letter():
+    core = dna(30)
+    template = "T" * 40 + core[:20] + "N" + core[21:] + "T" * 40
+    assert sites(template, core, False, 0) == []
+    assert sites(template, core[:20] + "N" + core[21:], False, 0) == [(40, 70, 1, 0)], "N against N is the same letter"
+
+
+def test_the_tm_range_brackets_the_tm_of_every_expanded_oligo():
+    from itertools import product
+    from opendna_core import tm, tm_range
+    degenerate = "AGCGGRTAACAATYTCACACNGGA"
+    codes = dict(R="AG", Y="CT", N="ACGT")
+    oligos = ["".join(p) for p in product(*[codes.get(c, c) for c in degenerate])]
+    tms = [tm(o) for o in oligos]
+    lo, hi = tm_range(degenerate)
+    assert len(oligos) == 16
+    assert lo == pytest.approx(min(tms), abs=1e-6) and hi == pytest.approx(max(tms), abs=1e-6)
+    assert lo < hi
+    assert tm(degenerate) is None, "tm itself stays for one plain oligo"
+    plain = "AGCGGATAACAATTTCACACAGGA"
+    assert tm_range(plain) == pytest.approx((tm(plain), tm(plain)))
+    assert tm_range("ACGTX") is None
+
+
+def test_the_primer_panel_shows_a_tm_range_for_a_degenerate_primer_and_a_plain_tm_for_a_plain_one():
+    plain = "AGCGGATAACAATTTCACACAGGA"
+    assert primer_panel.tm_text(plain) == f"{primer_panel.melting_temp(plain):.1f}"
+    shown = primer_panel.tm_text("AGCGGRTAACAATYTCACACNGGA")
+    low, high = (float(x) for x in shown.split("–"))
+    assert low < high
+    assert primer_panel.tm_text("ACGTX") == ""
+    assert "not calculated" in primer_panel.structure_text("AGCGGRTAACAATYTCACACNGGA")
+    assert primer_panel.tm_sort_key("AGCGGRTAACAATYTCACACNGGA") == pytest.approx(low, abs=0.06)
+
+
+def test_a_degenerate_primer_can_be_saved_to_the_database():
+    assert primer_db.primer_problem("fam", "AGCGGRTAACAATYTCACACNGGA") == ""

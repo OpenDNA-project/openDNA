@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QSpinBox, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from opendna_core import dimer, hairpin, tm
+from opendna_core import dimer, hairpin, tm, tm_range
 
 import tool_settings
 from editor import dna_field, reverse_complement
@@ -60,6 +60,27 @@ def melting_temp(seq):
     return tm(seq, **conditions())
 
 
+def is_degenerate(seq):
+    """True when the primer has IUPAC codes (R, Y, N...): it is a mixture of oligos, not one."""
+    return any(c not in "ACGTUacgtu" for c in seq)
+
+
+def tm_text(seq):
+    """The Tm to show: "59.3", or for a degenerate primer the span of its mixture, "58.1–61.4"; "" when there is none."""
+    if is_degenerate(seq):
+        r = tm_range(seq, **conditions())
+        return "" if r is None else f"{r[0]:.1f}–{r[1]:.1f}"
+    t = melting_temp(seq)
+    return "" if t is None else f"{t:.1f}"
+
+
+def tm_sort_key(seq):
+    """Number to sort a Tm column by (the lowest Tm of a degenerate primer)."""
+    r = tm_range(seq, **conditions()) if is_degenerate(seq) else None
+    t = r[0] if r else melting_temp(seq)
+    return -1e9 if t is None else t
+
+
 def structure(seq):
     """Secondary structure ΔG (kcal/mol, 37 °C) and warnings for one primer.
     Limits are the usual rules of thumb: hairpin 3' < -2 / any < -3, self-dimer 3' < -5 /
@@ -79,6 +100,8 @@ def structure(seq):
 
 
 def structure_text(seq):
+    if is_degenerate(seq):   # the pairing model only knows A C G T: a made-up number would mislead
+        return "hairpin and dimer ΔG not calculated for a degenerate primer"
     s = structure(seq)
     text = f"hairpin {s['hairpin']:.1f}, self-dimer {s['self']:.1f} (3′ end {s['self3']:.1f}) kcal/mol"
     return text + ("  ⚠ " + "; ".join(s["warnings"]) if s["warnings"] else "  ✓")
@@ -320,23 +343,27 @@ def primer_checks(editor, sequence, genome_mode="wait"):
     if len(sequence) < 8:
         return [("Primer", "info", "Type at least 8 bases.")]
     checks = []
-    t = melting_temp(sequence)
-    if t is not None:
+    t = tm_sort_key(sequence)
+    if t > -1e8:   # a degenerate primer is judged on its lowest Tm
+        shown = tm_text(sequence)
         checks.append(("Tm", band(t, limit("tm_low"), limit("tm_high"), limit("tm_margin")),
-                       f"{t:.1f} °C ({len(sequence)} nt)"))
+                       f"{shown} °C ({len(sequence)} nt)"))
     up = sequence.upper()
     gc = 100 * sum(c in "GCS" for c in up) / len(up)
     checks.append(("GC", band(gc, limit("gc_low"), limit("gc_high"), limit("gc_margin")), f"{gc:.0f} %"))
     clamp, lo, hi = sum(c in "GC" for c in up[-5:]), limit("clamp_min"), limit("clamp_max")
     checks.append(("3′ clamp", "ok" if lo <= clamp <= hi else "warn",
                    f"{clamp} G/C in the last 5 bases" + ("" if lo <= clamp <= hi else f" ({lo}–{hi} is best)")))
-    s = structure(sequence)
-    hp = min(s["hairpin"], 0.0)
-    checks.append(("Hairpin", "bad" if s["hairpin"] < limit("hairpin_bad") else
-                   "warn" if any(w.startswith("hairpin") for w in s["warnings"]) else "ok", f"ΔG {hp:.1f} kcal/mol"))
-    checks.append(("Self-dimer", "bad" if s["self3"] < limit("dimer3_bad") or s["self"] < limit("dimer_bad") else
-                   "warn" if any("dimer" in w for w in s["warnings"]) else "ok",
-                   f"ΔG {s['self']:.1f} (3′ end {s['self3']:.1f}) kcal/mol"))
+    if is_degenerate(sequence):   # the pairing model only knows A C G T
+        checks.append(("Hairpin / dimer", "info", "not calculated for a degenerate primer"))
+    else:
+        s = structure(sequence)
+        hp = min(s["hairpin"], 0.0)
+        checks.append(("Hairpin", "bad" if s["hairpin"] < limit("hairpin_bad") else
+                       "warn" if any(w.startswith("hairpin") for w in s["warnings"]) else "ok", f"ΔG {hp:.1f} kcal/mol"))
+        checks.append(("Self-dimer", "bad" if s["self3"] < limit("dimer3_bad") or s["self"] < limit("dimer_bad") else
+                       "warn" if any("dimer" in w for w in s["warnings"]) else "ok",
+                       f"ΔG {s['self']:.1f} (3′ end {s['self3']:.1f}) kcal/mol"))
 
     n = editor.length
     sites = editor.doc.binding_sites(sequence, binding_mismatches())
@@ -529,8 +556,8 @@ class PrimerDialog(QDialog):
 
     def _changed(self):
         seq = self.seq()
-        t = melting_temp(seq)
-        self.info.setText(f"{len(seq)} nt, Tm {t:.1f} °C (whole primer)" if t is not None else f"{len(seq)} nt")
+        t = tm_text(seq)
+        self.info.setText(f"{len(seq)} nt, Tm {t} °C (whole primer)" if t else f"{len(seq)} nt")
         self.timer.start()  # re-check once typing pauses
 
     def _update_report(self):
@@ -920,16 +947,16 @@ class PrimerPanel(QWidget):
             away = elsewhere.get(name, [])
             seq = (sites or away)[0].sequence if sites or away else rows[name]["sequence"]
             exact = sum(s.mismatches == 0 for s in sites + away)
-            t = melting_temp(seq)
+            t = tm_text(seq)
             total = len(sites) + len(away)
             summary = f"{total} site{'s' * (total > 1)}" + (f", {exact} exact" if exact != total else "") + \
                 (f" ({len(away)} on other sequences)" if away else "")
-            warnings = structure(seq)["warnings"]
+            warnings = [] if is_degenerate(seq) else structure(seq)["warnings"]
             mark, color = MARKS["warn" if warnings else "ok"]
-            group = SortItem([name, seq, str(len(seq)), f"{t:.1f}" if t is not None else "–", summary if total else "no site",
+            group = SortItem([name, seq, str(len(seq)), t or "–", summary if total else "no site",
                               f"{mark} " + "; ".join(warnings) if warnings else mark]
                              + ([rows[name]["added"], rows[name]["note"]] if self.database else []))
-            group.keys = {0: name.lower(), 2: len(seq), 3: t if t is not None else -1e9, 4: total}
+            group.keys = {0: name.lower(), 2: len(seq), 3: tm_sort_key(seq), 4: total}
             group.setForeground(5, QColor(color))
             group.setData(0, Qt.UserRole, name)
             if sites and all(s.provisional for s in sites) and not self.database:   # drawn in the temporary colour: not in this file
@@ -1018,12 +1045,12 @@ class PrimerPanel(QWidget):
 
     def _site_row(self, where, bound, template, sort_key, data, kind=""):
         """One binding site: where, the primer's annealing bases (mismatches red when the template is known), length, Tm, match."""
-        tb = melting_temp(bound)
+        tb = tm_text(bound)
         marks = mismatch_indices(bound, template) if template is not None and len(template) == len(bound) else None
         match = "" if marks is None else "exact" if not marks else plural(len(marks), 'mismatch')
-        row = SortItem([where, bound, str(len(bound)), f"{tb:.1f}" if tb is not None else "–",
+        row = SortItem([where, bound, str(len(bound)), tb or "–",
                         ", ".join(x for x in (kind, match) if x)])
-        row.keys = {0: sort_key, 2: len(bound), 3: tb if tb is not None else -1e9, 4: len(marks or [])}
+        row.keys = {0: sort_key, 2: len(bound), 3: tm_sort_key(bound), 4: len(marks or [])}
         row.setData(0, Qt.UserRole, data)
         row.setData(1, MISMATCHES, marks or [])
         if marks:

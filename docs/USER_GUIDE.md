@@ -260,6 +260,14 @@ box), the last searched when you open the primer (it says *searching…* meanwhi
 shows the primer's annealing bases with those that do not pair with the template in **red**, its length and Tm, and how it matches
 (in the genome: the whole primer, or only its 3′ end). Click a column header to sort.
 
+**Degenerate primers.** A primer may contain IUPAC codes (R, Y, S, W, K, M, B, D, H, V, N), for a gene family or a variable site. In a
+primer, such a letter matches every base it stands for, so `R` binds A or G and `N` binds anything; that position counts as a match,
+not a mismatch, and the primer finds every site it fits. A code in the *template* still matches only the same letter. Because a
+degenerate primer is a mixture of oligos, its Tm is shown as a range, for example `58.1–61.4 °C` (lowest to highest oligo of the
+mixture; the Tm check is judged on the lowest, and the column sorts on it). Hairpin and self-dimer ΔG are **not calculated** for a
+degenerate primer, so those cells say so instead of showing a number. Degenerate primers can be saved to the database; Design only
+proposes plain A, C, G, T primers.
+
 **Filter by values.** Right-click a column header to tick which of its values are shown, like a spreadsheet's filter (a search box
 narrows long lists; *All*, *None*, *Clear filter*). A filtered column's header ends with ▼. It is on the columns that hold categories:
 the Features view (Type, Strand; Source in the Features Database), the Primers view (Match, Structure, Added), Detect

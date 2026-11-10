@@ -26,14 +26,14 @@ class Text(str):
 
 def describe_primer(editor, key):
     """Tooltip text (rich) for the primer site `key`: its bases (the tail in lowercase orange), where it binds, Tm and the checks."""
-    from primer_panel import melting_temp, structure   # here: primer_panel imports the views
+    from primer_panel import is_degenerate, structure, tm_text   # here: primer_panel imports the views
     site = editor.site_by_key.get(key)
     if site is None:
         return ""
     tail, core = site.sequence[:site.tail], site.sequence[site.tail:]
     where = f"{site.start + 1:,}–{(site.end - 1) % editor.length + 1:,} {'→' if site.strand > 0 else '←'}"
-    t = melting_temp(core)
-    s = structure(site.sequence) if len(site.sequence) >= 8 else None
+    t = tm_text(core)
+    s = structure(site.sequence) if len(site.sequence) >= 8 and not is_degenerate(site.sequence) else None
     if site.temporary:
         kind = "temporary primer (not in the primer database yet)"
     elif site.provisional:
@@ -43,7 +43,7 @@ def describe_primer(editor, key):
     lines = [f"<b>{escape(site.label)}</b> &nbsp;<i>{kind}</i>",
              f"5′-<span style='color:#bf360c'>{escape(tail.lower())}</span>{escape(core.upper())}-3′ &nbsp;·&nbsp; {len(site.sequence)} nt"
              + (f" ({site.tail} nt tail)" if site.tail else ""),
-             f"binds {where}" + (f" with {site.mismatches} mismatch(es)" if site.mismatches else "") + (f" &nbsp;·&nbsp; Tm {t:.1f} °C" if t else "")]
+             f"binds {where}" + (f" with {site.mismatches} mismatch(es)" if site.mismatches else "") + (f" &nbsp;·&nbsp; Tm {t} °C" if t else "")]
     if s:
         lines.append(f"hairpin ΔG {min(s['hairpin'], 0):.1f}, self-dimer ΔG {s['self']:.1f} kcal/mol" + (f" &nbsp;⚠ {escape('; '.join(s['warnings']))}" if s["warnings"] else ""))
     if site.temporary:
