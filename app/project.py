@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the folder zip is EXE_NAME-folder.zip).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,9 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = False
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.6.0": ["Restriction and ligation cloning, codon tools, degenerate primers and oligo order export.",
+              "Multiple sequence alignment view, repeats dot plot, library and folder search.",
+              "Safer file writes and a settings dialog."],
     "0.5.0": ["A cleaner, steadier interface: buttons and toolbars no longer move or change size, tables fit what they hold.",
               "Menus in the usual order (File, Edit, View...), Cut / Copy / Paste in Edit, Undo and Redo say what they undo.",
               "The window remembers its size, the View switches and the column widths you set.",
