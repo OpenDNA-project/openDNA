@@ -37,7 +37,6 @@ from editor import remember_hidden_primers
 from sourcefiles import add_recent, pinned_files, recent_files
 from local_align import LocalAlignDialog
 from codon_tools import CompareDialog, RecodeDialog
-from folder_search import FolderSearchDialog
 from tools import DigestDialog, OrfDialog, PcrDialog
 import updater
 import exports
@@ -68,7 +67,6 @@ from workspace import DEFAULT as DEFAULT_LAYOUT, Workspace, pane, split
 from annotation import DetectDialog, import_files
 from parts_library import user_library
 from cas9 import Cas9Dialog
-from repeats import RepeatsDialog
 import tool_settings
 import codon_dialog
 import codon_usage
@@ -397,11 +395,9 @@ class MainWindow(QMainWindow):
 
         tools = self.menuBar().addMenu("T&ools")
         action(tools, "S&pacer Finder (Cas9 / Cas12a)…", None, lambda: Cas9Dialog(self, self.editor).exec())
-        action(tools, "&Repeats and Dot Plot…", None, lambda: RepeatsDialog(self, self.editor).exec())
         tools.addAction(QAction("&Assembly", self, triggered=self.show_assembly))  # needs no open file
         action(tools, "&Local Align…", "Ctrl+Shift+B", lambda: LocalAlignDialog(self, self.editor).exec())
         action(tools, "Align &Clipboard…", None, lambda: LocalAlignDialog.align_clipboard(self, self.editor))
-        action(tools, "Folder S&earch…", None, lambda: FolderSearchDialog(self, self.editor).exec())
         action(tools, "Restriction &Digest…", None, lambda: DigestDialog(self, self.editor).exec())
         tools.addSeparator()
         action(tools, "Detect Common &Features…", "Ctrl+Shift+A", lambda: DetectDialog(self, self.editor).exec())

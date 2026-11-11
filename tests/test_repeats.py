@@ -1,5 +1,5 @@
-"""Repeats and the dot plot: the engine finds planted repeats at the right places and nothing in random DNA; the tool lists them,
-selects a copy on a click, and the plot draws in both themes."""
+"""Repeats and the dot plot: the engine finds planted repeats at the right places and nothing in random DNA; Local Align's paired mode lists the
+stretches two sequences share and draws their dot plot in both themes."""
 import os
 import random
 import sys
@@ -84,23 +84,42 @@ def test_a_long_input_is_capped_and_says_so():
     assert result.capped and "skipped" in result.capped
 
 
-def test_the_tool_lists_copies_selects_on_a_click_and_the_plot_draws_in_both_themes():
+def test_pair_repeats_find_the_shared_stretches_in_both_orientations_and_a_sequence_against_itself():
+    d, e = dna(40), dna(30)
+    a = dna(50) + d + dna(60) + e + dna(50)
+    b = dna(30) + rc(e) + dna(40) + d + dna(20)
+    found = {r[0]: r for r in repeats.pair_repeats(a, b, 20).repeats}
+    near = lambda got, want: all(abs(g - w) <= 2 for g, w in zip(got, want))   # (a random flank base may extend a stretch)
+    assert near(found["direct"][1:], (50, 100, 40)) and near(found["inverted"][1:], (150, 30, 30))
+    assert not repeats.pair_repeats(dna(3000), dna(3000), 20).repeats
+    seq = dna(100) + d + dna(100) + d + dna(100)
+    (r,) = repeats.pair_repeats(seq, seq, 30).repeats   # itself: the pair once, not the main diagonal
+    assert r[0] == "direct" and near(r[1:4], (100, 240, 40))
+    direct, inverted, _ = repeats.pair_dots(a, b)
+    assert direct and inverted
+
+
+def test_local_align_pair_mode_aligns_the_two_boxes_and_the_dot_plot_draws_in_both_themes():
     import main as M
-    d, e = dna(30), dna(24)
-    seq = dna(100) + d + dna(200) + rc(d) + dna(100) + e + dna(100) + e + dna(100)
+    from local_align import LocalAlignDialog
+    d = dna(60)
+    a, b = dna(100) + d + dna(100), dna(80) + rc(d) + dna(120)
     win = M.MainWindow()
     win.show()
-    win.show_document(Document.new_sequence("t", seq, True), Path(tempfile.mkdtemp()) / "t.gb", untitled=True)
-    tool = repeats.RepeatsDialog(win, win.editor)
-    assert tool.tree.topLevelItemCount() == 2 and "2 repeats" in tool.status.text()
-    top = [tool.tree.topLevelItem(i) for i in range(2)]
-    top[0].child(1).setSelected(True)
-    tool.tree.setCurrentItem(top[0].child(1))
-    assert win.editor.end - win.editor.start >= 30 and seq[win.editor.start:win.editor.end].find(rc(d)) >= 0
-    # the plot: a dot on the anti-diagonal for the inverted repeat, picture changes with the theme
-    plot = tool.plot
+    win.show_document(Document.new_sequence("t", dna(500), True), Path(tempfile.mkdtemp()) / "t.gb", untitled=True)
+    dlg = LocalAlignDialog(win, win.editor)
+    dlg.query.setPlainText(a)
+    dlg.paired.setChecked(True)
+    assert not dlg.query_b.isHidden() and not dlg.tabs.isTabVisible(0) and dlg.tabs.isTabVisible(3)
+    dlg.run()   # the second box is empty: said, nothing drawn
+    assert "empty" in dlg.status.text() and dlg.canvas.alignment is None
+    dlg.query_b.setPlainText(b)
+    dlg.run()
+    assert dlg.canvas.alignment.names == ["A", "B"] and "identity" in dlg.status.text()
+    pair, plot = dlg.pair, dlg.pair.plot
+    assert [pair.tree.topLevelItem(i).text(0) for i in range(pair.tree.topLevelItemCount())] == ["Inverted"]
+    assert plot.inverted and (plot.length, plot.rows) == (len(a), len(b))
     plot.resize(400, 400)
-    assert plot.inverted and plot.length == len(seq)
     before = plot.grab().toImage()
     pal = QApplication.palette()
     dark = QPalette(pal)
@@ -111,9 +130,12 @@ def test_the_tool_lists_copies_selects_on_a_click_and_the_plot_draws_in_both_the
     QApplication.setPalette(pal)
     theme.refresh_views()
     rect = plot.plot_rect()
-    at = QPoint(int(rect.left() + rect.width() * 0.5), int(rect.top() + rect.height() * 0.5))
-    QTest.mouseClick(plot, Qt.LeftButton, Qt.NoModifier, at)
-    assert abs(win.editor.start - len(seq) // 2) <= len(seq) // 100
+    got = []
+    plot.picked.connect(lambda x, y: got.append((x, y)))
+    QTest.mouseClick(plot, Qt.LeftButton, Qt.NoModifier, QPoint(int(rect.left() + rect.width() * 0.5), int(rect.top() + rect.height() * 0.5)))
+    assert got and abs(got[0][0] - len(a) // 2) <= len(a) // 100 and abs(got[0][1] - len(b) // 2) <= len(b) // 100
+    dlg.paired.setChecked(False)
+    assert dlg.tabs.isTabVisible(0) and not dlg.tabs.isTabVisible(3)
     win.editor.doc.modified = False
     win.reset_layout()
     win.close()

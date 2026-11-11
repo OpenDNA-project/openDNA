@@ -4,20 +4,28 @@ strands, mismatches and gaps allowed; Rust `align`), and show the hits in the ge
 A query can be a patchwork of pieces (a structural variant: a deletion, an insertion, a piece in
 another order, an INVERTED piece). Each matching piece is its own row, ordered by its place in the
 query, and a summary line plus a "before this piece" column say how consecutive pieces are joined
-(gap in the query, gap in the template, strand change)."""
+(gap in the query, gap in the template, strand change).
+
+Beside the query there is a second box (the "Align two sequences" check box): the two are then aligned with each other (the
+Alignment tab) and compared by a dot plot and a list of the stretches they share (the Dot plot tab, repeats.py), the same
+sequence in both boxes finding its own repeats. The "Search folder" row aligns the query against every file of a folder
+(folder_search.py)."""
 from types import SimpleNamespace
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QSizePolicy, QTableWidget,
-    QTableWidgetItem, QVBoxLayout,
+    QAbstractItemView, QApplication, QCheckBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QSizePolicy, QTabWidget,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from opendna_core import align
 
+import msa
 from alignments import INVERTED_COLOR
 from editor import clean_pasted
+from msa_view import MsaCanvas
+from repeats import PairRepeats
 from tools import ToolDialog, empty_hint
 from uikit import fit_columns, no_auto_default, plural, right_aligned, run_busy
 import value_filter
@@ -148,12 +156,18 @@ class LocalAlignDialog(ToolDialog):
 
     def __init__(self, parent, editor):
         super().__init__(parent)
+        from folder_search import FolderSearchPanel   # (it imports this module's strand_text)
         self.win, self.editor, self.hits = parent, editor, []
         self.setWindowTitle("Local Align")
-        self.resize(760, 520)
+        self.resize(900, 620)
         self.query = QPlainTextEdit(placeholderText="Paste the query here (FASTA or plain bases), or use the clipboard button")
         self.query.setMaximumHeight(110)
         self.query.setPlainText(self._clipboard_dna())
+        self.query_b = QPlainTextEdit(placeholderText="Second sequence (B), aligned with the first (A)", visible=False)
+        self.query_b.setMaximumHeight(110)
+        self.paired = QCheckBox("Align two sequences", toolTip="Add a second box and align the two with each other, with a dot plot "
+                                "and the stretches they share (the same sequence in both finds its repeats)")
+        self.paired.toggled.connect(self._pair_toggled)
         # (wrapped, and unable to widen the window: a long message beside the buttons used to stretch it)
         self.status = QLabel(wordWrap=True, textFormat=Qt.PlainText)
         self.status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -174,14 +188,50 @@ class LocalAlignDialog(ToolDialog):
         buttons.addWidget(QPushButton("Paste from clipboard", clicked=self.paste_clipboard,
                                       toolTip="Replace the query with the DNA on the clipboard (FASTA header, spaces and digits are dropped)"))
         buttons.addWidget(QPushButton("Clear hits", clicked=lambda: self.clear()))
+        buttons.addWidget(self.paired)
         buttons.addWidget(self.status, 1)
+        self.folder = FolderSearchPanel(parent, lambda: self._query(self.query), self.status.setText,
+                                        lambda: self.tabs.setCurrentWidget(self.folder.table))
+        self.canvas, self.pair = MsaCanvas(), PairRepeats()
+        hits = QWidget()
+        hits_box = QVBoxLayout(hits)
+        hits_box.setContentsMargins(0, 0, 0, 0)
+        hits_box.addWidget(self.summary)
+        hits_box.addWidget(self.table)
+        self.tabs = QTabWidget()
+        for widget, title in ((hits, "Hits in this sequence"), (self.folder.table, "Folder results"), (self.canvas, "Alignment"),
+                              (self.pair, "Dot plot")):
+            self.tabs.addTab(widget, title)
+        self._pair_toggled(False)
+        boxes = QHBoxLayout()
+        boxes.addWidget(self.query)
+        boxes.addWidget(self.query_b)
         layout = QVBoxLayout(self)
-        layout.addWidget(self.query)
+        layout.addLayout(boxes)
         layout.addLayout(buttons)
-        layout.addWidget(self.summary)
-        layout.addWidget(self.table)
+        layout.addWidget(self.folder)
+        layout.addWidget(self.tabs, 1)
         no_auto_default(self)
         align_button.setDefault(True)   # Enter aligns (the query box itself takes Enter as a new line)
+
+    def _pair_toggled(self, on):
+        """Paired mode shows the second box and the Alignment and Dot plot tabs in place of the hits in the open sequence."""
+        self.query_b.setVisible(on)
+        for i, shown in enumerate((not on, True, on, on)):
+            self.tabs.setTabVisible(i, shown)
+        self.tabs.setCurrentIndex(2 if on else 0)
+
+    @staticmethod
+    def _query(box):
+        """The bases of a query box; raises QueryError (a ValueError) saying why they are not usable."""
+        query = clean_query(box.toPlainText())
+        if len(query) < 4:
+            raise QueryError("Query too short")
+        return query
+
+    def done(self, result):
+        self.folder.stop()   # closing the dialog stops a folder search too
+        super().done(result)
 
     @staticmethod
     def _clipboard_dna():
@@ -207,15 +257,27 @@ class LocalAlignDialog(ToolDialog):
             dlg.run()
         dlg.exec()
 
+    def run_pair(self):
+        """Paired mode: A and B aligned with each other, then the dot plot and shared stretches."""
+        try:
+            a, b = self._query(self.query), self._query(self.query_b)
+            alignment = run_busy(self, "Aligning…", lambda: msa.align(["A", "B"], [a, b]))
+        except ValueError as e:
+            self.status.setText(str(e))
+            return
+        self.canvas.set_alignment(alignment)
+        self.pair.show_pair(a, b)
+        self.tabs.setCurrentWidget(self.canvas)
+        self.status.setText(f"A {len(a):,} bp, B {len(b):,} bp: {alignment.identity(1):.1f} % identity over {alignment.width:,} columns")
+
     def run(self):
+        if self.paired.isChecked():
+            return self.run_pair()
         ed = self.editor
         try:
-            query = clean_query(self.query.toPlainText())
+            query = self._query(self.query)
         except QueryError as e:
             self.clear(str(e))
-            return
-        if len(query) < 4:
-            self.clear("Query too short")
             return
         text, circular = ed.doc.sequence(), ed.doc.circular   # (up to 200 kb of query: in a thread, behind a busy dialog)
         found = run_busy(self, "Aligning…", lambda: align(text, query, circular, MAX_HITS))

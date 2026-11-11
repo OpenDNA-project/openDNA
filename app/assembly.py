@@ -51,6 +51,7 @@ class Frag:
         self.name, self.src, self.start = name, src, start
         self.end = src.length if end is None else end
         self.fwd, self.rev, self.vector, self.source = fwd, rev, vector, source
+        self.enzymes = None   # restriction / ligation: (enzyme of the left end, enzyme of the right end); None: the design's default pair
         self.flipped = False
         self.rebuild()
 
@@ -982,6 +983,60 @@ def cut_fragment(f, enzymes):
     return ring[t1:t2], t1, cut_end(ring, n, n1, t1, t1 + d1), cut_end(ring, n, n2, t2, t2 + d2), [], note
 
 
+def _site_around(seq, circular, enzyme, top, bottom):
+    """(start, end) of the recognition site of `enzyme` (an Enzyme) that makes the cut (top, bottom), as find_cuts reports it."""
+    n, L = len(seq), len(enzyme.site)
+    t, b = enzyme.cuts[0]
+    for s, e, strand in site_spans(seq, circular, enzyme):
+        cut = (s + t, s + b) if strand > 0 else (s + L - b, s + L - t)
+        if (cut[0] % n, cut[1] % n) == (top, bottom) if circular else cut == (top, bottom):
+            return s, e
+    return None
+
+
+def digest_pieces(doc, enzymes):
+    """The fragments that exist when `doc` is cut with `enzymes`, between neighbouring cuts: [SimpleNamespace(start, end, kept, left, right)].
+    `start` / `end`: a stretch of the document that holds both whole sites (so that cutting it again with the same enzymes gives exactly this
+    fragment; `end` may pass the origin of a circular document); `kept`: (first, last) bases that stay after the cut; `left` / `right`: the Ends.
+    Shortcut: a circular document cut once gives no fragment here (it is a vector: use it whole)."""
+    seq, circ = doc.sequence(0, None).upper(), doc.circular
+    n, names = len(seq), list(dict.fromkeys(enzymes))
+    found = find_cuts(seq, circ, [RESTRICTION[x] for x in names])
+    cuts = sorted((t, b, name) for name, pairs in found.items() for t, b in pairs)
+    m = len(cuts)
+    text, base, out = (seq * 3, n, []) if circ else (seq, 0, [])
+    off = lambda t, b: ((b - t + n // 2) % n) - n // 2 if circ else b - t   # where the bottom cut lies, from the top one
+    for k in range(m if circ and m > 1 else m - 1):
+        (t1, b1, n1), (t2, b2, n2) = cuts[k], cuts[k + 1] if k + 1 < m else (cuts[0][0] + n, cuts[0][1], cuts[0][2])
+        d1, d2 = off(t1, b1), off(t2, b2)
+        s1, s2 = _site_around(seq, circ, RESTRICTION[n1], t1 % n, b1), _site_around(seq, circ, RESTRICTION[n2], t2 % n, b2)
+        if not (s1 and s2):
+            continue
+        a = s1[0] + (n * round((t1 - s1[0]) / n) if circ else 0)
+        z = s2[1] + (n * round((t2 - s2[1]) / n) if circ else 0)
+        lo, hi = min(a, t1, t1 + d1), max(z, t2, t2 + d2)
+        if circ:
+            lo, hi = lo % n, hi - lo + lo % n   # the start inside the document, the end counted on from it
+        if hi - lo > n:
+            continue
+        out.append(SimpleNamespace(start=lo, end=hi, kept=(t1 % n, t2 % n), left=cut_end(text, base, n1, t1, t1 + d1),
+                                   right=cut_end(text, base, n2, t2, t2 + d2)))
+    return out
+
+
+def piece_verdict(piece, before, after):
+    """(problems, either way) for putting `piece` (a digest piece) between the end `before` of the fragment ahead of it and the end `after` of
+    the one behind it (None: nothing there): the ends that do not fit, and whether it would also fit turned round (a ligation could then
+    give both orientations)."""
+    problems = []
+    if before and not ends_fit(before, piece.left):
+        problems.append(f"its {piece.left.enzyme} end ({end_words(piece.left)}) does not fit the {before.enzyme} end ahead of it")
+    if after and not ends_fit(piece.right, after):
+        problems.append(f"its {piece.right.enzyme} end ({end_words(piece.right)}) does not fit the {after.enzyme} end behind it")
+    either = bool(before and after and not problems and ends_fit(before, flipped_end(piece.right)) and ends_fit(flipped_end(piece.left), after))
+    return problems, either
+
+
 def site_survives(product, circular, enzyme, pos, length):
     """Is there a recognition site of `enzyme` across the junction at `pos` of the product (`length` bases of overhang; 0 = a blunt join)?"""
     n = len(product)
@@ -1000,7 +1055,7 @@ def analyse_restriction(frags, circular, enzymes):
     n = len(frags)
     pairs, extras, notes = [], [], []
     for i, f in enumerate(frags):
-        kept, start, left, right, extra, note = cut_fragment(f, enzymes)
+        kept, start, left, right, extra, note = cut_fragment(f, f.enzymes or enzymes)
         d.seqs[i], d.offsets[i], d.ranges[i] = kept, start, (start, start + len(kept))
         # A 3′ overhang at the left end, or a 5′ overhang at the right one, is bases of this fragment that the neighbour's top strand carries.
         d.shared[i] = (min(abs(left.top - left.bottom), start) if left.kind == "3′" else 0, abs(right.top - right.bottom) if right.kind == "5′" else 0)

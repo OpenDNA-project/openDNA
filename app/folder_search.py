@@ -1,4 +1,4 @@
-"""Folder Search: "which of my plasmids carries this sequence?" Aligns a query (a selection, pasted bases, a primer)
+"""Folder Search (the "Search folder" row of Local Align): "which of my plasmids carries this sequence?" Aligns the query
 against every sequence record of every GenBank / .dna / FASTA file in a folder (the Rust `align`, both strands,
 mismatches and gaps allowed) and lists the hits; a click opens that file at that position.
 
@@ -8,21 +8,21 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QSettings, QTimer
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QProgressBar,
-    QPushButton, QSizePolicy, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QAbstractItemView, QApplication, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton, QTableWidget,
+    QTableWidgetItem, QWidget,
 )
 
 from opendna_core import Document, Fasta, align
 
 import multigb
-from local_align import MIN_QUERY, QueryError, clean_query, clipboard_query, strand_text
+from local_align import strand_text
 from primer_db import data_dir
 from reference import is_fasta_file
 from sourcefiles import FASTA_EXT
-from tools import ToolDialog, empty_hint
-from uikit import fit_columns, no_auto_default, plural, right_aligned
+from tools import empty_hint
+from uikit import fit_columns, plural, right_aligned
 import value_filter
 
 SEQUENCE_EXT = multigb.GENBANK_EXT | FASTA_EXT | {".dna"}
@@ -89,21 +89,18 @@ def row_text(h, sep):
     return sep.join([Path(h.path).name, h.record, f"{h.start + 1}-{h.end}", strand_text(h.strand), f"{h.identity:.1%}", str(h.length)])
 
 
-class FolderSearchDialog(ToolDialog):
+class FolderSearchPanel(QWidget):
+    """The folder row of Local Align: folder box, Browse, Search folder, Cancel, Copy results and a progress bar. The hits go in
+    `self.table` (the owner places it). `get_query()` returns the bases to search for or raises ValueError (its text is shown by
+    `say`); `win` opens a hit's file."""
     COLUMNS = ["File", "Record", "Position", "Strand", "Identity", "Length"]
 
-    def __init__(self, parent, editor=None):
-        super().__init__(parent)
-        self.win, self.editor, self.hits = parent, editor, []
+    def __init__(self, win, get_query, say, on_start=lambda: None):
+        super().__init__()
+        self.win, self.get_query, self.say, self.on_start, self.hits = win, get_query, say, on_start, []
         self.thread, self.state = None, None
-        self.setWindowTitle("Search Folder")
-        self.resize(760, 520)
-        self.query = QPlainTextEdit(placeholderText="Paste the query here (FASTA, plain bases or a primer), or use the selection or clipboard")
-        self.query.setMaximumHeight(90)
-        self.query.setPlainText(self._start_query())
-        self.folder = QLineEdit(str(QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat).value(FOLDER_KEY, "")))
-        self.status = QLabel(wordWrap=True, textFormat=Qt.PlainText)
-        self.status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.folder = QLineEdit(str(QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat).value(FOLDER_KEY, "")),
+                                placeholderText="Folder of sequence files")
         self.bar = QProgressBar(maximumWidth=160, visible=False)
         self.table = QTableWidget(0, len(self.COLUMNS))
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
@@ -112,37 +109,19 @@ class FolderSearchDialog(ToolDialog):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=0)
         self.table.setWordWrap(False)
-        empty_hint(self.table, "Pick a folder and press Search")
+        empty_hint(self.table, "Pick a folder and press Search folder")
         self.table.cellDoubleClicked.connect(lambda row, _c: self.open_hit(row))
         self.table.itemActivated.connect(lambda item: self.open_hit(item.row()))
-        self.search_button = QPushButton("Search", clicked=self.start)
+        self.search_button = QPushButton("Search folder", clicked=self.start, toolTip="Align the query against every sequence file in the folder")
         self.cancel_button = QPushButton("Cancel", clicked=self.cancel, visible=False)
-        folder_row = QHBoxLayout()
-        folder_row.addWidget(QLabel("Folder"))
-        folder_row.addWidget(self.folder, 1)
-        folder_row.addWidget(QPushButton("Browse…", clicked=self.browse))
-        buttons = QHBoxLayout()
-        for w in (self.search_button, self.cancel_button,
-                  QPushButton("Copy results", clicked=self.copy_results, toolTip="Copy the list as tab-separated text")):
-            buttons.addWidget(w)
-        buttons.addWidget(self.status, 1)
-        buttons.addWidget(self.bar)
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.query)
-        layout.addLayout(folder_row)
-        layout.addLayout(buttons)
-        layout.addWidget(self.table)
-        no_auto_default(self)
-        self.search_button.setDefault(True)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(QLabel("Folder"))
+        row.addWidget(self.folder, 1)
+        for w in (QPushButton("Browse…", clicked=self.browse), self.search_button, self.cancel_button,
+                  QPushButton("Copy results", clicked=self.copy_results, toolTip="Copy the list as tab-separated text"), self.bar):
+            row.addWidget(w)
         self.timer = QTimer(self, interval=50, timeout=self._poll)
-
-    def _start_query(self):
-        """The selection of the open sequence if there is one, else the clipboard's DNA, else nothing."""
-        ed = self.editor
-        if ed is not None and ed.end - ed.start >= MIN_QUERY:
-            return ed.doc.sequence()[ed.start:ed.end]
-        bases, _ = clipboard_query()
-        return bases if len(bases) >= MIN_QUERY else ""
 
     def browse(self):
         path = QFileDialog.getExistingDirectory(self, "Folder of sequence files", self.folder.text())
@@ -152,15 +131,12 @@ class FolderSearchDialog(ToolDialog):
     def start(self):
         folder = self.folder.text().strip()
         try:
-            query = clean_query(self.query.toPlainText())
-        except QueryError as e:
-            self.status.setText(str(e))
-            return
-        if len(query) < 4:
-            self.status.setText("Query too short")
+            query = self.get_query()
+        except ValueError as e:
+            self.say(str(e))
             return
         if not Path(folder).is_dir():
-            self.status.setText("Pick an existing folder")
+            self.say("Pick an existing folder")
             return
         QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat).setValue(FOLDER_KEY, folder)
         self.state = SimpleNamespace(done=0, total=0, cancel=False, result=None, error=None)
@@ -178,13 +154,14 @@ class FolderSearchDialog(ToolDialog):
         self.search_button.setEnabled(False)
         self.cancel_button.setVisible(True)
         self.bar.setVisible(True)
-        self.status.setText("Searching…")
+        self.say("Searching…")
+        self.on_start()
         self.timer.start()
 
     def cancel(self):
         if self.state:
             self.state.cancel = True
-            self.status.setText("Cancelling…")
+            self.say("Cancelling…")
 
     def _poll(self):
         s = self.state
@@ -197,19 +174,19 @@ class FolderSearchDialog(ToolDialog):
         self.cancel_button.setVisible(False)
         self.bar.setVisible(False)
         if s.error:
-            self.status.setText(f"Search failed: {s.error}")
+            self.say(f"Search failed: {s.error}")
             return
         self.hits, skipped, total = s.result
         self.fill()
         note = f"; {plural(skipped, 'file')} could not be read and skipped" if skipped else ""
         stopped = f" (cancelled after {s.done:,} of {total:,} files)" if s.cancel else f" in {plural(total, 'file')}"
-        self.status.setText((plural(len(self.hits), "hit") if self.hits else "No hit") + stopped + note)
+        self.say((plural(len(self.hits), "hit") if self.hits else "No hit") + stopped + note)
 
-    def done(self, result):
-        if self.thread and self.thread.is_alive():   # closing the dialog stops the search too
+    def stop(self):
+        """The dialog is closing: stop the search too."""
+        if self.thread and self.thread.is_alive():
             self.state.cancel = True
             self.thread.join()
-        super().done(result)
 
     def fill(self):
         self.table.setRowCount(len(self.hits))
@@ -225,7 +202,7 @@ class FolderSearchDialog(ToolDialog):
 
     def copy_results(self):
         QApplication.clipboard().setText(hits_text(self.hits))
-        self.status.setText(f"Copied {plural(len(self.hits), 'hit')}")
+        self.say(f"Copied {plural(len(self.hits), 'hit')}")
 
     def open_hit(self, row):
         """Open the hit's file (its record, for a multi-record file) and select the matching bases."""

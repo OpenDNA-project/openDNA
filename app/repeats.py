@@ -1,11 +1,14 @@
-"""Repeats: stretches of a construct that occur more than once, and the dot plot of a sequence against itself.
+"""Repeats: stretches of a construct that occur more than once, and the dot plot of a sequence against another (or itself).
+
+It is the paired view of Local Align: with two sequences in the boxes, `pair_repeats` lists the stretches they share and
+`pair_dots` / `DotPlot` draw them (A across, B down); the same sequence in both boxes finds the repeats of one sequence.
 
 Why it matters: two copies of the same 20+ bases let the cell's own recombination delete what lies between them, an inverted
 repeat folds into a hairpin that stalls polymerases, and synthesis companies refuse sequences full of either.
 
 Engine (no GUI): `find_repeats` lists direct repeats (the same stretch twice, same orientation), inverted repeats (a stretch
 and its reverse complement, arms apart) and tandem arrays (a unit repeated head to tail, three times or more), each with all
-its copies. `dot_points` gives the dots of the plot. Both work the way core/src/align.rs does: every k-mer of the sequence is
+its copies. `pair_dots` gives the dots of the plot. Both work the way core/src/align.rs does: every k-mer of the sequence is
 put in a dictionary, a k-mer seen twice is a seed, and a seed is stretched along its diagonal while mismatches stay within the
 allowance. Pure Python, no numpy (it is not a dependency of the program): 10 kb takes well under a second, 100 kb a few.
 
@@ -24,8 +27,7 @@ from PySide6.QtWidgets import (
 import theme
 from editor import reverse_complement
 from genome_view import nice_step
-from tools import ToolDialog
-from uikit import fit_columns, no_auto_default, plural, run_busy
+from uikit import fit_columns, plural, run_busy
 
 MAX_LENGTH = 1_000_000     # bp looked at: a longer sequence is cut here (and the result says so)
 MAX_OCCURRENCES = 200      # a k-mer seen more often than this is skipped (poly-A, microsatellites: they would be most of the work)
@@ -214,56 +216,71 @@ def find_repeats(seq, circular=False, min_direct=20, min_inverted=12, min_tandem
     return Result(found, "; ".join(notes))
 
 
-def dot_points(seq, k=12, circular=False):
-    """(direct, inverted, note): the dots of the plot, as (x, y) in bases (the middle of the k-base window on each axis). A
-    direct dot is where the window at x equals the window at y; an inverted dot, where it equals the reverse complement of the
-    one at y. The main diagonal is not listed (the plot draws it). Capped at MAX_DOTS."""
-    seq = _clean(seq)[:MAX_LENGTH]
-    n, notes = len(seq), []
-    t = seq + seq[:min(n - 1, k - 1)] if circular else seq
-    direct, inverted, half = [], [], k / 2
-    if n < k:
+def pair_dots(a, b, k=12):
+    """(direct, inverted, note): the dots of `a` (x) against `b` (y): a direct dot is where the window at x equals the window at y, an inverted dot where it equals the reverse complement of the one at y (the window middles, in bases). With the same sequence twice only the
+    pairs off the main diagonal are listed (both ways round)."""
+    a, b = _clean(a)[:MAX_LENGTH], _clean(b)[:MAX_LENGTH]
+    same, half, direct, inverted, notes = a == b, k / 2, [], [], []
+    if len(a) < k or len(b) < k:
         return direct, inverted, ""
-    diagonals, note = _seeds(t, t, k, True, MAX_SEEDS)
-    if note:
-        notes.append(note)
+    diagonals, note = _seeds(a, b, k, same, MAX_SEEDS)
+    notes += [note] if note else []
     for d, starts in diagonals.items():
         for i in starts:
-            if i < n:
-                direct.append((i + half, (i + d) % n + half))
-                direct.append(((i + d) % n + half, i + half))
-    r, m = reverse_complement(t), len(t)
-    diagonals, note = _seeds(t, r, k, False, MAX_SEEDS)
+            direct.append((i + half, i + d + half))
+            if same:
+                direct.append((i + d + half, i + half))
+    diagonals, _ = _seeds(a, reverse_complement(b), k, False, MAX_SEEDS)
     for d, starts in diagonals.items():
         for i in starts:
-            j = m - (i + d) - k
-            if i < n and j < n and j != i:
-                inverted.append((i + half, j + half))
+            inverted.append((i + half, len(b) - (i + d) - k + half))
     if len(direct) + len(inverted) > MAX_DOTS:
         direct, inverted = direct[:MAX_DOTS // 2], inverted[:MAX_DOTS // 2]
         notes.append(f"only {MAX_DOTS:,} dots are drawn")
     return direct, inverted, "; ".join(notes)
 
 
+def pair_repeats(a, b, min_len=12, mismatches=0):
+    """A Result whose repeats are the stretches `a` and `b` share, (kind, start in a, start in b, length, differences), longest
+    first: "direct" (same orientation) and "inverted" (one is the reverse complement of the other; start in b is the left end of
+    the stretch on b's top strand). With the same sequence twice each pair is listed once and the main diagonal is left out."""
+    a, b = _clean(a)[:MAX_LENGTH], _clean(b)[:MAX_LENGTH]
+    seed = min(max(MIN_SEED, min_len // (mismatches + 1)), min_len)
+    same, found, notes = a == b, [], []
+    for kind, target in (("direct", b), ("inverted", reverse_complement(b))):
+        diagonals, note = _seeds(a, target, seed, same and kind == "direct", MAX_SEEDS)
+        notes += [note] if note and note not in notes else []
+        for d, starts in diagonals.items():
+            for i, length, mm in _segments(a, target, d, starts, seed, mismatches):
+                j = i + d if kind == "direct" else len(b) - (i + d) - length
+                if length >= min_len and not (same and kind == "inverted" and i > j):
+                    found.append((kind, i, j, length, mm))
+    found.sort(key=lambda r: (-r[3], r[1]))
+    if len(found) > MAX_REPEATS:
+        notes.append(f"only the longest {MAX_REPEATS} of {len(found):,} stretches are listed")
+        found = found[:MAX_REPEATS]
+    return Result(found, "; ".join(notes))
+
+
 # ---------------------------------------------------------------------------------------------------- the dot plot
 
 class DotPlot(QWidget):
-    """The sequence against itself: x and y are positions, a blue dot where the window at x equals the window at y, a red one
-    where it equals its reverse complement (lines running the other way). Click a point to jump to its x position; `picked`
-    gives (x, y) in bases. Colours come from the theme's roles, and the picture is kept until the size, data or theme changes."""
+    """One sequence against another (or itself): x is a position in the first (`length` bases), y in the second (`rows` bases), a
+    blue dot where the window at x equals the window at y, a red one where it equals its reverse complement (lines running the
+    other way). Click a point to say its place; `picked` gives (x, y) in bases. Colours come from the theme's roles, and the picture is kept until the size, data or theme changes."""
     picked = Signal(int, int)
     MARGIN = (52, 14, 14, 36)   # left, top, right, bottom: room for the axis numbers
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.length, self.direct, self.inverted, self.window = 0, [], [], 12
+        self.length, self.rows, self.direct, self.inverted, self.window = 0, 0, [], [], 12
         self.cache, self.hover = None, None
         self.setMinimumSize(260, 260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMouseTracking(True)
 
-    def set_data(self, length, direct, inverted, window):
-        self.length, self.direct, self.inverted, self.window = length, direct, inverted, window
+    def set_data(self, length, rows, direct, inverted, window):
+        self.length, self.rows, self.direct, self.inverted, self.window = length, rows, direct, inverted, window
         self.theme_changed()
 
     def theme_changed(self):
@@ -278,8 +295,8 @@ class DotPlot(QWidget):
     def to_bases(self, pos):
         rect = self.plot_rect()
         x = (pos.x() - rect.left()) / rect.width() * self.length
-        y = (pos.y() - rect.top()) / rect.height() * self.length
-        return (int(x), int(y)) if 0 <= x < self.length and 0 <= y < self.length else None
+        y = (pos.y() - rect.top()) / rect.height() * self.rows
+        return (int(x), int(y)) if 0 <= x < self.length and 0 <= y < self.rows else None
 
     def _picture(self, rect):
         """The dots on their own transparent image, drawn once per size / data / theme."""
@@ -289,11 +306,11 @@ class DotPlot(QWidget):
         image = QImage(self.size(), QImage.Format_ARGB32_Premultiplied)
         image.fill(Qt.transparent)
         p = QPainter(image)
-        scale = rect.width() / max(self.length, 1)
+        sx, sy = rect.width() / max(self.length, 1), rect.height() / max(self.rows, 1)
         for points, role in ((self.direct, "dot_direct"), (self.inverted, "dot_inverted")):
             p.setPen(QPen(theme.color(role), 2, Qt.SolidLine, Qt.SquareCap))
             for x, y in points:
-                p.drawPoint(QPointF(rect.left() + x * scale, rect.top() + y * scale))
+                p.drawPoint(QPointF(rect.left() + x * sx, rect.top() + y * sy))
         p.end()
         self.cache = (key, image)
         return image
@@ -306,33 +323,35 @@ class DotPlot(QWidget):
         text, faint = self.palette().windowText().color(), QColor(theme.hex("status_info"))
         if self.length:
             p.drawImage(0, 0, self._picture(rect))
-            p.setPen(QPen(faint, 1, Qt.DashLine))   # the sequence against itself: the main diagonal
-            p.drawLine(rect.topLeft(), rect.bottomRight())
-            step = nice_step(self.length / 6)
             fm = QFontMetrics(self.font())
-            for v in range(0, self.length + 1, step):
-                f = v / self.length
-                x, y = rect.left() + f * rect.width(), rect.top() + f * rect.height()
+            label = lambda v, step: f"{v / 1000:g} kb" if step >= 1000 else f"{v:,}"
+            step = nice_step(self.length / 6)
+            for v in range(0, self.length + 1, step):   # across: the first sequence
+                x = rect.left() + v / self.length * rect.width()
                 p.setPen(QPen(faint, 1))
                 p.drawLine(QPointF(x, rect.bottom()), QPointF(x, rect.bottom() + 4))
-                p.drawLine(QPointF(rect.left() - 4, y), QPointF(rect.left(), y))
-                label = f"{v / 1000:g} kb" if step >= 1000 else f"{v:,}"
                 p.setPen(text)
-                p.drawText(QPointF(x - fm.horizontalAdvance(label) / 2, rect.bottom() + 6 + fm.ascent()), label)
-                p.drawText(QPointF(rect.left() - 8 - fm.horizontalAdvance(label), y + fm.ascent() / 2 - 1), label)
+                p.drawText(QPointF(x - fm.horizontalAdvance(label(v, step)) / 2, rect.bottom() + 6 + fm.ascent()), label(v, step))
+            step = nice_step(self.rows / 6)
+            for v in range(0, self.rows + 1, step):   # down: the second
+                y = rect.top() + v / self.rows * rect.height()
+                p.setPen(QPen(faint, 1))
+                p.drawLine(QPointF(rect.left() - 4, y), QPointF(rect.left(), y))
+                p.setPen(text)
+                p.drawText(QPointF(rect.left() - 8 - fm.horizontalAdvance(label(v, step)), y + fm.ascent() / 2 - 1), label(v, step))
         p.setPen(QPen(theme.color("group_border"), 1))
         p.setBrush(Qt.NoBrush)
         p.drawRect(rect)
         if self.hover:
             p.setPen(QPen(theme.color("highlight"), 1, Qt.DotLine))
             f = self.hover
-            x, y = rect.left() + f[0] / self.length * rect.width(), rect.top() + f[1] / self.length * rect.height()
+            x, y = rect.left() + f[0] / self.length * rect.width(), rect.top() + f[1] / self.rows * rect.height()
             p.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
             p.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
 
     def mouseMoveEvent(self, event):
         self.hover = self.to_bases(event.position()) if self.length else None
-        self.setToolTip("" if not self.hover else f"{self.hover[0] + 1:,} (across) against {self.hover[1] + 1:,} (down)")
+        self.setToolTip("" if not self.hover else f"A {self.hover[0] + 1:,} (across) against B {self.hover[1] + 1:,} (down)")
         self.update()
 
     def leaveEvent(self, event):
@@ -345,95 +364,63 @@ class DotPlot(QWidget):
             self.picked.emit(*at)
 
 
-# ---------------------------------------------------------------------------------------------------- the tool
+# ---------------------------------------------------------------------------------------------------- the paired view
 
-KIND_TEXT = {"direct": "Direct", "inverted": "Inverted", "tandem": "Tandem"}
+class PairRepeats(QWidget):
+    """The "Dot plot" tab of Local Align's paired mode: the stretches the two sequences share (list) and their dot plot."""
 
-
-class RepeatsDialog(ToolDialog):
-    """Tools > Repeats: the list of repeats (a click on a copy selects it in the sequence) and the dot plot beside it."""
-
-    def __init__(self, parent, editor):
-        super().__init__(parent)
-        self.win, self.editor, self.result = parent, editor, Result([], "")
-        self.setWindowTitle("Repeats and dot plot")
-        self.resize(980, 560)
+    def __init__(self):
+        super().__init__()
+        self.a = self.b = ""
+        self.result = Result([], "")
         spin = lambda lo, hi, v, tip: QSpinBox(minimum=lo, maximum=hi, value=v, toolTip=tip)
-        self.direct = spin(8, 500, 20, "Shortest direct repeat: about 20 bases and more can recombine in the cell")
-        self.inverted = spin(8, 500, 12, "Shortest inverted repeat: a hairpin of this stem can stall a polymerase")
-        self.tandem = spin(8, 500, 20, "Shortest tandem array in all (at least three copies of the unit)")
-        self.mismatch = spin(0, 3, 0, "Differences allowed between the copies of a repeat")
-        self.loop = spin(0, 100_000, 200, "Furthest apart the two arms of an inverted repeat may be (a hairpin needs them close; "
-                         "a stem of 12 pairs up by chance somewhere in a long sequence)")
-        self.window = spin(6, 32, 12, "Window of the dot plot: a dot is a window that matches somewhere else")
-        find = QPushButton("Find", clicked=self.reload)
+        self.shortest = spin(8, 500, 12, "Shortest shared stretch listed (20 bases and more can recombine in the cell)")
+        self.mismatch = spin(0, 3, 0, "Differences allowed inside a shared stretch")
+        self.window = spin(6, 32, 12, "Window of the dot plot: a dot is a window that matches in the other sequence")
         top = QHBoxLayout()
-        for text, w in (("Direct ≥", self.direct), ("Inverted ≥", self.inverted), ("Tandem ≥", self.tandem), ("Mismatches", self.mismatch),
-                        ("Hairpin loop ≤", self.loop), ("Plot window", self.window)):
+        for text, w in (("Shared ≥", self.shortest), ("Mismatches", self.mismatch), ("Plot window", self.window)):
             top.addWidget(QLabel(text))
             top.addWidget(w)
-        top.addWidget(find)
+        top.addWidget(QPushButton("Find", clicked=self.reload))
         top.addStretch()
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Repeat", "Length", "Copies", "Positions", "Differences"])
-        self.tree.setRootIsDecorated(True)
+        self.tree.setHeaderLabels(["Kind", "Length", "In A", "In B", "Differences"])
+        self.tree.setRootIsDecorated(False)
         self.tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        fit_columns(self.tree, stretch=3)
-        self.tree.currentItemChanged.connect(lambda item, _: self._select(item))
+        fit_columns(self.tree, stretch=2)
         self.plot = DotPlot()
-        self.plot.picked.connect(self._pick)
+        self.plot.picked.connect(lambda x, y: self.status.setText(f"A {x + 1:,} (across) against B {y + 1:,} (down)."))
         split = QSplitter(Qt.Horizontal)
         split.addWidget(self.tree)
         split.addWidget(self.plot)
-        split.setSizes([480, 480])
+        split.setSizes([420, 420])
         self.status = QLabel(wordWrap=True, textFormat=Qt.PlainText)
         self.status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
         layout.addWidget(split, 1)
         layout.addWidget(self.status)
-        no_auto_default(self)
-        find.setDefault(True)
-        self.reload()
 
-    def refresh(self):
+    def show_pair(self, a, b):
+        self.a, self.b = a, b
         self.reload()
 
     def reload(self):
-        seq, circular = self.editor.doc.sequence(), self.editor.circular
-        args = (self.direct.value(), self.inverted.value(), self.tandem.value(), self.mismatch.value(), self.loop.value())
-        window = self.window.value()
-        # a genome takes seconds: in a thread behind the busy dialog, so the window stays alive
+        a, b, window = self.a, self.b, self.window.value()
+        args = (self.shortest.value(), self.mismatch.value())
+        # a long pair takes seconds: in a thread behind the busy dialog, so the window stays alive
         self.result, (direct, inverted, note) = run_busy(
-            self, "Finding repeats…", lambda: (find_repeats(seq, circular, *args), dot_points(seq, window, circular)))
-        self.fill()
-        self.plot.set_data(min(len(seq), MAX_LENGTH), direct, inverted, window)
-        found = plural(len(self.result.repeats), "repeat") + f" in {len(seq):,} bp"
-        notes = [x for x in (self.result.capped, note) if x]
-        self.status.setText(found + (". Not complete: " + "; ".join(notes) if notes else "") + ".")
-
-    def fill(self):
+            self, "Comparing…", lambda: (pair_repeats(a, b, *args), pair_dots(a, b, window)))
         self.tree.clear()
-        n = max(self.editor.length, 1)
-        for r in self.result.repeats:
-            where = ", ".join(f"{s + 1:,}–{(e - 1) % n + 1:,}" + ("←" if st < 0 else "") for s, e, st in r.copies[:4])
-            top = QTreeWidgetItem([KIND_TEXT[r.kind] + (f" (unit {r.unit})" if r.unit else ""), f"{r.length:,} bp", str(len(r.copies)),
-                                   where + (" …" if len(r.copies) > 4 else ""), str(r.mismatches) if r.mismatches else "exact"])
-            top.setData(0, Qt.UserRole, r.copies[0])
-            for s, e, st in r.copies:
-                child = QTreeWidgetItem(["copy", f"{e - s:,} bp", "→" if st > 0 else "← (reverse complement)", f"{s % n + 1:,}–{(e - 1) % n + 1:,}", ""])
-                child.setData(0, Qt.UserRole, (s, e, st))
-                top.addChild(child)
-            self.tree.addTopLevelItem(top)
+        for kind, i, j, length, mm in self.result.repeats:
+            self.tree.addTopLevelItem(QTreeWidgetItem([KIND_TEXT[kind], f"{length:,} bp", f"{i + 1:,}–{i + length:,}",
+                                                       f"{j + 1:,}–{j + length:,}" + ("←" if kind == "inverted" else ""),
+                                                       str(mm) if mm else "exact"]))
+        self.plot.set_data(min(len(a), MAX_LENGTH), min(len(b), MAX_LENGTH), direct, inverted, window)
+        notes = [x for x in (self.result.capped, note) if x]
+        self.status.setText(plural(len(self.result.repeats), "shared stretch", "shared stretches") + f" between {len(a):,} bp (A) and {len(b):,} bp (B)"
+                            + (". Not complete: " + "; ".join(notes) if notes else "") + ".")
 
-    def _select(self, item):
-        copy = item.data(0, Qt.UserRole) if item else None
-        if copy:
-            self.editor.select(copy[0], copy[1])
-            self.editor.reveal.emit(copy[0])
 
-    def _pick(self, x, y):
-        self.editor.select(x, min(x + self.plot.window, self.editor.length))
-        self.editor.reveal.emit(x)
-        self.status.setText(f"Position {x + 1:,} (across) against {y + 1:,} (down).")
+KIND_TEXT = {"direct": "Direct", "inverted": "Inverted"}

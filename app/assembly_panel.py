@@ -23,14 +23,14 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QFrame, QGridLayout,
-    QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QRadioButton, QScrollArea, QSpinBox, QSplitter,
+    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton, QRadioButton, QScrollArea, QSpinBox, QSplitter,
     QTableWidget, QStackedWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 import runner
 from assembly import (
-    FRAG_COLORS, GG_ENZYMES, JOINT_COLOR, RESTRICTION, TAIL_COLOR, Frag, analyse, auto_primers, joint_line, joints_html, junction_cards,
-    junction_html, junction_summary, junction_window, oligo_checks, piece_doc, simulate, snapshot,
+    FRAG_COLORS, GG_ENZYMES, JOINT_COLOR, RESTRICTION, TAIL_COLOR, Frag, analyse, auto_primers, cut_fragment, digest_pieces, end_words,
+    joint_line, joints_html, junction_cards, junction_html, piece_verdict, junction_summary, junction_window, oligo_checks, piece_doc, simulate, snapshot,
 )
 from editor import Editor, feature_color, primer_sequence, reverse_complement as rc
 from primer_db import db
@@ -42,6 +42,7 @@ import theme
 import wip
 
 MAX_FRAGMENTS = 12
+DIGEST_MAX = 200_000          # bp: a source longer than this is not digested to propose fragments (select a stretch first)
 WHOLE_FILE_MAX = 200_000    # bp: a file up to this size is used whole as soon as it is chosen
 LEVEL_COLORS = theme.Live({"ok": "status_ok", "warn": "status_warn", "bad": "status_bad", "info": "status_info"})
 
@@ -652,10 +653,6 @@ class AssemblyPanel(QWidget):
         self.count = QSpinBox(minimum=1, maximum=MAX_FRAGMENTS, value=3)
         self.enzyme = QComboBox()
         self.enzyme.addItems(list(GG_ENZYMES))
-        self.enz_a, self.enz_b = QComboBox(), QComboBox()   # restriction / ligation: the two enzymes (the same one twice is allowed)
-        for box, name in ((self.enz_a, "EcoRI"), (self.enz_b, "BamHI")):
-            box.addItems(list(RESTRICTION))
-            box.setCurrentText(name)
         self.circular = QCheckBox("Circular product (plasmid)", checked=True)
         self.min_ov = QSpinBox(minimum=15, maximum=60, value=20, suffix=" bp")
         self.max_ov = QSpinBox(minimum=15, maximum=80, value=40, suffix=" bp")
@@ -667,7 +664,6 @@ class AssemblyPanel(QWidget):
         grid.setHorizontalSpacing(8)
         # (label, widget, methods, column): the options of different methods share columns, only one of them is shown at a time
         for label, w, only, col in (("Method", method_box, None, 0), ("Fragments", self.count, None, 1), ("Enzyme", self.enzyme, (1,), 2),
-                                    ("Enzyme 1", self.enz_a, (3,), 2), ("Enzyme 2", self.enz_b, (3,), 3),
                                     ("Overlap", self.min_ov, (0,), 3), ("to", self.max_ov, (0,), 4), ("Overlap Tm ≥", self.ov_tm, (0,), 5),
                                     ("Annealing Tm", self.anneal_tm, (0, 1, 2), 6)):
             lab = QLabel(label)
@@ -747,11 +743,23 @@ class AssemblyPanel(QWidget):
         self.use = QPushButton("Use as fragment", clicked=self.use_selection)
         self.use.setObjectName("primary")
         self.chosen = QLabel(wordWrap=True, styleSheet="color: gray")
+        # Restriction / ligation: the site at each end of this fragment (the same one twice is allowed), and the fragments the source gives
+        # when cut with them. A click on one uses it; a PCR product (the primers' tails carry the sites) is cut at the same two sites.
+        self.site_a, self.site_b = QComboBox(), QComboBox()
+        for box, name, tip in ((self.site_a, "EcoRI", "left"), (self.site_b, "BamHI", "right")):
+            box.addItems(list(RESTRICTION))
+            box.setCurrentText(name)
+            box.setToolTip(f"The enzyme that cuts the {tip} end of this fragment. A site a PCR adds (in a primer's tail) is cut too.")
+            box.activated.connect(self._sites_changed)
+        self.candidates = QListWidget(maximumHeight=170, wordWrap=True)
+        self.candidates.itemClicked.connect(self._use_candidate)
+        self.site_widgets = [QLabel("Left end site"), self.site_a, QLabel("Right end site"), self.site_b,
+                             QLabel("Fragments cut by these sites (click one to use it)"), self.candidates]
         controls = QWidget()
         controls.setFixedWidth(250)
         side = QVBoxLayout(controls)
         side.setContentsMargins(4, 0, 0, 0)
-        for w in (self.by_region, self.by_primers, QLabel("Forward primer"), self.forward, QLabel("Reverse primer"), self.reverse):
+        for w in (*self.site_widgets, self.by_region, self.by_primers, QLabel("Forward primer"), self.forward, QLabel("Reverse primer"), self.reverse):
             side.addWidget(w)
         side.addSpacing(8)
         side.addWidget(self.use)
@@ -783,8 +791,7 @@ class AssemblyPanel(QWidget):
         outer.addWidget(split)
         self.method.currentIndexChanged.connect(self._method_changed)
         self.count.valueChanged.connect(self._count_changed)
-        for box in (self.enzyme, self.enz_a, self.enz_b):
-            box.currentIndexChanged.connect(self.analyse)
+        self.enzyme.currentIndexChanged.connect(self.analyse)
         self.circular.toggled.connect(self.analyse)
         # The shortest overlap never exceeds the longest: moving one pushes the other along.
         self.min_ov.valueChanged.connect(lambda v: self.max_ov.setValue(max(v, self.max_ov.value())))
@@ -813,6 +820,8 @@ class AssemblyPanel(QWidget):
             lab.setVisible(only is None or m in only)
             w.setVisible(only is None or m in only)
         self.circular.setEnabled(m != 2)
+        for w in self.site_widgets:
+            w.setVisible(m == 3)
         self.buttons["homology"].setToolTip(
             "Design new primers that carry what the method needs at each junction (an overlap tail for Gibson, a site + "
             "spacer + overhang for Golden Gate)" if m < 2 else "Sidewinder oligos are designed for you" if m == 2 else
@@ -1003,6 +1012,10 @@ class AssemblyPanel(QWidget):
         f = self.slots[i] if 0 <= i < len(self.slots) else None
         self.which.setText(f"<b>Fragment {i + 1}</b>" + (f" · {src.label} · {src.doc.length:,} bp" if src else " · choose a source"))
         self.use.setEnabled(src is not None)
+        if f is not None and f.enzymes:
+            for box, name in zip((self.site_a, self.site_b), f.enzymes):
+                box.setCurrentText(name)
+        self._refresh_candidates()
         if src is None:
             self.seqstack.setCurrentWidget(self.nothing)
             self.forward.clear()
@@ -1109,13 +1122,15 @@ class AssemblyPanel(QWidget):
                 return
             self._use(i, a, b)
 
-    def _use(self, i, start, end, fwd=None, rev=None):
+    def _use(self, i, start, end, fwd=None, rev=None, vector=None):
         src, old = self.sources[i], self.slots[i]
         stem = Path(src.label).stem
         name = self._free_name(stem if (start, end) == (0, src.doc.length) else f"{stem} {start + 1}-{end}", i)
         # A whole circular file is a vector in restriction / ligation: cut as a ring, not as a line.
-        vector = bool(old and old.vector) or (self.method.currentIndex() == 3 and src.doc.circular and (start, end) == (0, src.doc.length))
+        if vector is None:
+            vector = bool(old and old.vector) or (self.method.currentIndex() == 3 and src.doc.circular and (start, end) == (0, src.doc.length))
         f = Frag(name, src.doc, start, end, fwd, rev, vector=vector, source=src.label)
+        f.enzymes = (self.site_a.currentText(), self.site_b.currentText())
         self.slots[i] = f
         self.analyse()
         self.chosen.setText(f"Fragment {i + 1} = {src.label} {start + 1:,}–{end:,} ({f.doc.length:,} bp"
@@ -1163,11 +1178,69 @@ class AssemblyPanel(QWidget):
             self._show_source(i)
             self.analyse()
 
+    # -- restriction / ligation: sites and the fragments they cut out
+    def _sites_changed(self):
+        f = self.slots[self.current] if 0 <= self.current < len(self.slots) else None
+        if f is None:
+            self._refresh_candidates()
+        else:
+            f.enzymes = (self.site_a.currentText(), self.site_b.currentText())
+            self.analyse()
+
+    def _neighbour_ends(self, i):
+        """(the right End of the fragment ahead of fragment i, the left End of the one behind it): None where there is none or it cannot be cut."""
+        n, ring = len(self.slots), self.is_circular() and len(self.slots) > 1
+        ahead, behind = (i - 1 if i else n - 1 if ring else None), (i + 1 if i < n - 1 else 0 if ring else None)
+
+        def end(j, side):
+            f = self.slots[j] if j is not None else None
+            try:
+                return cut_fragment(f, f.enzymes)[side] if f is not None and f.enzymes else None
+            except ValueError:
+                return None
+        return end(ahead, 3), end(behind, 2)
+
+    def _refresh_candidates(self):
+        """List the fragments the source of the selected fragment gives when cut at the two chosen sites, each judged against its neighbours:
+        its ends must fit theirs (red if not), and a fragment that would also fit turned round is a warning (it could ligate either way)."""
+        box, i = self.candidates, max(self.current, 0)
+        box.clear()
+        if self.method.currentIndex() != 3:
+            return
+        src = self.sources[i] if i < len(self.sources) else None
+        pair = (self.site_a.currentText(), self.site_b.currentText())
+        hint = "Choose a source first." if src is None else "Too long to cut here: select a stretch first." if src.doc.length > DIGEST_MAX else ""
+        pieces = [] if hint else [p for p in digest_pieces(src.doc, pair) if (p.left.enzyme, p.right.enzyme) == pair]
+        if not pieces:
+            box.addItem(hint or f"No fragment of this source runs from {pair[0]} to {pair[1]}.")
+            box.item(0).setFlags(Qt.NoItemFlags)
+            return
+        (before, after), n, rows = self._neighbour_ends(i), src.doc.length, []
+        for p in pieces:
+            problems, either = piece_verdict(p, before, after)
+            level = "bad" if problems else "warn" if either else "ok"
+            size = (p.kept[1] - p.kept[0]) % n or n
+            text = (f"{MARKS[level][0]} {p.kept[0] + 1:,}–{p.kept[1] or n:,} · {size:,} bp · {end_words(p.left)} / {end_words(p.right)}"
+                    + {"bad": "\nends do not fit its neighbours", "warn": "\nwarning: fits both ways, so it can be inserted in either direction",
+                       "ok": ""}[level])
+            tip = "; ".join(problems) or ("both ends fit one way only" if before and after else "not checked against the neighbours: fill them first")
+            rows.append((("ok", "warn", "bad").index(level), p.kept[0], level, text, tip, p))
+        for _, _, level, text, tip, p in sorted(rows, key=lambda r: r[:2]):
+            item = QListWidgetItem(text)
+            item.setData(Qt.UserRole, p)
+            item.setToolTip(tip)
+            item.setForeground(QColor(LEVEL_COLORS[level]))
+            box.addItem(item)
+
+    def _use_candidate(self, item):
+        p = item.data(Qt.UserRole)
+        if p is not None and 0 <= self.current < len(self.sources) and self.sources[self.current] is not None:
+            self._use(self.current, p.start, p.end, vector=False)
+
     # -- analysis
     def params(self):
         return dict(method=self.method.currentIndex(), circular=self.is_circular(), enzyme=self.enzyme.currentText(),
-                    min_ov=self.min_ov.value(), min_tm=self.ov_tm.value(), tm=self.anneal_tm.value(),
-                    enzymes=(self.enz_a.currentText(), self.enz_b.currentText()))
+                    min_ov=self.min_ov.value(), min_tm=self.ov_tm.value(), tm=self.anneal_tm.value())
 
     def analyse(self):
         """Check the junctions of the fragments as they are now and show everything that follows from it."""
@@ -1190,6 +1263,7 @@ class AssemblyPanel(QWidget):
         self._refresh_tile(ready)
         self._status(empty)
         self._refresh_primers()
+        self._refresh_candidates()
         if self.product_shown:   # something changed under the preview: redraw it, or go back to the fragment if it can no longer be made
             self._show_product() if ready else self._show_source(self.current)
         self.buttons_update()

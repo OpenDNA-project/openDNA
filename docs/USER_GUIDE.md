@@ -233,14 +233,19 @@ accepted, only the first FASTA record is used, up to 200,000 bp); anything else,
 *Paste from clipboard* replaces the query with the clipboard's DNA (a message says when the clipboard is empty or has no DNA), and
 Tools → Align Clipboard… opens Local Align with the clipboard already aligned.
 
-Tools → Folder Search… answers "which of my plasmids carries this sequence?". Give it a query (the selection of the open
-sequence if it is 12 bp or longer, else the clipboard's DNA; or paste bases, FASTA or a primer) and a folder, and it aligns the query
-(both strands, mismatches and gaps allowed, like Local Align) against every record of every GenBank, `.dna` and FASTA file in the
-folder and its sub-folders, including each record inside a multi-record file. No index is built; a few hundred plasmids take seconds,
-in the background with a progress bar and a Cancel button. The list shows file, record, position, strand, identity and length, best
-first (identity, then length), at most 5 hits per file so one repetitive genome cannot flood it. Double-click a row (or press Enter)
-to open that file at that position with the match selected. Files that cannot be read are skipped and counted in the status line.
-*Copy results* puts the list on the clipboard as tab-separated text for a lab notebook or a spreadsheet. The last folder is remembered.
+The **Search folder** row of Local Align answers "which of my plasmids carries this sequence?". Type a folder (or press *Browse…*) and
+*Search folder*: the query box is aligned (both strands, mismatches and gaps allowed, like Local Align) against every record of every
+GenBank, `.dna` and FASTA file in the folder and its sub-folders, including each record inside a multi-record file. No index is built; a few
+hundred plasmids take seconds, in the background with a progress bar and a Cancel button. The *Folder results* tab shows file, record,
+position, strand, identity and length, best first (identity, then length), at most 5 hits per file so one repetitive genome cannot flood it.
+Double-click a row (or press Enter) to open that file at that position with the match selected. Files that cannot be read are skipped and
+counted in the status line. *Copy results* puts the list on the clipboard as tab-separated text. The last folder is remembered.
+
+Tick **Align two sequences** to get a second box on the right of the query: Align then aligns the two boxes with each other (the *Alignment*
+tab, with identity) instead of against the open sequence, and the *Dot plot* tab compares them: sequence A across, B down, a blue dot where a
+window matches in the same orientation and a red one where it matches as a reverse complement, beside the list of the stretches they share
+(*Shared ≥* the shortest listed, *Mismatches* allowed, *Plot window*; an inverted stretch is marked ←). Put the same sequence in both boxes to
+find the repeats of one sequence (direct repeats of 20+ bases can recombine in the cell; an inverted one folds into a hairpin).
 
 Tools → Assembly opens the Assembly tab (a tool tab next to the others, not a pane: not in the pane drop-down, never split; closing it keeps
 its content). Choose the method (Gibson/HiFi, Golden Gate with BsaI, BsmBI, BbsI or SapI, Sidewinder, or Restriction / ligation) and the number of fragments
@@ -275,7 +280,7 @@ dephosphorylating the cut vector (CIP or rSAP). The product opened by *Perform a
 and the insert carried over (a feature in the discarded stretch goes with it).
 
 All four methods read alike: a junction's pill, inspector title and report line are always *what joins · length · Tm · GC* (for example *20 bp homology · 58 °C · GC 45 %*), the first check of every junction is *ends fit*, and a problem is written as *reason: details*.
-**Repeats and Dot Plot** (Tools → Repeats and Dot Plot…): finds the stretches of a construct that occur more than once, so a plasmid that will recombine in the cell, or that a synthesis company will refuse, is spotted before it is ordered. The list has three kinds. *Direct* repeats are the same stretch twice or more in the same orientation (20 bases and more can recombine, deleting what lies between them); *Inverted* repeats are a stretch and its reverse complement (the arms of a hairpin, which stalls polymerases; the second copy is marked ←); *Tandem* repeats are a short unit (up to 200 bases) repeated head to tail at least three times. Each repeat is one row with all its copies listed under it (click the row's arrow to open them); clicking a row or a copy selects it in the sequence and scrolls there, like the other tools. The boxes at the top set the shortest direct (default 20), inverted (12) and tandem (20, in all) repeat, the *mismatches* allowed between copies (0-3; a repeat with differences is shown with their count), and *Hairpin loop ≤*, how far apart the two arms of an inverted repeat may be (default 200): a 12-base stem pairs up by chance somewhere in any long sequence, a hairpin needs its arms close; raise it to find inverted repeats far apart. A repeat over the origin of a circular sequence is found. The search is fast (10 kb is instant, 100 kb takes a second or so) and capped for very large input (the first 1,000,000 bases; k-mers seen more than 200 times, such as long poly-A runs, are skipped; at most 500 repeats listed); when a cap applied, the status line says "Not complete" and what was left out, so a capped answer is never mistaken for "no repeats". With mismatches allowed, only matches that hold an exact stretch of at least 8 bases are found.
+**Repeats and Dot Plot** is the paired mode of Local Align (see above): the stretches two sequences share, and their dot plot. A repeat over 8 or more bases is found with mismatches only if it holds an exact stretch of at least 8 bases; the search is capped for very large input (the first 1,000,000 bases; k-mers seen more than 200 times are skipped; at most 500 stretches listed) and the status line then says "Not complete" and what was left out.
 
 The **dot plot** beside the list is the sequence against itself: position across and down, a blue dot where the window (default 12 bases, the *Plot window* box) at one position equals the window at the other, a red dot where it equals the reverse complement. The main diagonal (the sequence with itself) is the dashed line; a direct repeat is a line parallel to it, an inverted repeat a line running the other way. Hover to read both positions; click a point to select the window at its across position in the sequence. At most 300,000 dots are drawn (the status line says so). The plot follows the light and dark themes. Engine and dialog: `app/repeats.py`.
 

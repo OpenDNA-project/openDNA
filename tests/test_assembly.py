@@ -1279,7 +1279,7 @@ def test_the_panel_offers_restriction_ligation_with_two_enzymes_and_treats_a_who
     panel = P.AssemblyPanel(Win(docs))
     panel.count.setValue(2)
     panel.method.setCurrentIndex(3)
-    assert panel.method.currentText() == "Restriction / ligation" and (panel.enz_a.currentText(), panel.enz_b.currentText()) == ("EcoRI", "BamHI")
+    assert panel.method.currentText() == "Restriction / ligation" and (panel.site_a.currentText(), panel.site_b.currentText()) == ("EcoRI", "BamHI")
     for k, doc in enumerate(docs):
         panel._set_source(k, A.snapshot(doc), f"{doc.name}.gb", None)
     assert panel.slots[0].vector and not panel.slots[1].vector
@@ -1287,9 +1287,57 @@ def test_the_panel_offers_restriction_ligation_with_two_enzymes_and_treats_a_who
     assert not panel.buttons["homology"].isEnabled(), "there is nothing to design: the sites are already there"
     panel.perform()
     assert panel.win.opened.sequence(0, None).upper() == vec[327:] + vec[:301] + "AATTC" + mid + "G" and panel.win.opened.circular
-    panel.enz_b.setCurrentText("XhoI")   # the insert has no XhoI site, so only its EcoRI end is cut
+    panel.site_b.setCurrentText("XhoI")   # the insert (the selected fragment) has no XhoI site, so only its EcoRI end is cut
+    panel._sites_changed()
     assert panel.error and "cut once" in panel.error and not panel.buttons["perform"].isEnabled()
-    panel.enz_b.setCurrentText("BamHI")
+    panel.site_b.setCurrentText("BamHI")
+    panel._sites_changed()
     panel._flip_at(1)
     assert not panel.design.ok and "do not fit" in panel.status.text() and "change the fragments or the enzymes" in panel.status.text()
     assert "Vector (cut at its one or two sites)" in [a.text() for a in panel._build_context_menu(0).actions()]
+
+
+def test_a_digest_gives_the_fragments_between_the_cuts_and_each_holds_both_whole_sites():
+    seq = "CCAAGG" + clean(40) + "GAATTC" + clean(60) + "GGATCC" + clean(30) + "GAATTC" + clean(20) + "GGATCC" + clean(10)
+    for circular in (False, True):
+        doc = Document.new_sequence("x", seq, circular)
+        pieces = A.digest_pieces(doc, ("EcoRI", "BamHI"))
+        assert [(p.left.enzyme, p.right.enzyme) for p in pieces] == [("EcoRI", "BamHI"), ("BamHI", "EcoRI"), ("EcoRI", "BamHI")] + [("BamHI", "EcoRI")] * circular
+        for p in pieces:   # cut again as a fragment, it gives the same two ends and no further site
+            f = A.Frag("f", doc, p.start, p.end)
+            kept, _, left, right, extra, _ = A.cut_fragment(f, ("EcoRI", "BamHI"))
+            assert (left.enzyme, right.enzyme) == (p.left.enzyme, p.right.enzyme) and not extra and len(kept) == (p.kept[1] - p.kept[0]) % len(seq)
+    assert [len(A.cut_fragment(A.Frag("f", Document.new_sequence("x", seq), p.start, p.end), ("EcoRI", "EcoRI"))[0])
+            for p in A.digest_pieces(Document.new_sequence("x", seq), ("EcoRI", "EcoRI"))] == [102]
+
+
+def test_the_panel_proposes_the_fragments_a_cut_gives_judges_their_ends_and_uses_the_one_clicked():
+    vec, ins, mid = directional()
+    other = clean(80)
+    plasmid = clean(40) + "GAATTC" + mid + "GGATCC" + clean(50) + "GAATTC" + other + "GGATCC" + clean(30)   # two EcoRI..BamHI pieces
+    docs = [Document.new_sequence("vec", vec, True), Document.new_sequence("plasmid", plasmid, True)]
+    panel = P.AssemblyPanel(Win(docs))
+    panel.count.setValue(2)
+    panel.method.setCurrentIndex(3)
+    for k, doc in enumerate(docs):
+        panel._set_source(k, A.snapshot(doc), f"{doc.name}.gb", None)
+    panel._pick(1)
+    items = lambda: [panel.candidates.item(k) for k in range(panel.candidates.count())]
+    assert panel.slots[1].vector, "a whole circular file starts as a vector; clicking a fragment below makes it an insert"
+    assert [it.text().split(" · ")[1] for it in items()] == [f"{len(mid) + 6:,} bp", f"{len(other) + 6:,} bp"]
+    assert all(it.text().startswith(P.MARKS["ok"][0]) for it in items()), "ends fit the vector's, one orientation only: no warning"
+    panel._use_candidate(items()[0])
+    f = panel.slots[1]
+    assert f.enzymes == ("EcoRI", "BamHI") and not f.vector and panel.design.ok
+    assert panel.design.product() in (vec[327:] + vec[:301] + "AATTC" + mid + "G", vec[327:] + vec[:301] + "AATTC" + other + "G")
+    # EcoRI at both ends of the fragment while the vector keeps EcoRI + BamHI: its ends cannot fit, and the list says which do not
+    panel.site_b.setCurrentText("EcoRI")
+    panel._sites_changed()
+    assert items() and all("ends do not fit" in it.text() and it.text().startswith(P.MARKS["bad"][0]) for it in items())
+    assert panel.design is None and "cut once" in panel.error, "and the design says the fragment would be cut once"
+    # a vector opened at its one EcoRI site takes either end of an EcoRI..EcoRI piece: it could go in either direction, a warning
+    panel._pick(0)
+    panel.site_b.setCurrentText("EcoRI")
+    panel._sites_changed()
+    panel._pick(1)
+    assert items() and all(it.text().startswith(P.MARKS["warn"][0]) and "either direction" in it.text() for it in items()), [it.text() for it in items()]
