@@ -4,7 +4,7 @@ name: release
 #   Windows  openDNA.exe (one file) and openDNA-folder.zip (the same program as a folder, Qt replaceable)
 #   macOS    openDNA.app for Apple Silicon and for Intel Macs (macOS 14+), zipped
 #   Linux    the folder openDNA (x86-64, glibc 2.35+), as a .tar.gz
-# renames them to the released name (project.EXE_NAME: oDNA_beta.exe, oDNA_beta-folder.zip, oDNA_beta-macos-arm64.zip,
+# renames them to the released name (project.EXE_NAME + the version: oDNA_beta_0_6_1.exe, oDNA_beta_0_6_1-folder.zip, oDNA_beta-macos-arm64.zip,
 # oDNA_beta-macos-x86_64.zip, oDNA_beta-linux-x86_64.tar.gz), each with its .sha256, and attaches them to a DRAFT GitHub release. It never publishes: you read the
 # draft, then press "Publish release" yourself (docs/PUBLISHING.md, section 7).
 #
@@ -49,6 +49,7 @@ jobs:
           exe_name=$(sed -nE 's/^EXE_NAME *= *"([^"]+)".*/\1/p' app/project.py)
           [ -n "$version" ] || { echo "could not read VERSION from app/project.py"; exit 1; }
           [ -n "$exe_name" ] || { echo "could not read EXE_NAME from app/project.py"; exit 1; }
+          exe_name="${exe_name}_${version//./_}"   # the version in the file name: oDNA_beta_0_6_1.exe
           echo "Version in the code: $version; released files: $exe_name.*"
           if [ "$REF_TYPE" = tag ] && [ "$REF_NAME" != "v$version" ]; then
             echo "tag $REF_NAME does not match project.VERSION $version (expected v$version). Delete the tag, fix the version in app/project.py, core/Cargo.toml and core/pyproject.toml, tag again."

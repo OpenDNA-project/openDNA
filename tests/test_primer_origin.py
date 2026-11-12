@@ -107,6 +107,7 @@ def test_the_primers_tab_lists_the_sources_the_display_filter_shows(tmp_path):
     the views do, and says how many primers the filter keeps out of the list."""
     from primer_panel import PrimerPanel
     ed = make(tmp_path)
+    ed.set_display(db_primers=True)   # hidden by default
     panel = PrimerPanel(ed)
 
     def listed():

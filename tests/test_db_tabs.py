@@ -250,6 +250,7 @@ def test_primer_sites_grouped_with_mismatches_in_red(win, tmp_path):
         primer_db.db().add("red_test", primer, "")
         primer_db.notifier.changed.emit()   # (what the primer dialogs do after a change)
         app_process()
+        win.editor.set_display(db_primers=True)   # hidden by default
         panel = win.primer_panel
         root = panel.tree.invisibleRootItem()
         top = next(root.child(i) for i in range(root.childCount()) if root.child(i).text(0) == "red_test")

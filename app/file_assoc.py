@@ -216,6 +216,28 @@ def _exts(exts):
     return chosen
 
 
+LEGACY_NAMES = ("OpenGenEdit",)   # what this program was called before openDNA: its entries show the old name and the old exe path
+
+
+def has_legacy(registry=None):
+    return any(_registry(registry).exists(f"{CLASSES}\\{n}.SequenceFile") for n in LEGACY_NAMES)
+
+
+def remove_legacy(registry=None):
+    """Deletes what the program registered under its old names. A UserChoice that named the old ProgID is left alone (Windows owns it):
+    it then falls back to asking, and the user picks openDNA once."""
+    reg = _registry(registry)
+    for n in LEGACY_NAMES:
+        progid = f"{n}.SequenceFile"
+        for ext in set(FILE_TYPES) | {".gbk", ".fa"}:
+            reg.delete_value(f"{CLASSES}\\{ext}\\OpenWithProgids", progid)
+        for tree in (f"{CLASSES}\\{progid}", f"{CLASSES}\\Applications\\{n}.exe", rf"Software\{n}\Capabilities"):
+            if reg.exists(tree):
+                reg.delete_tree(tree)
+        if reg.get(REGISTERED_APPS, n) is not None:
+            reg.delete_value(REGISTERED_APPS, n)
+
+
 def _progid_command(reg):
     return reg.get(f"{CLASSES}\\{PROGID}\\shell\\open\\command")
 
@@ -263,6 +285,7 @@ def register(exts=None, registry=None, launch=None, dev=False):
     if not launch:
         raise RuntimeError(f"{NAME} can only register itself from the program file (.exe), not when it runs from source.")
     reg = _registry(registry)
+    remove_legacy(reg)
     command = command_for(launch)
     icon = f'"{launch[0]}",0'
     progid = f"{CLASSES}\\{PROGID}"
@@ -367,6 +390,8 @@ def should_ask(settings=None, registry=None, launch=None, windows=None, frozen=N
         return None
     launch = launch if launch is not None else (launcher() or [str(Path(sys.executable).resolve())])
     states = set(status(None, registry, launch).values())
+    if has_legacy(registry):   # an older name is still registered: refresh once per path, whatever the answer was before
+        return "stale" if _norm(str(settings.value("stale_asked_for", ""))) != _norm(command_for(launch)) else None
     if states == {THIS}:
         return None
     if OTHER in states:
@@ -432,6 +457,14 @@ def ask_at_startup(parent=None, settings=None, registry=None, launch=None, windo
     settings = open_settings() if settings is None else settings
     kind = should_ask(settings, registry, launch, windows, frozen)
     if kind is None:
+        return None
+    if kind == "stale":   # the user already said Yes once: follow the exe to its new place without asking again
+        settings.setValue("stale_asked_for", command_for(launch if launch is not None else launcher() or [sys.executable]))
+        try:
+            register(None, registry, launch)
+        except (OSError, RuntimeError):
+            pass   # shortcut: a refusal is silent here; Help > File Associations shows the error when the user retries
+        settings.sync()
         return None
     if kind == "first":
         text = (f"Open .gb, .dna and FASTA files with {NAME} by default?\n\n"

@@ -269,6 +269,7 @@ def test_primer_display_and_hiding(win):
     from primer_db import db
     from primer_panel import PrimerPanel
     ed = win.editor
+    ed.set_display(db_primers=True)   # hidden by default
     db().add("hideme", ed.doc.sequence(100, 122))
     ed.match_primers()
     ed._match_in_background()

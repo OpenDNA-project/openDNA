@@ -347,15 +347,18 @@ def test_startup_question_screens(reg, ini, monkeypatch):
     ini.clear()
     ini.setValue("accepted", "true")
     F.register(None, reg, MOVED)
-    box = F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True)
-    assert "moved" in box.text()
-    box.yes_button.click()
+    assert F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True) is None   # repaired silently, no question
     assert F.is_registered_for_current_exe(reg, EXE)
-    # declining a repair is remembered for that path
-    third = [r"E:\Third\openDNA.exe"]
-    F.register(None, reg, MOVED)
-    F.ask_at_startup(None, ini, reg, third, windows=True, frozen=True).later_button.click()
-    assert ask(reg, ini, launch=third) is None
+
+    # --- an old-name registration (OpenGenEdit) is replaced, and its keys are gone
+    reg = FakeRegistry()
+    ini.clear()
+    reg.set(r"Software\Classes\OpenGenEdit.SequenceFile\shell\open\command", "", '"C:\\old\\OpenGenEdit.exe" "%1"')
+    reg.set(r"Software\Classes\.dna\OpenWithProgids", "OpenGenEdit.SequenceFile", None)
+    reg.set(F.REGISTERED_APPS, "OpenGenEdit", r"Software\OpenGenEdit\Capabilities")
+    assert F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True) is None
+    assert F.is_registered_for_current_exe(reg, EXE) and not F.has_legacy(reg)
+    assert reg.get(F.REGISTERED_APPS, "OpenGenEdit") is None
 
     # --- a failed registration is shown, not raised
     close_open_boxes()

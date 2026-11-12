@@ -363,7 +363,7 @@ class Editor(QObject):
         self.hidden_kinds = set()
         self.hidden_features = set()    # feature_key of the features hidden one by one (right-click > Hide)
         self.show_file_primers = True   # Display filter > Primers: the file's own (and designed, unsaved) primers
-        self.show_db_primers = True     # ... and the primers of the database that bind here
+        self.show_db_primers = False    # ... and the primers of the database that bind here (hidden until switched on)
         self.show_units = True          # ... transcription units (units.py), whatever their feature type
         self.temporary_primers = set()   # {(name, upper-case sequence)} of primers matched here that are not in the database yet
         # Primers that belong to THIS file: {(name, upper-case sequence): (name, sequence)}. They are the ones Save writes as
