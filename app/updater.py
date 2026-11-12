@@ -39,8 +39,15 @@ import project
 import tool_settings
 from primer_db import data_dir
 
-ASSET_NAME = f"{project.EXE_NAME}.exe"        # what the release must contain (the exe under its released name, project.EXE_NAME) ...
-CHECKSUM_NAME = f"{ASSET_NAME}.sha256"         # ... and its checksum ("<hex>  oDNA_beta.exe", like sha256sum, or just the hex)
+ASSET_NAME = f"{project.EXE_NAME}.exe"        # the name the download gets in the folder (.part / .new); the release's own name carries the version
+CHECKSUM_NAME = f"{ASSET_NAME}.sha256"
+
+
+def release_asset(tag):
+    """The exe's name in the release of `tag`: oDNA_beta_0_6_1.exe for v0.6.1 (what release.yml publishes); its checksum adds .sha256."""
+    return f"{project.EXE_NAME}_{str(tag).lstrip('vV').replace('.', '_')}.exe"
+
+
 # github.com serves the release assets and redirects to the other two (GitHub has used both names for its asset storage).
 ALLOWED_HOSTS = ("api.github.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com")
 USER_AGENT = f"{project.NAME}/{project.VERSION}"   # the GitHub API refuses requests without one
@@ -194,19 +201,20 @@ def check(current_version=None, fetch=None):
     if not is_newer(tag, current):
         return Check(latest=tag, page_url=page)
     assets = {a.get("name"): a.get("browser_download_url") for a in data.get("assets") or [] if isinstance(a, dict)}
-    missing = [n for n in (ASSET_NAME, CHECKSUM_NAME) if not assets.get(n)]
+    asset_name = release_asset(tag)
+    missing = [n for n in (asset_name, asset_name + ".sha256") if not assets.get(n)]
     if missing:
         return Check(error=f"Version {tag.lstrip('vV')} exists but its release has no {' / '.join(missing)}, so it cannot be installed "
                            "automatically.", latest=tag, page_url=page)
     try:
-        check_url(assets[ASSET_NAME]), check_url(assets[CHECKSUM_NAME])
+        check_url(assets[asset_name]), check_url(assets[asset_name + ".sha256"])
         # The exe must come from this project's own releases, not just from any github.com address.
-        if not urlparse(assets[ASSET_NAME]).path.startswith(f"/{project.REPO}/releases/download/"):
-            raise UpdateError(f"Refused: {assets[ASSET_NAME]} is not in the releases of {project.REPO}.")
+        if not urlparse(assets[asset_name]).path.startswith(f"/{project.REPO}/releases/download/"):
+            raise UpdateError(f"Refused: {assets[asset_name]} is not in the releases of {project.REPO}.")
     except UpdateError as e:
         return Check(error=str(e), latest=tag, page_url=page)
     notes = data.get("body") if isinstance(data.get("body"), str) else ""
-    update = Update(".".join(map(str, version)), tag, assets[ASSET_NAME], assets[CHECKSUM_NAME], notes[:20000], page)
+    update = Update(".".join(map(str, version)), tag, assets[asset_name], assets[asset_name + ".sha256"], notes[:20000], page)
     return Check(update=update, latest=tag, page_url=page)
 
 
@@ -247,9 +255,9 @@ def download_update(update, folder, progress=None, fetch=None, cancel=None):
     if not update.sha256_url:
         raise UpdateError("This release has no checksum file, so the download cannot be verified: not installed.")
     check_url(update.sha256_url)
-    expected = parse_checksum(get(update.sha256_url, timeout=TIMEOUT), ASSET_NAME)
+    expected = parse_checksum(get(update.sha256_url, timeout=TIMEOUT), Path(urlparse(update.asset_url).path).name)
     if expected is None:
-        raise UpdateError(f"The checksum file ({CHECKSUM_NAME}) is not in the expected form: not installed.")
+        raise UpdateError(f"The checksum file ({Path(urlparse(update.sha256_url).path).name}) is not in the expected form: not installed.")
     part, final = Path(folder) / (ASSET_NAME + ".part"), Path(folder) / (ASSET_NAME + ".new")
     try:
         try:
@@ -293,7 +301,7 @@ def install_blocker(current_exe=None):
     nothing else: the program itself passes nothing and then only a PyInstaller one-file exe qualifies)."""
     if current_exe is None and not is_frozen():
         return ("openDNA is running from its source code, which cannot replace itself. Update with git, or download "
-                f"{ASSET_NAME} from {project.RELEASES_URL}.")
+                f"the .exe from {project.RELEASES_URL}.")
     if current_exe is None and sys.platform != "win32":
         # The release's one-file program is the Windows exe: a Mac or a Linux build must never swap that in for itself.
         import platform

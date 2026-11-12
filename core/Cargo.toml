@@ -3,7 +3,7 @@
 
 [package]
 name = "opendna_core"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2021"   # Rust language "edition" (syntax version), like choosing a Python 3.x baseline
 
 [lib]

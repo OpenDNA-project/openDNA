@@ -33,8 +33,8 @@ BASE = f"https://github.com/{project.REPO}/releases/download/v0.2.0"
 def release(tag="v0.2.0", assets=True, **extra):
     """The JSON GitHub gives for releases/latest."""
     data = {"tag_name": tag, "html_url": f"{project.REPO_URL}/releases/tag/{tag}", "body": "Fixes things.", "draft": False, "prerelease": False,
-            "assets": [{"name": updater.ASSET_NAME, "browser_download_url": f"{BASE}/openDNA.exe"},
-                       {"name": updater.CHECKSUM_NAME, "browser_download_url": f"{BASE}/openDNA.exe.sha256"},
+            "assets": [{"name": updater.release_asset(tag), "browser_download_url": f"{BASE}/openDNA.exe"},
+                       {"name": updater.release_asset(tag) + ".sha256", "browser_download_url": f"{BASE}/openDNA.exe.sha256"},
                        {"name": "other.zip", "browser_download_url": f"{BASE}/other.zip"}] if assets else []}
     data.update(extra)
     return json.dumps(data)
@@ -45,7 +45,7 @@ class Fake:
 
     def __init__(self, latest=None, checksum=None, exe=EXE_BYTES, error=None):
         self.latest = release() if latest is None else latest
-        self.checksum = f"{DIGEST}  {updater.ASSET_NAME}\n" if checksum is None else checksum
+        self.checksum = f"{DIGEST}  openDNA.exe\n" if checksum is None else checksum
         self.exe, self.error, self.requests = exe, error, []
 
     def __call__(self, url, timeout=30, sink=None, progress=None, cancel=None):
@@ -179,8 +179,8 @@ def test_release_assets_and_errors():
     only_exe["assets"] = only_exe["assets"][:1]
     only_sum = json.loads(release())
     only_sum["assets"] = only_sum["assets"][1:2]
-    for data, missing in ((json.loads(release(assets=False)), updater.ASSET_NAME), (only_exe, updater.CHECKSUM_NAME),
-                          (only_sum, updater.ASSET_NAME)):
+    for data, missing in ((json.loads(release(assets=False)), updater.release_asset("v0.2.0")),
+                          (only_exe, updater.release_asset("v0.2.0") + ".sha256"), (only_sum, updater.release_asset("v0.2.0"))):
         result = updater.check("0.1.0", Fake(json.dumps(data)))
         assert result.update is None and missing in result.error and result.page_url, missing
 

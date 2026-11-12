@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the folder zip is EXE_NAME-folder.zip).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.6.1"
+VERSION = "0.6.2"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,7 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = False
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.6.2": ["The updater finds releases whose files carry the version in their name."],
     "0.6.1": ["Database primers are hidden by default when a sequence opens (Display > Primers > From the database).",
               "Released files carry the version in their name; the old openDNA file-association entries are cleaned up and follow the program when it moves."],
     "0.6.0": ["Restriction and ligation cloning, codon tools, degenerate primers and oligo order export.",
