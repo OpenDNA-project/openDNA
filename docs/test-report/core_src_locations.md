@@ -6,6 +6,8 @@
 
 **Result:** ✅ passed · [line 248](../../core/src/locations.rs#L248) · **Area:** Feature locations (delete) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
+**Why it matters:** Deleting bases could leave features shifted, wrongly trimmed, or not removed when fully deleted, especially multi-part complement features.
+
 Delete rules: shift, trim at start, shrink inside, remove when covered; a complement(join) losing one part collapses to complement(range).
 
 | # | Input | Expected output |
@@ -21,6 +23,8 @@ Delete rules: shift, trim at start, shrink inside, remove when covered; a comple
 
 **Result:** ✅ passed · [line 262](../../core/src/locations.rs#L262) · **Area:** Feature locations (flatten) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
+**Why it matters:** Feature locations could be flattened into wrong ranges or the wrong strand, which every drawing and export relies on.
+
 spans() flattens a location into its ranges and reports the strand.
 
 | # | Input | Expected output |
@@ -35,6 +39,8 @@ spans() flattens a location into its ranges and reports the strand.
 ## `clip_window_keeps_parts_in_reading_order`
 
 **Result:** ✅ passed · [line 269](../../core/src/locations.rs#L269) · **Area:** Feature locations (clip window / rotate) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** Copying or rotating across the origin could scramble the order of a feature's parts, lose its strand, or keep parts outside the copied window.
 
 Clipping a location to a window on a circle (copy across origin, rotate) keeps parts in reading order, merges touching parts, shifts, drops or clips ranges, and keeps complement strand.
 

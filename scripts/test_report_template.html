@@ -87,6 +87,8 @@ details.test > summary:hover { background: var(--sunk); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); align-self: center; }
 .tname { font: 500 14px/1.4 var(--mono); overflow-wrap: anywhere; }
 .tarea { grid-column: 2; font-size: 13px; color: var(--muted); }
+.trole { grid-column: 2 / -1; font-size: 13.5px; color: var(--fg); max-width: 90ch; }
+.why { margin: 0; max-width: 75ch; padding: 8px 12px; border-left: 3px solid var(--ok); background: var(--sunk); border-radius: 4px; }
 .chips { display: flex; gap: 6px; grid-row: 1; grid-column: 3; }
 .chip { font: 500 12px/1 var(--sans); padding: 4px 8px; border-radius: 99px; color: var(--c); background: var(--cs); white-space: nowrap; }
 @media (max-width: 560px) { details.test > summary { grid-template-columns: 12px minmax(0, 1fr); } .chips { grid-row: auto; grid-column: 2; } }
@@ -135,7 +137,7 @@ dl.guide dt { font-weight: 500; } dl.guide dd { margin: 0; color: var(--muted); 
   <header>
     <div class="eyebrow" id="eyebrow">openDNA · unit tests</div>
     <h1>Every test, what goes in and what must come out</h1>
-    <p class="lede">For each automated test of the DNA editor: its inputs, the output it expects, what that answer is checked against, how much a pass is worth, and its result in the last run. Use the filters to review one area at a time.</p>
+    <p class="lede">For each automated test of the DNA editor: why it matters, its inputs, the output it expects, what that answer is checked against, how much a pass is worth, and its result in the last run. Tests are grouped by file, one file per area. Use the filters to review one area at a time.</p>
     <div class="stats" id="stats"></div>
     <div style="display:grid;gap:8px">
       <div class="bar" id="bar" role="img"></div>
@@ -145,7 +147,7 @@ dl.guide dt { font-weight: 500; } dl.guide dd { margin: 0; color: var(--muted); 
 
   <nav class="tabs" role="tablist">
     <button role="tab" id="tab-tests" aria-selected="true" data-view="tests">Tests</button>
-    <button role="tab" id="tab-audit" aria-selected="false" data-view="audit">Audit findings</button>
+    <button role="tab" id="tab-audit" aria-selected="false" data-view="audit">Audit (all tests)</button>
     <button role="tab" id="tab-guide" aria-selected="false" data-view="guide">How to read</button>
   </nav>
 
@@ -173,7 +175,8 @@ dl.guide dt { font-weight: 500; } dl.guide dd { margin: 0; color: var(--muted); 
     <h2>Reading a test</h2>
     <p>Many tests are topical: one test function holds several sections, and each row of its table is one section or case, in the order the test runs them. A test passes only when every row holds.</p>
     <dl class="guide">
-      <dt>Input</dt><dd>What the test feeds in: sequences (bases are coloured A C G T), parameters, files from <code>demo/</code>, or a user action in the window.</dd>
+      <dt>Why it matters</dt><dd>One sentence: what would break unnoticed for a user if the test did not exist. If you cannot agree with it, the test is a candidate for removal.</dd>
+      <dt>Input</dt><dd>What the test feeds in: sequences (bases are coloured A C G T), parameters or files from <code>demo/</code>. The suite has no UI tests: nothing drives a window.</dd>
       <dt>Expected output</dt><dd>What the test asserts: exact coordinates, values, texts, or agreement with another program.</dd>
       <dt>Checked against</dt><dd><b>hand-computed</b>: worked out on paper and written in the test. <b>independent implementation</b>: another program, mostly Biopython, computes the answer. <b>in-test reference model</b>: a plain model written inside the test, such as the sequence as a Python string. <b>property/invariant</b>: a rule that must always hold, such as undo restoring the original. <b>round-trip/self-consistency</b>: save then reload gives the same thing. <b>GUI state</b>: what the window shows. <b>smoke</b>: only that nothing crashes.</dd>
       <dt>Strength</dt><dd><b>Strong</b>: exact values or an independent check, edge cases included. <b>Adequate</b>: the main behaviour, some edges or exact values missing. <b>Weak</b>: a clearly wrong program could still pass.</dd>
@@ -223,7 +226,7 @@ python scripts/test_report.py --junit junit.xml --cargo cargo.txt</code></pre>
   $("f-file").insertAdjacentHTML("beforeend", files.map((f) => `<option value="${esc(f)}">${esc(f)}</option>`).join(""));
   const oracles = [...new Set(T.map((t) => t.oracle).filter(Boolean))].sort();
   $("f-oracle").insertAdjacentHTML("beforeend", oracles.map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join(""));
-  const hay = T.map((t) => [t.id, t.area, t.purpose, t.oracle, t.doc, (t.cases || []).map((c) => c.input + " " + c.expected).join(" "),
+  const hay = T.map((t) => [t.id, t.area, t.role, t.purpose, t.oracle, t.doc, (t.cases || []).map((c) => c.input + " " + c.expected).join(" "),
     (t.issues || []).join(" "), (t.fixed || []).join(" "), (t.checks || []).join(" ")].join(" ").toLowerCase());
   const ids = ["q", "f-suite", "f-file", "f-strength", "f-oracle", "f-result", "f-notes", "f-fixed"];
 
@@ -238,6 +241,7 @@ python scripts/test_report.py --junit junit.xml --cargo cargo.txt</code></pre>
     if (t.seconds >= 0.01) meta.push(`ran in ${t.seconds.toFixed(2)} s`);
     meta.push(source(t) ? `<a href="${source(t)}" target="_blank" rel="noopener">${esc(t.file)} line ${t.line}</a>` : `${esc(t.file)} line ${t.line}`);
     if (t.described) {
+      if (t.role) h += `<p class="why"><b>Why it matters:</b> ${rich(t.role)}</p>`;
       h += `<p class="purpose">${rich(t.purpose)}</p><div class="meta">${meta.join("<span aria-hidden='true'>·</span>")}</div>`;
       if (t.cases && t.cases.length) h += `<div class="tablebox"><table class="cases"><thead><tr><th>#</th><th>Input</th><th>Expected output</th></tr></thead><tbody>` +
         t.cases.map((c, i) => `<tr><td>${i + 1}</td><td>${rich(c.input)}</td><td>${rich(c.expected)}</td></tr>`).join("") + "</tbody></table></div>";
@@ -260,6 +264,7 @@ python scripts/test_report.py --junit junit.xml --cargo cargo.txt</code></pre>
       <span class="tname">${esc(t.name).replace(/_/g, "_<wbr>")}</span>
       <span class="chips">${t.result !== "passed" ? chip(r[0], r[1]) : ""}${chip(s[0], s[1])}</span>
       ${t.area ? `<span class="tarea">${esc(t.area)}</span>` : ""}
+      ${t.role ? `<span class="trole">${rich(t.role)}</span>` : ""}
     </summary><div class="body"></div></details>`;
   }
 

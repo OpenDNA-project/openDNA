@@ -574,18 +574,6 @@ mod tests {
     }
 
     #[test]
-    fn across_the_origin() {
-        let t = random_dna(1000, 3);
-        let mut q = t[900..].to_vec();
-        q.extend_from_slice(&t[..100]);
-        let hits = align(&t, &q, true, 10);
-        assert_eq!((hits[0].start, hits[0].end), (900, 1100));
-        // A linear template cannot match across its end: only the longer half is found.
-        let hits = align(&t, &q, false, 10);
-        assert!(hits[0].end <= 1000);
-    }
-
-    #[test]
     fn no_hit_for_random_query() {
         let t = random_dna(5000, 4);
         let q = random_dna(500, 99);

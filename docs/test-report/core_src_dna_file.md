@@ -6,6 +6,8 @@
 
 **Result:** ✅ passed · [line 332](../../core/src/dna_file.rs#L332) · **Area:** SnapGene .dna import · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** Opening a SnapGene .dna file could lose or misplace its features, primers, topology or description.
+
 A synthetic .dna file is parsed into sequence, topology, definition, features (with origin-spanning and direction handling) and primers as primer_bind features.
 
 | # | Input | Expected output |
@@ -23,6 +25,8 @@ A synthetic .dna file is parsed into sequence, topology, definition, features (w
 ## `rejects_other_files`
 
 **Result:** ✅ passed · [line 361](../../core/src/dna_file.rs#L361) · **Area:** SnapGene .dna import · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** Opening a non-.dna or a damaged .dna file could give an empty document instead of an error.
 
 Non-.dna data and a .dna file without a DNA packet are rejected instead of yielding an empty record.
 

@@ -1,5 +1,5 @@
-"""Testing feedback (app/feedback.py): scrubbing of private text, prefilled GitHub links (encoding, length cap), the rotating log
-file, and the error hooks (one dialog per distinct error). Offline: no browser, no dialog, no clipboard is ever touched; the
+"""Feedback (app/feedback.py): scrubbing of private text, prefilled GitHub links (encoding, length cap, nothing private), the
+rotating log file and the error hooks (one dialog per distinct error). Offline: no browser, no dialog, no clipboard is ever touched; the
 opener, the dialog and the clipboard are replaced by fakes. Each test installs and removes the hooks itself (pytest swaps
 threading.excepthook around every phase, so a fixture could not keep it)."""
 import contextlib
@@ -81,12 +81,9 @@ def query(url):
     return parse_qs(urlsplit(url).query, keep_blank_values=True)
 
 
-
-# --------------------------------------------------------------------------------------------- scrubbing
-
-def test_scrub_private_text():
-    """scrub: username and home path, quoted paths with spaces and UNC, traceback frames keep only the file name, file names and
-    sequences, ordinary text and URLs left alone, idempotent."""
+def test_scrub_removes_private_text():
+    """scrub removes the username and home path, quoted and UNC paths, traceback folders (keeping the file name), file names and
+    sequences; ordinary text and URLs are left alone; it is idempotent."""
     # --- username and home path
     out = feedback.scrub(r'Cannot write C:\Users\bobsmith\AppData\Roaming\openDNA\x.tsv for bobsmith')
     assert "bobsmith" not in out and "Users" not in out and "AppData" not in out
@@ -120,11 +117,10 @@ def test_scrub_private_text():
     assert feedback.scrub(once) == once
 
 
-# --------------------------------------------------------------------------------------------- URLs
-
-def test_report_and_feature_urls():
-    """Prefilled GitHub links: form fields and system info, encoding of special characters, the length cap that keeps the end,
-    feature requests and the unknown kind, and the injectable openers."""
+def test_report_links_are_encoded_capped_and_carry_nothing_private():
+    """Prefilled GitHub issue links: form fields and system info, special characters encoded, the length cap that keeps the end
+    of the log, feature requests and the unknown kind, injectable openers; without details the link carries the last 30 log
+    lines; sequences, paths and names never reach any link."""
     # --- form fields and system info
     url = feedback.report_url("bug", "Crash when opening a file")
     assert url.startswith(project.ISSUES_URL + "/new?template=bug_report.yml&")
@@ -167,9 +163,6 @@ def test_report_and_feature_urls():
     assert folder == feedback.log_folder() and folder.name == "logs" and folder.is_dir()
     assert opened and opened[0].startswith("file:")
 
-
-def test_report_url_from_the_log():
-    """Without details the link carries the last 30 log lines; sequences, paths and names never reach any link."""
     # --- log lines used when there are no details
     with active():
         logging.getLogger("opendna.test").warning("marker line %d", 42)
@@ -195,11 +188,10 @@ def test_report_url_from_the_log():
                 assert private not in decoded, private
 
 
-# --------------------------------------------------------------------------------------------- log file
-
-def test_log_file(private_data_dir, monkeypatch):
-    """The scrubbed log file in the data folder, Qt warnings in the log, no stacked handlers when set up twice, bounded rotation,
-    and the diagnostics text and copy."""
+def test_log_file_and_error_hooks(private_data_dir, monkeypatch):
+    """The scrubbed, bounded log file (Qt warnings included, handlers not stacked, diagnostics text) and the error hooks: every
+    unhandled error (main thread or worker) logged, one dialog per distinct error with scrubbed text, its report and copy
+    buttons, a failing dialog never raising, KeyboardInterrupt not reported, the hooks optional and teardown idempotent."""
     # --- a scrubbed file in the data folder
     with active() as calls:
         path = feedback.log_path()
@@ -248,13 +240,9 @@ def test_log_file(private_data_dir, monkeypatch):
     monkeypatch.setenv("OPENDNA_DATA_DIR", str(private_data_dir / "fresh"))
     assert "(the log is empty)" in feedback.diagnostics_text()   # no log file yet in a fresh data folder
 
-
-# --------------------------------------------------------------------------------------------- hooks
-
-def test_excepthook_dialog_and_buttons(private_data_dir):
-    """sys.excepthook: one dialog per distinct error (every occurrence logged), the dialog gets only scrubbed text, the report
-    and copy buttons, a failing dialog never raises, and KeyboardInterrupt is not reported."""
-    # --- one dialog per distinct error
+    # --- one dialog per distinct error, every occurrence logged (in a fresh data folder: only these errors in its log)
+    hooks_dir = private_data_dir / "hooks"
+    monkeypatch.setenv("OPENDNA_DATA_DIR", str(hooks_dir))
     with active() as calls:
         assert sys.excepthook is not sys.__excepthook__
         for _ in range(3):
@@ -265,7 +253,7 @@ def test_excepthook_dialog_and_buttons(private_data_dir):
         sys.excepthook(*raised(boom, "other message"))  # same type and place, other text: still the same error
         assert len(calls["dialog"]) == 2
         feedback.teardown_logging()
-    text = (private_data_dir / "logs" / "opendna.log").read_text(encoding="utf-8")
+    text = (hooks_dir / "logs" / "opendna.log").read_text(encoding="utf-8")
     assert text.count("Unhandled exception") == 5       # every occurrence is logged, only the dialog is once
     assert "Traceback (most recent call last)" in text and "ValueError: x" in text and "KeyError" in text
 
@@ -298,9 +286,6 @@ def test_excepthook_dialog_and_buttons(private_data_dir):
         sys.excepthook(*raised(lambda: (_ for _ in ()).throw(KeyboardInterrupt())))
         assert calls["dialog"] == []
 
-
-def test_threading_hook_and_optional_hooks():
-    """threading.excepthook reports errors from other threads once; the hooks are optional and teardown is idempotent."""
     # --- errors from other threads
     with active() as calls:
         def work():

@@ -27,19 +27,19 @@ explains (the names "openDNA" and "oDNA" stay with this project).
 ### Run from source
 
 Windows is the primary platform. Install [Rust](https://rustup.rs/), the Visual Studio C++ Build Tools and
-[Miniconda](https://docs.conda.io/en/latest/miniconda.html), then:
+[uv](https://docs.astral.sh/uv/), then, from the repository root:
 
 ```powershell
-conda create -n opendna python=3.13
-conda activate opendna
-pip install -r requirements.txt
+uv venv --python 3.12 .venv
+.venv\Scripts\activate
+uv pip install -r requirements.txt
 maturin develop -m core/Cargo.toml --release
 python app/main.py demo/pBAD30_eilR.gb
 ```
 
-Use the dedicated `opendna` environment, **not** conda `base`: base ships ICU 73 in `Library\bin`, which conda's Python puts on the
-DLL path; PySide6's `Qt6Core.dll` then loads it instead of Windows' ICU and fails with "DLL load failed … The specified procedure
-could not be found".
+Use a dedicated virtual environment such as this `.venv`, not a Python that other tools share (a conda `base`, for one, puts its own
+ICU 73 on the DLL path; PySide6's `Qt6Core.dll` then loads it instead of Windows' ICU and fails with "DLL load failed … The
+specified procedure could not be found"). Any Python 3.10 or newer with `venv` works in place of uv.
 
 The sequences in `demo/` are real: two plasmids, the *E. coli* BW25113 genome and *Vibrio cholerae* N16961 (both chromosomes).
 `python scripts/make_demo_files.py` writes the three small made-up fragments used by the tutorial.
@@ -68,12 +68,12 @@ simulated reads, so it needs bwa and samtools the way *Tools > Map Reads* does. 
 
 ### Run the tests
 
-You need Rust, the Visual Studio C++ Build Tools and a conda environment (not `base`; see above).
+You need Rust, the Visual Studio C++ Build Tools and a virtual environment (see above).
 
 ```powershell
-conda create -n opendna python=3.13
-conda activate opendna
-pip install -r requirements-dev.txt
+uv venv --python 3.12 .venv
+.venv\Scripts\activate
+uv pip install -r requirements-dev.txt
 maturin develop -m core/Cargo.toml --release     # rebuild after every change in core/
 pytest -q tests
 ```
@@ -81,7 +81,7 @@ pytest -q tests
 The Rust tests need to find Python:
 
 ```powershell
-$env:PYO3_PYTHON = (Get-Command python).Source   # the opendna environment's python.exe
+$env:PYO3_PYTHON = (Get-Command python).Source   # the .venv's python.exe
 cd core; cargo test; cd ..
 ```
 

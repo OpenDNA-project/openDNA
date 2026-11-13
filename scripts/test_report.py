@@ -132,6 +132,8 @@ def write(tests, described, results):
             if message:
                 lines += [f"> {cell(message)}", ""]
             if d:
+                if d.get("role"):
+                    lines += [f"**Why it matters:** {d['role']}", ""]
                 lines += [d.get("purpose", ""), "", "| # | Input | Expected output |", "|---|---|---|"]
                 lines += [f"| {i} | {cell(c.get('input', ''))} | {cell(c.get('expected', ''))} |" for i, c in enumerate(d.get("cases", []), 1)]
                 lines.append("")
@@ -156,7 +158,7 @@ def write(tests, described, results):
         "# Unit-test report", "",
         "What every automated test of openDNA feeds in, what it expects to come out, what the answer is checked against, and",
         "how much a pass is worth. Written so that a user can check, test by test, that the tests check relevant things and check",
-        "them well. **The findings of the audit (what was wrong, what was fixed, what is still not tested) are in [AUDIT.md](AUDIT.md).**", "",
+        "them well. **[AUDIT.md](AUDIT.md) lists every test on one page with why it matters, its strength and the review notes.**", "",
         "## How to read a test entry", "",
         "- **Result**: the outcome of the last run this report was built from (✅ passed, ❌ failed, ⏭️ skipped, · not run).",
         "- **Checked against**: where the expected answer comes from. *hand-computed*: worked out on paper and written in the test;"
@@ -166,6 +168,8 @@ def write(tests, described, results):
         " what the window shows; *smoke*: only that nothing crashes.",
         "- **Strength**: 🟢 strong = exact values or an independent check, edge cases included; 🟡 adequate = the main behaviour,"
         " some edges or exact values missing; 🔴 weak = a clearly wrong program could still pass.",
+        "- **Why it matters**: what would break unnoticed for a user if the test did not exist. A test whose reason you cannot"
+        " agree with is a candidate for removal.",
         "- **Input / Expected output**: the concrete cases, in the order the test runs them. Many tests are *topical*: one test"
         " function holds several sections, each a row.",
         "- **Review notes**: what the reviewer found could be stronger. **Fixed by the audit**: what was changed.", "",
@@ -183,6 +187,49 @@ def write(tests, described, results):
     return totals
 
 
+def write_audit(tests, described, results):
+    """AUDIT.md: every test on one page with its role, reference, strength and review notes, built from tests.json and the run."""
+    def suite(t):
+        return "Python" if t["file"].endswith(".py") else "Rust"
+
+    def strength(t):
+        return (described.get(t["id"]) or {}).get("strength") or "not reviewed"
+
+    kinds = ["strong", "adequate", "weak", "not reviewed"]
+    lines = ["# Audit of the unit tests", "", "[← unit-test report](README.md)", "",
+             f"Built by `scripts/test_report.py` on {datetime.date.today().isoformat()} from `tests.json` and the last run."
+             " Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break"
+             " unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes."
+             " The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.", "",
+             "## Totals", "", "| Suite | Tests | Passed | Failed / not run | " + " | ".join(k.capitalize() for k in kinds) + " | With review notes |",
+             "|---|---|---|---|" + "---|" * len(kinds) + "---|"]
+    for name in ("Python", "Rust", None):
+        group = [t for t in tests if name is None or suite(t) == name]
+        res = [results.get(t["id"], ("not run",))[0] for t in group]
+        noted = sum(bool((described.get(t["id"]) or {}).get("issues")) for t in group)
+        lines.append(f"| {name or '**All**'} | {len(group)} | {res.count('passed')} | {len(res) - res.count('passed')} | "
+                     + " | ".join(str(sum(strength(t) == k for t in group)) for k in kinds) + f" | {noted} |")
+    lines += ["", "## Weak or unreviewed tests", ""]
+    flagged = [t for t in tests if strength(t) in ("weak", "not reviewed")]
+    lines += [f"- `{t['id']}` ({strength(t)}): " + cell("; ".join((described.get(t["id"]) or {}).get("issues") or ["no written description"]))
+              for t in flagged] or ["None."]
+    lines += ["", "## Every test, by file", ""]
+    by_file = defaultdict(list)
+    for t in tests:
+        by_file[t["file"]].append(t)
+    for file, group in by_file.items():
+        lines += [f"### `{file}` ({len(group)} test{'s' if len(group) > 1 else ''})", "",
+                  "| Test | Why it matters | Checked against | Strength | Review notes |", "|---|---|---|---|---|"]
+        for t in group:
+            d = described.get(t["id"]) or {}
+            status = results.get(t["id"], ("not run",))[0]
+            name = f"`{t['name']}`" + ("" if status == "passed" else f" ({status})")
+            lines.append(f"| {name} | {cell(d.get('role') or d.get('purpose') or t['doc'] or '')} | {cell(d.get('oracle', ''))} | "
+                         f"{strength(t)} | {cell('<br>'.join(d.get('issues') or []))} |")
+        lines.append("")
+    (OUT / "AUDIT.md").write_text("\n".join(lines), encoding="utf-8")
+
+
 def markdown_html(text):
     """The Markdown that AUDIT.md uses (headings, paragraphs, pipe tables, - and 1. lists, **bold**, `code`, [links](...)) as HTML."""
     def inline(t):
@@ -190,7 +237,8 @@ def markdown_html(text):
         t = re.sub(r"`([^`]+)`", r"<code>\1</code>", t)
         t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
         t = re.sub(r"(?<![\w*])\*([^*\s][^*]*?)\*(?![\w*])", r"<i>\1</i>", t)
-        return re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', t)
+        t = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', t)
+        return t.replace("\\|", "|").replace("&lt;br&gt;", "<br>")
 
     def cells(line):
         return [c.strip() for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
@@ -240,7 +288,7 @@ def write_html(tests, described, results, path, bare=False, repo="", ref="main")
         d = described.get(t["id"]) or {}
         status, seconds, message = results.get(t["id"], ("not run", None, ""))
         rows.append({"id": t["id"], "file": t["file"], "name": t["name"], "line": t["line"], "suite": "py" if t["file"].endswith(".py") else "rs",
-                     "result": status, "seconds": seconds, "message": message, "described": bool(d), "area": d.get("area", ""),
+                     "result": status, "seconds": seconds, "message": message, "described": bool(d), "area": d.get("area", ""), "role": d.get("role", ""),
                      "purpose": d.get("purpose", ""), "cases": d.get("cases", []), "oracle": d.get("oracle", ""), "strength": d.get("strength", ""),
                      "issues": d.get("issues", []), "fixed": d.get("fixed", []), "doc": t["doc"], "checks": t["checks"]})
     audit = OUT / "AUDIT.md"
@@ -279,6 +327,7 @@ def main():
     known = {t["id"] for t in tests}
     stale = sorted(set(described) - known)
     totals = write(tests, described, results)
+    write_audit(tests, described, results)
     write_html(tests, described, results, args.html, args.bare, args.repo, git_ref())
     print(f"{len(tests)} tests ({sum(t['file'].endswith('.py') for t in tests)} Python, {sum(t['file'].endswith('.rs') for t in tests)} Rust); "
           f"{len(known & set(described))} with a written description")

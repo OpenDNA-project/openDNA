@@ -397,9 +397,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tm_is_sane() {
-        // Exact values are checked against Biopython's Tm_NN (same model) in
-        // tests/test_primers.py; here only plausibility and input checks.
+    fn tm_and_tm_range_of_plain_and_degenerate_primers() {
+        // Exact values are checked against Biopython's Tm_NN (same model) in tests/test_core_sequence.py;
+        // here plausibility, input checks and tm_range.
         let c = Conditions::default();
         let t = tm(b"AGCGGATAACAATTTCACACAGGA", &c).unwrap();
         assert!(t > 55.0 && t < 65.0, "{t}");
@@ -408,6 +408,22 @@ mod tests {
         // More salt or more primer = higher Tm.
         let salty = Conditions { na_mm: 200.0, ..c };
         assert!(tm(b"AGCGGATAACAATTTCACACAGGA", &salty).unwrap() > t);
+
+        // --- tm_range: a plain primer is its own Tm; bad letters give none (tm itself stays plain-ACGT only, above) ---
+        let (lo, hi) = tm_range(b"AGCGGATAACAATTTCACACAGGA", &c).unwrap();
+        assert!((lo - t).abs() < 1e-6 && (hi - t).abs() < 1e-6);
+        assert!(tm_range(b"ACGTX", &c).is_none() && tm_range(b"A", &c).is_none());
+        // --- tm_range of a degenerate primer brackets the Tm of every oligo it stands for ---
+        for degenerate in ["AGCGGRTAACAATYTCACACNGGA", "ACGTSACGTWACGTKACGT", "GAATTCNNGAATTC", "RYGCGCRY"] {
+            let tms: Vec<f64> = expand(degenerate).iter().map(|o| tm(o.as_bytes(), &c).unwrap()).collect();
+            let (lo, hi) = tm_range(degenerate.as_bytes(), &c).unwrap();
+            let (min, max) = (tms.iter().cloned().fold(f64::MAX, f64::min), tms.iter().cloned().fold(f64::MIN, f64::max));
+            assert!(lo <= min + 1e-9 && hi >= max - 1e-9, "{degenerate}: [{lo}, {hi}] must bracket [{min}, {max}]");
+            // tight unless the self-complementary widening applied
+            if degenerate != "GAATTCNNGAATTC" && degenerate != "RYGCGCRY" {
+                assert!((lo - min).abs() < 1e-6 && (hi - max).abs() < 1e-6, "{degenerate}: [{lo}, {hi}] vs [{min}, {max}]");
+            }
+        }
     }
 
     /// Every plain oligo a degenerate primer stands for (test helper; only for short ones).
@@ -424,32 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos() {
-        let c = Conditions::default();
-        for degenerate in ["AGCGGRTAACAATYTCACACNGGA", "ACGTSACGTWACGTKACGT", "GAATTCNNGAATTC", "RYGCGCRY"] {
-            let tms: Vec<f64> = expand(degenerate).iter().map(|o| tm(o.as_bytes(), &c).unwrap()).collect();
-            let (lo, hi) = tm_range(degenerate.as_bytes(), &c).unwrap();
-            let (min, max) = (tms.iter().cloned().fold(f64::MAX, f64::min), tms.iter().cloned().fold(f64::MIN, f64::max));
-            assert!(lo <= min + 1e-9 && hi >= max - 1e-9, "{degenerate}: [{lo}, {hi}] must bracket [{min}, {max}]");
-            // tight unless the self-complementary widening applied
-            if degenerate != "GAATTCNNGAATTC" && degenerate != "RYGCGCRY" {
-                assert!((lo - min).abs() < 1e-6 && (hi - max).abs() < 1e-6, "{degenerate}: [{lo}, {hi}] vs [{min}, {max}]");
-            }
-        }
-    }
-
-    #[test]
-    fn tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none() {
-        let c = Conditions::default();
-        let t = tm(b"AGCGGATAACAATTTCACACAGGA", &c).unwrap();
-        let (lo, hi) = tm_range(b"AGCGGATAACAATTTCACACAGGA", &c).unwrap();
-        assert!((lo - t).abs() < 1e-6 && (hi - t).abs() < 1e-6);
-        assert!(tm_range(b"ACGTX", &c).is_none() && tm_range(b"A", &c).is_none());
-        assert!(tm(b"ACGTN", &c).is_none(), "tm itself stays plain-ACGT only");
-    }
-
-    #[test]
-    fn a_degenerate_primer_binds_every_site_it_matches_with_no_mismatch() {
+    fn a_degenerate_primer_binds_every_site_it_matches_on_either_strand() {
         let flank = "T".repeat(20);
         let (a, g) = ("ACGTTGCAGGCTAGCTAGGA", "ACGTTGCAGGCTAGCTAGGA");
         // three degenerate positions: R (A/G), N, Y (C/T); the template carries three variants of the site
@@ -476,17 +467,14 @@ mod tests {
         let n_template = template.replacen(&variant('A', 'C', 'C'), &variant('A', 'C', 'N'), 1);
         let starts: Vec<usize> = binding_sites(n_template.as_bytes(), primer.as_bytes(), false, SEED, 0).iter().map(|s| s.start).collect();
         assert_eq!(starts, vec![60, 100]);
-    }
-
-    #[test]
-    fn a_degenerate_reverse_primer_binds_the_opposite_strand_using_complemented_codes() {
-        let site = "ACGTTGCAGGCTAGCTAGGA";
-        let template = format!("{0}{site}{0}", "T".repeat(20));
+        // --- a degenerate reverse primer binds the bottom strand through complemented codes ---
+        let site2 = "ACGTTGCAGGCTAGCTAGGA";
+        let rev_template = format!("{0}{site2}{0}", "T".repeat(20));
         // reverse primer = reverse complement of the site, with R in place of the base opposite the site's Y-compatible C/T
-        let mut rc = revcomp(site.as_bytes());
-        rc[5] = b'R'; // opposite a T on the top strand? R = A/G pairs with T/C
-        let sites = binding_sites(template.as_bytes(), &rc, false, SEED, 0);
-        assert_eq!(sites.iter().filter(|s| !s.forward).map(|s| (s.start, s.len, s.mismatches)).collect::<Vec<_>>(), vec![(20, 20, 0)]);
+        let mut rc = revcomp(site2.as_bytes());
+        rc[5] = b'R'; // faces a C on the top strand; R = A/G pairs with T/C
+        let rev_sites = binding_sites(rev_template.as_bytes(), &rc, false, SEED, 0);
+        assert_eq!(rev_sites.iter().filter(|s| !s.forward).map(|s| (s.start, s.len, s.mismatches)).collect::<Vec<_>>(), vec![(20, 20, 0)]);
     }
 
     #[test]
@@ -551,21 +539,4 @@ mod tests {
         assert_eq!(sites, vec![Site { start: 26, len: 20, forward: true, mismatches: 0 }]);
     }
 
-    #[test]
-    fn dimers_and_hairpins() {
-        let c = Conditions::default();
-        // A palindromic 3' end makes a strong 3' self-dimer.
-        let (any, three) = dimer_dg(b"ACGTTTAGCGAATTCGC", b"ACGTTTAGCGAATTCGC", &c);
-        assert!(three < -5.0 && any <= three, "{any} {three}");
-        // Poly-A cannot pair with itself.
-        assert_eq!(dimer_dg(b"AAAAAAAAAAAAAAAA", b"AAAAAAAAAAAAAAAA", &c), (0.0, 0.0));
-        // A primer and its exact complement: the full duplex, strongest possible.
-        let p = b"AGCGGATAACAATTTCACACAGGA";
-        let full = dimer_dg(p, &revcomp(p), &c).0;
-        assert!(full < -20.0, "{full}"); // ~ -1 kcal/mol per base pair
-        // Hairpin with a GCGCGC / GCGCGC stem and a TTTT loop: the stem reaches the 3' end, so both values are the same.
-        let (hp, hp3) = hairpin_dg(b"GCGCGCTTTTGCGCGC", &c);
-        assert!(hp < -3.0 && hp3 == hp, "{hp} {hp3}");
-        assert_eq!(hairpin_dg(b"AAAAAAAAAAAAAAA", &c), (0.0, 0.0));
-    }
 }

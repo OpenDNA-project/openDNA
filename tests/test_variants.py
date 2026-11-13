@@ -11,14 +11,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
-from PySide6.QtWidgets import QApplication
-
 from opendna_core import Document
 
 from assembly_panel import FragmentEditor
 from variants import annotate_variants, apply_variants, can_apply, change_text, variant_feature
-
-app = QApplication.instance() or QApplication([])
 
 SEQ = "ACGTACGTAAGGCCTTACGTACGTAAGGCCTT"   # 32 bases
 
@@ -40,21 +36,21 @@ def entry():
     return SimpleNamespace(name="sample.bam", variants=["old"], cache="old")
 
 
-def test_change_text_and_which_variants_can_be_applied():
-    """The label of each kind of change, and an insertion whose bases the reads did not settle (empty or N) is not applied."""
+def test_variants_are_written_into_the_bases_or_annotated_beside_them():
+    """Each kind of change is named, only a settled insertion can be applied, and the bases that come out equal the same
+    edit made on a plain string — one undo step each, written last position first so every position still means a base of
+    the original, with the coordinates-moved message only after an indel; the DNA lock refuses everything. Annotating
+    instead leaves the bases alone and writes one `variation` feature per variant, over the bases it is about."""
+    # --- the label of each change, and what can be applied ---
     assert change_text(variant("snp", 4, "A", "G")) == "A > G"
     assert change_text(variant("del", 4, "ACGTA")) == "deletion of 5 bp (ACGTA)"
     assert change_text(variant("del", 4, "A" * 11)) == "deletion of 11 bp"   # more than 10 bases: not spelled out
     assert change_text(variant("ins", 4, alt="TT")) == "insertion of TT"
     assert change_text(variant("ins", 4, alt="")) == "insertion of ?"
-    assert can_apply(variant("snp", 4, "A", "G")) and can_apply(variant("del", 4, "AC"))
-    assert can_apply(variant("ins", 4, alt="TT"))
+    assert can_apply(variant("snp", 4, "A", "G")) and can_apply(variant("del", 4, "AC")) and can_apply(variant("ins", 4, alt="TT"))
     assert not can_apply(variant("ins", 4, alt="")) and not can_apply(variant("ins", 4, alt="TNT"))
 
-
-def test_each_kind_of_change_equals_the_string_edit():
-    """A SNP replaces one base, a deletion removes its bases, an insertion goes before the base at its position; the bases
-    equal the same edit made on a plain string, and the coordinates-moved message comes only after an indel."""
+    # --- each kind of change equals the string edit ---
     cases = [
         (variant("snp", 5, "C", "T"), SEQ[:5] + "T" + SEQ[6:], False),
         (variant("del", 8, "AAGG"), SEQ[:8] + SEQ[12:], True),
@@ -73,17 +69,13 @@ def test_each_kind_of_change_equals_the_string_edit():
         assert e.variants == ([] if moved else None) and e.cache is None, v
         assert any("map the reads again" in m for m in messages) == moved, (v, messages)
 
-
-def test_several_changes_are_applied_last_position_first_and_each_undoes():
-    """Changes are written right to left, so every position still means the base of the original sequence; the result equals
-    the string edit in that order whatever order they are chosen in. Each change is one undo step; undoing them all gives the
-    original back. Insertions with unsettled bases are left out of the count."""
+    # --- several changes: written right to left, whatever order they are chosen in; each one undoes ---
     chosen = [variant("ins", 20, alt="TTT"), variant("snp", 2, "G", "C"), variant("del", 10, "GGCC"),
               variant("ins", 25, alt="NN")]
     expected = SEQ[:2] + "C" + SEQ[3:10] + SEQ[14:20] + "TTT" + SEQ[20:]
     for order in (chosen, chosen[::-1]):
         ed, _ = editor()
-        assert apply_variants(ed, entry(), list(order)) == 3
+        assert apply_variants(ed, entry(), list(order)) == 3, "the unsettled insertion is left out of the count"
         assert ed.doc.sequence() == expected
         undone = 0
         while ed.doc.sequence() != SEQ:
@@ -91,9 +83,7 @@ def test_several_changes_are_applied_last_position_first_and_each_undoes():
             undone += 1
         assert undone == 3 and len(ed.doc.history()[1]) == 3   # and three redo steps
 
-
-def test_nothing_is_applied_while_the_dna_is_locked_or_nothing_can_be():
-    """The DNA lock refuses every change (with its message) and leaves the entry alone; an empty or unusable choice is a no-op."""
+    # --- nothing is applied while the DNA is locked, or when nothing can be ---
     ed, messages = editor()
     ed.dna_locked = True
     e = entry()
@@ -106,10 +96,7 @@ def test_nothing_is_applied_while_the_dna_is_locked_or_nothing_can_be():
     assert apply_variants(ed, e, [variant("ins", 3, alt="")]) == 0
     assert ed.doc.sequence() == SEQ and e.variants == ["old"]
 
-
-def test_variation_features_cover_the_right_bases():
-    """GenBank `variation` features: a SNP on its base, a deletion over the deleted bases with an empty /replace, an
-    insertion over the two bases around it (clipped at the ends), with the read counts in the note."""
+    # --- annotated instead: what each `variation` feature covers ---
     kind, loc, quals = variant_feature(variant("snp", 5, "C", "T", count=7, depth=10), 32, "sample.bam")
     assert (kind, loc) == ("variation", "6")
     assert dict(quals) == {"label": "C > T", "replace": "T", "note": "7 of 10 reads (70 %) in sample.bam"}
@@ -120,18 +107,12 @@ def test_variation_features_cover_the_right_bases():
     assert variant_feature(variant("ins", 32, alt="C"), 32)[1] == "32..32"  # after the last base
     assert dict(variant_feature(variant("snp", 1, "C", "A", count=0, depth=0), 32)[2])["note"] == "0 of 0 reads (0 %)"
 
-
-def test_annotating_adds_one_feature_per_variant_in_one_undo_step_and_leaves_the_bases():
+    # --- annotating: one feature per variant, one undo step, the bases untouched ---
     ed, _ = editor()
-    chosen = [variant("snp", 5, "C", "T"), variant("del", 8, "AAGG")]
-    assert annotate_variants(ed, entry(), chosen) == 2
+    assert annotate_variants(ed, entry(), [variant("snp", 5, "C", "T"), variant("del", 8, "AAGG")]) == 2
     features = [f for f in ed.doc.features() if f.kind == "variation"]
     assert sorted(f.location for f in features) == ["6", "9..12"]
-    for f in features:   # the bases each feature covers are the reference bases of its variant
-        if f.location == "6":
-            assert ed.doc.sequence(5, 6) == "C"
-        else:
-            assert ed.doc.sequence(8, 12) == "AAGG"
+    assert ed.doc.sequence(5, 6) == "C" and ed.doc.sequence(8, 12) == "AAGG", "each feature covers its variant's reference bases"
     assert ed.doc.sequence() == SEQ
     assert ed.doc.undo()
     assert not [f for f in ed.doc.features() if f.kind == "variation"]

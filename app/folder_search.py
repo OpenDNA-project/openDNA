@@ -1,4 +1,4 @@
-"""Folder Search (the "Search folder" row of Local Align): "which of my plasmids carries this sequence?" Aligns the query
+"""Folder Search (the "Folder" scope of Local Align): "which of my plasmids carries this sequence?" Aligns the query
 against every sequence record of every GenBank / .dna / FASTA file in a folder (the Rust `align`, both strands,
 mismatches and gaps allowed) and lists the hits; a click opens that file at that position.
 
@@ -90,14 +90,15 @@ def row_text(h, sep):
 
 
 class FolderSearchPanel(QWidget):
-    """The folder row of Local Align: folder box, Browse, Search folder, Cancel, Copy results and a progress bar. The hits go in
-    `self.table` (the owner places it). `get_query()` returns the bases to search for or raises ValueError (its text is shown by
-    `say`); `win` opens a hit's file."""
+    """The folder row of Local Align: folder box and Browse. The owner places `self.table` (the hits), `self.cancel_button` and
+    `self.bar` (shown while a search runs), and runs `start()` from its own Align button; `on_busy(True / False)` says when a
+    search starts and ends. `get_query()` returns the bases to search for or raises ValueError (its text is shown by `say`);
+    `win` opens a hit's file."""
     COLUMNS = ["File", "Record", "Position", "Strand", "Identity", "Length"]
 
-    def __init__(self, win, get_query, say, on_start=lambda: None):
+    def __init__(self, win, get_query, say, on_start=lambda: None, on_busy=lambda busy: None):
         super().__init__()
-        self.win, self.get_query, self.say, self.on_start, self.hits = win, get_query, say, on_start, []
+        self.win, self.get_query, self.say, self.on_start, self.on_busy, self.hits = win, get_query, say, on_start, on_busy, []
         self.thread, self.state = None, None
         self.folder = QLineEdit(str(QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat).value(FOLDER_KEY, "")),
                                 placeholderText="Folder of sequence files")
@@ -109,18 +110,15 @@ class FolderSearchPanel(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=0)
         self.table.setWordWrap(False)
-        empty_hint(self.table, "Pick a folder and press Search folder")
+        empty_hint(self.table, "Pick a folder and press Align")
         self.table.cellDoubleClicked.connect(lambda row, _c: self.open_hit(row))
         self.table.itemActivated.connect(lambda item: self.open_hit(item.row()))
-        self.search_button = QPushButton("Search folder", clicked=self.start, toolTip="Align the query against every sequence file in the folder")
         self.cancel_button = QPushButton("Cancel", clicked=self.cancel, visible=False)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(QLabel("Folder"))
         row.addWidget(self.folder, 1)
-        for w in (QPushButton("Browse…", clicked=self.browse), self.search_button, self.cancel_button,
-                  QPushButton("Copy results", clicked=self.copy_results, toolTip="Copy the list as tab-separated text"), self.bar):
-            row.addWidget(w)
+        row.addWidget(QPushButton("Browse…", clicked=self.browse))
         self.timer = QTimer(self, interval=50, timeout=self._poll)
 
     def browse(self):
@@ -151,7 +149,7 @@ class FolderSearchPanel(QWidget):
 
         self.thread = threading.Thread(target=work, daemon=True)
         self.thread.start()
-        self.search_button.setEnabled(False)
+        self.on_busy(True)
         self.cancel_button.setVisible(True)
         self.bar.setVisible(True)
         self.say("Searching…")
@@ -170,7 +168,7 @@ class FolderSearchPanel(QWidget):
         if self.thread.is_alive():
             return
         self.timer.stop()
-        self.search_button.setEnabled(True)
+        self.on_busy(False)
         self.cancel_button.setVisible(False)
         self.bar.setVisible(False)
         if s.error:

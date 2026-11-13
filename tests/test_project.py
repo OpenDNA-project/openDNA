@@ -1,13 +1,17 @@
 """app/project.py (name, version, links) agrees with the build files, and the exe recipe bundles every data file the app reads.
 
 A release bumps the version in three places (project.py, core/Cargo.toml, core/pyproject.toml); the first test fails if one is forgotten.
+Also: the data folder of the program's old name is copied over once.
 """
+import os
 import re
 import struct
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
+os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
@@ -16,9 +20,11 @@ import project
 SPEC = (ROOT / "packaging" / "openDNA.spec").read_text(encoding="utf-8")
 
 
-def test_project_metadata_is_consistent():
-    """The version is the same in all three places and is major.minor.patch, the links are built from the repository name,
-    the name and author are filled in, the updates switch is a bool, and every file type extension starts with a dot."""
+def test_release_metadata_and_exe_recipe_are_consistent():
+    """project.py agrees with the build files: the version is the same in all three places and is major.minor.patch, the links
+    are built from the repository name, the name and author are filled in, the updates switch is a bool, every file type
+    extension starts with a dot. The exe recipe bundles every data file the app reads (Path(__file__).with_name("x") only works
+    in the frozen exe when the spec ships x next to the modules), the files it names exist, and the icon is a multi-size ico."""
     # --- version is the same in all three places ---
     cargo = tomllib.loads((ROOT / "core" / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
     pyproject = tomllib.loads((ROOT / "core" / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
@@ -46,10 +52,6 @@ def test_project_metadata_is_consistent():
         assert ext.startswith(".") and len(ext) > 1 and ext == ext.lower() and " " not in ext, ext
         assert label.strip(), ext
 
-
-def test_exe_recipe_bundles_every_data_file_the_app_reads():
-    """Path(__file__).with_name("x") only works in the frozen exe when the spec ships x next to the modules.
-    Also: the files named in the recipe exist, and the icon is a multi-size ico."""
     # --- every data file the app reads is bundled ---
     wanted = set()
     for py in (ROOT / "app").glob("*.py"):

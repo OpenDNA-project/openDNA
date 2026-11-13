@@ -44,6 +44,16 @@ class PressedStyle(QProxyStyle):
     Here only the colours change; every size and margin stays the base style's."""
 
     def drawPrimitive(self, element, option, painter, widget=None):
+        if element == QStyle.PE_PanelButtonCommand and _is_primary(widget, option) and not option.state & QStyle.State_On:
+            state = option.state
+            painter.save()
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color("primary_pressed" if state & QStyle.State_Sunken else "primary_hover" if state & QStyle.State_MouseOver
+                                   else "primary"))
+            painter.drawRoundedRect(QRectF(option.rect).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4)
+            painter.restore()
+            return
         if element in (QStyle.PE_PanelButtonTool, QStyle.PE_PanelButtonCommand) and option.state & QStyle.State_On:
             painter.save()
             painter.setRenderHint(QPainter.Antialiasing)
@@ -59,6 +69,10 @@ class PressedStyle(QProxyStyle):
             option = type(option)(option)   # a copy: the label in white on the blue
             for role in (QPalette.ButtonText, QPalette.WindowText, QPalette.Text):
                 option.palette.setColor(role, color("highlight_text"))
+        elif element == QStyle.CE_PushButtonLabel and _is_primary(widget, option):
+            option = type(option)(option)
+            for role in (QPalette.ButtonText, QPalette.WindowText, QPalette.Text):
+                option.palette.setColor(role, color("primary_text"))
         super().drawControl(element, option, painter, widget)
         if element == QStyle.CE_MenuItem:   # the "WIP" tag of an unfinished feature's menu item (wip.mark_action)
             import wip
@@ -70,6 +84,22 @@ class PressedStyle(QProxyStyle):
             import wip
             size.setWidth(size.width() + wip.menu_extra(option, widget))
         return size
+
+
+def _is_primary(widget, option):
+    """A push button marked by mark_primary() that can be used (a disabled one keeps the style's own grey look)."""
+    return widget is not None and widget.property("primary") is True and bool(option.state & QStyle.State_Enabled)
+
+
+def mark_primary(button):
+    """Make `button` an important one: drawn in the "primary" colours of ROLES, in bold. Every button that runs a tool (Align,
+    Perform assembly...) goes through here, so they are all the same blue."""
+    button.setProperty("primary", True)
+    button.setObjectName("primary")
+    font = button.font()
+    font.setBold(True)
+    button.setFont(font)
+    return button
 
 
 def install_style(app):
@@ -155,6 +185,13 @@ ROLES = {
     # theme's accent is a lighter blue of the same hue); pressed buttons do not use it: see PressedStyle
     "highlight": ("#3a4a5e", "#3a4a5e"),
     "highlight_text": ("#ffffff", "#ffffff"),
+    # THE colour of an important button (the one that runs the tool: Align, Perform assembly...), set here and nowhere else: a
+    # bright blue with white letters (5:1 or better on both), brighter under the mouse, darker pressed. A button gets it through
+    # mark_primary(); PressedStyle draws it
+    "primary": ("#1565c0", "#1f6fd1"),
+    "primary_hover": ("#1e78d6", "#3a86e0"),
+    "primary_pressed": ("#0d47a1", "#1a5fb4"),
+    "primary_text": ("#ffffff", "#ffffff"),
     "accent": ("#3a4a5e", "#8db4e8"),
     # under the mouse, on the quick filters
     "toggle_hover_bg": ("#e3e8ee", "#33383f"),

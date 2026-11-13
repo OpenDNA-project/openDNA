@@ -6,17 +6,18 @@ another order, an INVERTED piece). Each matching piece is its own row, ordered b
 query, and a summary line plus a "before this piece" column say how consecutive pieces are joined
 (gap in the query, gap in the template, strand change).
 
-Beside the query there is a second box (the "Align two sequences" check box): the two are then aligned with each other (the
-Alignment tab) and compared by a dot plot and a list of the stretches they share (the Dot plot tab, repeats.py), the same
-sequence in both boxes finding its own repeats. The "Search folder" row aligns the query against every file of a folder
-(folder_search.py)."""
+The dialog reads top to bottom: Query (the box, Paste from clipboard, Clear, and the "Compare with a second sequence" check box),
+Search in (This sequence or Folder, and the one Align button), the result tabs (each with the buttons that act on its own list) and
+the status line. With the second box (the check box) Align aligns the two with each other (the Alignment tab) and compares them by
+a dot plot and a list of the stretches they share (the Dot plot tab, repeats.py), the same sequence in both boxes finding its own
+repeats. The Folder choice aligns the query against every file of a folder (folder_search.py)."""
 from types import SimpleNamespace
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView, QApplication, QCheckBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QSizePolicy, QTabWidget,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QApplication, QCheckBox, QGroupBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QRadioButton,
+    QSizePolicy, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from opendna_core import align
@@ -28,6 +29,7 @@ from msa_view import MsaCanvas
 from repeats import PairRepeats
 from tools import ToolDialog, empty_hint
 from uikit import fit_columns, no_auto_default, plural, right_aligned, run_busy
+import theme
 import value_filter
 
 MIN_QUERY = 12        # bp: shorter text from the clipboard is not offered as a query
@@ -165,8 +167,8 @@ class LocalAlignDialog(ToolDialog):
         self.query.setPlainText(self._clipboard_dna())
         self.query_b = QPlainTextEdit(placeholderText="Second sequence (B), aligned with the first (A)", visible=False)
         self.query_b.setMaximumHeight(110)
-        self.paired = QCheckBox("Align two sequences", toolTip="Add a second box and align the two with each other, with a dot plot "
-                                "and the stretches they share (the same sequence in both finds its repeats)")
+        self.paired = QCheckBox("Compare with a second sequence", toolTip="Add a second box and align the two with each other, with a "
+                                "dot plot and the stretches they share (the same sequence in both finds its repeats)")
         self.paired.toggled.connect(self._pair_toggled)
         # (wrapped, and unable to widen the window: a long message beside the buttons used to stretch it)
         self.status = QLabel(wordWrap=True, textFormat=Qt.PlainText)
@@ -182,44 +184,122 @@ class LocalAlignDialog(ToolDialog):
         empty_hint(self.table, "Paste a query and press Align")
         self.table.currentCellChanged.connect(lambda row, *_: self._select(row))
         editor.query_hit_changed.connect(self._picked)   # a row clicked in the Alignment view picks the same row here
-        buttons = QHBoxLayout()
-        align_button = QPushButton("Align", clicked=self.run)
-        buttons.addWidget(align_button)
-        buttons.addWidget(QPushButton("Paste from clipboard", clicked=self.paste_clipboard,
-                                      toolTip="Replace the query with the DNA on the clipboard (FASTA header, spaces and digits are dropped)"))
-        buttons.addWidget(QPushButton("Clear hits", clicked=lambda: self.clear()))
-        buttons.addWidget(self.paired)
-        buttons.addWidget(self.status, 1)
+        self.length = QLabel()   # the query's size, as the box is typed in
+        self.query.textChanged.connect(self._query_length)
+        self._query_length()
+        # The three sections read top to bottom: what to align (Query), against what and go (Search in), the answers (tabs, each with
+        # the buttons that act on its own list), and the status line.
+        self.align_button = theme.mark_primary(QPushButton("Align", clicked=self.run, toolTip="Align the query (Enter)"))
+        self.scope_this = QRadioButton("This sequence", checked=True)
+        self.scope_folder = QRadioButton("Folder", toolTip="Align the query against every sequence file in a folder")
+        self.scope_folder.toggled.connect(self._scope_changed)
         self.folder = FolderSearchPanel(parent, lambda: self._query(self.query), self.status.setText,
-                                        lambda: self.tabs.setCurrentWidget(self.folder.table))
+                                        lambda: self.tabs.setCurrentWidget(self.folder_tab), self._busy)
         self.canvas, self.pair = MsaCanvas(), PairRepeats()
-        hits = QWidget()
-        hits_box = QVBoxLayout(hits)
-        hits_box.setContentsMargins(0, 0, 0, 0)
-        hits_box.addWidget(self.summary)
-        hits_box.addWidget(self.table)
-        self.tabs = QTabWidget()
-        for widget, title in ((hits, "Hits in this sequence"), (self.folder.table, "Folder results"), (self.canvas, "Alignment"),
-                              (self.pair, "Dot plot")):
-            self.tabs.addTab(widget, title)
-        self._pair_toggled(False)
+
+        query_group = QGroupBox("Query")
+        query_box = QVBoxLayout(query_group)
         boxes = QHBoxLayout()
         boxes.addWidget(self.query)
         boxes.addWidget(self.query_b)
+        query_box.addLayout(boxes)
+        helpers = QHBoxLayout()
+        helpers.addWidget(QPushButton("Paste from clipboard", clicked=self.paste_clipboard,
+                                      toolTip="Replace the query with the DNA on the clipboard (FASTA header, spaces and digits are dropped)"))
+        helpers.addWidget(QPushButton("Clear", clicked=self.clear_query, toolTip="Empty the query box"))
+        helpers.addWidget(self.length)
+        helpers.addStretch(1)
+        helpers.addWidget(self.paired)
+        query_box.addLayout(helpers)
+
+        self.search_group = QGroupBox()
+        search_box = QVBoxLayout(self.search_group)
+        go = QHBoxLayout()
+        for w in (self.scope_this, self.scope_folder):
+            go.addWidget(w)
+        go.addStretch(1)
+        go.addWidget(self.folder.cancel_button)
+        go.addWidget(self.align_button)
+        search_box.addLayout(go)
+        search_box.addWidget(self.folder)
+
+        hits = self._tab([self.summary, "Copy results", self.copy_hits, "Clear hits", lambda: self.clear()], self.table)
+        self.folder_tab = self._tab([1, "Copy results", self.folder.copy_results], self.folder.table)
+        self.tabs = QTabWidget()
+        for widget, title in ((hits, "Hits in this sequence"), (self.folder_tab, "Folder results"), (self.canvas, "Alignment"),
+                              (self.pair, "Dot plot")):
+            self.tabs.addTab(widget, title)
+        self._pair_toggled(False)
+
+        status = QHBoxLayout()
+        status.addWidget(self.status, 1)
+        status.addWidget(self.folder.bar)
         layout = QVBoxLayout(self)
-        layout.addLayout(boxes)
-        layout.addLayout(buttons)
-        layout.addWidget(self.folder)
+        layout.addWidget(query_group)
+        layout.addWidget(self.search_group)
         layout.addWidget(self.tabs, 1)
+        layout.addLayout(status)
         no_auto_default(self)
-        align_button.setDefault(True)   # Enter aligns (the query box itself takes Enter as a new line)
+        self.align_button.setDefault(True)   # Enter aligns (the query box itself takes Enter as a new line)
+
+    @staticmethod
+    def _tab(bar, content):
+        """A results tab: a row of buttons acting on this list (`bar`: a label to stretch, or 1 for a stretch, then pairs of a button's
+        text and its handler) above the list."""
+        tab = QWidget()
+        box = QVBoxLayout(tab)
+        box.setContentsMargins(0, 4, 0, 0)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        items = iter(bar)
+        first = next(items)
+        row.addWidget(first, 1) if isinstance(first, QWidget) else row.addStretch(first)
+        for text in items:
+            row.addWidget(QPushButton(text, clicked=next(items)))
+        box.addLayout(row)
+        box.addWidget(content)
+        return tab
+
+    def _busy(self, on):
+        """A folder search starts or ends: Align waits for it (Cancel and the progress bar are the panel's)."""
+        self.align_button.setEnabled(not on)
+
+    def _query_length(self):
+        try:
+            self.length.setText(f"{len(clean_query(self.query.toPlainText())):,} bp")
+        except QueryError:
+            self.length.setText("")   # (said when Align is pressed)
+
+    def clear_query(self):
+        self.query.clear()
+        self.query_b.clear()
+
+    def _scope_changed(self, folder):
+        """The Folder choice shows the folder row and its results; This sequence shows the hits."""
+        self.folder.setVisible(folder and not self.paired.isChecked())
+        if not self.paired.isChecked():
+            self.tabs.setCurrentWidget(self.folder_tab if folder else self.tabs.widget(0))
 
     def _pair_toggled(self, on):
-        """Paired mode shows the second box and the Alignment and Dot plot tabs in place of the hits in the open sequence."""
+        """Two sequences: the second box and the Alignment and Dot plot tabs take the place of the search in the open sequence or a
+        folder (Align then compares A with B), whose choice and folder row are hidden."""
         self.query_b.setVisible(on)
-        for i, shown in enumerate((not on, True, on, on)):
+        self.search_group.setTitle("Compare A with B" if on else "Search in")
+        for w in (self.scope_this, self.scope_folder):
+            w.setVisible(not on)
+        for i, shown in enumerate((not on, not on, on, on)):
             self.tabs.setTabVisible(i, shown)
-        self.tabs.setCurrentIndex(2 if on else 0)
+        folder = self.scope_folder.isChecked()
+        self.folder.setVisible(folder and not on)
+        self.tabs.setCurrentIndex(2 if on else 1 if folder else 0)
+
+    def copy_hits(self):
+        """The hits table as tab-separated text, to paste in a lab notebook or a spreadsheet."""
+        table = self.table
+        rows = [[table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]]
+        rows += [[table.item(r, c).text() for c in range(table.columnCount())] for r in range(table.rowCount())]
+        QApplication.clipboard().setText("\n".join("\t".join(row) for row in rows))
+        self.status.setText(f"Copied {plural(table.rowCount(), 'hit')}")
 
     @staticmethod
     def _query(box):
@@ -273,6 +353,8 @@ class LocalAlignDialog(ToolDialog):
     def run(self):
         if self.paired.isChecked():
             return self.run_pair()
+        if self.scope_folder.isChecked():
+            return self.folder.start()
         ed = self.editor
         try:
             query = self._query(self.query)

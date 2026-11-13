@@ -47,8 +47,8 @@ The most common first issue on any repo is "it does not build". Do this once, in
 ```powershell
 git clone . ..\openDNA-clean
 cd ..\openDNA-clean
-conda create -n ge-clean python=3.13 -y; conda activate ge-clean
-pip install -r requirements-dev.txt
+uv venv --python 3.12 .venv; .venv\Scripts\activate
+uv pip install -r requirements-dev.txt
 maturin develop -m core/Cargo.toml --release
 python scripts/make_demo_files.py
 pytest -q tests

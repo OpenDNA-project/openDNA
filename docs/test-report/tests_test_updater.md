@@ -2,227 +2,117 @@
 
 [← all test files](README.md) · source: [`tests/test_updater.py`](../../tests/test_updater.py)
 
-## `test_versions`
+## `test_release_check_offers_only_a_newer_complete_release`
 
-**Result:** ✅ passed in 0.00 s · [line 124](../../tests/test_updater.py#L124) · **Area:** Self-update: version comparison · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 123](../../tests/test_updater.py#L123) · **Area:** Updater: which release is offered · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-Makes sure the updater only offers a release whose version is really higher than the running one: numbers are compared one by one, and pre-releases or junk tags are never offered.
+**Why it matters:** Without it the app could offer users an older, draft, prerelease or incomplete release, or one whose files are hosted off the project's GitHub repository, as an update.
 
-| # | Input | Expected output |
-|---|---|---|
-| 1 | is_newer pairs: ('v0.10.0','0.9.0'), ('0.2.0','0.1.0'), ('v1.0.0','0.99.99'), ('0.1.1','0.1.0'), ('1.0.0.1','1.0') | True for each |
-| 2 | is_newer pairs: ('1.0','1.0.0'), ('0.1.0','0.1.0'), ('v0.1.0','0.1.0'), ('0.9.0','0.10.0'), ('0.0.9','0.1.0') | False for each (equal or older; 1.0 == 1.0.0) |
-| 3 | is_newer with '0.2.0-beta1', 'latest', '', None as candidate, or current 'dev' | False for each |
-| 4 | parse_version('v0.10.0'), parse_version(' V2.1 ') | (0, 10, 0) and (2, 1) |
-| 5 | parse_version('1.2.3-rc1'), parse_version('1.2.3+build') | None for both |
-
-## `test_release_json`
-
-**Result:** ✅ passed in 0.00 s · [line 142](../../tests/test_updater.py#L142) · **Area:** Self-update: reading the GitHub release · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-Checks that a newer GitHub release is turned into an Update with the right download, checksum and page addresses, and that up-to-date, older, draft, prerelease and badly named releases offer nothing.
+Checks version parsing and numeric comparison, then feeds updater.check fake GitHub 'releases/latest' JSON and checks that only a newer, final release with both the exe and its .sha256 on the project's own repo is offered; every other case returns no update with an error text and never raises.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | check('0.1.0') on a fake release JSON with tag 'v0.2.0', body 'Fixes things.', exe + .sha256 + other.zip assets | error None; version '0.2.0', tag 'v0.2.0', notes 'Fixes things.', asset_url .../v0.2.0/openDNA.exe, sha256_url ...exe.sha256, page_url .../releases/tag/v0.2.0; check_for_update returns the same Update |
-| 2 | check(fetch=fake) with no version, release tag = v{project.VERSION} | update None; the only request is project.LATEST_RELEASE_API |
-| 3 | updater.fetch replaced by the fake, check_for_update('0.1.0') with no fetch argument | version '0.2.0' (the module-level fetch is used) |
-| 4 | current 0.1.0; release v0.1.0, v0.0.9, v0.3.0 draft, v0.3.0 prerelease, v0.3.0-beta1 | update None each; error None or containing 'not understood' |
-| 5 | release tag 'nightly' | update None and 'nightly' in the error |
-
-**Fixed by the audit of November 2026:**
-
-- The draft/prerelease/older loop now asserts that only the 'v0.3.0-beta1' tag gives the 'not understood' message and the others give no error.
-
-## `test_release_assets_and_errors`
-
-**Result:** ✅ passed in 0.00 s · [line 174](../../tests/test_updater.py#L174) · **Area:** Self-update: release assets and failures · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-Protects the user from installing an incomplete or foreign release: a release missing the exe or its checksum, or pointing to another host or repository, is refused, and network errors or garbage answers never crash the check.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | newer release with no assets / only the exe / only the .sha256 | update None; error names the missing openDNA.exe.sha256 or openDNA.exe; page_url set |
-| 2 | exe asset URL 'https://evil.example.com/openDNA.exe', 'http://github.com/x/openDNA.exe', 'https://github.com/someone/else/releases/download/v9/openDNA.exe' | update None and 'Refused' in error |
-| 3 | html_url='https://evil.example.com/x' | update offered with page_url == project.RELEASES_URL |
-| 4 | fetch raising UpdateError('Could not reach api.github.com: offline') / RuntimeError('boom') | error ends with 'offline' / contains 'failed'; no exception |
-| 5 | answers 'not json', '[1, 2]', '', b'\xff\xfe\x00' | update None and 'understood' in error |
-| 6 | check_for_update with a fetch raising UpdateError('x') | None |
-
-## `test_allowed_addresses`
-
-**Result:** ✅ passed in 0.00 s · [line 210](../../tests/test_updater.py#L210) · **Area:** Self-update: allowed download hosts · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-Ensures the updater only ever talks to HTTPS GitHub hosts, refuses look-alike or tricked addresses before any network access, and refuses a redirect to another host.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | check_url on https api.github.com, github.com, objects.githubusercontent.com, release-assets.githubusercontent.com, 'https://GitHub.com/a' | returns the URL unchanged |
-| 2 | check_url on http://github.com, ftp://, https://evil.example.com/github.com, github.com.evil.example.com, evilgithub.com, user:pw@github.com, github.com@evil.example.com, github.com:8443, gist.github.com, '', None, file:///C:/x.exe | raises UpdateError |
-| 3 | real updater.fetch('http://github.com/a/b') and fetch('https://evil.example.com/a') with build_opener patched to fail if called | raises UpdateError (no connection attempted) |
-| 4 | _SafeRedirects.redirect_request 302 from a github.com asset to evil.example.com / to objects.githubusercontent.com | raises UpdateError / returns a request (not None) |
-
-## `test_checksum_and_download`
-
-**Result:** ✅ passed in 0.00 s · [line 248](../../tests/test_updater.py#L248) · **Area:** Self-update: checksum and download · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-Checks that the downloaded program is verified against its published SHA-256 before use, and that any failure (mismatch, bad checksum file, foreign address, cancel, network error, unwritable folder) leaves no partial file behind.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | parse_checksum on '<digest>  openDNA.exe', '<digest> *openDNA.exe', bare digest, upper-case digest, a two-line file (other.zip first), UTF-16 with BOM, UTF-8 BOM | the lower-case digest each time |
-| 2 | parse_checksum on '', 'hello', 'abc  openDNA.exe', '<digest>  other.zip', 63-char and 65-char hex | None each |
-| 3 | download_update with the fake serving EXE_BYTES ('MZ' + 'fake exe '*1000) and the matching digest | returns folder/openDNA.exe.new with EXE_BYTES; no .part left; last progress = (len, len) |
-| 4 | exe bytes + b'tampered' | UpdateError 'does not match'; folder empty |
-| 5 | sha256_url='' / checksum text '<html>404</html>' | UpdateError 'no checksum' with no .exe request / 'expected form'; folder empty |
-| 6 | asset_url on evil.example.com / sha256_url on http://github.com | UpdateError 'Refused'; no request made |
-| 7 | cancel Event already set / a fetch that writes b'half' then raises 'Could not reach' | UpdateError 'cancelled' / 'Could not reach'; folder empty both times |
-| 8 | folder tmp_path/'nowhere' (does not exist) | UpdateError 'Could not write' |
+| 1 | is_newer on 15 pairs, e.g. v0.10.0 vs 0.9.0, 1.0 vs 1.0.0, 1.0.0.1 vs 1.0, 0.2.0-beta1 vs 0.1.0, 'latest', '', None, current 'dev' | True only for genuinely higher numeric versions (0.10.0 > 0.9.0; 1.0 == 1.0.0); prerelease, non-version or None -> False |
+| 2 | parse_version('v0.10.0'), ' V2.1 ', '1.2.3-rc1', '1.2.3+build' | (0,10,0), (2,1), None, None |
+| 3 | check('0.1.0') with a v0.2.0 release carrying exe + .sha256 + other.zip | Update with version 0.2.0, tag v0.2.0, notes 'Fixes things.', exact asset, sha256 and page URLs; check_for_update returns the same object |
+| 4 | check() with no version given, release tag = current project version | No update; exactly one request, to LATEST_RELEASE_API |
+| 5 | check_for_update('0.1.0') with module-level fetch monkeypatched | Version 0.2.0 (default fetch is used) |
+| 6 | Releases tagged v0.1.0 (same), v0.0.9 (older), v0.3.0 draft, v0.3.0 prerelease, v0.3.0-beta1 | No update; only the -beta1 tag produces a 'not understood' error |
+| 7 | Release tagged 'nightly' | No update; error mentions 'nightly' |
+| 8 | Release with no assets / only the exe / only the checksum | No update; error names the missing asset; page_url still set |
+| 9 | Exe URL on evil.example.com, http://github.com, or another GitHub repo | No update; error contains 'Refused' |
+| 10 | html_url pointing to evil.example.com | Update offered but page_url replaced by project RELEASES_URL |
+| 11 | fetch raising UpdateError('...offline') / RuntimeError('boom') | Error ends with 'offline' / contains 'failed'; no exception |
+| 12 | Bodies 'not json', '[1, 2]', '', b'\xff\xfe\x00' | No update; error contains 'understood' |
+| 13 | check_for_update with fetch raising UpdateError | Returns None |
 
 **Review notes:**
 
-- Lines 294-301: the cancel is honoured by the test's own Fake (line 65-66), not by updater.fetch; the real fetch's cancel check, size caps (MAX_TEXT/MAX_EXE) and 'stopped early' Content-Length check are not tested anywhere in the suite.
+- Large multi-section test; a failure in an early section hides the later ones.
+- Error texts are checked by substring ('Refused', 'understood', 'failed'), not exact message.
 
-## `test_install_swaps_and_refuses`
+## `test_download_comes_only_from_github_and_is_kept_only_when_it_matches_its_checksum`
 
-**Result:** ✅ passed in 0.01 s · [line 341](../../tests/test_updater.py#L341) · **Area:** Self-update: installing the new exe · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 189](../../tests/test_updater.py#L189) · **Area:** Updater: download safety · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-Checks the file swap that installs an update (running exe to .old, new exe in place, relaunch) and that it refuses to act when running from source, as the folder build, or with missing / misplaced files.
+**Why it matters:** Without it the updater could download a program from a look-alike or hijacked host, follow a redirect off GitHub, or install a tampered or partial file.
 
-| # | Input | Expected output |
-|---|---|---|
-| 1 | folder with openDNA.exe=b'OLD' and .exe.new=b'NEW'; install_update(new, current, relaunch=recorder) | exe = b'NEW', .exe.old = b'OLD', .new gone, relaunch called with [current] |
-| 2 | same with a stale .exe.old = b'ANCIENT' | .exe.old now b'OLD' |
-| 3 | not frozen, install_update(new) without current_exe | UpdateError 'source code', relaunch never called, .new kept; install_blocker() mentions 'source code', install_blocker(Path('x.exe')) is None |
-| 4 | sys.frozen=True, _MEIPASS a temp _MEI1234 folder, then _MEIPASS = exe folder/_internal and exe folder | one-file: not folder build, blocker None; folder layouts: is_folder_build True, blocker mentions 'openDNA-folder.zip', install raises 'folder version'; files unchanged |
-| 5 | sys.frozen=True, sys.executable=current; install_update(new) | current now b'NEW' |
-| 6 | new exe path that does not exist / new exe in another folder | UpdateError 'could not be found' / 'same folder'; current still b'OLD' |
-
-## `test_install_rolls_back`
-
-**Result:** ✅ passed in 0.00 s · [line 400](../../tests/test_updater.py#L400) · **Area:** Self-update: install failure and rollback · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-Ensures a failed install never leaves the user without a working program: each failure puts the old exe back, a read-only folder points to the releases page, and transient antivirus locks are retried.
+Checks the HTTPS GitHub host allow-list (direct and on redirects), the real fetch refusing bad URLs before any network call, the checksum-file parser, and download_update: verified file returned, mismatch / missing / unreadable checksum and off-GitHub URLs refused, and no partial file left after cancel or failure.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | os.replace fails (PermissionError) when moving the new file in | UpdateError 'administrator'; exe b'OLD', .new b'NEW', no .old |
-| 2 | os.replace fails for every rename of the running exe | UpdateError containing project.RELEASES_URL and 'administrator'; exactly RETRIES (5) attempts; files unchanged |
-| 3 | rename of the running exe fails twice then succeeds | install succeeds after 2 refusals; exe b'NEW' |
-| 4 | relaunch raises OSError('not a valid Win32 application') | UpdateError 'old one was kept'; exe b'OLD', .new b'NEW', no .old |
-
-## `test_relaunch_and_cleanup`
-
-**Result:** ✅ passed in 0.00 s · [line 445](../../tests/test_updater.py#L445) · **Area:** Self-update: relaunch and cleanup · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-Checks that the restarted program gets a clean PyInstaller environment and that leftovers of an update are deleted at start-up (waiting for a file still held), without touching anything when run from source.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | relaunch(tmp/openDNA.exe) with Popen faked, env _MEIPASS2 and _PYI_APPLICATION_HOME_DIR set | args [exe path]; env PYINSTALLER_RESET_ENVIRONMENT='1'; no _MEIPASS2 and no _PYI* keys |
-| 2 | folder with openDNA.exe, .exe.old, .exe.part; cleanup_old(current) twice | True; only openDNA.exe remains (still b'OLD'); second call True |
-| 3 | cleanup_old() with no exe, not frozen | True and .old untouched |
-| 4 | Path.unlink raising PermissionError for the first 2 calls, sleep faked; cleanup_old(current, wait=60) | True and .old deleted |
+| 1 | check_url on api.github.com, github.com, objects/release-assets.githubusercontent.com, 'GitHub.com' | Accepted, URL returned unchanged |
+| 2 | check_url on http://, ftp://, evil.example.com/github.com, github.com.evil.example.com, evilgithub.com, user:pw@github.com, github.com@evil.example.com, github.com:8443, gist.github.com, '', None, file:/// | UpdateError for each |
+| 3 | Real updater.fetch('http://github.com/a/b') and ('https://evil.example.com/a') with build_opener patched to fail | UpdateError raised before any connection attempt |
+| 4 | _SafeRedirects.redirect_request to evil.example.com / to objects.githubusercontent.com | UpdateError / a new request object |
+| 5 | parse_checksum on '<hex>  openDNA.exe', '<hex> *openDNA.exe', bare hex, upper-case hex, multi-line list, UTF-16 with BOM, UTF-8 BOM | The lower-case digest each time |
+| 6 | parse_checksum on '', 'hello', 'abc  openDNA.exe', digest for other.zip, 63 or 65 hex chars | None |
+| 7 | download_update with matching exe bytes and a progress callback | Returns folder/openDNA.exe.new with the exact bytes; no .part left; last progress = (total, total) |
+| 8 | Exe bytes + b'tampered' | UpdateError 'does not match'; folder empty |
+| 9 | Update with sha256_url='' / checksum body '<html>404</html>' | UpdateError 'no checksum' (exe never requested) / 'expected form'; folder empty |
+| 10 | asset_url on evil.example.com / sha256_url on http://github.com | UpdateError 'Refused'; no request made |
+| 11 | cancel event already set | UpdateError 'cancelled'; folder empty |
+| 12 | fetch that writes 'half' then raises 'Could not reach' | That UpdateError propagates; folder empty |
+| 13 | Target folder that does not exist | UpdateError 'Could not write' |
 
 **Review notes:**
 
-- Line 460: only .old and .part leftovers are created; the .new leftover that cleanup_old also deletes is never tested. Popen's cwd/creationflags are not checked.
+- The real network path is not exercised (correct for a unit test); the redirect check calls the handler method directly rather than going through a real redirect.
 
-## `test_remembered_state`
+## `test_install_swaps_relaunches_and_cleans_up`
 
-**Result:** ✅ passed in 0.01 s · [line 488](../../tests/test_updater.py#L488) · **Area:** Self-update: settings and throttle · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 291](../../tests/test_updater.py#L291) · **Area:** Updater: install and cleanup · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-Checks that the automatic update check obeys the user setting and the project switch, runs at most once every 24 hours (even if the clock goes back), and that a skipped version is remembered.
+**Why it matters:** Without it a successful update could fail to replace the running exe, fail to restart the program, start the new program with a broken PyInstaller environment, or leave .old/.part files behind (or delete the wrong file).
 
-| # | Input | Expected output |
-|---|---|---|
-| 1 | default state; setting 'check' False; back True; project.UPDATES_ENABLED False | due/enabled True; both False; due True; due False |
-| 2 | mark_checked(1e6); auto_check_due at +60 s, +23 h, +24 h, -1 h | False, False, True, True |
-| 3 | skipped_version() before and after skip_version('0.2.0') | '' then '0.2.0' |
-
-## `test_startup_check`
-
-**Result:** ✅ passed in 0.10 s · [line 519](../../tests/test_updater.py#L519) · **Area:** Self-update: start-up check · **Checked against:** GUI state · **Strength:** 🟡 adequate
-
-Checks that at start-up a new version opens the update dialog once a day, while up-to-date, offline, skipped and disabled cases stay silent.
+On fake files in temp folders, checks that install_update swaps new over current keeping the old as .old, replaces a stale .old, uses sys.executable when frozen, that relaunch clears PyInstaller environment variables, and that cleanup_old removes only leftovers, does nothing when run from source, and retries a held file.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | VERSION '0.1.0'; startup_check(window, fake v0.2.0, now=1e6) | True; within 5 s window._update_dialog exists, shows version '0.2.0', visible |
-| 2 | startup_check again at now=1e6+100 | False; fake saw only one request (the API) |
-| 3 | release v0.1.0 at now=1e6 / fetch error 'offline' at now=2e6 | True (looked); after jobs finish no _update_dialog |
-| 4 | skip_version('0.2.0') then startup_check with v0.2.0 at now=1e7 | no dialog, no message |
-| 5 | UPDATES_ENABLED False | False and no request |
+| 1 | current='OLD', new='NEW', install_update with a recording relaunch | current now 'NEW', openDNA.exe.old = 'OLD', .new gone, relaunch called once with current |
+| 2 | Same with an existing .old = 'ANCIENT' | .old now holds 'OLD' |
+| 3 | frozen=True, platform win32, sys.executable=current, no target given | current replaced with 'NEW' |
+| 4 | relaunch() with _MEIPASS2 and _PYI_APPLICATION_HOME_DIR set (Popen faked) | args=[exe path]; env has PYINSTALLER_RESET_ENVIRONMENT=1 and no _MEIPASS2 or _PYI* keys |
+| 5 | cleanup_old(current) with .old and .part beside the exe; then again | True; only openDNA.exe remains with 'OLD'; second call True |
+| 6 | cleanup_old() with no argument, not frozen | True and the .old file is untouched |
+| 7 | Path.unlink raising PermissionError twice then succeeding, wait=60 | True and the .old file is deleted |
+
+## `test_install_refuses_or_rolls_back_leaving_the_old_program`
+
+**Result:** ✅ passed in 0.01 s · [line 355](../../tests/test_updater.py#L355) · **Area:** Updater: refusal and rollback · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** Without it a failed update (no write access, antivirus lock, broken new exe, wrong build type or platform) could leave the user with no working program.
+
+Checks that install refuses when run from source, on macOS/Linux and in the one-folder Windows build (pointing to the right download), with a missing file or a file in another folder, and that a failing swap or a new exe that does not start rolls back to the old program; a briefly held file is retried until it succeeds.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | Not frozen: install_update(new) | UpdateError 'source code'; nothing started; new untouched; install_blocker() mentions 'source code', install_blocker(Path('x.exe')) is None |
+| 2 | Frozen on darwin arm64, darwin x86_64, linux x86_64 | install_blocker says 'does not update itself' and names macos-arm64.zip / macos-x86_64.zip / linux-x86_64.tar.gz |
+| 3 | Frozen win32, _MEIPASS in a temp folder (one-file build) | Not a folder build; install_blocker() None |
+| 4 | Frozen win32, _MEIPASS = exe folder/_internal or exe folder (one-folder layouts) | is_folder_build True; blocker names openDNA-folder.zip; install_update raises 'folder version'; files unchanged |
+| 5 | install_update with a non-existent new file / a new file in another folder | UpdateError 'could not be found' / 'same folder'; current still 'OLD' |
+| 6 | os.replace failing when moving the new file in | UpdateError 'administrator'; current 'OLD', new 'NEW', no .old left |
+| 7 | os.replace always failing when moving current out | UpdateError naming RELEASES_URL and 'administrator'; exactly RETRIES attempts; files unchanged |
+| 8 | os.replace failing twice then succeeding | Install succeeds after 2 refusals; current 'NEW' |
+| 9 | relaunch raising OSError('not a valid Win32 application') | UpdateError 'old one was kept'; current 'OLD', new 'NEW', no .old |
+
+## `test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip`
+
+**Result:** ✅ passed in 0.07 s · [line 441](../../tests/test_updater.py#L441) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** Without it the app could check for updates when the user turned it off, check on every start, stop checking after the clock goes back, or forget a version the user chose to skip.
+
+Checks that the automatic check follows the user setting and the project-wide UPDATES_ENABLED flag, is due at most once per 24 h (and again if the clock went back), and that skip_version is stored.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | Fresh state | check_enabled() and auto_check_due() True |
+| 2 | Setting Updates/check=False, then True | Not due / due again |
+| 3 | project.UPDATES_ENABLED=False | Not due |
+| 4 | mark_checked(t), then ask at t+60 s, t+23 h, t+24 h, t-1 h | Not due, not due, due, due |
+| 5 | skipped_version() fresh, then skip_version('0.2.0') | '' then '0.2.0' |
 
 **Review notes:**
 
-- Lines 525, 536, 541: relies on a real background thread and wait_for polling up to 5 s; could be flaky on a loaded CI machine (failure would show as a missing dialog).
-
-## `test_menu_action`
-
-**Result:** ✅ passed in 0.06 s · [line 553](../../tests/test_updater.py#L553) · **Area:** Self-update: Check for Updates menu · **Checked against:** GUI state · **Strength:** 🟡 adequate
-
-Checks the Help-menu action: it says 'not available yet' without network while updates are disabled, reports 'up to date' and errors with the releases link, and opens the dialog even for a skipped version.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | UPDATES_ENABLED False; check_now(window) | False; no request; message contains 'not available yet' and RELEASES_URL |
-| 2 | VERSION 0.1.0; release v0.1.0 | True; message contains 'up to date' |
-| 3 | fetch error 'Could not reach api.github.com: offline' | second message contains 'offline' and RELEASES_URL |
-| 4 | skip_version('0.2.0'); check_now with v0.2.0 release | window._update_dialog appears |
-
-**Review notes:**
-
-- Line 572: only checks a dialog appears, not that it is for version 0.2.0. Uses 5 s thread waits (lines 567, 569, 572).
-
-## `test_job_gc_handling`
-
-**Result:** ✅ passed in 0.09 s · [line 588](../../tests/test_updater.py#L588) · **Area:** Self-update: background job / garbage collector · **Checked against:** property/invariant · **Strength:** 🟢 strong
-
-Checks the crash workaround that pauses Python's cycle collector while a worker thread runs and restores it afterwards, without turning it on if it was off.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | two _Job workers blocked on one gate | gc disabled while they run; after the gate opens both callbacks arrive, gc enabled again, _gc_jobs == 0 |
-| 2 | gc.disable() then one _Job returning 1 | callback arrives and gc is still disabled |
-
-**Review notes:**
-
-- Line 594 asserts gc.isenabled() at start: depends on no earlier test leaving gc disabled.
-
-**Fixed by the audit of November 2026:**
-
-- The two jobs now have their own gates: after the first ends the test asserts the collector is still off (one job left), and on only after the second.
-
-## `test_dialog_install_flow`
-
-**Result:** ✅ passed in 0.39 s · [line 620](../../tests/test_updater.py#L620) · **Area:** Self-update: update dialog · **Checked against:** GUI state · **Strength:** 🟢 strong
-
-Checks the update dialog end to end with fakes: it shows the notes, installs only a verified download and then quits, offers 'Try Again' after a checksum failure, lets the unsaved-work confirm stop the install, and remembers 'Skip' but not 'Later'.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | dialog for version 0.2.0 with notes 'Notes'; click Install | header contains '0.2.0', notes text 'Notes'; installed == [folder/openDNA.exe.new], quit called once, file == EXE_BYTES |
-| 2 | fake exe b'MZ-tampered'; click Install | nothing installed, quit 0; status 'does not match'; button enabled, text 'Try Again'; folder empty |
-| 3 | confirm=lambda: False; click Install | nothing installed; folder empty |
-| 4 | click 'Skip This Version' | skipped_version() == '0.2.0', dialog hidden, nothing installed |
-| 5 | click 'Later' | skipped_version() == '' and dialog hidden |
-
-**Review notes:**
-
-- Lines 623, 631, 640: background download waited with 5 s polling (timing-dependent).
-
-## `test_dialog_cancel_and_from_source`
-
-**Result:** ✅ passed in 0.07 s · [line 660](../../tests/test_updater.py#L660) · **Area:** Self-update: update dialog · **Checked against:** GUI state · **Strength:** 🟡 adequate
-
-Checks that closing the dialog during a download cancels it and deletes the partial file, and that when running from source the dialog cannot install and points to the releases page.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | slow fake that writes b'part' then waits; click Install then Cancel | busy and Later reads 'Cancel' during download; after cancel nothing installed, quit 0, folder empty |
-| 2 | UpdateDialog without injected install (running from source) | Install disabled; status contains 'source code' and RELEASES_URL; Skip and Later enabled |
-
-**Review notes:**
-
-- Line 666: the cancellation is raised by the Fake's own check (line 65), so this proves the Event is passed through, not that the real fetch stops streaming.
+- Only checks that a skipped version is stored, not that the automatic check then stays quiet about it (that logic, if in main.py, is untested here).

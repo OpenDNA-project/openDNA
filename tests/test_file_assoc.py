@@ -1,4 +1,4 @@
-"""File associations (app/file_assoc.py): the registration, status, stale-path detection, unregister, and the start-up question.
+"""File associations (app/file_assoc.py): the registration, status, stale-path detection, unregister, and the start-up decision.
 Never touches the real registry (a dictionary-backed fake stands in for it) nor the user's settings (private ini files)."""
 import os
 import sys
@@ -11,12 +11,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("OPENDNA_DATA_DIR", tempfile.mkdtemp(prefix="opendna_test_"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
-from PySide6.QtWidgets import QApplication
-
 import file_assoc as F
 from project import FILE_TYPES
 
-app = QApplication.instance() or QApplication([])
 
 EXE = [r"C:\Apps\openDNA\openDNA.exe"]
 MOVED = [r"D:\Elsewhere\openDNA.exe"]
@@ -89,24 +86,20 @@ def ini(tmp_path):
     return F.open_settings(str(tmp_path / "file_assoc.ini"))
 
 
-def close_open_boxes():
-    for box in list(F._open_boxes):   # close what a test left open
-        try:
-            box.close()
-        except RuntimeError:   # already deleted together with its parent dialog
-            pass
-    F._open_boxes.clear()
+def empty_skeleton(reg):
+    """Nothing but empty parent keys is left (Software, Software/Classes...: shared and harmless, never removed)."""
+    return not any(reg.keys.values()) and not any(F.PROGID.casefold() in k or "capabilities" in k or "openwithprogids" in k
+                                                 or k.startswith(r"software\classes\.") for k in reg.keys)
 
 
-@pytest.fixture(autouse=True)
-def no_boxes():
-    yield
-    close_open_boxes()
+def ask(reg, ini, *, windows=True, frozen=True, launch=EXE):
+    return F.should_ask(ini, reg, launch, windows, frozen)
 
 
-def test_register(reg, monkeypatch):
-    """register: everything it writes, a subset and an unknown extension, only our keys touched, refusing from source, the
-    frozen launcher."""
+def test_register_writes_only_our_keys_and_status_reads_them_back(reg, monkeypatch):
+    """register writes the ProgID, Open-with entries and capabilities and nothing outside our keys (never UserChoice), refuses an
+    unknown extension and running from source, and removes an old-name registration; status reads it back, notices a moved exe
+    (path case ignored); is_default_for reads UserChoice; the Windows default-apps page opens with its fallback."""
     # --- writes everything
     done = F.register(None, reg, EXE)
     assert done == list(FILE_TYPES)
@@ -158,11 +151,8 @@ def test_register(reg, monkeypatch):
         frozen.setattr(sys, "frozen", True, raising=False)
         assert F.launcher() == [str(Path(sys.executable).resolve())]
 
-
-def test_status_default_and_settings_page(reg):
-    """status round trip and stale detection (path case ignored), the default-app check reading UserChoice, and opening the
-    Windows default-apps page with its fallback."""
     # --- status round trip and stale
+    reg = FakeRegistry()
     assert set(F.status(None, reg, EXE).values()) == {F.NONE}
     assert not F.is_registered_for_current_exe(reg, EXE) and not F.is_stale(reg, EXE)
     F.register(None, reg, EXE)
@@ -203,16 +193,21 @@ def test_status_default_and_settings_page(reg):
         raise OSError
     assert F.open_default_apps_settings(never) is False
 
+    # --- an old-name registration (OpenGenEdit) is removed when registering
+    reg = FakeRegistry()
+    reg.set(r"Software\Classes\OpenGenEdit.SequenceFile\shell\open\command", "", r'"C:\old\OpenGenEdit.exe" "%1"')
+    reg.set(r"Software\Classes\.dna\OpenWithProgids", "OpenGenEdit.SequenceFile", None)
+    reg.set(F.REGISTERED_APPS, "OpenGenEdit", r"Software\OpenGenEdit\Capabilities")
+    assert F.has_legacy(reg)
+    F.register(None, reg, EXE)
+    assert F.is_registered_for_current_exe(reg, EXE) and not F.has_legacy(reg)
+    assert reg.get(F.REGISTERED_APPS, "OpenGenEdit") is None
+    assert reg.get(r"Software\Classes\.dna\OpenWithProgids", "OpenGenEdit.SequenceFile") is None
 
-def empty_skeleton(reg):
-    """Nothing but empty parent keys is left (Software, Software/Classes...: shared and harmless, never removed)."""
-    return not any(reg.keys.values()) and not any(F.PROGID.casefold() in k or "capabilities" in k or "openwithprogids" in k
-                                                 or k.startswith(r"software\classes\.") for k in reg.keys)
 
-
-def test_unregister(reg):
-    """unregister removes only our keys (exactly the state before), leaves nothing of ours behind even on an empty registry, and
-    removes the extensions of an older version."""
+def test_unregister_removes_exactly_what_we_added(reg):
+    """unregister removes only our keys (exactly the state before, other programs' keys untouched), leaves nothing of ours
+    behind even on an empty registry, and removes the extensions of an older version."""
     # --- removes only ours
     # Other programs' keys that must survive: a shared .gb key with their own ProgID, an unrelated app, our QSettings area.
     reg.set(r"Software\Classes\.gb\OpenWithProgids", "Other.Program", None)
@@ -244,15 +239,10 @@ def test_unregister(reg):
     assert not reg.exists(r"Software\Classes\.old")
 
 
-# ---------------------------------------------------------------------------------------- the start-up question: decision table
-
-def ask(reg, ini, *, windows=True, frozen=True, launch=EXE):
-    return F.should_ask(ini, reg, launch, windows, frozen)
-
-
-def test_should_ask_decision_table(reg, ini, tmp_path):
-    """Never asks from source or off Windows, nothing when already registered, "don't ask again" wins, asks once, a stale
-    registration asks only after a yes (and again for a new move), and the ini booleans survive a reload."""
+def test_startup_question_decision_table(reg, ini, tmp_path):
+    """When to ask at start-up: never from source or off Windows, nothing when already registered, "don't ask again" wins, asks
+    once, a moved exe asks only after an earlier yes (and again for a new move) and is then repaired silently, an old-name
+    registration is refreshed, and the ini booleans survive a reload."""
     # --- never from source or off Windows
     assert ask(reg, ini, frozen=False) is None
     assert ask(reg, ini, windows=False) is None
@@ -300,102 +290,22 @@ def test_should_ask_decision_table(reg, ini, tmp_path):
     s.sync()
     assert ask(reg, F.open_settings(path)) is None
 
-
-# ---------------------------------------------------------------------------------------- the screens (driven without exec)
-
-def quiet_settings_button(monkeypatch):
-    opened = []
-    monkeypatch.setattr(F, "open_default_apps_settings", lambda opener=None: opened.append(1) or True)
-    return opened
-
-
-def test_startup_question_screens(reg, ini, monkeypatch):
-    """The start-up question driven without exec: nothing to ask, Yes registers/remembers/shows what to click, Not now and
-    Don't ask again, the stale question and its repair, and a failing registration shown instead of raised."""
-    # --- nothing to ask
-    assert F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=False) is None
-    assert F.ask_at_startup(None, ini, reg, EXE, windows=False, frozen=True) is None
-    assert F._open_boxes == []
-
-    # --- Yes registers, remembers and shows what to click
-    opened = quiet_settings_button(monkeypatch)
-    box = F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True)
-    assert box is not None and "FASTA" in box.text()
-    assert [b.text() for b in (box.yes_button, box.later_button, box.never_button)] == ["Yes", "Not now", "Don't ask again"]
-    box.yes_button.click()
-    assert F.is_registered_for_current_exe(reg, EXE)
-    assert ask(reg, ini) is None and ini.value("accepted") == "true"
-    info = [b for b in F._open_boxes if "Default apps" in b.text()]
-    assert len(info) == 1 and "click openDNA" in info[0].text()
-    info[0].open_button.click()   # "Open Windows Settings"
-    assert opened == [1]
-
-    # --- Not now and Don't ask again
-    close_open_boxes()
-    reg = FakeRegistry()
-    ini.clear()
-    F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True).later_button.click()
-    assert F.status(None, reg, EXE)[".gb"] == F.NONE   # nothing written
-    assert ask(reg, ini) is None and ini.value("dont_ask") is None   # asked once; not a permanent refusal
-    ini.clear()
-    F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True).never_button.click()
-    assert ask(reg, ini) is None and ini.value("dont_ask") == "true" and reg.keys == {}
-
-    # --- the stale question and repair
-    close_open_boxes()
+    # --- a moved exe after an earlier yes is repaired without a question
     reg = FakeRegistry()
     ini.clear()
     ini.setValue("accepted", "true")
     F.register(None, reg, MOVED)
-    assert F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True) is None   # repaired silently, no question
+    assert F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True) is None
     assert F.is_registered_for_current_exe(reg, EXE)
 
-    # --- an old-name registration (OpenGenEdit) is replaced, and its keys are gone
+    # --- an old-name registration (OpenGenEdit) is refreshed whatever was answered before, and its keys are gone
     reg = FakeRegistry()
     ini.clear()
-    reg.set(r"Software\Classes\OpenGenEdit.SequenceFile\shell\open\command", "", '"C:\\old\\OpenGenEdit.exe" "%1"')
-    reg.set(r"Software\Classes\.dna\OpenWithProgids", "OpenGenEdit.SequenceFile", None)
+    ini.setValue("asked", "true")
+    reg.set(r"Software\Classes\OpenGenEdit.SequenceFile\shell\open\command", "", r'"C:\old\OpenGenEdit.exe" "%1"')
     reg.set(F.REGISTERED_APPS, "OpenGenEdit", r"Software\OpenGenEdit\Capabilities")
+    assert ask(reg, ini) == "stale"
     assert F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True) is None
     assert F.is_registered_for_current_exe(reg, EXE) and not F.has_legacy(reg)
     assert reg.get(F.REGISTERED_APPS, "OpenGenEdit") is None
-
-    # --- a failed registration is shown, not raised
-    close_open_boxes()
-    ini.clear()
-
-    class Refusing(FakeRegistry):
-        def set(self, *a):
-            raise PermissionError("denied by policy")
-    assert F.register_now(None, Refusing(), ini, EXE) is False
-    assert any("denied by policy" in b.text() for b in F._open_boxes)
-    assert ini.value("accepted") is None   # a failed registration is not remembered as accepted
-
-
-def test_manage_dialog(reg, ini, monkeypatch):
-    """The management dialog (register, update after a move, remove; from source it is disabled) and the default settings file
-    in the data folder."""
-    # --- register, update, remove
-    quiet_settings_button(monkeypatch)
-    dlg = F.FileAssociationsDialog(None, reg, ini, EXE)
-    assert "not yet offered" in dlg.text.text()
-    assert dlg.register_button.isEnabled() and not dlg.remove_button.isEnabled()
-    dlg.register_button.click()
-    assert F.is_registered_for_current_exe(reg, EXE)
-    assert "registered for this program file" in dlg.text.text()
-    assert not dlg.register_button.isEnabled() and dlg.remove_button.isEnabled()
-    dlg.launch = MOVED   # the exe moved
-    dlg.refresh()
-    assert dlg.register_button.text() == "Update" and dlg.register_button.isEnabled()
-    dlg.remove_button.click()
-    assert empty_skeleton(reg) and ini.value("accepted") == "false"
-    assert not dlg.remove_button.isEnabled()
-
-    # --- from source
-    monkeypatch.setattr(F, "is_frozen", lambda: False)
-    dlg = F.FileAssociationsDialog(None, FakeRegistry(), ini)
-    assert "from source" in dlg.text.text()
-    assert not dlg.register_button.isEnabled() and not dlg.remove_button.isEnabled()
-
-    # --- the default settings file is in the data dir
-    assert Path(F.settings_path()).parent == F.data_dir()   # (only the path: nothing is created here)
+    assert ask(reg, ini) is None

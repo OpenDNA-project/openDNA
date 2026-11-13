@@ -6,6 +6,8 @@
 
 **Result:** ✅ passed · [line 505](../../core/src/alignments.rs#L505) · **Area:** BAM reads, coverage, pileup and variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** Imported BAM reads could be drawn with wrong positions, strands, mismatches, indels or soft clips, and the coverage, pileup and variant tracks could show wrong numbers.
+
 A small synthetic BAM is indexed, exported as SAM, and decoded into reads with correct spans, strand, mismatches, insertions, deletions, soft clips, coverage, pileup counts and called variants.
 
 | # | Input | Expected output |
@@ -20,4 +22,5 @@ A small synthetic BAM is indexed, exported as SAM, and decoded into reads with c
 
 **Review notes:**
 
-- Writes fixed file names ge_test_reads.bam/.sam into the shared system temp dir (lines 506, 520) and never deletes them; two concurrent cargo test runs could clobber each other.
+- Writes fixed file names ge_test_reads.bam/.sam into the shared system temp dir and never deletes them; two concurrent cargo test runs could clobber each other.
+- Overlaps tests/test_core_formats.py::test_bam_reads_pileup_coverage_and_variants_match_a_model, which covers the same BAM decoding from Python with a model check on random reads; this is the faster unit-level copy.

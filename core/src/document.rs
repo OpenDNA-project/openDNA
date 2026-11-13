@@ -1222,7 +1222,9 @@ mod tests {
     }
 
     #[test]
-    fn edit_moves_features_and_undo_restores_exactly() {
+    fn features_follow_every_kind_of_edit() {
+        // --- edit moves features and undo restores exactly ---
+        {
         let mut doc = sample();
         let original = doc.record.clone();
         doc.replace(4, 4, b"TTT").unwrap(); // insert inside lacZ (2..10)
@@ -1234,19 +1236,266 @@ mod tests {
         assert!(!doc.is_modified());
         assert!(doc.redo());
         assert_eq!(doc.record.features[0].location.to_gb_format(), "2..13");
+        }
+        // --- insert at the exact start or end of a feature does not grow it ---
+        {
+        let (mut doc, s) = drift_doc(vec![feat("gene", "51..100", "f")]);
+        let before = doc.record.clone();
+        let own = s[50..100].to_vec();
+        doc.replace(50, 50, b"TTT").unwrap(); // exactly at the first base
+        assert_eq!(spans_of(&doc, "f"), vec![(53, 103)], "insert at the start must shift the feature right");
+        assert_eq!(covered(&doc, "f"), own);
+        assert!(doc.undo());
+        doc.replace(100, 100, b"TTT").unwrap(); // exactly after the last base
+        assert_eq!(spans_of(&doc, "f"), vec![(50, 100)], "insert at the end must not grow the feature");
+        assert_eq!(covered(&doc, "f"), own);
+        assert!(doc.undo());
+        assert_eq!(doc.record, before);
+        }
+        // --- delete overlapping the start the end or the middle keeps the remaining bases ---
+        {
+        let cases: [(usize, usize); 6] = [(40, 60), (90, 110), (70, 80), (50, 60), (90, 100), (20, 70)];
+        for (a, b) in cases {
+            let (mut doc, s) = drift_doc(vec![feat("gene", "51..100", "f")]);
+            let before = doc.record.clone();
+            doc.replace(a, b, b"").unwrap();
+            let want: Vec<u8> = (50..100).filter(|i| *i < a || *i >= b).map(|i| s[i]).collect();
+            assert_eq!(covered(&doc, "f"), want, "delete({a},{b}): wrong bases left in the feature");
+            assert_eq!(spans_of(&doc, "f").len(), 1);
+            assert!(doc.undo());
+            assert_eq!(doc.record, before, "delete({a},{b}): undo");
+        }
+        }
+        // --- deleting exactly the feature or more removes it and undo restores it whole ---
+        {
+        for (a, b) in [(50usize, 100usize), (49, 101), (0, 200), (30, 100), (50, 130)] {
+            let mut f = feat("CDS", "complement(join(51..70,81..100))", "f");
+            f.qualifiers.push(("note".into(), Some("keep me".to_string())));
+            f.qualifiers.push(("codon_start".into(), Some("1".to_string())));
+            let (mut doc, _) = drift_doc(vec![f]);
+            let before = doc.record.clone();
+            doc.replace(a, b, b"").unwrap();
+            if a <= 50 && b >= 100 {
+                assert!(!has(&doc, "f") && doc.record.features.is_empty(), "delete({a},{b}) must remove the feature");
+            } else {
+                assert_eq!(doc.record.features.len(), 1, "delete({a},{b}) must keep what is left of it");
+            }
+            assert!(doc.undo());
+            assert_eq!(doc.record, before, "delete({a},{b}): undo must restore location and qualifiers");
+            assert!(doc.redo() && doc.undo());
+            assert_eq!(doc.record.features, before.features);
+        }
+        }
+        // --- replace over part of a feature follows the documented rules ---
+        {
+        // Documented rule (locations.rs): a replace is "delete the range, then insert at
+        // its start", so the new bases join the feature only when the replaced stretch is
+        // strictly inside it; bases replaced at its very start or end leave the feature.
+        let x: &[u8] = b"TTTTTTTTTTTTT"; // 13 bases
+        let (mut doc, s) = drift_doc(vec![feat("gene", "51..100", "f")]);
+        // Strictly inside, longer replacement: feature grows by 3.
+        doc.replace(60, 70, x).unwrap();
+        assert_eq!(covered(&doc, "f"), [&s[50..60], x, &s[70..100]].concat());
+        assert!(doc.undo());
+        // Strictly inside, same length: still the same length, replaced bases covered.
+        doc.replace(60, 70, &x[..10]).unwrap();
+        assert_eq!(spans_of(&doc, "f"), vec![(50, 100)]);
+        assert_eq!(covered(&doc, "f"), [&s[50..60], &x[..10], &s[70..100]].concat());
+        assert!(doc.undo());
+        // Shorter replacement inside: feature shrinks.
+        doc.replace(60, 70, b"GG").unwrap();
+        assert_eq!(covered(&doc, "f"), [&s[50..60], b"GG".as_slice(), &s[70..100]].concat());
+        assert!(doc.undo());
+        // Covering the start: the overlapped bases leave the feature, the new ones sit before it.
+        doc.replace(40, 60, x).unwrap();
+        assert_eq!(covered(&doc, "f"), s[60..100].to_vec());
+        assert!(doc.undo());
+        // Covering the end: likewise.
+        doc.replace(90, 110, x).unwrap();
+        assert_eq!(covered(&doc, "f"), s[50..90].to_vec());
+        assert!(doc.undo());
+        // Covering all of it: the feature is gone.
+        doc.replace(50, 100, x).unwrap();
+        assert!(doc.record.features.is_empty());
+        }
+        // --- complement feature keeps its bases and strand through edits ---
+        {
+        let (mut doc, s) = drift_doc(vec![feat("gene", "complement(51..100)", "f")]);
+        let own = s[50..100].to_vec();
+        doc.replace(10, 10, b"ACGTA").unwrap(); // before: the feature moves to 55..105
+        doc.replace(190, 190, b"CC").unwrap(); // after
+        assert_eq!(strand_of(&doc, "f"), -1);
+        assert_eq!(covered(&doc, "f"), own, "edits outside moved the feature off its bases");
+        doc.replace(70, 75, b"").unwrap(); // inside: original bases 65..70 of the feature
+        assert_eq!(covered(&doc, "f"), [&own[..15], &own[20..]].concat());
+        assert_eq!(bio(&doc, "f"), rc(&covered(&doc, "f")));
+        assert_eq!(doc.record.features[0].location.to_gb_format(), "complement(56..100)");
+        }
+        // --- join edit between parts grows the gap inside a part grows that part ---
+        {
+        let (mut doc, s) = drift_doc(vec![feat("gene", "join(21..40,81..100)", "j")]);
+        let own = [&s[20..40], &s[80..100]].concat();
+        let x: &[u8] = b"ACGT";
+        let cases: [(usize, Vec<(i64, i64)>); 8] = [
+            (60, vec![(20, 40), (84, 104)]),  // in the gap: the gap grows
+            (30, vec![(20, 44), (84, 104)]),  // inside part 1
+            (90, vec![(20, 40), (80, 104)]),  // inside part 2
+            (40, vec![(20, 40), (84, 104)]),  // at the end of part 1: gap side
+            (80, vec![(20, 40), (84, 104)]),  // at the start of part 2: gap side
+            (20, vec![(24, 44), (84, 104)]),  // at the start of part 1: shifts
+            (100, vec![(20, 40), (80, 100)]), // at the end of part 2: nothing
+            (0, vec![(24, 44), (84, 104)]),   // before all of it
+        ];
+        for (at, want) in cases {
+            doc.replace(at, at, x).unwrap();
+            assert_eq!(spans_of(&doc, "j"), want, "insert at {at}");
+            let got = covered(&doc, "j");
+            let size: i64 = want.iter().map(|(a, b)| b - a).sum();
+            assert_eq!(got.len() as i64, size);
+            if size as usize == own.len() {
+                assert_eq!(got, own, "insert at {at}: bases changed");
+            }
+            assert!(doc.undo());
+        }
+        // A delete spanning the gap trims both parts.
+        doc.replace(30, 90, b"").unwrap();
+        assert_eq!(covered(&doc, "j"), [&s[20..30], &s[90..100]].concat());
+        }
+        // --- complement join order survives edits and reverse complement ---
+        {
+        for text in ["complement(join(21..40,81..100))", "join(21..40,81..100)"] {
+            let (mut doc, s) = drift_doc(vec![feat("CDS", text, "cj")]);
+            let reverse = text.starts_with("complement");
+            let before_bio = bio(&doc, "cj");
+            assert_eq!(before_bio, if reverse { rc(&[&s[20..40], &s[80..100]].concat()) } else { [&s[20..40], &s[80..100]].concat() });
+            doc.replace(60, 60, b"GGGG").unwrap(); // in the gap
+            doc.replace(0, 5, b"").unwrap(); // before everything
+            assert_eq!(bio(&doc, "cj"), before_bio, "{text}: edits outside the parts changed the feature");
+            let parts = spans_of(&doc, "cj");
+            assert_eq!(parts.len(), 2);
+            assert!(parts[0].1 <= parts[1].0, "{text}: part order lost: {parts:?}");
+            // Reverse-complement the whole sequence: same molecule, other strand.
+            let old_strand = strand_of(&doc, "cj");
+            let old_parts = parts.clone();
+            let n = doc.len() as i64;
+            doc.reverse_complement();
+            assert_eq!(strand_of(&doc, "cj"), -old_strand, "{text}: strand not flipped");
+            assert_eq!(bio(&doc, "cj"), before_bio, "{text}: the feature's own sequence changed");
+            let mut mirrored: Vec<(i64, i64)> = old_parts.iter().map(|&(a, b)| (n - b, n - a)).collect();
+            mirrored.sort();
+            let mut now = spans_of(&doc, "cj");
+            now.sort();
+            assert_eq!(now, mirrored, "{text}: mirrored parts");
+            doc.reverse_complement(); // twice = identity
+            assert_eq!(spans_of(&doc, "cj"), old_parts);
+        }
+        }
+        // --- fuzzy locations survive edits and saves with their markers ---
+        {
+        let (mut doc, _) = drift_doc(vec![feat("misc_feature", "<21..>60", "z"), feat("CDS", "complement(<101..>150)", "y")]);
+        assert_eq!(doc.record.features[0].location.to_gb_format(), "<21..>60");
+        doc.replace(0, 0, b"TTT").unwrap();
+        assert_eq!(doc.record.features[0].location.to_gb_format(), "<24..>63", "marker lost or shifted wrongly");
+        doc.replace(40, 40, b"AA").unwrap(); // inside z
+        assert_eq!(doc.record.features[0].location.to_gb_format(), "<24..>65");
+        doc.replace(150, 160, b"").unwrap();
+        assert_eq!(doc.record.features[1].location.to_gb_format(), "complement(<106..>150)");
+        let path = std::env::temp_dir().join("ge_test_fuzzy.gb");
+        doc.save_genbank(&path, None).unwrap();
+        let back = Document::open(&path).unwrap();
+        assert_eq!(back.record.features, doc.record.features, "fuzzy markers changed on save");
+        assert!(doc.undo() && doc.undo() && doc.undo());
+        assert_eq!(doc.record.features[0].location.to_gb_format(), "<21..>60");
+        }
     }
 
     #[test]
-    fn rejects_bad_edits() {
+    fn edits_are_validated_and_empty_or_overwrite_edits_behave() {
+        // --- rejects bad edits ---
+        {
         let mut doc = sample();
         assert!(doc.replace(5, 4, b"").is_err());
         assert!(doc.replace(0, 999, b"").is_err());
         assert!(doc.replace(0, 0, b"AXG").is_err());
         assert!(!doc.undo()); // failed edits leave no history
+        }
+        // --- empty edits change nothing ---
+        {
+        let mut doc = doc_with(&Lcg(1).bases(50), true, vec![feat("gene", "11..20", "g")]);
+        let before = doc.record.clone();
+        for i in [0, 7, 50] {
+            doc.replace(i, i, b"").unwrap(); // delete(i, i) and an empty insert
+            doc.overwrite(i, b"").unwrap();
+        }
+        assert!(!doc.is_modified());
+        assert!(!doc.undo(), "an empty edit left an undo step");
+        assert_eq!(doc.record, before);
+        }
+        // --- overwrite keeps length moves nothing and is one step per call ---
+        {
+        let seq = Lcg(8).bases(80);
+        let mut doc = doc_with(&seq, true, vec![feat("gene", "11..40", "g"), feat("x", "complement(join(50..60,70..80))", "h")]);
+        let before = doc.record.clone();
+        doc.overwrite(10, b"TTTT").unwrap(); // starts exactly at g's first base
+        doc.overwrite(35, b"CCCCCC").unwrap(); // runs over g's end
+        doc.overwrite(76, b"GGGG").unwrap(); // to the very end
+        assert_eq!(doc.len(), 80);
+        assert_eq!(doc.record.features, before.features, "an overwrite moved or trimmed a feature");
+        assert_eq!(doc.history().0.len(), 3);
+        assert!(doc.overwrite(78, b"ACG").is_err(), "overwrite past the end");
+        assert_eq!(doc.history().0.len(), 3);
+        assert!(doc.undo() && doc.undo() && doc.undo() && !doc.undo());
+        assert_eq!(doc.record, before);
+        }
+        // --- letters are kept as typed and invalid ones are refused not dropped ---
+        {
+        let mut doc = doc_with(b"ACGTACGT", false, vec![feat("gene", "2..5", "g")]);
+        let before = doc.record.clone();
+        let bad: [&[u8]; 6] = [b"A C", b"A1", b"A*", b"\xc3\xa9", b"A\n", b"A.G"];
+        for b in bad {
+            assert!(doc.replace(2, 2, b).is_err(), "{b:?} accepted by replace");
+            assert!(doc.overwrite(0, b).is_err(), "{b:?} accepted by overwrite");
+            assert!(doc.paste(0, 0, b, vec![]).is_err(), "{b:?} accepted by paste");
+            assert!(Document::new_sequence("n", b, false).is_err(), "{b:?} accepted by new_sequence");
+        }
+        assert_eq!(doc.record, before, "a refused edit changed the document");
+        assert!(!doc.undo(), "a refused edit left an undo step");
+        // Accepted exactly as typed: lower case, U, every IUPAC code, N and the gap.
+        let ok = b"acguRYSWKMBDHVNn-";
+        doc.replace(4, 4, ok).unwrap();
+        assert_eq!(doc.len(), 8 + ok.len(), "bases were dropped");
+        assert_eq!(&doc.record.seq[4..4 + ok.len()], &ok[..], "bases were changed");
+        assert!(doc.undo());
+        assert_eq!(doc.record, before);
+        }
+        // --- editing an empty sequence ---
+        {
+        for circular in [false, true] {
+            let mut doc = Document::new_sequence("e", b"", circular).unwrap();
+            assert_eq!(doc.len(), 0);
+            doc.replace(0, 0, b"").unwrap(); // nothing
+            assert!(!doc.undo());
+            assert!(doc.replace(0, 1, b"").is_err() && doc.replace(1, 1, b"A").is_err());
+            doc.replace(0, 0, b"ACG").unwrap();
+            assert_eq!(doc.record.seq, b"ACG");
+            assert!(doc.undo());
+            assert_eq!(doc.len(), 0);
+            assert_eq!(doc.record.len, Some(0));
+            assert!(doc.redo() && doc.record.seq == b"ACG");
+            doc.replace(0, 3, b"").unwrap(); // delete everything again
+            assert_eq!(doc.len(), 0);
+            assert!(doc.rotate(1).is_err() && doc.edit_across_origin(0, 1, b"", None).is_err());
+            doc.reverse_complement(); // must not panic
+            assert_eq!(doc.gc_bins(0, 0, 3).len(), 3);
+            assert!(doc.features_between(0, 0).is_empty());
+        }
+        }
     }
 
     #[test]
-    fn wrapped_qualifiers_are_stable_across_saves() {
+    fn genbank_text_and_qualifiers_survive_saves_and_edits() {
+        // --- wrapped qualifiers are stable across saves ---
+        {
         // r#"..."# = raw string: backslashes and quotes are taken literally, spaces kept.
         let gb = r#"LOCUS       t                         70 bp    DNA     linear   UNK 01-JAN-1980
 FEATURES             Location/Qualifiers
@@ -1276,10 +1525,9 @@ ORIGIN
         assert_eq!(again.record.features, doc.record.features);
         again.save_genbank(&path, None).unwrap();
         assert_eq!(Document::open(&path).unwrap().record.features, doc.record.features);
-    }
-
-    #[test]
-    fn quotes_survive_at_every_wrap_position() {
+        }
+        // --- quotes survive at every wrap position ---
+        {
         // Regression test for the patched gb-io writer: slide a quoted word across the
         // wrap column; upstream dropped the quote or panicked at some offsets.
         let path = std::env::temp_dir().join("ge_test_quotes.gb");
@@ -1292,10 +1540,45 @@ ORIGIN
             let got: Vec<&str> = back.record.features[0].qualifier_values("note").collect();
             assert!(got.contains(&note.as_str()), "offset {k}: {got:?}");
         }
+        }
+        // --- genbank round trip ---
+        {
+        let mut doc = sample();
+        doc.replace(0, 2, b"GG").unwrap();
+        let path = std::env::temp_dir().join("ge_test_roundtrip.gb");
+        doc.save_genbank(&path, None).unwrap();
+        assert!(!doc.is_modified());
+        let back = Document::open(&path).unwrap();
+        assert_eq!(back.record.seq, doc.record.seq);
+        assert_eq!(back.record.features, doc.record.features);
+        }
+        // --- qualifiers are untouched by edits ---
+        {
+        let mut f = feat("CDS", "join(21..40,81..100)", "f");
+        f.qualifiers.push(("note".into(), Some("a long note with words".to_string())));
+        f.qualifiers.push(("translation".into(), Some("MKVLAAGIVALLL".to_string())));
+        f.qualifiers.push(("pseudo".into(), None));
+        let (mut doc, _) = drift_doc(vec![f]);
+        let q = doc.record.features[0].qualifiers.clone();
+        let mut rng = Lcg(5);
+        for _ in 0..60 {
+            let n = doc.len();
+            let a = rng.below(n + 1);
+            let b = (a + rng.below(6)).min(n);
+            let ins = rng.some_bases(5);
+            doc.replace(a, b, &ins).unwrap();
+            if doc.record.features.is_empty() {
+                break;
+            }
+            assert_eq!(doc.record.features[0].qualifiers, q, "an edit changed the qualifiers");
+        }
+        }
     }
 
     #[test]
-    fn feature_edits_are_undoable() {
+    fn feature_edits_and_translation_refresh_are_single_undo_steps() {
+        // --- feature edits are undoable ---
+        {
         let mut doc = sample();
         let original = doc.record.features.clone();
         let location = Location::from_gb_format("complement(3..8)").unwrap();
@@ -1314,10 +1597,9 @@ ORIGIN
         assert_eq!(doc.record.features, original);
         assert!(doc.redo());
         assert_eq!(doc.record.features.len(), original.len() + 1);
-    }
-
-    #[test]
-    fn several_feature_changes_are_one_undo_step() {
+        }
+        // --- several feature changes are one undo step ---
+        {
         let mut doc = sample();
         let original = doc.record.features.clone();
         let gene = Feature { kind: "gene".into(), location: Location::simple_range(1, 10), qualifiers: vec![] };
@@ -1332,10 +1614,9 @@ ORIGIN
         // An invalid change applies nothing.
         assert!(doc.edit_features(vec![(Some(0), None), (Some(99), None)]).is_err());
         assert_eq!(doc.record.features, original);
-    }
-
-    #[test]
-    fn refreshing_translations_is_one_undo_step_and_only_touches_stale_cds() {
+        }
+        // --- refreshing translations is one undo step and only touches stale cds ---
+        {
         // ATG AAA TAA = M K stop, as a CDS with a wrong /translation; a second CDS without one; a pseudogene.
         let mut doc = Document::new_sequence("t", b"ATGAAATAAATGAAATAAATGAAATAA", false).unwrap();
         let cds = |loc: &str, quals: Vec<(&str, Option<&str>)>| Feature {
@@ -1365,10 +1646,13 @@ ORIGIN
         assert_eq!(doc.history().0.len(), depth + 1);
         assert!(doc.undo());
         assert_eq!(doc.record.features, before);
+        }
     }
 
     #[test]
-    fn copy_paste_carries_features() {
+    fn copy_paste_and_reverse_complement_keep_features_on_their_bases() {
+        // --- copy paste carries features ---
+        {
         let mut doc = sample(); // lacZ 2..10 forward, ori 18..3 across the origin
         let copied = doc.features_between(4, 12); // half of lacZ
         let lacz = copied.iter().find(|f| f.qualifier_values("label").next() == Some("lacZ")).unwrap();
@@ -1383,10 +1667,9 @@ ORIGIN
         assert_eq!(doc.record.features.len(), n);
         // Features that do not fit the pasted bases are refused.
         assert!(doc.paste(0, 0, b"AC", copied).is_err());
-    }
-
-    #[test]
-    fn reverse_complement_twice_is_identity() {
+        }
+        // --- reverse complement twice is identity ---
+        {
         let mut doc = sample();
         let original = doc.record.clone();
         doc.reverse_complement();
@@ -1397,10 +1680,118 @@ ORIGIN
         assert_eq!(doc.record, original);
         assert!(doc.undo() && doc.undo());
         assert_eq!(doc.record, original);
+        }
+        // --- reverse complement flips every feature onto the same bases ---
+        {
+        let feats = vec![
+            feat("gene", "21..60", "f1"),
+            feat("gene", "complement(81..120)", "f2"),
+            feat("CDS", "join(131..140,151..160)", "f3"),
+            feat("CDS", "complement(join(171..180,191..200))", "f4"),
+        ];
+        for circular in [false, true] {
+            let s = Lcg(96).bases(200);
+            let mut doc = doc_with(&s, circular, feats.clone());
+            let before = doc.record.clone();
+            let old: Vec<(Vec<u8>, i8, Vec<(i64, i64)>)> =
+                ["f1", "f2", "f3", "f4"].iter().map(|l| (bio(&doc, l), strand_of(&doc, l), spans_of(&doc, l))).collect();
+            doc.reverse_complement();
+            assert_eq!(doc.record.seq, rc(&s));
+            for (l, (b, strand, spans)) in ["f1", "f2", "f3", "f4"].iter().zip(old) {
+                assert_eq!(bio(&doc, l), b, "{l}: the feature's own sequence changed");
+                assert_eq!(strand_of(&doc, l), -strand, "{l}: strand not flipped");
+                let mut want: Vec<(i64, i64)> = spans.iter().map(|&(a, e)| (200 - e, 200 - a)).collect();
+                want.sort();
+                let mut got = spans_of(&doc, l);
+                got.sort();
+                assert_eq!(got, want, "{l}: wrong bases covered");
+                // Qualifiers untouched.
+                assert_eq!(doc.record.features[index_of(&doc, l)].qualifiers.len(), 1);
+            }
+            assert!(doc.undo());
+            assert_eq!(doc.record, before);
+        }
+        }
+        // --- copying the reverse complement keeps every feature on the same bases ---
+        {
+        // 200 random bases; a copy of 41..160 (0-based 40..160) is 120 bases long.
+        let feats = vec![
+            feat("gene", "61..100", "top"),
+            feat("gene", "complement(101..140)", "bottom"),
+            feat("CDS", "join(51..60,111..120)", "split"),
+        ];
+        let s = Lcg(11).bases(200);
+        let doc = doc_with(&s, false, feats);
+        let copy = doc.features_between(40, 160);
+        let flipped = doc.features_between_reversed(40, 160);
+        assert_eq!(copy.len(), flipped.len());
+        // Build the pasted-in-reverse molecule: reverse-complemented bases + flipped features.
+        let rc_bases = rc(&s[40..160]);
+        let target = doc_with(&rc_bases, false, flipped);
+        for l in ["top", "bottom", "split"] {
+            // The feature's own sequence, read along its strand, is unchanged by the flip...
+            let before = doc_with(&s[40..160], false, copy.clone());
+            assert_eq!(bio(&target, l), bio(&before, l), "{l}: its sequence changed");
+            // ...and it is on the opposite strand.
+            assert_eq!(strand_of(&target, l), -strand_of(&before, l), "{l}: strand not flipped");
+        }
+        }
+        // --- pasted features cover the pasted bases and existing ones shift correctly ---
+        {
+        let (mut doc, s) = drift_doc(vec![feat("gene", "51..100", "g"), feat("gene", "121..150", "h"), feat("gene", "complement(join(11..20,31..40))", "k")]);
+        let copied = doc.features_between(60, 130); // g (60..100) and h (120..130), relative
+        assert_eq!(copied.len(), 2);
+        let bases = s[60..130].to_vec();
+        doc.paste(0, 0, &bases, copied).unwrap(); // paste at the very start
+        // Old features moved right by 70, keeping their bases.
+        let g_old = doc.record.features.iter().position(|f| f.qualifier_values("label").next() == Some("g")).unwrap();
+        assert_eq!(locations::spans(&doc.record.features[g_old].location).0, vec![(120, 170)]);
+        assert_eq!(doc.record.seq[120..170].to_vec(), s[50..100].to_vec());
+        // The two pasted copies (appended at the end) sit on the pasted bases at 0..70.
+        let n = doc.record.features.len();
+        let (g2, h2) = (&doc.record.features[n - 2], &doc.record.features[n - 1]);
+        assert_eq!(locations::spans(&g2.location).0, vec![(0, 40)]);
+        assert_eq!(doc.record.seq[0..40].to_vec(), s[60..100].to_vec());
+        assert_eq!(locations::spans(&h2.location).0, vec![(60, 70)]);
+        assert_eq!(doc.record.seq[60..70].to_vec(), s[120..130].to_vec());
+        }
+        // --- paste at every boundary matches the string model and is one step ---
+        {
+        let seq = Lcg(7).bases(100);
+        let base = doc_with(&seq, false, vec![feat("gene", "11..40", "g")]);
+        let copied = base.features_between(20, 35); // part of g, relative: 1..15
+        let bases = seq[20..35].to_vec();
+        for (s, e) in [(0usize, 0usize), (0, 10), (100, 100), (90, 100), (0, 100), (40, 50), (40, 40), (45, 45), (12, 14)] {
+            let mut doc = doc_with(&seq, false, vec![feat("gene", "11..40", "g")]);
+            let before = doc.record.clone();
+            doc.paste(s, e, &bases, copied.clone()).unwrap();
+            assert_eq!(doc.record.seq, [&seq[..s], &bases[..], &seq[e..]].concat(), "paste({s},{e}): bases");
+            // The pasted feature (last) covers exactly the pasted bases.
+            let last = doc.record.features.last().unwrap();
+            let (sp, _) = locations::spans(&last.location);
+            let got: Vec<u8> = sp.iter().flat_map(|&(a, b)| doc.record.seq[a as usize..b as usize].to_vec()).collect();
+            assert_eq!(got, bases, "paste({s},{e}): pasted feature covers the wrong bases");
+            assert_eq!(sp, vec![(s as i64, (s + bases.len()) as i64)]);
+            // The old feature, if it survives, still covers its own bases.
+            if (s, e) == (0, 100) {
+                assert_eq!(doc.record.features.len(), 1, "g should be gone");
+            } else if (s, e) == (12, 14) {
+                // Deleting 2 bases inside g and pasting 15 there: g loses 2 and gains 15.
+                assert_eq!(covered(&doc, "g").len(), 30 - 2 + bases.len());
+            } else {
+                assert_eq!(covered(&doc, "g"), seq[10..40].to_vec(), "paste({s},{e}): g drifted");
+            }
+            assert_eq!(doc.history().0.len(), 1);
+            assert!(doc.undo() && !doc.undo());
+            assert_eq!(doc.record, before, "paste({s},{e}): undo");
+        }
+        }
     }
 
     #[test]
-    fn pcr_product_with_tails_and_across_the_origin() {
+    fn primer_sites_and_pcr_products() {
+        // --- pcr product with tails and across the origin ---
+        {
         let doc = sample(); // 20 bp circular: lacZ 2..10, ori complement(join(18..20,1..3))
         let p = doc.pcr_product("prod", 1, 10, b"GG", b"CC").unwrap();
         assert_eq!(p.record.seq, b"GGAAACCCCGGCC"); // GG + AAACCCCGG + CC
@@ -1418,10 +1809,9 @@ ORIGIN
         assert_eq!(q.record.seq[0], b'T');
         assert_eq!(q.record.features[0].location, before);
         assert!(doc.pcr_product("bad", 0, 4, b"XX", b"").is_err());
-    }
-
-    #[test]
-    fn saving_replaces_primer_sites_without_touching_the_document() {
+        }
+        // --- saving replaces primer sites without touching the document ---
+        {
         let mut doc = sample(); // has one primer_bind feature (p1)
         let before = doc.record.clone();
         let site = Feature {
@@ -1441,6 +1831,7 @@ ORIGIN
         // A site outside the sequence is refused, nothing written.
         let bad = Feature { location: Location::simple_range(0, 999), ..primers[0].clone() };
         assert!(doc.save_genbank(&path, Some(vec![bad])).is_err());
+        }
     }
 
     #[test]
@@ -1458,19 +1849,9 @@ ORIGIN
     }
 
     #[test]
-    fn genbank_round_trip() {
-        let mut doc = sample();
-        doc.replace(0, 2, b"GG").unwrap();
-        let path = std::env::temp_dir().join("ge_test_roundtrip.gb");
-        doc.save_genbank(&path, None).unwrap();
-        assert!(!doc.is_modified());
-        let back = Document::open(&path).unwrap();
-        assert_eq!(back.record.seq, doc.record.seq);
-        assert_eq!(back.record.features, doc.record.features);
-    }
-
-    #[test]
-    fn copy_and_edit_across_the_origin() {
+    fn circular_edits_across_the_origin() {
+        // --- copy and edit across the origin ---
+        {
         let mut doc = sample(); // 20 bp circular, ori = complement(join(18..20,1..3))
         let original = doc.record.clone();
         // Copy 16..25 (passes the origin): ori comes along as ONE feature, its 3 + 3 bases
@@ -1488,10 +1869,135 @@ ORIGIN
         assert_eq!(doc.record, original);
         assert!(!doc.undo() && doc.redo() && doc.len() == 16);
         assert!(doc.edit_across_origin(5, 10, b"", None).is_err()); // does not pass the origin
+        }
+        // --- circular edit across the origin equals the rotated string edit ---
+        {
+        let n = 60;
+        let seq = Lcg(5).bases(n);
+        let cases: [(usize, usize, &[u8]); 7] =
+            [(55, 63, b"GGG"), (50, 61, b""), (59, 61, b"TTTTT"), (30, 90, b""), (30, 90, b"A"), (59, 61, b""), (10, 70, b"CC")];
+        for (start, end, new) in cases {
+            let mut doc = doc_with(&seq, true, vec![feat("gene", "11..30", "x"), feat("gene", "36..50", "y")]);
+            let before = doc.record.clone();
+            let at = doc.edit_across_origin(start, end, new, None).unwrap();
+            // The string model: rotate so `start` is first, replace the first end-start
+            // bases, which leaves new + the untouched rest (a rotation of what Rust holds).
+            let rot = [&seq[start..], &seq[..start]].concat();
+            let model = [new, &rot[end - start..]].concat();
+            let got = doc.record.seq.clone();
+            assert_eq!(got.len(), model.len(), "{start}..{end}: length");
+            assert!(
+                model.is_empty() || [&got[..], &got[..]].concat().windows(model.len()).any(|w| w == &model[..]),
+                "{start}..{end}: {got:?} is not a rotation of {model:?}"
+            );
+            assert_eq!(&got[at..at + new.len()], new, "{start}..{end}: returned position");
+            assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
+            assert_eq!(doc.history().0.len(), 1, "{start}..{end}: one undo step");
+            assert!(doc.undo() && !doc.undo());
+            assert_eq!(doc.record, before, "{start}..{end}: undo is exact");
+        }
+        }
+        // --- circular inserts at zero and at the end and wrapping deletes ---
+        {
+        let n = 60;
+        let seq = Lcg(6).bases(n);
+        let mut doc = doc_with(&seq, true, vec![feat("gene", "11..20", "g"), feat("rep_origin", "join(56..60,1..5)", "o")]);
+        let before = doc.record.clone();
+        let o = [&seq[55..], &seq[..5]].concat();
+        let g = seq[10..20].to_vec();
+        for at in [0usize, n] {
+            doc.replace(at, at, b"TTT").unwrap();
+            assert_eq!(doc.len(), n + 3);
+            assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
+            assert_eq!(covered(&doc, "o"), o, "insert at {at} moved the origin-crossing feature");
+            assert_eq!(covered(&doc, "g"), g, "insert at {at} moved gene g");
+            assert_eq!(doc.record.seq.len(), doc.record.len.unwrap());
+            assert!(doc.undo());
+            assert_eq!(doc.record, before);
+        }
+        // A delete wrapping the origin: 0-based 57..60 and 0..3.
+        doc.edit_across_origin(57, 63, b"", None).unwrap();
+        assert_eq!(doc.len(), n - 6);
+        assert_eq!(doc.record.seq, seq[3..57].to_vec());
+        assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
+        assert_eq!(covered(&doc, "g"), g);
+        // o lost 3 bases at each side of the origin, keeps the other 2 + 2.
+        assert_eq!(covered(&doc, "o"), [&seq[55..57], &seq[3..5]].concat());
+        assert!(doc.undo());
+        assert_eq!(doc.record, before);
+        }
+        // --- feature crossing the origin keeps its bases ---
+        {
+        let n = 200;
+        let s = Lcg(98).bases(n);
+        let mk = || doc_with(&s, true, vec![feat("rep_origin", "join(191..200,1..10)", "o"), feat("gene", "101..150", "g")]);
+        let own = [&s[190..], &s[..10]].concat();
+        let x: &[u8] = b"ACGT";
+        // Outside the feature, on either side: unchanged bases.
+        for (a, b) in [(0usize, 0usize), (200, 200), (100, 110), (160, 170), (10, 10), (190, 190)] {
+            let mut doc = mk();
+            doc.replace(a, b, x).unwrap();
+            assert_eq!(covered(&doc, "o"), own, "insert at {a}: origin feature drifted");
+            assert!(doc.undo());
+        }
+        // Inside either part: that part grows.
+        let mut doc = mk();
+        doc.replace(195, 195, x).unwrap();
+        assert_eq!(covered(&doc, "o"), [&s[190..195], x, &s[195..], &s[..10]].concat());
+        assert!(doc.undo());
+        doc.replace(5, 5, x).unwrap();
+        assert_eq!(covered(&doc, "o"), [&s[190..], &s[..5], x, &s[5..10]].concat());
+        assert!(doc.undo());
+        // Deleting on both sides of the origin.
+        doc.replace(0, 5, b"").unwrap();
+        assert_eq!(covered(&doc, "o"), [&s[190..], &s[5..10]].concat());
+        assert!(doc.undo());
+        doc.replace(195, 200, b"").unwrap();
+        assert_eq!(covered(&doc, "o"), [&s[190..195], &s[..10]].concat());
+        assert!(doc.undo());
+        // Rotating: any new start, including ones that cut through either part of the
+        // feature, leaves the feature covering the same bases, in the same order.
+        for k in [1usize, 5, 9, 10, 11, 60, 100, 150, 190, 191, 195, 199] {
+            let mut doc = mk();
+            let before = doc.record.clone();
+            doc.rotate(k).unwrap();
+            assert_eq!(bio(&doc, "o"), own, "rotate({k}): the origin feature changed its bases or their order");
+            assert_eq!(bio(&doc, "g"), s[100..150].to_vec(), "rotate({k}): gene g drifted");
+            assert!(doc.undo());
+            assert_eq!(doc.record, before);
+        }
+        }
+        // --- edit across the origin keeps features on both sides ---
+        {
+        let n = 200;
+        let s = Lcg(97).bases(n);
+        let mut doc = doc_with(
+            &s,
+            true,
+            vec![feat("gene", "5..30", "a"), feat("gene", "100..150", "b"), feat("gene", "170..195", "c")],
+        );
+        let before = doc.record.clone();
+        // Replace 190..205 (bases 191-200 and 1-5) with 3 new bases.
+        doc.edit_across_origin(190, 205, b"TTT", None).unwrap();
+        // Of a (0-based 4..30) the edit deletes only base 4; c (169..195) loses its last 5 bases.
+        assert_eq!(covered(&doc, "a"), s[5..30].to_vec(), "a lost its first base and nothing else");
+        assert_eq!(covered(&doc, "b"), s[99..150].to_vec());
+        assert_eq!(covered(&doc, "c"), s[169..190].to_vec());
+        assert!(doc.undo());
+        assert_eq!(doc.record, before);
+        // Replacing with pasted features: the pasted one covers the pasted bases.
+        let pasted = vec![feat("misc_feature", "1..3", "p")];
+        let at = doc.edit_across_origin(190, 205, b"TTT", Some(pasted)).unwrap();
+        assert_eq!(covered(&doc, "p"), b"TTT".to_vec());
+        assert_eq!(spans_of(&doc, "p"), vec![(at as i64, at as i64 + 3)]);
+        assert_eq!(covered(&doc, "b"), s[99..150].to_vec());
+        }
     }
 
     #[test]
-    fn rotate_moves_bases_and_features() {
+    fn rotating_and_making_linear() {
+        // --- rotate moves bases and features ---
+        {
         let mut doc = sample(); // 20 bp circular, lacZ 2..10, ori complement(join(18..20,1..3))
         let original = doc.record.clone();
         doc.rotate(5).unwrap(); // base 6 becomes base 1
@@ -1503,10 +2009,47 @@ ORIGIN
         assert!(doc.undo());
         assert_eq!(doc.record, original);
         assert!(doc.rotate(0).is_err());
+        }
+        // --- making linear is one undo step that rotates and undo gives the circle back ---
+        {
+        let seq = Lcg(3).bases(100);
+        let mut doc = doc_with(
+            &seq,
+            true,
+            vec![feat("gene", "21..40", "g"), feat("rep_origin", "join(91..100,1..10)", "o"), feat("misc_feature", "31..70", "cut")],
+        );
+        let before = doc.record.clone();
+        let o = [&seq[90..], &seq[..10]].concat();
+        doc.linearize(50).unwrap(); // break before base 51: cuts the feature "cut" (bases 31..70)
+        assert_eq!(doc.record.topology, gb_io::seq::Topology::Linear);
+        assert_eq!(doc.record.seq, [&seq[50..], &seq[..50]].concat());
+        assert_eq!(bio(&doc, "g"), seq[20..40].to_vec());
+        assert_eq!(bio(&doc, "o"), o, "the origin feature changed its bases");
+        assert_eq!(doc.history().0.len(), 1, "make linear must be ONE undo step");
+        assert!(doc.undo() && !doc.undo());
+        assert_eq!(doc.record, before, "undo must give back the circle with its old origin");
+        assert!(doc.redo());
+        assert_eq!(doc.record.topology, gb_io::seq::Topology::Linear);
+        assert!(doc.undo());
+        // Keep the current start; already linear; and the toggle is a step too.
+        doc.linearize(0).unwrap();
+        assert_eq!(doc.record.seq, seq);
+        assert!(doc.linearize(5).is_err(), "already linear");
+        assert!(doc.undo());
+        assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
+        doc.set_topology(false);
+        doc.set_topology(false); // no change, no step
+        assert_eq!(doc.history().0.len(), 1);
+        assert!(doc.undo());
+        assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
+        assert!(!doc.is_modified());
+        }
     }
 
     #[test]
-    fn history_says_what_each_step_did() {
+    fn history_texts_and_the_modified_flag() {
+        // --- history says what each step did ---
+        {
         let mut doc = sample(); // 20 bp, lacZ 2..10
         doc.replace(4, 7, b"GAG").unwrap(); // replace 3 bases
         doc.replace(0, 0, b"TT").unwrap(); // insert 2
@@ -1521,6 +2064,68 @@ ORIGIN
         assert!(doc.undo());
         let (undo, redo) = doc.history();
         assert_eq!((undo.len(), redo.len(), redo[0].deleted.len()), (2, 1, 1));
+        }
+        // --- modified flag follows edits undo and save ---
+        {
+        let mut doc = sample();
+        assert!(!doc.is_modified());
+        doc.replace(0, 1, b"G").unwrap();
+        assert!(doc.is_modified());
+        assert!(doc.undo());
+        assert!(!doc.is_modified(), "undoing to the opened state must clear modified");
+        assert!(doc.redo() && doc.is_modified());
+        let path = std::env::temp_dir().join("ge_test_modified.gb");
+        doc.save_genbank(&path, None).unwrap();
+        assert!(!doc.is_modified(), "saving clears modified");
+        doc.replace(0, 0, b"T").unwrap();
+        assert!(doc.is_modified());
+        assert!(doc.undo() && !doc.is_modified(), "undo back to the saved state");
+        assert!(doc.undo() && doc.is_modified(), "undo past the saved state");
+        assert!(doc.redo() && !doc.is_modified(), "redo to the saved state");
+        // A new edit after undoing below the saved state makes that state unreachable.
+        assert!(doc.undo());
+        doc.replace(3, 3, b"AA").unwrap();
+        assert!(doc.is_modified());
+        assert!(doc.undo() && doc.is_modified(), "the saved state is gone from this history");
+        let fresh = Document::new_sequence("n", b"ACGT", false).unwrap();
+        assert!(fresh.is_modified(), "a new, unsaved sequence is modified");
+        }
+        // --- external steps sit in the history in order and never change the modified flag ---
+        {
+        let mut doc = sample();
+        let before = doc.record.seq.clone();
+        doc.external("Added primer p1", "t1");
+        assert!(!doc.is_modified(), "a primer database change does not make the document modified");
+        doc.replace(0, 1, b"G").unwrap();
+        doc.external("Deleted primer p2", "t2");
+        assert!(doc.is_modified());
+        let (undo, redo) = doc.history();
+        assert_eq!(undo.len(), 3);
+        assert_eq!((undo[0].note, undo[0].inserted.as_str(), undo[0].removed.as_str()), ("external", "Added primer p1", "t1"));
+        assert_eq!(undo[1].note, "");
+        assert!(redo.is_empty());
+        // Undo walks back through them in order; the app is told about each external one first.
+        assert_eq!(doc.next_external(false).as_deref(), Some("t2"));
+        assert!(doc.undo() && doc.is_modified());
+        assert_eq!(doc.next_external(false), None, "the next step is the base edit");
+        assert_eq!(doc.next_external(true).as_deref(), Some("t2"));
+        assert!(doc.undo() && !doc.is_modified(), "undoing the base edit gives back the saved state, with an external step still in the history");
+        assert_eq!(doc.next_external(false).as_deref(), Some("t1"));
+        assert!(doc.undo() && !doc.is_modified() && doc.record.seq == before);
+        assert!(!doc.undo(), "nothing left");
+        assert!(doc.redo() && doc.redo() && doc.redo());
+        assert!(doc.is_modified() && doc.redo() == false);
+        // A new edit drops the redo steps, external ones included.
+        assert!(doc.undo() && doc.undo());
+        doc.replace(2, 2, b"T").unwrap();
+        assert_eq!(doc.next_external(true), None);
+        // Saving counts the base edits only: an external step before or after it changes nothing.
+        let path = std::env::temp_dir().join("ge_test_external.gb");
+        doc.save_genbank(&path, None).unwrap();
+        doc.external("Edited primer p3", "t3");
+        assert!(!doc.is_modified());
+        assert!(doc.undo() && !doc.is_modified(), "undoing only the external step");
+        }
     }
 
     // ================================================================================
@@ -1617,19 +2222,6 @@ ORIGIN
     }
 
     // ---------------------------------- section 1 -----------------------------------
-
-    #[test]
-    fn empty_edits_change_nothing() {
-        let mut doc = doc_with(&Lcg(1).bases(50), true, vec![feat("gene", "11..20", "g")]);
-        let before = doc.record.clone();
-        for i in [0, 7, 50] {
-            doc.replace(i, i, b"").unwrap(); // delete(i, i) and an empty insert
-            doc.overwrite(i, b"").unwrap();
-        }
-        assert!(!doc.is_modified());
-        assert!(!doc.undo(), "an empty edit left an undo step");
-        assert_eq!(doc.record, before);
-    }
 
     /// The big one: random edits of every kind, undo, redo and save, checked at every step
     /// against (a) a plain `Vec<u8>` model of the bases and (b) a list of whole-record
@@ -1782,221 +2374,6 @@ ORIGIN
         }
     }
 
-    #[test]
-    fn circular_edit_across_the_origin_equals_the_rotated_string_edit() {
-        let n = 60;
-        let seq = Lcg(5).bases(n);
-        let cases: [(usize, usize, &[u8]); 7] =
-            [(55, 63, b"GGG"), (50, 61, b""), (59, 61, b"TTTTT"), (30, 90, b""), (30, 90, b"A"), (59, 61, b""), (10, 70, b"CC")];
-        for (start, end, new) in cases {
-            let mut doc = doc_with(&seq, true, vec![feat("gene", "11..30", "x"), feat("gene", "36..50", "y")]);
-            let before = doc.record.clone();
-            let at = doc.edit_across_origin(start, end, new, None).unwrap();
-            // The string model: rotate so `start` is first, replace the first end-start
-            // bases, which leaves new + the untouched rest (a rotation of what Rust holds).
-            let rot = [&seq[start..], &seq[..start]].concat();
-            let model = [new, &rot[end - start..]].concat();
-            let got = doc.record.seq.clone();
-            assert_eq!(got.len(), model.len(), "{start}..{end}: length");
-            assert!(
-                model.is_empty() || [&got[..], &got[..]].concat().windows(model.len()).any(|w| w == &model[..]),
-                "{start}..{end}: {got:?} is not a rotation of {model:?}"
-            );
-            assert_eq!(&got[at..at + new.len()], new, "{start}..{end}: returned position");
-            assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
-            assert_eq!(doc.history().0.len(), 1, "{start}..{end}: one undo step");
-            assert!(doc.undo() && !doc.undo());
-            assert_eq!(doc.record, before, "{start}..{end}: undo is exact");
-        }
-    }
-
-    #[test]
-    fn circular_inserts_at_zero_and_at_the_end_and_wrapping_deletes() {
-        let n = 60;
-        let seq = Lcg(6).bases(n);
-        let mut doc = doc_with(&seq, true, vec![feat("gene", "11..20", "g"), feat("rep_origin", "join(56..60,1..5)", "o")]);
-        let before = doc.record.clone();
-        let o = [&seq[55..], &seq[..5]].concat();
-        let g = seq[10..20].to_vec();
-        for at in [0usize, n] {
-            doc.replace(at, at, b"TTT").unwrap();
-            assert_eq!(doc.len(), n + 3);
-            assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
-            assert_eq!(covered(&doc, "o"), o, "insert at {at} moved the origin-crossing feature");
-            assert_eq!(covered(&doc, "g"), g, "insert at {at} moved gene g");
-            assert_eq!(doc.record.seq.len(), doc.record.len.unwrap());
-            assert!(doc.undo());
-            assert_eq!(doc.record, before);
-        }
-        // A delete wrapping the origin: 0-based 57..60 and 0..3.
-        doc.edit_across_origin(57, 63, b"", None).unwrap();
-        assert_eq!(doc.len(), n - 6);
-        assert_eq!(doc.record.seq, seq[3..57].to_vec());
-        assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
-        assert_eq!(covered(&doc, "g"), g);
-        // o lost 3 bases at each side of the origin, keeps the other 2 + 2.
-        assert_eq!(covered(&doc, "o"), [&seq[55..57], &seq[3..5]].concat());
-        assert!(doc.undo());
-        assert_eq!(doc.record, before);
-    }
-
-    #[test]
-    fn paste_at_every_boundary_matches_the_string_model_and_is_one_step() {
-        let seq = Lcg(7).bases(100);
-        let base = doc_with(&seq, false, vec![feat("gene", "11..40", "g")]);
-        let copied = base.features_between(20, 35); // part of g, relative: 1..15
-        let bases = seq[20..35].to_vec();
-        for (s, e) in [(0usize, 0usize), (0, 10), (100, 100), (90, 100), (0, 100), (40, 50), (40, 40), (45, 45), (12, 14)] {
-            let mut doc = doc_with(&seq, false, vec![feat("gene", "11..40", "g")]);
-            let before = doc.record.clone();
-            doc.paste(s, e, &bases, copied.clone()).unwrap();
-            assert_eq!(doc.record.seq, [&seq[..s], &bases[..], &seq[e..]].concat(), "paste({s},{e}): bases");
-            // The pasted feature (last) covers exactly the pasted bases.
-            let last = doc.record.features.last().unwrap();
-            let (sp, _) = locations::spans(&last.location);
-            let got: Vec<u8> = sp.iter().flat_map(|&(a, b)| doc.record.seq[a as usize..b as usize].to_vec()).collect();
-            assert_eq!(got, bases, "paste({s},{e}): pasted feature covers the wrong bases");
-            assert_eq!(sp, vec![(s as i64, (s + bases.len()) as i64)]);
-            // The old feature, if it survives, still covers its own bases.
-            if (s, e) == (0, 100) {
-                assert_eq!(doc.record.features.len(), 1, "g should be gone");
-            } else if (s, e) == (12, 14) {
-                // Deleting 2 bases inside g and pasting 15 there: g loses 2 and gains 15.
-                assert_eq!(covered(&doc, "g").len(), 30 - 2 + bases.len());
-            } else {
-                assert_eq!(covered(&doc, "g"), seq[10..40].to_vec(), "paste({s},{e}): g drifted");
-            }
-            assert_eq!(doc.history().0.len(), 1);
-            assert!(doc.undo() && !doc.undo());
-            assert_eq!(doc.record, before, "paste({s},{e}): undo");
-        }
-    }
-
-    #[test]
-    fn overwrite_keeps_length_moves_nothing_and_is_one_step_per_call() {
-        let seq = Lcg(8).bases(80);
-        let mut doc = doc_with(&seq, true, vec![feat("gene", "11..40", "g"), feat("x", "complement(join(50..60,70..80))", "h")]);
-        let before = doc.record.clone();
-        doc.overwrite(10, b"TTTT").unwrap(); // starts exactly at g's first base
-        doc.overwrite(35, b"CCCCCC").unwrap(); // runs over g's end
-        doc.overwrite(76, b"GGGG").unwrap(); // to the very end
-        assert_eq!(doc.len(), 80);
-        assert_eq!(doc.record.features, before.features, "an overwrite moved or trimmed a feature");
-        assert_eq!(doc.history().0.len(), 3);
-        assert!(doc.overwrite(78, b"ACG").is_err(), "overwrite past the end");
-        assert_eq!(doc.history().0.len(), 3);
-        assert!(doc.undo() && doc.undo() && doc.undo() && !doc.undo());
-        assert_eq!(doc.record, before);
-    }
-
-    #[test]
-    fn letters_are_kept_as_typed_and_invalid_ones_are_refused_not_dropped() {
-        let mut doc = doc_with(b"ACGTACGT", false, vec![feat("gene", "2..5", "g")]);
-        let before = doc.record.clone();
-        let bad: [&[u8]; 6] = [b"A C", b"A1", b"A*", b"\xc3\xa9", b"A\n", b"A.G"];
-        for b in bad {
-            assert!(doc.replace(2, 2, b).is_err(), "{b:?} accepted by replace");
-            assert!(doc.overwrite(0, b).is_err(), "{b:?} accepted by overwrite");
-            assert!(doc.paste(0, 0, b, vec![]).is_err(), "{b:?} accepted by paste");
-            assert!(Document::new_sequence("n", b, false).is_err(), "{b:?} accepted by new_sequence");
-        }
-        assert_eq!(doc.record, before, "a refused edit changed the document");
-        assert!(!doc.undo(), "a refused edit left an undo step");
-        // Accepted exactly as typed: lower case, U, every IUPAC code, N and the gap.
-        let ok = b"acguRYSWKMBDHVNn-";
-        doc.replace(4, 4, ok).unwrap();
-        assert_eq!(doc.len(), 8 + ok.len(), "bases were dropped");
-        assert_eq!(&doc.record.seq[4..4 + ok.len()], &ok[..], "bases were changed");
-        assert!(doc.undo());
-        assert_eq!(doc.record, before);
-    }
-
-    #[test]
-    fn editing_an_empty_sequence() {
-        for circular in [false, true] {
-            let mut doc = Document::new_sequence("e", b"", circular).unwrap();
-            assert_eq!(doc.len(), 0);
-            doc.replace(0, 0, b"").unwrap(); // nothing
-            assert!(!doc.undo());
-            assert!(doc.replace(0, 1, b"").is_err() && doc.replace(1, 1, b"A").is_err());
-            doc.replace(0, 0, b"ACG").unwrap();
-            assert_eq!(doc.record.seq, b"ACG");
-            assert!(doc.undo());
-            assert_eq!(doc.len(), 0);
-            assert_eq!(doc.record.len, Some(0));
-            assert!(doc.redo() && doc.record.seq == b"ACG");
-            doc.replace(0, 3, b"").unwrap(); // delete everything again
-            assert_eq!(doc.len(), 0);
-            assert!(doc.rotate(1).is_err() && doc.edit_across_origin(0, 1, b"", None).is_err());
-            doc.reverse_complement(); // must not panic
-            assert_eq!(doc.gc_bins(0, 0, 3).len(), 3);
-            assert!(doc.features_between(0, 0).is_empty());
-        }
-    }
-
-    #[test]
-    fn modified_flag_follows_edits_undo_and_save() {
-        let mut doc = sample();
-        assert!(!doc.is_modified());
-        doc.replace(0, 1, b"G").unwrap();
-        assert!(doc.is_modified());
-        assert!(doc.undo());
-        assert!(!doc.is_modified(), "undoing to the opened state must clear modified");
-        assert!(doc.redo() && doc.is_modified());
-        let path = std::env::temp_dir().join("ge_test_modified.gb");
-        doc.save_genbank(&path, None).unwrap();
-        assert!(!doc.is_modified(), "saving clears modified");
-        doc.replace(0, 0, b"T").unwrap();
-        assert!(doc.is_modified());
-        assert!(doc.undo() && !doc.is_modified(), "undo back to the saved state");
-        assert!(doc.undo() && doc.is_modified(), "undo past the saved state");
-        assert!(doc.redo() && !doc.is_modified(), "redo to the saved state");
-        // A new edit after undoing below the saved state makes that state unreachable.
-        assert!(doc.undo());
-        doc.replace(3, 3, b"AA").unwrap();
-        assert!(doc.is_modified());
-        assert!(doc.undo() && doc.is_modified(), "the saved state is gone from this history");
-        let fresh = Document::new_sequence("n", b"ACGT", false).unwrap();
-        assert!(fresh.is_modified(), "a new, unsaved sequence is modified");
-    }
-
-    #[test]
-    fn external_steps_sit_in_the_history_in_order_and_never_change_the_modified_flag() {
-        let mut doc = sample();
-        let before = doc.record.seq.clone();
-        doc.external("Added primer p1", "t1");
-        assert!(!doc.is_modified(), "a primer database change does not make the document modified");
-        doc.replace(0, 1, b"G").unwrap();
-        doc.external("Deleted primer p2", "t2");
-        assert!(doc.is_modified());
-        let (undo, redo) = doc.history();
-        assert_eq!(undo.len(), 3);
-        assert_eq!((undo[0].note, undo[0].inserted.as_str(), undo[0].removed.as_str()), ("external", "Added primer p1", "t1"));
-        assert_eq!(undo[1].note, "");
-        assert!(redo.is_empty());
-        // Undo walks back through them in order; the app is told about each external one first.
-        assert_eq!(doc.next_external(false).as_deref(), Some("t2"));
-        assert!(doc.undo() && doc.is_modified());
-        assert_eq!(doc.next_external(false), None, "the next step is the base edit");
-        assert_eq!(doc.next_external(true).as_deref(), Some("t2"));
-        assert!(doc.undo() && !doc.is_modified(), "undoing the base edit gives back the saved state, with an external step still in the history");
-        assert_eq!(doc.next_external(false).as_deref(), Some("t1"));
-        assert!(doc.undo() && !doc.is_modified() && doc.record.seq == before);
-        assert!(!doc.undo(), "nothing left");
-        assert!(doc.redo() && doc.redo() && doc.redo());
-        assert!(doc.is_modified() && doc.redo() == false);
-        // A new edit drops the redo steps, external ones included.
-        assert!(doc.undo() && doc.undo());
-        doc.replace(2, 2, b"T").unwrap();
-        assert_eq!(doc.next_external(true), None);
-        // Saving counts the base edits only: an external step before or after it changes nothing.
-        let path = std::env::temp_dir().join("ge_test_external.gb");
-        doc.save_genbank(&path, None).unwrap();
-        doc.external("Edited primer p3", "t3");
-        assert!(!doc.is_modified());
-        assert!(doc.undo() && !doc.is_modified(), "undoing only the external step");
-    }
-
     // ---------------------------------- section 2 -----------------------------------
     // A feature must keep covering the same bases. Each test builds a 200 bp random
     // sequence `s` and states which bases a feature must cover afterwards.
@@ -2007,390 +2384,12 @@ ORIGIN
     }
 
     #[test]
-    fn insert_at_the_exact_start_or_end_of_a_feature_does_not_grow_it() {
-        let (mut doc, s) = drift_doc(vec![feat("gene", "51..100", "f")]);
-        let before = doc.record.clone();
-        let own = s[50..100].to_vec();
-        doc.replace(50, 50, b"TTT").unwrap(); // exactly at the first base
-        assert_eq!(spans_of(&doc, "f"), vec![(53, 103)], "insert at the start must shift the feature right");
-        assert_eq!(covered(&doc, "f"), own);
-        assert!(doc.undo());
-        doc.replace(100, 100, b"TTT").unwrap(); // exactly after the last base
-        assert_eq!(spans_of(&doc, "f"), vec![(50, 100)], "insert at the end must not grow the feature");
-        assert_eq!(covered(&doc, "f"), own);
-        assert!(doc.undo());
-        assert_eq!(doc.record, before);
-    }
-
-    #[test]
-    fn delete_overlapping_the_start_the_end_or_the_middle_keeps_the_remaining_bases() {
-        let cases: [(usize, usize); 6] = [(40, 60), (90, 110), (70, 80), (50, 60), (90, 100), (20, 70)];
-        for (a, b) in cases {
-            let (mut doc, s) = drift_doc(vec![feat("gene", "51..100", "f")]);
-            let before = doc.record.clone();
-            doc.replace(a, b, b"").unwrap();
-            let want: Vec<u8> = (50..100).filter(|i| *i < a || *i >= b).map(|i| s[i]).collect();
-            assert_eq!(covered(&doc, "f"), want, "delete({a},{b}): wrong bases left in the feature");
-            assert_eq!(spans_of(&doc, "f").len(), 1);
-            assert!(doc.undo());
-            assert_eq!(doc.record, before, "delete({a},{b}): undo");
-        }
-    }
-
-    #[test]
-    fn deleting_exactly_the_feature_or_more_removes_it_and_undo_restores_it_whole() {
-        for (a, b) in [(50usize, 100usize), (49, 101), (0, 200), (30, 100), (50, 130)] {
-            let mut f = feat("CDS", "complement(join(51..70,81..100))", "f");
-            f.qualifiers.push(("note".into(), Some("keep me".to_string())));
-            f.qualifiers.push(("codon_start".into(), Some("1".to_string())));
-            let (mut doc, _) = drift_doc(vec![f]);
-            let before = doc.record.clone();
-            doc.replace(a, b, b"").unwrap();
-            if a <= 50 && b >= 100 {
-                assert!(!has(&doc, "f") && doc.record.features.is_empty(), "delete({a},{b}) must remove the feature");
-            } else {
-                assert_eq!(doc.record.features.len(), 1, "delete({a},{b}) must keep what is left of it");
-            }
-            assert!(doc.undo());
-            assert_eq!(doc.record, before, "delete({a},{b}): undo must restore location and qualifiers");
-            assert!(doc.redo() && doc.undo());
-            assert_eq!(doc.record.features, before.features);
-        }
-    }
-
-    #[test]
-    fn replace_over_part_of_a_feature_follows_the_documented_rules() {
-        // Documented rule (locations.rs): a replace is "delete the range, then insert at
-        // its start", so the new bases join the feature only when the replaced stretch is
-        // strictly inside it; bases replaced at its very start or end leave the feature.
-        let x: &[u8] = b"TTTTTTTTTTTTT"; // 13 bases
-        let (mut doc, s) = drift_doc(vec![feat("gene", "51..100", "f")]);
-        // Strictly inside, longer replacement: feature grows by 3.
-        doc.replace(60, 70, x).unwrap();
-        assert_eq!(covered(&doc, "f"), [&s[50..60], x, &s[70..100]].concat());
-        assert!(doc.undo());
-        // Strictly inside, same length: still the same length, replaced bases covered.
-        doc.replace(60, 70, &x[..10]).unwrap();
-        assert_eq!(spans_of(&doc, "f"), vec![(50, 100)]);
-        assert_eq!(covered(&doc, "f"), [&s[50..60], &x[..10], &s[70..100]].concat());
-        assert!(doc.undo());
-        // Shorter replacement inside: feature shrinks.
-        doc.replace(60, 70, b"GG").unwrap();
-        assert_eq!(covered(&doc, "f"), [&s[50..60], b"GG".as_slice(), &s[70..100]].concat());
-        assert!(doc.undo());
-        // Covering the start: the overlapped bases leave the feature, the new ones sit before it.
-        doc.replace(40, 60, x).unwrap();
-        assert_eq!(covered(&doc, "f"), s[60..100].to_vec());
-        assert!(doc.undo());
-        // Covering the end: likewise.
-        doc.replace(90, 110, x).unwrap();
-        assert_eq!(covered(&doc, "f"), s[50..90].to_vec());
-        assert!(doc.undo());
-        // Covering all of it: the feature is gone.
-        doc.replace(50, 100, x).unwrap();
-        assert!(doc.record.features.is_empty());
-    }
-
-    #[test]
-    fn complement_feature_keeps_its_bases_and_strand_through_edits() {
-        let (mut doc, s) = drift_doc(vec![feat("gene", "complement(51..100)", "f")]);
-        let own = s[50..100].to_vec();
-        doc.replace(10, 10, b"ACGTA").unwrap(); // before: the feature moves to 55..105
-        doc.replace(190, 190, b"CC").unwrap(); // after
-        assert_eq!(strand_of(&doc, "f"), -1);
-        assert_eq!(covered(&doc, "f"), own, "edits outside moved the feature off its bases");
-        doc.replace(70, 75, b"").unwrap(); // inside: original bases 65..70 of the feature
-        assert_eq!(covered(&doc, "f"), [&own[..15], &own[20..]].concat());
-        assert_eq!(bio(&doc, "f"), rc(&covered(&doc, "f")));
-        assert_eq!(doc.record.features[0].location.to_gb_format(), "complement(56..100)");
-    }
-
-    #[test]
-    fn join_edit_between_parts_grows_the_gap_inside_a_part_grows_that_part() {
-        let (mut doc, s) = drift_doc(vec![feat("gene", "join(21..40,81..100)", "j")]);
-        let own = [&s[20..40], &s[80..100]].concat();
-        let x: &[u8] = b"ACGT";
-        let cases: [(usize, Vec<(i64, i64)>); 8] = [
-            (60, vec![(20, 40), (84, 104)]),  // in the gap: the gap grows
-            (30, vec![(20, 44), (84, 104)]),  // inside part 1
-            (90, vec![(20, 40), (80, 104)]),  // inside part 2
-            (40, vec![(20, 40), (84, 104)]),  // at the end of part 1: gap side
-            (80, vec![(20, 40), (84, 104)]),  // at the start of part 2: gap side
-            (20, vec![(24, 44), (84, 104)]),  // at the start of part 1: shifts
-            (100, vec![(20, 40), (80, 100)]), // at the end of part 2: nothing
-            (0, vec![(24, 44), (84, 104)]),   // before all of it
-        ];
-        for (at, want) in cases {
-            doc.replace(at, at, x).unwrap();
-            assert_eq!(spans_of(&doc, "j"), want, "insert at {at}");
-            let got = covered(&doc, "j");
-            let size: i64 = want.iter().map(|(a, b)| b - a).sum();
-            assert_eq!(got.len() as i64, size);
-            if size as usize == own.len() {
-                assert_eq!(got, own, "insert at {at}: bases changed");
-            }
-            assert!(doc.undo());
-        }
-        // A delete spanning the gap trims both parts.
-        doc.replace(30, 90, b"").unwrap();
-        assert_eq!(covered(&doc, "j"), [&s[20..30], &s[90..100]].concat());
-    }
-
-    #[test]
-    fn complement_join_order_survives_edits_and_reverse_complement() {
-        for text in ["complement(join(21..40,81..100))", "join(21..40,81..100)"] {
-            let (mut doc, s) = drift_doc(vec![feat("CDS", text, "cj")]);
-            let reverse = text.starts_with("complement");
-            let before_bio = bio(&doc, "cj");
-            assert_eq!(before_bio, if reverse { rc(&[&s[20..40], &s[80..100]].concat()) } else { [&s[20..40], &s[80..100]].concat() });
-            doc.replace(60, 60, b"GGGG").unwrap(); // in the gap
-            doc.replace(0, 5, b"").unwrap(); // before everything
-            assert_eq!(bio(&doc, "cj"), before_bio, "{text}: edits outside the parts changed the feature");
-            let parts = spans_of(&doc, "cj");
-            assert_eq!(parts.len(), 2);
-            assert!(parts[0].1 <= parts[1].0, "{text}: part order lost: {parts:?}");
-            // Reverse-complement the whole sequence: same molecule, other strand.
-            let old_strand = strand_of(&doc, "cj");
-            let old_parts = parts.clone();
-            let n = doc.len() as i64;
-            doc.reverse_complement();
-            assert_eq!(strand_of(&doc, "cj"), -old_strand, "{text}: strand not flipped");
-            assert_eq!(bio(&doc, "cj"), before_bio, "{text}: the feature's own sequence changed");
-            let mut mirrored: Vec<(i64, i64)> = old_parts.iter().map(|&(a, b)| (n - b, n - a)).collect();
-            mirrored.sort();
-            let mut now = spans_of(&doc, "cj");
-            now.sort();
-            assert_eq!(now, mirrored, "{text}: mirrored parts");
-            doc.reverse_complement(); // twice = identity
-            assert_eq!(spans_of(&doc, "cj"), old_parts);
-        }
-    }
-
-    #[test]
-    fn feature_crossing_the_origin_keeps_its_bases() {
-        let n = 200;
-        let s = Lcg(98).bases(n);
-        let mk = || doc_with(&s, true, vec![feat("rep_origin", "join(191..200,1..10)", "o"), feat("gene", "101..150", "g")]);
-        let own = [&s[190..], &s[..10]].concat();
-        let x: &[u8] = b"ACGT";
-        // Outside the feature, on either side: unchanged bases.
-        for (a, b) in [(0usize, 0usize), (200, 200), (100, 110), (160, 170), (10, 10), (190, 190)] {
-            let mut doc = mk();
-            doc.replace(a, b, x).unwrap();
-            assert_eq!(covered(&doc, "o"), own, "insert at {a}: origin feature drifted");
-            assert!(doc.undo());
-        }
-        // Inside either part: that part grows.
-        let mut doc = mk();
-        doc.replace(195, 195, x).unwrap();
-        assert_eq!(covered(&doc, "o"), [&s[190..195], x, &s[195..], &s[..10]].concat());
-        assert!(doc.undo());
-        doc.replace(5, 5, x).unwrap();
-        assert_eq!(covered(&doc, "o"), [&s[190..], &s[..5], x, &s[5..10]].concat());
-        assert!(doc.undo());
-        // Deleting on both sides of the origin.
-        doc.replace(0, 5, b"").unwrap();
-        assert_eq!(covered(&doc, "o"), [&s[190..], &s[5..10]].concat());
-        assert!(doc.undo());
-        doc.replace(195, 200, b"").unwrap();
-        assert_eq!(covered(&doc, "o"), [&s[190..195], &s[..10]].concat());
-        assert!(doc.undo());
-        // Rotating: any new start, including ones that cut through either part of the
-        // feature, leaves the feature covering the same bases, in the same order.
-        for k in [1usize, 5, 9, 10, 11, 60, 100, 150, 190, 191, 195, 199] {
-            let mut doc = mk();
-            let before = doc.record.clone();
-            doc.rotate(k).unwrap();
-            assert_eq!(bio(&doc, "o"), own, "rotate({k}): the origin feature changed its bases or their order");
-            assert_eq!(bio(&doc, "g"), s[100..150].to_vec(), "rotate({k}): gene g drifted");
-            assert!(doc.undo());
-            assert_eq!(doc.record, before);
-        }
-    }
-
-    #[test]
-    fn edit_across_the_origin_keeps_features_on_both_sides() {
-        let n = 200;
-        let s = Lcg(97).bases(n);
-        let mut doc = doc_with(
-            &s,
-            true,
-            vec![feat("gene", "5..30", "a"), feat("gene", "100..150", "b"), feat("gene", "170..195", "c")],
-        );
-        let before = doc.record.clone();
-        // Replace 190..205 (bases 191-200 and 1-5) with 3 new bases.
-        doc.edit_across_origin(190, 205, b"TTT", None).unwrap();
-        // Of a (0-based 4..30) the edit deletes only base 4; c (169..195) loses its last 5 bases.
-        assert_eq!(covered(&doc, "a"), s[5..30].to_vec(), "a lost its first base and nothing else");
-        assert_eq!(covered(&doc, "b"), s[99..150].to_vec());
-        assert_eq!(covered(&doc, "c"), s[169..190].to_vec());
-        assert!(doc.undo());
-        assert_eq!(doc.record, before);
-        // Replacing with pasted features: the pasted one covers the pasted bases.
-        let pasted = vec![feat("misc_feature", "1..3", "p")];
-        let at = doc.edit_across_origin(190, 205, b"TTT", Some(pasted)).unwrap();
-        assert_eq!(covered(&doc, "p"), b"TTT".to_vec());
-        assert_eq!(spans_of(&doc, "p"), vec![(at as i64, at as i64 + 3)]);
-        assert_eq!(covered(&doc, "b"), s[99..150].to_vec());
-    }
-
-    #[test]
-    fn fuzzy_locations_survive_edits_and_saves_with_their_markers() {
-        let (mut doc, _) = drift_doc(vec![feat("misc_feature", "<21..>60", "z"), feat("CDS", "complement(<101..>150)", "y")]);
-        assert_eq!(doc.record.features[0].location.to_gb_format(), "<21..>60");
-        doc.replace(0, 0, b"TTT").unwrap();
-        assert_eq!(doc.record.features[0].location.to_gb_format(), "<24..>63", "marker lost or shifted wrongly");
-        doc.replace(40, 40, b"AA").unwrap(); // inside z
-        assert_eq!(doc.record.features[0].location.to_gb_format(), "<24..>65");
-        doc.replace(150, 160, b"").unwrap();
-        assert_eq!(doc.record.features[1].location.to_gb_format(), "complement(<106..>150)");
-        let path = std::env::temp_dir().join("ge_test_fuzzy.gb");
-        doc.save_genbank(&path, None).unwrap();
-        let back = Document::open(&path).unwrap();
-        assert_eq!(back.record.features, doc.record.features, "fuzzy markers changed on save");
-        assert!(doc.undo() && doc.undo() && doc.undo());
-        assert_eq!(doc.record.features[0].location.to_gb_format(), "<21..>60");
-    }
-
-    #[test]
-    fn reverse_complement_flips_every_feature_onto_the_same_bases() {
-        let feats = vec![
-            feat("gene", "21..60", "f1"),
-            feat("gene", "complement(81..120)", "f2"),
-            feat("CDS", "join(131..140,151..160)", "f3"),
-            feat("CDS", "complement(join(171..180,191..200))", "f4"),
-        ];
-        for circular in [false, true] {
-            let s = Lcg(96).bases(200);
-            let mut doc = doc_with(&s, circular, feats.clone());
-            let before = doc.record.clone();
-            let old: Vec<(Vec<u8>, i8, Vec<(i64, i64)>)> =
-                ["f1", "f2", "f3", "f4"].iter().map(|l| (bio(&doc, l), strand_of(&doc, l), spans_of(&doc, l))).collect();
-            doc.reverse_complement();
-            assert_eq!(doc.record.seq, rc(&s));
-            for (l, (b, strand, spans)) in ["f1", "f2", "f3", "f4"].iter().zip(old) {
-                assert_eq!(bio(&doc, l), b, "{l}: the feature's own sequence changed");
-                assert_eq!(strand_of(&doc, l), -strand, "{l}: strand not flipped");
-                let mut want: Vec<(i64, i64)> = spans.iter().map(|&(a, e)| (200 - e, 200 - a)).collect();
-                want.sort();
-                let mut got = spans_of(&doc, l);
-                got.sort();
-                assert_eq!(got, want, "{l}: wrong bases covered");
-                // Qualifiers untouched.
-                assert_eq!(doc.record.features[index_of(&doc, l)].qualifiers.len(), 1);
-            }
-            assert!(doc.undo());
-            assert_eq!(doc.record, before);
-        }
-    }
-
-    #[test]
-    fn copying_the_reverse_complement_keeps_every_feature_on_the_same_bases() {
-        // 200 random bases; a copy of 41..160 (0-based 40..160) is 120 bases long.
-        let feats = vec![
-            feat("gene", "61..100", "top"),
-            feat("gene", "complement(101..140)", "bottom"),
-            feat("CDS", "join(51..60,111..120)", "split"),
-        ];
-        let s = Lcg(11).bases(200);
-        let doc = doc_with(&s, false, feats);
-        let copy = doc.features_between(40, 160);
-        let flipped = doc.features_between_reversed(40, 160);
-        assert_eq!(copy.len(), flipped.len());
-        // Build the pasted-in-reverse molecule: reverse-complemented bases + flipped features.
-        let rc_bases = rc(&s[40..160]);
-        let target = doc_with(&rc_bases, false, flipped);
-        for l in ["top", "bottom", "split"] {
-            // The feature's own sequence, read along its strand, is unchanged by the flip...
-            let before = doc_with(&s[40..160], false, copy.clone());
-            assert_eq!(bio(&target, l), bio(&before, l), "{l}: its sequence changed");
-            // ...and it is on the opposite strand.
-            assert_eq!(strand_of(&target, l), -strand_of(&before, l), "{l}: strand not flipped");
-        }
-    }
-
-    #[test]
-    fn pasted_features_cover_the_pasted_bases_and_existing_ones_shift_correctly() {
-        let (mut doc, s) = drift_doc(vec![feat("gene", "51..100", "g"), feat("gene", "121..150", "h"), feat("gene", "complement(join(11..20,31..40))", "k")]);
-        let copied = doc.features_between(60, 130); // g (60..100) and h (120..130), relative
-        assert_eq!(copied.len(), 2);
-        let bases = s[60..130].to_vec();
-        doc.paste(0, 0, &bases, copied).unwrap(); // paste at the very start
-        // Old features moved right by 70, keeping their bases.
-        let g_old = doc.record.features.iter().position(|f| f.qualifier_values("label").next() == Some("g")).unwrap();
-        assert_eq!(locations::spans(&doc.record.features[g_old].location).0, vec![(120, 170)]);
-        assert_eq!(doc.record.seq[120..170].to_vec(), s[50..100].to_vec());
-        // The two pasted copies (appended at the end) sit on the pasted bases at 0..70.
-        let n = doc.record.features.len();
-        let (g2, h2) = (&doc.record.features[n - 2], &doc.record.features[n - 1]);
-        assert_eq!(locations::spans(&g2.location).0, vec![(0, 40)]);
-        assert_eq!(doc.record.seq[0..40].to_vec(), s[60..100].to_vec());
-        assert_eq!(locations::spans(&h2.location).0, vec![(60, 70)]);
-        assert_eq!(doc.record.seq[60..70].to_vec(), s[120..130].to_vec());
-    }
-
-    #[test]
-    fn qualifiers_are_untouched_by_edits() {
-        let mut f = feat("CDS", "join(21..40,81..100)", "f");
-        f.qualifiers.push(("note".into(), Some("a long note with words".to_string())));
-        f.qualifiers.push(("translation".into(), Some("MKVLAAGIVALLL".to_string())));
-        f.qualifiers.push(("pseudo".into(), None));
-        let (mut doc, _) = drift_doc(vec![f]);
-        let q = doc.record.features[0].qualifiers.clone();
-        let mut rng = Lcg(5);
-        for _ in 0..60 {
-            let n = doc.len();
-            let a = rng.below(n + 1);
-            let b = (a + rng.below(6)).min(n);
-            let ins = rng.some_bases(5);
-            doc.replace(a, b, &ins).unwrap();
-            if doc.record.features.is_empty() {
-                break;
-            }
-            assert_eq!(doc.record.features[0].qualifiers, q, "an edit changed the qualifiers");
-        }
-    }
-
-    #[test]
-    fn making_linear_is_one_undo_step_that_rotates_and_undo_gives_the_circle_back() {
-        let seq = Lcg(3).bases(100);
-        let mut doc = doc_with(
-            &seq,
-            true,
-            vec![feat("gene", "21..40", "g"), feat("rep_origin", "join(91..100,1..10)", "o"), feat("misc_feature", "31..70", "cut")],
-        );
-        let before = doc.record.clone();
-        let o = [&seq[90..], &seq[..10]].concat();
-        doc.linearize(50).unwrap(); // break before base 51: cuts the feature "cut" (bases 31..70)
-        assert_eq!(doc.record.topology, gb_io::seq::Topology::Linear);
-        assert_eq!(doc.record.seq, [&seq[50..], &seq[..50]].concat());
-        assert_eq!(bio(&doc, "g"), seq[20..40].to_vec());
-        assert_eq!(bio(&doc, "o"), o, "the origin feature changed its bases");
-        assert_eq!(doc.history().0.len(), 1, "make linear must be ONE undo step");
-        assert!(doc.undo() && !doc.undo());
-        assert_eq!(doc.record, before, "undo must give back the circle with its old origin");
-        assert!(doc.redo());
-        assert_eq!(doc.record.topology, gb_io::seq::Topology::Linear);
-        assert!(doc.undo());
-        // Keep the current start; already linear; and the toggle is a step too.
-        doc.linearize(0).unwrap();
-        assert_eq!(doc.record.seq, seq);
-        assert!(doc.linearize(5).is_err(), "already linear");
-        assert!(doc.undo());
-        assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
-        doc.set_topology(false);
-        doc.set_topology(false); // no change, no step
-        assert_eq!(doc.history().0.len(), 1);
-        assert!(doc.undo());
-        assert_eq!(doc.record.topology, gb_io::seq::Topology::Circular);
-        assert!(!doc.is_modified());
-    }
-
-    /// The yellow "edited bases" list, checked against a simple model: a Vec of one flag per
-    /// base that is edited with the very same operations (a plain, obviously-right version).
-    /// Random edits of every kind, with undo / redo, must keep the two in agreement.
-    #[test]
-    fn edited_ranges_follow_every_edit_undo_and_redo() {
+    fn edited_ranges_follow_edits_undo_redo_the_origin_and_save() {
+        // --- edited ranges follow every edit undo and redo ---
+        // The yellow "edited bases" list, checked against a simple model: a Vec of one flag per
+        // base that is edited with the very same operations (a plain, obviously-right version).
+        // Random edits of every kind, with undo / redo, must keep the two in agreement.
+        {
         // Turn the flag-per-base model into the [start, end) list the document reports.
         fn runs(flags: &[bool]) -> Vec<(usize, usize)> {
             let mut out: Vec<(usize, usize)> = Vec::new();
@@ -2460,12 +2459,11 @@ ORIGIN
                 assert_eq!(doc.edited_ranges(), runs(&states[pos]).as_slice(), "circular={circular} step {step}");
             }
         }
-    }
-
-    /// Typing a run joins into one stretch, a deletion leaves nothing, an edit across the
-    /// origin marks the new bases on both sides of it, and a save empties the list.
-    #[test]
-    fn edited_ranges_basics_origin_and_save() {
+        }
+        // --- edited ranges basics origin and save ---
+        // Typing a run joins into one stretch, a deletion leaves nothing, an edit across the
+        // origin marks the new bases on both sides of it, and a save empties the list.
+        {
         let mut doc = doc_with(b"ACGTACGTACGTACGTACGT", false, vec![]);
         assert!(doc.edited_ranges().is_empty(), "nothing is edited when opened");
         doc.replace(5, 5, b"G").unwrap();
@@ -2497,5 +2495,7 @@ ORIGIN
         assert_eq!(n, 19);
         assert!(c.undo() && c.edited_ranges().is_empty());
         assert!(c.redo() && c.edited_ranges().len() == 1);
+        }
     }
+
 }

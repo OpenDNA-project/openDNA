@@ -6,6 +6,8 @@
 
 **Result:** ✅ passed · [line 177](../../core/src/cas9.rs#L177) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** Guide-site search could miss or misplace a perfect protospacer + NGG site on the top strand.
+
 A perfect 20-nt protospacer followed by an NGG PAM is found at the right coordinates on the top strand.
 
 | # | Input | Expected output |
@@ -16,6 +18,8 @@ A perfect 20-nt protospacer followed by an NGG PAM is found at the right coordin
 
 **Result:** ✅ passed · [line 188](../../core/src/cas9.rs#L188) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** Guide sites on the bottom strand could be missed or drawn at the wrong place.
+
 A site written on the bottom strand is found and reported in top-strand coordinates with the PAM complement on its left.
 
 | # | Input | Expected output |
@@ -25,6 +29,8 @@ A site written on the bottom strand is found and reported in top-strand coordina
 ## `needs_the_pam`
 
 **Result:** ✅ passed · [line 201](../../core/src/cas9.rs#L201) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** Sites lacking a PAM could be reported as guide sites (false off-targets), or non-NGG PAMs such as SaCas9's NNGRRT could be ignored.
 
 Without a fitting PAM there is no site even with mismatches allowed; other IUPAC PAMs (NNGRRT) are honoured.
 
@@ -41,6 +47,8 @@ Without a fitting PAM there is no site even with mismatches allowed; other IUPAC
 
 **Result:** ✅ passed · [line 211](../../core/src/cas9.rs#L211) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** Off-target sites could be listed with the wrong number or positions of mismatches, misleading guide specificity checks.
+
 Mismatches are counted against the limit and their guide positions are recorded in the bit mask.
 
 | # | Input | Expected output |
@@ -51,6 +59,8 @@ Mismatches are counted against the limit and their guide positions are recorded 
 ## `a_site_can_run_across_the_origin_of_a_circle`
 
 **Result:** ✅ passed · [line 226](../../core/src/cas9.rs#L226) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** A guide site crossing the origin of a plasmid could be missed.
 
 On a circular template a site split across the origin is found once, with end past the length; not on a linear template.
 
@@ -67,6 +77,8 @@ On a circular template a site split across the origin is found once, with end pa
 
 **Result:** ✅ passed · [line 240](../../core/src/cas9.rs#L240) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
+**Why it matters:** Searching several guides at once, or a lower-case sequence, could return mixed-up or empty results.
+
 Several guides are searched in one call (one result list each) and a lower-case template matches.
 
 | # | Input | Expected output |
@@ -81,6 +93,8 @@ Several guides are searched in one call (one result list each) and a lower-case 
 
 **Result:** ✅ passed · [line 250](../../core/src/cas9.rs#L250) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** Cas12a (5' TTTV PAM) sites could be searched in Cas9 orientation and so be missed or wrongly found.
+
 With pam_first (Cas12a, TTTV) the PAM is matched 5' of the protospacer, on both strands, and is not matched in Cas9 orientation.
 
 | # | Input | Expected output |
@@ -92,6 +106,8 @@ With pam_first (Cas12a, TTTV) the PAM is matched 5' of the protospacer, on both 
 ## `mismatch_mask_counts_from_the_guides_5_prime_end_next_to_a_first_pam`
 
 **Result:** ✅ passed · [line 269](../../core/src/cas9.rs#L269) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** For Cas12a the mismatch positions could be counted from the wrong end, so a PAM-proximal mismatch would be weighted as distal in off-target scoring.
 
 For PAM-first nucleases bit 0 of the mismatch mask is the guide base next to the PAM.
 

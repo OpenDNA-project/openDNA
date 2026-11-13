@@ -367,10 +367,7 @@ mod tests {
         assert_eq!(code.name, "Test recoded");
         assert_eq!(code.translate(b"ATGTCGTAGTCATAA"), b"MXXS*".to_vec());
         assert!(by_id(101).is_none() && by_id_or_standard(101).id == 1);
-    }
-
-    #[test]
-    fn every_table_has_64_codons_and_known_ids() {
+        // --- the built-in tables: 64 codons each, known ids, context-dependent tables left out ---
         for t in TABLES {
             assert_eq!(t.aas.len(), 64, "table {}", t.id);
             assert_eq!(t.starts.len(), 64, "table {}", t.id);

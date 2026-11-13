@@ -1,4 +1,4 @@
-"""The upgraded search: the engine (DNA with IUPAC / mismatches, proteins, names, primers, enzymes, scope) and the search bar."""
+"""The search engine: DNA with IUPAC / mismatches, proteins, names, primers, enzymes, scope and FASTA files."""
 import os
 import random
 import sys
@@ -8,11 +8,9 @@ from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
-from PySide6.QtWidgets import QApplication
 
 from opendna_core import Document
 
@@ -22,7 +20,6 @@ from assembly_panel import FragmentEditor
 from editor import reverse_complement
 from search import Options
 
-app = QApplication.instance() or QApplication([])
 rng = random.Random(5)
 SEQ = "".join(rng.choice("ACGT") for _ in range(2000))
 # Clean the random part of the sites used below so they occur exactly where put.
@@ -43,8 +40,11 @@ def spans(hits):
     return [(h.start, h.end) for h in hits]
 
 
-def test_sequence_search_engine():
-    """DNA on both strands with IUPAC, mismatches and their limit, a site across a circle's origin, and protein motifs on both strands."""
+
+def test_sequence_search_engine(tmp_path):
+    """The search engine: DNA on both strands with IUPAC, mismatches and their limit, a site across a circle's origin, protein
+    motifs on both strands; names, details, primers and enzymes found by name only with their option; the selection scope and
+    the search in a FASTA file."""
     # --- DNA: both strands and IUPAC ---
     ed = editor()
     hits, _ = search.search_sequence(ed, "GGATCCAAAT", Options())
@@ -79,11 +79,6 @@ def test_sequence_search_engine():
     assert search.search_sequence(ed, "AKW", Options())[0] == []     # translations off: AKW is not DNA, so a name search: nothing
     rc = editor(reverse_complement(ed.doc.sequence()))
     hits, _ = search.search_sequence(rc, "AXW", Options(translations=True))      # X = any
-    assert len(hits) == 1 and hits[0].strand == -1
-
-
-def test_names_scope_and_file_search(tmp_path):
-    """Names, details, primers and enzymes are found by name (only with their option), the selection scope, and the file scope."""
     # --- names, details, primers, enzymes ---
     ed = editor()
     ed.add_features([("CDS", "101..400", [("gene", "abcD"), ("product", "kinase"), ("db_xref", "needle")])])
@@ -119,89 +114,11 @@ def test_names_scope_and_file_search(tmp_path):
     assert motif == "GGTACC"
     assert got["chrA"] == [(200, 206)] and got["chrB"] == [(120, 126)]   # GGTACC is a palindrome: one hit per site
     assert search.search_file(path, ["chrA"], "chrA", a, "kinase", Options(), threading.Event(), lambda *_: None) is None
-
-
-# ---- the search bar ---------------------------------------------------------------------------------------------------------------
-
-
-@pytest.fixture
-def win(monkeypatch):
-    from main import MainWindow
-    from primer_db import data_dir
-    (data_dir() / "search.ini").unlink(missing_ok=True)     # the options are remembered between runs: start from the defaults
-    errors = []
-    monkeypatch.setattr(sys, "excepthook", lambda *exc: errors.append(exc))
-    w = MainWindow()
-    w.resize(1200, 800)
-    w.show()
-    seq = "ACGT" * 25 + "GAATTC" + "TTAA" * 25 + "GAATTC" + "CCGG" * 25 + "GAATTC" + "AACC" * 10
-    w.show_document(Document.new_sequence("t", seq, False), Path("t.gb"))
-    yield w
-    w.editor.doc.modified = False
-    w.close()
-    (data_dir() / "search.ini").unlink(missing_ok=True)     # not the next test's options
-    assert not errors, errors
-
-
-def test_search_bar(win):
-    """The bar's counter and next/previous (also from the Edit menu), clearing and painting of the hits, and the options (applied and remembered)."""
-    bar, ed = win.search_bar, win.editor
-    # --- counter, next, previous ---
-    bar.box.setText("GAATTC")
-    bar._live()                                           # what the timer does a moment after typing
-    assert ed.search_spans == [(100, 106), (206, 212), (312, 318)] and bar.counter.text() == "3 hits"
-    ed.set_cursor(0)
-    bar.step(1)
-    assert (ed.start, ed.end) == (100, 106) and bar.counter.text() == "1 of 3"
-    bar.step(1)
-    bar.step(1)
-    assert (ed.start, ed.end) == (312, 318) and bar.counter.text() == "3 of 3"
-    bar.step(1)                                           # wraps round
-    assert ed.start == 100 and bar.counter.text() == "1 of 3"
-    bar.step(-1)
-    assert ed.start == 312
-    win.find_next()                                       # the Edit menu / F3 do the same
-    assert ed.start == 100
-    win.find_previous()
-    assert ed.start == 312
-    ed.set_cursor(210)                                    # a bare cursor: the next hit is the one after it
-    bar.step(1)
-    assert ed.start == 312
-    ed.set_cursor(206)                                    # ... and a hit starting under the cursor counts
-    bar.step(1)
-    assert ed.start == 206
-    # --- clearing and painting ---
-    bar.box.setText("GAATTC")
-    bar._live()
-    for view in (win.sequence_view, win.map_view):
-        view.grab()                                       # painting the hits raises nothing (the fixture collects errors)
-    ed.type_bases("A")                                   # an edit: the hits are stale
-    assert ed.search_spans == [] and bar.counter.text() == ""
-    bar.box.setText("ATATATAT")
-    bar._live()
-    assert bar.counter.text() == "No hits"
-    bar.box.setText("")
-    assert bar.counter.text() == "" and ed.search_spans == []
-    bar.box.setText("GAATTC")
-    bar._live()
-    bar.escape()
-    assert ed.search_spans == []
-    # --- options apply and are remembered ---
-    bar.box.setText("GGATCC")           # the reverse complement of nothing here: GGATCC is a palindrome, absent from this sequence
-    bar._live()
-    assert bar.counter.text() == "No hits"
-    bar.fuzzy_on.setChecked(True)         # an option change searches again
-    bar.fuzzy_n.setValue(2)
-    bar._live()
-    assert bar.options().fuzzy == 2
-    # ... and the search uses them: GGATCC is 2 bases from GAATTC (G-A, C-T), so the EcoRI sites now count as hits
-    assert bar.counter.text() not in ("", "No hits"), bar.counter.text()
-    assert bar.settings.value("fuzzy_n", type=int) == 2 and bar.settings.value("both", type=bool) is True
-    bar.both.setChecked(False)
-    assert bar.options().both is False and bar.settings.value("both", type=bool) is False
-    assert bar.options().scope == "sequence"
-    bar.scopes["selection"].setChecked(True)
-    assert bar.options().scope == "selection"
-    from search_bar import SearchBar
-    again = SearchBar(win)                # a new window reads them back
-    assert again.options() == bar.options()
+    # --- the editor keeps the strand each hit matched (0: no strand given, or a palindrome found on both) ---
+    ed = editor("ACGT" * 30)
+    ed.set_search_hits([(10, 20, -1), (40, 50)])
+    assert ed.search_strand[(10, 20)] == -1 and ed.search_strand[(40, 50)] == 0
+    ed.set_search_hits([(5, 15, 1), (5, 15, -1)])
+    assert ed.search_strand[(5, 15)] == 0
+    ed.set_search_hits([])
+    assert ed.search_strand == {} and ed.search_spans == []

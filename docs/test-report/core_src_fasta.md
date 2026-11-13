@@ -6,6 +6,8 @@
 
 **Result:** ✅ passed · [line 316](../../core/src/fasta.rs#L316) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** After a genome FASTA is rewritten quickly, a stale .fai could be trusted and fetches would return the old bases.
+
 A FASTA rewritten with the same mtime as its saved .fai is still re-indexed (stale index not trusted), so fetch returns the new bases.
 
 | # | Input | Expected output |
@@ -21,6 +23,8 @@ A FASTA rewritten with the same mtime as its saved .fai is still re-indexed (sta
 
 **Result:** ✅ passed · [line 334](../../core/src/fasta.rs#L334) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** Fetching a region from a Windows (CRLF) or wrapped genome FASTA could return bases shifted by the line endings.
+
 CRLF line endings and wrapped lines are indexed correctly; fetch crosses line breaks, clamps the end, errors on unknown names; the saved .fai reads back identically.
 
 | # | Input | Expected output |
@@ -32,6 +36,8 @@ CRLF line endings and wrapped lines are indexed correctly; fetch crosses line br
 ## `replace_one_sequence_and_search`
 
 **Result:** ✅ passed · [line 349](../../core/src/fasta.rs#L349) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** Saving one edited record into a multi-record FASTA could damage the other records, or motif search in a FASTA could miss or duplicate hits.
 
 Exact motif search reports both strands once for palindromes; write_replacing swaps one record's bases and leaves other records and headers untouched; an unknown name errors.
 
@@ -49,6 +55,8 @@ Exact motif search reports both strands once for palindromes; write_replacing sw
 ## `rejects_uneven_wrapping`
 
 **Result:** ✅ passed · [line 366](../../core/src/fasta.rs#L366) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** An unevenly wrapped FASTA could be indexed anyway, so every fetch from it would silently return wrong bases.
 
 A FASTA whose lines are wrapped unevenly inside a record is rejected, because offset arithmetic would return wrong bases.
 

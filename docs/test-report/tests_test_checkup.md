@@ -4,123 +4,110 @@
 
 ## `test_bacterial_cds_verdicts`
 
-**Result:** ✅ passed in 0.03 s · [line 74](../../tests/test_checkup.py#L74) · **Area:** Checkup: bacterial CDS verdicts · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 77](../../tests/test_checkup.py#L77) · **Area:** Plasmid checkup (bacteria) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-In bacteria each CDS gets a verdict: an annotated promoter/RBS/terminator unit expresses it; otherwise elements are predicted from their motifs (either strand); a terminator before or inside the CDS blocks/truncates it; wrong strand or missing RBS lowers it; coding problems and regulation notes are reported.
+**Why it matters:** Without it, the Checkup could tell a user that a gene will be expressed in E. coli when a terminator blocks it, when it is on the wrong strand or when it has no RBS - or refuse to predict the parts a plain file does not annotate.
+
+Checks the verdict given to each CDS in a bacterial context: an annotated promoter/RBS/terminator unit expresses it, predicted motifs on either strand give a 'likely' verdict, terminators before or inside the CDS block or truncate it, a CDS on the wrong strand or without an RBS is downgraded, and coding problems and regulation notes appear.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | filler + Pcons promoter + RBS + gfp CDS + T1 terminator + filler, circular | gfp verdict YES; unit promoter 'Pcons', rbs 'rbs', terminator 'T1', unit.cds == ['gfp'] |
-| 2 | only the CDS annotated, unit PROMOTER+RBS+gene+T1 on strand +1 and -1 | promoter, terminator and RBS all 'predicted' on that strand; verdict LIKELY, reason 'relies on predicted elements' |
-| 3 | promoter then T1 terminator upstream, then RBS + CDS 'lost' | verdict NO, reason[0] has 'stopped by T1' |
-| 4 | terminator T1 inserted inside gene(80), CDS 'cut' spanning it | verdict NO, reason[0] has 'inside the CDS' |
-| 5 | CDS 'anti' on reverse strand after a forward promoter; CDS 'bare' with no RBS | anti NO 'no bacterial promoter upstream'; bare UNLIKELY 'no RBS' |
-| 6 | broken CDS ATG+(GCT*10)+TAA+(GCT*10)+TAA; lacI gene downstream | broken UNLIKELY 'truncated protein'; lacI reason 'IPTG-inducible (lacI on the plasmid)', verdict YES |
-
-**Review notes:**
-
-- gene()/filler() use fixed random seeds, so a verdict change from a real regression and from a seed/codon change look the same (regression-value fragility).
+| 1 | filler + consensus sigma-70 promoter + RBS + gene + rrnB T1 + filler, annotated | verdict YES, unit promoter 'Pcons', rbs 'rbs', unit terminator 'T1', unit cds == ['gfp'] |
+| 2 | the same parts unannotated except the CDS, on the + and the - strand | promoter, terminator and RBS all predicted on the CDS's strand; verdict LIKELY with reason 'relies on predicted elements' |
+| 3 | promoter, T1, filler, RBS, CDS | verdict NO, first reason contains 'stopped by T1' |
+| 4 | promoter, RBS, first 120 bp of the gene, T1, rest of the gene, CDS annotated over all of it | verdict NO, first reason contains 'inside the CDS' |
+| 5 | promoter + CDS annotated on the minus strand; and a second promoter + CDS with a C-rich spacer instead of an RBS | NO with 'no bacterial promoter upstream'; UNLIKELY with 'no RBS' |
+| 6 | a CDS with an internal stop, plus a lacI CDS on the plasmid | UNLIKELY with a 'truncated protein' reason; lacI CDS gets the note 'IPTG-inducible (lacI on the plasmid)' and still verdict YES |
 
 ## `test_eukaryotic_hosts_and_unit_ends`
 
-**Result:** ✅ passed in 0.01 s · [line 140](../../tests/test_checkup.py#L140) · **Area:** Checkup: eukaryotic hosts · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 139](../../tests/test_checkup.py#L139) · **Area:** Plasmid checkup (eukaryotes) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-A CMV unit ends at its polyA and needs a Kozak context (weak Kozak / missing polyA are doubts); a U6 (Pol III) CDS is not translated; a eukaryotic promoter adds a eukaryote column; on a shuttle vector each unit stops at its own terminator kind and every CDS is judged per host.
+**Why it matters:** Without it, a mammalian expression construct could be judged by bacterial rules - no Kozak check, a polyA or a Pol III promoter ignored - and a shuttle vector would not get a per-host verdict.
 
-| # | Input | Expected output |
-|---|---|---|
-| 1 | CMV promoter + Kozak + egfp + polyA, then U6 promoter + odd CDS + polyA | hosts == (BACTERIA, EUKARYOTES); egfp euk YES 'strong Kozak', bacteria NO, host EUKARYOTES; odd euk NO 'Pol III' |
-| 2 | CMV promoter + 'TTTTTT' + weak CDS 'ATGA...' + filler, no polyA, linear | euk reasons 'weak Kozak' and 'no polyA'; verdict UNLIKELY |
-| 3 | shuttle: Pcons/RBS/kanR/polyA/RBS/after/T1 then CMV/Kozak/egfp/T1b/bGH polyA | Pcons unit terminator 'T1' (polyA ignored), CMV unit terminator 'bGH polyA' (T1 ignored); after bacteria YES; kanR bacteria YES/euk NO; egfp euk YES/bacteria NO |
-
-## `test_unit_extents_and_ends`
-
-**Result:** ✅ passed in 0.05 s · [line 184](../../tests/test_checkup.py#L184) · **Area:** Checkup: unit extent and ending · **Checked against:** in-test reference model · **Strength:** 🟢 strong
-
-A unit with no terminator runs round a circle (far CDS gets a distance note) or to the line end; a circular unit crosses the origin and can be added as an mRNA feature; +1 is exact only for an annotated TSS or a T7 promoter; unit endings are classed intrinsic / rho-dependent? / polyA / runs on.
+Checks that a CMV unit ends at its polyA signal and is judged on Kozak context rather than an RBS, that a weak Kozak and a missing polyA are doubts, that a U6 (Pol III) promoter yields no translation, that a eukaryotic promoter adds a eukaryote column, and that on a shuttle vector each unit ends at its own kind of terminator.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | promoter/RBS/near CDS + 3500 bp filler + RBS/far CDS, circular and linear | terminator None, extent length = ed.length minus (0 circular else u.a); near and far YES; 'no terminator'; far has 'kb downstream of P' |
-| 2 | RBS/CDS/T1 then filler then promoter (circular, unit wraps origin); add unit feature | CDS YES; unit_extent[1] > length; one mRNA feature with 2 spans |
-| 3 | T7 promoter, Pcons+annotated TSS, Pplain (all with CDS) | T7 tss_exact, tss 17; Pcons tss_exact at annotated base; Pplain not exact; units.geometry exact {T7:True, Pcons:True, Pplain:False} |
-| 4 | Pa+T1, Pb+odd terminator filler(60,32), CMV+bGH polyA; lone promoter+filler | Pa ending 'intrinsic' detail 'hairpin'; Pb 'rho-dependent?'; CMV 'polyA'; labels as expected; lone 'runs on' |
+| 1 | CMV promoter + GCCACC Kozak + egfp + polyA, then U6 promoter + CDS + polyA | hosts == (BACTERIA, EUKARYOTES); egfp YES in eukaryotes with 'strong Kozak' in the rbs label and NO in bacteria (host EUKARYOTES); the U6 CDS NO with 'Pol III' in the first reason |
+| 2 | CMV promoter + TTTTTT + CDS starting ATGA, no polyA, linear | eukaryote reasons include 'weak Kozak' and 'no polyA'; verdict UNLIKELY |
+| 3 | shuttle construct: Pcons/RBS/kanR/polyA/RBS/after/T1 then CMV/Kozak/egfp/T1/bGH polyA | Pcons unit ends at T1 (polyA does not stop the bacterial polymerase); CMV unit ends at bGH polyA (T1 does not stop the eukaryotic one) |
+| 4 | the same construct's CDS verdicts | 'after' YES in bacteria; kanR YES in bacteria and NO in eukaryotes; egfp YES in eukaryotes and NO in bacteria |
 
 **Review notes:**
 
-- L234 'ending_detail' containing 'hairpin' and the Pb 'rho-dependent?' both depend on the random filler(60,32) seq matching a hairpin motif only by seed; brittle but asserted exactly.
+- The CMV and U6 promoters are random filler named 'CMV promoter' / 'U6 promoter', so this exercises name-based recognition only, not any sequence motif.
+
+## `test_how_far_a_unit_runs_and_how_it_ends`
+
+**Result:** ✅ passed in 0.04 s · [line 183](../../tests/test_checkup.py#L183) · **Area:** Transcription units · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** Without it, the drawn transcript could stop at the wrong base, miss that it wraps the origin, claim an exact +1 it cannot know, or describe its ending wrongly, misleading the user about what is actually transcribed.
+
+Checks that a promoter without a terminator runs round a circle or to the end of a line (with a distance note on a far CDS), that a unit crossing the origin becomes a two-span mRNA feature, that +1 is only flagged exact where the start base is really known, and that each unit ending is classified and labelled.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | promoter, RBS, near CDS, 3500 bp filler, RBS, far CDS - circular and linear | unit terminator None, extent reaching the end (whole length when circular); both CDS YES; 'no terminator' reason on the near one; 'kb downstream of P' note on the far one |
+| 2 | RBS + CDS + T1 + filler + promoter on a circle (promoter last) | CDS YES; unit extent end > sequence length (passes the origin); the added unit feature is one mRNA with 2 spans |
+| 3 | T7 promoter / promoter with an annotated TSS feature / plain consensus promoter | T7 tss_exact with tss == 17; Pcons tss_exact at the annotated base; Pplain not exact; after writing unit features, units.geometry reports exact True/True/False |
+| 4 | promoter + T1 / promoter + a T-poor 60 bp 'terminator' / CMV promoter + polyA | endings 'intrinsic' (detail mentions hairpin), 'rho-dependent?', 'polyA'; labels 'Pa -> T1 (intrinsic)' and 'CMV promoter -> bGH polyA' |
+| 5 | a lone promoter with only filler after it | ending 'runs on', label 'P -> runs on' |
 
 ## `test_origins_and_prediction_thresholds`
 
-**Result:** ✅ passed in 0.09 s · [line 243](../../tests/test_checkup.py#L243) · **Area:** Checkup: origins and thresholds · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.07 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
-Replication origins are named with group/host and pir notes; the ColE1-group and no-origin remarks fire; prediction thresholds keep false hits rare in 50 kb of random DNA; SD/motif slices near a linear start are placed from base 0.
+**Why it matters:** Without it, the Checkup could name the wrong origin family (or miss that a plasmid has none, or needs a pir host), and the motif predictors could flood a real plasmid with chance hits.
+
+Checks that annotated rep_origin features are mapped to origin names, hosts and notes (including the R6K pir note and the ColE1-group and no-origin remarks), that the promoter and terminator predictors fire rarely on 50 kb of random DNA, and that a motif near the start of a linear sequence is placed at the right base.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | rep_origins pUC/p15A/ColE1/R6K gamma/f1 (filler bodies) | names pUC, p15A, 'pMB1 / ColE1'; f1 host 'Phage'; R6K note has 'pir'; remark '2 origins of the ColE1 group' |
-| 2 | R6K gamma ori + pir CDS | origin note 'pir is on the plasmid' |
-| 3 | f1 ori + a CDS (no bacterial ori) | note 'no bacterial replication origin' |
-| 4 | 50,000 bp random (seed 7) | <= 8 promoters at score 10 and <= 8 terminators at stem 18 |
-| 5 | Strand 'AGGAGGTTTTATG'+GCT*20, linear; sd_match(st,10,20) | (6, 0, 6) = AGGAGG matched, slice starts at base 0 |
+| 1 | rep_origin features named pUC ori, p15A ori, ColE1 origin, R6K gamma ori, f1 ori | names 'pUC', 'p15A', 'pMB1 / ColE1'; f1 host 'Phage'; R6K note mentions pir |
+| 2 | R6K gamma ori plus a CDS labelled 'pir' | note == 'pir is on the plasmid' |
+| 3 | the five-origin construct / a plasmid with only f1 ori and a gene | a note about '2 origins of the ColE1 group'; a note 'no bacterial replication origin' |
+| 4 | 50 000 random bases, predict_promoters(threshold 10) and predict_terminators(18) | at most 8 predictions each |
+| 5 | sd_match on AGGAGGTTTTATG + GCT x 20 from base 10 to 20, linear | (6, 0, 6) |
 
 **Review notes:**
 
-- L264-265 thresholds are '<= 8' on one random sequence: a loose bound that only catches gross over-prediction, not the intended rarity.
-- L264-265 the oracle for the count is the code under test itself (predict_promoters/predict_terminators), so a systematic threshold bug would pass as long as it stays under 8.
+- The <= 8 bounds on a single random sequence are a loose regression threshold, not a real false-positive rate; a predictor that returned zero hits would also pass.
+- Origin recognition here is driven by the feature labels, not the sequence.
 
 ## `test_library_parts_on_a_real_plasmid`
 
-**Result:** ✅ passed in 0.03 s · [line 272](../../tests/test_checkup.py#L272) · **Area:** Checkup: library parts, real plasmid · **Checked against:** regression value · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 269](../../tests/test_checkup.py#L269) · **Area:** Plasmid checkup (parts library) · **Checked against:** smoke · **Strength:** 🟡 adequate
 
-On the real demo plasmid pBAD30_eilR.gb the checkup uses the built-in part library: the T2 terminator comes from the library and eilR is called expressed behind the araBAD promoter, inducible by arabinose with araC on the plasmid.
+**Why it matters:** Without it, the built-in parts library could override a file's own annotations, or fail to supply the terminator a bare sequence needs, changing the verdicts on real plasmids.
+
+Runs the Checkup on the annotated demo plasmid pBAD30_eilR and on the same bases with no annotations, checking that the library adds nothing to the annotated one but supplies a terminator to the bare one, and that eilR gets a YES verdict behind the araBAD promoter with an arabinose/araC note.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | demo/pBAD30_eilR.gb, library enabled (this test only) | some element origin 'library', kind 'terminator' |
-| 2 | same | eilR verdict YES, unit promoter 'araBAD promoter'; reason has 'arabinose' and 'araC on the plasmid' |
+| 1 | demo/pBAD30_eilR.gb opened in an Editor, C.run | no element with origin 'library' |
+| 2 | the same bases as a new unannotated circular document | at least one library-sourced terminator element |
+| 3 | the eilR CDS verdict in the annotated file | verdict YES, unit promoter 'araBAD promoter'; a reason mentioning arabinose and 'araC on the plasmid' |
 
 **Review notes:**
 
-- Depends on the committed demo file and the library contents; no reason given why eilR should be YES beyond those fixtures.
+- Only three assertions over one file; it shows the library is consulted but not that any particular part is matched correctly.
+- Tied to a demo file whose annotation changes would change the result.
 
-## `test_panel_tree_overlay_and_adding`
+## `test_unit_features_keep_their_geometry_and_survive_a_file_round_trip`
 
-**Result:** ✅ passed in 0.03 s · [line 283](../../tests/test_checkup.py#L283) · **Area:** GUI: Checkup panel tree/overlay · **Checked against:** GUI state · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 284](../../tests/test_checkup.py#L284) · **Area:** Transcription unit features · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
-The Checkup dialog shows one tree of units and the CDSs they carry (verdict per host) then orphan CDSs; while shown it draws its findings as temporary overlay features under the document's filter; they vanish when hidden; adding the units does not draw them twice; a temp feature can be selected/hovered but not edited/deleted.
+**Why it matters:** Without it, a transcription unit saved into a file could be drawn with the wrong +1, the wrong thick/thin split or lost altogether on reload, and old files written under the program's former name would stop working.
 
-| # | Input | Expected output |
-|---|---|---|
-| 1 | Pcons/RBS/gfp/T1 + filler + lonely CDS; CheckupDialog | top items ['Pcons -> T1 (intrinsic)', NONE]; gfp YES child, lonely NO child; header ['Unit / CDS','Location',BACTERIA,'Notes'] |
-| 2 | dialog not shown, then shown | overlay_features empty before; after show exactly one TU overlay in ed.shown, none in ed.features |
-| 3 | set_display(units=False) then True | the temp feature leaves ed.shown/visible, then returns |
-| 4 | select tree gfp child; select_feature(temp); edit_feature on temp | selection length == len(gene()); current_feature None; describe has 'Pcons'; edit_feature returns False |
-| 5 | add_units(); refresh(); hide(); show(); close() | one TU in ed.features; no TU in overlay_features (not drawn twice); overlay empty when hidden |
-
-## `test_checkup_tab_and_pane`
-
-**Result:** ✅ passed in 0.18 s · [line 323](../../tests/test_checkup.py#L323) · **Area:** GUI: Checkup tab/pane wiring · **Checked against:** GUI state · **Strength:** 🟡 adequate
-
-Tools > Plasmid Checkup opens one tab with checkup beside map and sequence (reused, not duplicated); picking checkup in a pane adds the map and sequence its tab lacks, a tab already showing them gets nothing more, and a pane closed afterwards stays closed.
+Checks the geometry of unit features on both strands and across the origin (thin over the promoter, thick from +1, 'stopped' or running on), that a plain mRNA is not a unit, that units have their own display switch independent of the mRNA type, and that saving and reloading (including under the legacy /OpenGenEdit_tu key) gives identical geometry while exports omit the private qualifier.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | load demo plasmid; win.open_checkup() twice | tab count +1 then unchanged; pane views [TOOL,'Map','Sequence']; current index back to the checkup tab |
-| 2 | new window: Features tab, pane.set_view(TOOL) | ordered panes [TOOL,'Map','Sequence']; after closing Map -> [TOOL,'Sequence'] |
-| 3 | standard tab (has Map and Sequence): a Features pane set_view(TOOL) | pane views == sorted ['Sequence','Map',TOOL] (only the pane changes) |
-
-## `test_units_as_features`
-
-**Result:** ✅ passed in 0.12 s · [line 374](../../tests/test_checkup.py#L374) · **Area:** Units as features (units.py) · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-Transcription-unit features carry geometry on both strands and across the origin (a plain mRNA is not a unit); the display filter has a dedicated units switch (not shown as mRNA), the views draw them without error on circle and line, projects remember the switch, exports omit the private qualifier, and the flat toolbar icons use one colour.
-
-| # | Input | Expected output |
-|---|---|---|
-| 1 | unit_doc() forward unit Pcons->T1 | tss == len(PROMOTER), stopped, end == len(PROMOTER+RBS+gene+T1); pieces thin over promoter then thick from +1 |
-| 2 | reverse unit Prev (no terminator, circular) | not stopped (runs on round the circle); tss at Prev's left end; thin over promoter, thick sums to length-len(PROMOTER); 2 spans |
-| 3 | plain gfp mRNA feature | units.geometry None and units.tu_of None |
-| 4 | DisplayPanel on circle and line; SequenceView and MapView render | 'mRNA' not in panel.kinds; render raises nothing; 2 TUs in ed.shown |
-| 5 | panel.units unchecked; set_display(hidden_kinds={'mRNA'}, units=True) | no TU drawn; project meta display.units False; hiding mRNA type still leaves 2 TUs shown; gff3 lacks 'OpenDNA_tu' |
-| 6 | icons.filter_icon / history_icon 32x32 | at most 2 opaque colours (one flat colour, antialias aside) |
+| 1 | Pcons/RBS/gfp/T1 + filler + a reverse promoter, unit features added | forward unit: tss == len(PROMOTER), stopped, end == len(PROMOTER+RBS+gene+T1), pieces [(0,tss,thin),(tss,end,thick)] |
+| 2 | the reverse-strand unit | not stopped (runs round the circle); tss at Prev's left end; one thin piece over the promoter; thick pieces total length - len(PROMOTER); the feature has 2 spans (crosses the origin) |
+| 3 | the plain 'gfp' feature | units.geometry is None and tu_of is None |
+| 4 | set_display(units=False) / hidden_kinds={'mRNA'} with units=True | 2 units shown normally; none shown when units off (also in map_features); project_meta display.units is False; hiding the mRNA kind still leaves the 2 units shown |
+| 5 | saving to GenBank | the file contains '/OpenDNA_tu=' and no 'OpenGenEdit' |
+| 6 | the same file with the key renamed to /OpenGenEdit_tu, reloaded | 2 units whose geometry equals the originals exactly; both shown; the display switch still works |
+| 7 | gff3 and tbl exports of both documents | neither TU_KEY nor 'OpenGenEdit_tu' appears |

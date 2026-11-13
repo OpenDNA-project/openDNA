@@ -22,6 +22,7 @@ PANELS = {
         ("Double-click a feature or primer", "Edit it"),
         ("Right-click a feature", "Edit / delete / show its translation"),
         ("Right-click selected bases", "Add primer F / R, add feature, add gene, copy, copy reverse complement"),
+        ("Ctrl+R / Ctrl+Shift+R", "New forward / reverse primer from the selected bases"),
         ("Ctrl+wheel, Ctrl+= / Ctrl+-", "Bigger / smaller letters"),
         ("Ctrl+0", "Default letter size"),
         ("Scroll past the end", "Circular sequences continue at base 1 (and back)"),

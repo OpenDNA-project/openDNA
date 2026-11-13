@@ -2,16 +2,20 @@
 
 [← all test files](README.md) · source: [`tests/test_selftest.py`](../../tests/test_selftest.py)
 
-## `test_selftest_checks`
+## `test_every_selftest_check_passes`
 
-**Result:** ✅ passed in 0.84 s · [line 18](../../tests/test_selftest.py#L18) · **Area:** In-app self-test · **Checked against:** in-test reference model · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.39 s · [line 14](../../tests/test_selftest.py#L14) · **Area:** In-app self-test · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
-Runs every in-app self-test check (Settings > Self-test) under pytest and checks the panel reports them all passed.
+**Why it matters:** Without it the Help > Troubleshooting > Self-Test checks could start failing in a release without anyone noticing before a user runs them.
+
+Runs every check registered in app/selftest.py (editing vs plain string edits, random edits with undo/redo, annotation drift, linearising a plasmid, primer binding mismatches) and fails listing every failing check; also requires at least 9 checks to be registered.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | each of the 9 selftest.CHECKS (editing vs string, 200 edits + undo, annotation drift, 150-step random edits x2 seeds, linearize undo, primer mismatches, 5' tail / 3' mismatch) | all return ok; failures listed together |
+| 1 | selftest.CHECKS | At least 9 checks registered |
+| 2 | run_check(fn) for each check | All pass; otherwise every failure listed as 'area: what: message' |
 
-**Fixed by the audit of November 2026:**
+**Review notes:**
 
-- Removed in the second pass of the audit (fewer tests to review, no biological check lost): the panel re-run was removed (the panel's counting and messages are tested with fake checks in test_app_logic.py); the test now asserts that the 9 checks are registered, so it cannot pass with none.
+- The real checks live in app/selftest.py; this test's strength is theirs and cannot be judged from the test file.
+- Overlap: tests/test_documents.py::test_random_edits_keep_bases_and_features_then_undo_redo_exactly runs the same selftest.run_random_edits machinery with 500 edits; this test re-runs the short in-app versions. Still worth keeping as the guard that the in-app self-test itself passes.

@@ -25,7 +25,7 @@ from editor import Editor, clean_pasted
 from shortcuts import ShortcutsDialog
 from sponsors import SponsorsDialog, show_at_startup
 from feature_dialog import edit_feature
-from feature_table import FeatureTable, delete_feature, features_inside, group_as_gene
+from feature_table import FeatureTable, delete_feature, features_inside, group_as_gene, reverse_primer_dialog
 from map_view import MapView
 from editor import primer_sequence
 from primer_db import copy_old_data, data_dir, db
@@ -377,6 +377,9 @@ class MainWindow(QMainWindow):
 
         primers = self.menuBar().addMenu("&Primers")
         action(primers, "&New Primer…", "Ctrl+Shift+P", lambda: PrimerDialog(self, self.editor).exec())
+        # the two of the right-click menu on selected bases (Add Primer F / R), on keys
+        action(primers, "New Primer (&Forward) from Selection", "Ctrl+R", lambda: PrimerDialog(self, self.editor).exec())
+        action(primers, "New Primer (&Reverse) from Selection", "Ctrl+Shift+R", lambda: reverse_primer_dialog(self, self.editor).exec())
         primers.addAction(QAction("Primer &Database…", self, triggered=lambda: db_tabs.open_tab(self, db_tabs.PRIMERS)))
         action(primers, "&Options…", None, self.primer_options)
         primers.addSeparator()

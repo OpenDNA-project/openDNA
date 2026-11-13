@@ -2,89 +2,62 @@
 
 [← all test files](README.md) · source: [`tests/test_file_assoc.py`](../../tests/test_file_assoc.py)
 
-## `test_register`
+## `test_register_writes_only_our_keys_and_status_reads_them_back`
 
-**Result:** ✅ passed in 0.00 s · [line 107](../../tests/test_file_assoc.py#L107) · **Area:** File associations: register() · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 99](../../tests/test_file_assoc.py#L99) · **Area:** Windows file associations: register · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
-register() writes the full Windows file-association registration (ProgID, DefaultIcon, OpenWithProgids, Capabilities, RegisteredApplications) touching only the program's own keys, supports a subset/unknown extensions, refuses when run from source, and uses the frozen exe as launcher.
+**Why it matters:** Without it double-clicking a .gb/.fa file might not open openDNA, or registering could overwrite other programs' entries or the user's default-app choice in the registry.
 
-| # | Input | Expected output |
-|---|---|---|
-| 1 | register(None, fakeReg, EXE) | returns list(FILE_TYPES); shell/open/command == '"...openDNA.exe" "%1"'; DefaultIcon ==',0'; FriendlyAppName=='openDNA'; every ext has OpenWithProgids/SupportedTypes/FileAssociations; RegisteredApps set; reg.changes==1 |
-| 2 | inspect reg.writes | every write path under our 4 roots or endsWith OpenWithProgids; no 'userchoice' written |
-| 3 | register(['.gb','fa'], reg, EXE) | returns ['.gb','.fa']; status .gb==THIS, .dna==NONE; not registered-for-current-exe |
-| 4 | register(['.txt']) | raises ValueError; snapshot unchanged (nothing written) |
-| 5 | is_frozen->False: launcher() / register(None) | launcher None; RuntimeError match 'program file'; reg.keys=={}; launcher(dev=True) ends main.py; command ends '"%1"' |
-| 6 | sys.frozen=True | launcher()==[resolved sys.executable] |
-
-## `test_status_default_and_settings_page`
-
-**Result:** ✅ passed in 0.00 s · [line 162](../../tests/test_file_assoc.py#L162) · **Area:** File associations: status/stale/default · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-status() round-trips NONE/THIS/OTHER, detects a stale (moved-exe) registration ignoring path case, is_default_for reads UserChoice, and the default-apps settings page opens with a deep-link fallback.
+Against a dictionary-backed fake registry, checks the keys register writes (ProgID command and icon, OpenWithProgids, SupportedTypes, Capabilities, RegisteredApplications), that nothing outside them or UserChoice is touched, refusals (unknown extension, running from source), status and stale detection for a moved exe, case-insensitive path matching, UserChoice reading, the default-apps settings link with fallback, and removal of the old OpenGenEdit registration.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | unregistered status | all NONE; not registered, not stale |
-| 2 | register EXE; status | all THIS; registered; not stale |
-| 3 | status with MOVED launch path | all OTHER; is_stale True; register(MOVED) repairs; command starts '"D:' |
-| 4 | register EXE, query with EXE[0].upper() | is_registered_for_current_exe True (case ignored) |
-| 5 | set UserChoice ProgId==PROGID for .gb | is_default_for('.gb') True, '.fa' False |
-| 6 | open_default_apps_settings(opener) | opens 'ms-settings:defaultapps?registeredAppUser=openDNA'; opener that rejects '?' falls back to 'ms-settings:defaultapps'; opener that always raises -> returns False |
+| 1 | register(None, reg, ['C:\Apps\openDNA\openDNA.exe']) | Returns all FILE_TYPES; command '"...openDNA.exe" "%1"', icon '...,0', FriendlyAppName 'openDNA'; per-extension entries; RegisteredApplications -> CAPABILITIES; shell notified once |
+| 2 | Every recorded write | Only under our ProgID, Applications\openDNA.exe, CAPABILITIES, RegisteredApplications (name 'openDNA') or OpenWithProgids (our ProgID); never UserChoice |
+| 3 | register(['.gb','fa']); then register(['.txt']) | ['.gb','.fa']; status .gb THIS, .dna NONE; not fully registered; .txt -> ValueError and registry unchanged |
+| 4 | Not frozen: launcher(), register(None, reg) | None; RuntimeError 'program file'; registry empty; launcher(dev=True) ends with main.py and its command ends with "%1" |
+| 5 | sys.frozen=True: launcher() | [resolved sys.executable] |
+| 6 | Status before/after register, then with the exe moved to D:\Elsewhere | All NONE -> all THIS -> all OTHER with is_stale True; registering again for the moved path fixes it, command starts with "D: |
+| 7 | is_registered_for_current_exe with the path upper-cased | True |
+| 8 | is_default_for('.gb') before/after UserChoice ProgId set | False / True; .fa still False |
+| 9 | open_default_apps_settings with a working opener / an opener refusing '?' URIs / one always failing | 'ms-settings:defaultapps?registeredAppUser=openDNA', True / falls back to 'ms-settings:defaultapps', True / False |
+| 10 | Registry holding OpenGenEdit ProgID, OpenWithProgids and RegisteredApplications entries, then register | has_legacy True before, False after; old entries removed |
 
-## `test_unregister`
+**Review notes:**
 
-**Result:** ✅ passed in 0.00 s · [line 213](../../tests/test_file_assoc.py#L213) · **Area:** File associations: unregister() · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+- The fake registry is the test's own model of winreg; the real WinRegistry wrapper is not exercised here, so a bug in that thin layer would go unnoticed.
 
-unregister() removes exactly the keys register() created (restoring other programs' shared keys byte-for-byte), leaves no trace on an otherwise-empty registry, and removes extensions an older version registered.
+## `test_unregister_removes_exactly_what_we_added`
 
-| # | Input | Expected output |
-|---|---|---|
-| 1 | pre-seed other programs' .gb/OpenWithProgids, Other.exe, QSettings, RegisteredApps, UserChoice; snapshot; register EXE; unregister | unregister True; snapshot == pre-seeded others (exact); status all NONE; second unregister False; reg.changes==2 |
-| 2 | register then unregister on empty registry | empty_skeleton(reg) True (no PROGID/capabilities/openwithprogids/.ext keys left) |
-| 3 | register, add .old to Capabilities FileAssociations + .old OpenWithProgids, unregister | Software\Classes\.old no longer exists |
+**Result:** ✅ passed in 0.00 s · [line 208](../../tests/test_file_assoc.py#L208) · **Area:** Windows file associations: unregister · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
-## `test_should_ask_decision_table`
+**Why it matters:** Without it removing the file associations could delete other programs' registry keys or the user's settings, or leave openDNA entries behind.
 
-**Result:** ✅ passed in 0.01 s · [line 253](../../tests/test_file_assoc.py#L253) · **Area:** File associations: should_ask() decision table · **Checked against:** hand-computed · **Strength:** 🟢 strong
-
-should_ask() returns the right prompt ('first'/'stale'/None) across Windows/source/frozen, already-registered, 'don't ask again', asked-once, and stale-only-after-accept cases, and persisted ini booleans survive a reload.
+Seeds the fake registry with other programs' keys, registers then unregisters, and checks the registry returns exactly to the earlier snapshot; also on an empty registry and for an extension added by an older version.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | frozen=False / windows=False combos | None; plain Windows+frozen -> 'first' |
-| 2 | already registered for EXE | None |
-| 3 | dont_ask='true' (even with accepted+stale MOVED) | None |
-| 4 | asked='true' | 'first' before set, None after |
-| 5 | register MOVED (stale); accepted='true' | None before accept, 'stale' after; stale_asked_for==command_for(EXE) -> None; new path E:\Third -> 'stale' again |
-| 6 | write asked='true', sync, reopen settings | ask -> None (booleans survive reload) |
+| 1 | Other programs' .gb ProgID and default, another app, openDNA QSettings key, another RegisteredApplications entry, UserChoice; register then unregister | unregister True; snapshot identical to before; status all NONE |
+| 2 | unregister again | False; shell notified only twice in total |
+| 3 | register + unregister on an empty registry | Only empty shared parent keys remain |
+| 4 | Extra '.old' extension under our Capabilities and OpenWithProgids, then unregister | Software\Classes\.old removed |
 
-## `test_startup_question_screens`
+## `test_startup_question_decision_table`
 
-**Result:** ✅ passed in 0.05 s · [line 312](../../tests/test_file_assoc.py#L312) · **Area:** File associations: startup dialog flow · **Checked against:** GUI state · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 242](../../tests/test_file_assoc.py#L242) · **Area:** Windows file associations: start-up question · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-The start-up association dialog (driven without exec) does nothing when there's nothing to ask, and Yes/Not now/Don't ask again/stale-repair/failed-registration each register, remember, and message correctly.
+**Why it matters:** Without it the app could nag users at every start about file associations, ask when running from source or off Windows, ignore 'don't ask again', or fail to repair the association after the exe was moved.
 
-| # | Input | Expected output |
-|---|---|---|
-| 1 | ask_at_startup with frozen=False then windows=False | None; _open_boxes empty |
-| 2 | Yes button click | registered; ask->None; ini accepted=='true'; a 'Default apps' info box with 'click openDNA'; its open button calls open_default_apps_settings (opened==[1]) |
-| 3 | Not now (later) click | nothing written (status .gb NONE); ask None; dont_ask unset |
-| 4 | Don't ask again (never) click | ask None; dont_ask=='true'; reg.keys=={} |
-| 5 | accepted + register MOVED, stale box | box text has 'moved'; Yes registers EXE; later-click on third path remembered (ask None) |
-| 6 | Refusing registry (set raises PermissionError), register_now | returns False; a box contains 'denied by policy'; ini accepted stays None |
-
-## `test_manage_dialog`
-
-**Result:** ✅ passed in 0.01 s · [line 372](../../tests/test_file_assoc.py#L372) · **Area:** File associations: manage dialog · **Checked against:** GUI state · **Strength:** 🟢 strong
-
-The FileAssociationsDialog enables register/update/remove buttons correctly as state changes (register, moved-exe->Update, remove), disables all when run from source, and places the default settings file in the data dir.
+Walks the should_ask / ask_at_startup decision table with the fake registry and a private ini file: when to return 'first', 'stale' or nothing, and the silent repair cases.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | open dialog unregistered | 'not yet offered'; register enabled, remove disabled |
-| 2 | click register | registered; 'registered for this program file'; register disabled, remove enabled |
-| 3 | set launch=MOVED, refresh | register button text 'Update', enabled |
-| 4 | click remove | empty_skeleton(reg); ini accepted=='false'; remove disabled |
-| 5 | is_frozen->False dialog | 'from source'; both buttons disabled |
-| 6 | settings_path() | parent == data_dir() (nothing created) |
+| 1 | frozen=False and/or windows=False | None |
+| 2 | Frozen on Windows, nothing registered, fresh ini | 'first' |
+| 3 | Already registered for this exe | None |
+| 4 | dont_ask=true (also with accepted=true and a stale registration) | None |
+| 5 | asked=true | None |
+| 6 | Registered for another path: never accepted / accepted / stale_asked_for = this path / launched from a third path | None / 'stale' / None / 'stale' |
+| 7 | asked=true written to an ini file and reloaded | None (the boolean survives the reload) |
+| 8 | accepted=true, registered for another path, ask_at_startup | None, and the registration now points to this exe (silent repair) |
+| 9 | asked=true but an OpenGenEdit registration present | should_ask 'stale'; ask_at_startup repairs silently and removes the legacy keys; then None |

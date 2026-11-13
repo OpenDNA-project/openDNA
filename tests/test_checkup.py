@@ -1,5 +1,6 @@
 """Plasmid Checkup (app/checkup.py): promoter / terminator / RBS prediction, transcription units and the verdict of each
-CDS, on constructs built here from known parts (filler and genes are random, with fixed seeds)."""
+CDS, on constructs built here from known parts (filler and genes are random, with fixed seeds), plus the transcription
+unit features (app/units.py) those checkups add to a document."""
 import os
 import random
 import sys
@@ -12,22 +13,21 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
 import pytest
-from PySide6.QtWidgets import QApplication
 
 from opendna_core import Document
 
 import checkup as C
+import exports
 import genetic_code
-import units
 import tool_settings
+import units
 from editor import Editor, reverse_complement
-
-app = QApplication.instance() or QApplication([])
 
 # A consensus sigma-70 promoter (-35 TTGACA, 17 bp spacer, -10 TATAAT), the rrnB T1 terminator, a strong RBS.
 PROMOTER = "TTGACAATTAATCATCCGGCTCGTATAATGTGTGGAA"
 T1 = "AAGGCTCAGTCGAAAGACTGGGCCTTTCGTTTTATCTGTTGTTTGTCGG"
 RBS = "AAGGAGGTAACAT"
+KOZAK = "GCCACC"   # gccRcc before ATG; gene() puts a G at +4 only by chance, so the tests set it
 
 
 def filler(n, seed):
@@ -41,6 +41,9 @@ def gene(aa=60, seed=1):
     standard = genetic_code.TABLES[1].codons
     sense = [c for c in standard if standard[c] != "*"]
     return "ATG" + "".join(rnd.choice(sense) for _ in range(aa)) + "TAA"
+
+
+POLYA = "AATAAA" + filler(40, 10)
 
 
 def construct(parts, circular=True):
@@ -60,7 +63,7 @@ def construct(parts, circular=True):
 
 @pytest.fixture(autouse=True)
 def no_library(request, monkeypatch):
-    """Only what each test builds is used: library parts are tested once, by the test named so."""
+    """Only what each test builds is used: the library parts are tested once, by the test named so."""
     if "library" not in request.node.name:
         real = tool_settings.value
         monkeypatch.setattr(tool_settings, "value",
@@ -87,8 +90,8 @@ def test_bacterial_cds_verdicts():
     # --- predicted elements: nothing annotated but the CDS, on the plus and the minus strand ---
     for strand in (1, -1):
         g = gene()
-        unit = PROMOTER + "AAAC" + RBS + g + "AAAC" + T1
-        ed = construct([(None, "", filler(150, 3), 1), (None, "", unit, strand), (None, "", filler(150, 4), 1)])
+        whole = PROMOTER + "AAAC" + RBS + g + "AAAC" + T1
+        ed = construct([(None, "", filler(150, 3), 1), (None, "", whole, strand), (None, "", filler(150, 4), 1)])
         s = 150 + (len(PROMOTER + "AAAC" + RBS) if strand > 0 else len(T1) + 4)
         loc = f"{s + 1}..{s + len(g)}"
         ed.add_features([("CDS", loc if strand > 0 else f"complement({loc})", [("label", "g")])])
@@ -133,10 +136,6 @@ def test_bacterial_cds_verdicts():
     assert v["lacI"].verdict == C.YES   # inducible is a note, not a doubt
 
 
-KOZAK = "GCCACC"   # gccRcc before ATG; gene() puts a G at +4 only by chance, so the tests set it
-POLYA = "AATAAA" + filler(40, 10)
-
-
 def test_eukaryotic_hosts_and_unit_ends():
     """A CMV unit ends at its polyA signal and needs a Kozak context, not an RBS (a weak Kozak and a missing polyA are
     doubts); a U6 unit (Pol III) is not translated; eukaryotic cells get a column of their own because the plasmid has a
@@ -172,19 +171,19 @@ def test_eukaryotic_hosts_and_unit_ends():
                     ("T1b", "terminator", T1, 1), ("bGH polyA", "polyA_signal", POLYA, 1),
                     (None, "", filler(100, 18), 1)])
     r = C.run(ed)
-    units = {u.promoter.label: u for u in r.units}
-    assert units["Pcons"].terminator.label == "T1", "polyA does not stop the bacterial polymerase"
-    assert units["CMV promoter"].terminator.label == "bGH polyA", "rrnB T1 does not stop the eukaryotic one"
+    by = {u.promoter.label: u for u in r.units}
+    assert by["Pcons"].terminator.label == "T1", "polyA does not stop the bacterial polymerase"
+    assert by["CMV promoter"].terminator.label == "bGH polyA", "rrnB T1 does not stop the eukaryotic one"
     v = {c.feature.label: c for c in r.cds}
     assert v["after"].hosts[C.BACTERIA].verdict == C.YES
     assert v["kanR"].hosts[C.EUKARYOTES].verdict == C.NO and v["kanR"].hosts[C.BACTERIA].verdict == C.YES
     assert v["egfp"].hosts[C.EUKARYOTES].verdict == C.YES and v["egfp"].hosts[C.BACTERIA].verdict == C.NO
 
 
-def test_unit_extents_and_ends():
-    """How a unit runs: with no terminator it runs round a circle (the far CDS gets a note on its distance) or to the end
-    of a line; a circular unit passes the origin and can be added as an mRNA feature; +1 is written only where the start
-    base is known (an annotated TSS or a T7 promoter); how units end (intrinsic, rho-dependent?, polyA, runs on)."""
+def test_how_far_a_unit_runs_and_how_it_ends():
+    """With no terminator a unit runs round a circle or to the end of a line (the far CDS gets a note on its distance);
+    a unit can pass the origin and be added as an mRNA feature; +1 is exact only where the start base is known; units end
+    in their own ways (intrinsic, rho-dependent?, polyA, runs on)."""
     # --- a single promoter without a terminator ---
     for circular in (True, False):
         ed = construct([("P", "promoter", PROMOTER, 1), ("rbs", "RBS", RBS, 1), ("near", "CDS", gene(), 1),
@@ -198,7 +197,7 @@ def test_unit_extents_and_ends():
         assert any("no terminator" in x for x in v["near"].reasons)
         assert any("kb downstream of P" in x for x in v["far"].reasons), v["far"].reasons
 
-    # --- a unit around the origin, and adding it ---
+    # --- a unit around the origin, added as an mRNA feature ---
     ed = construct([("rbs", "RBS", RBS, 1), ("g", "CDS", gene(), 1), ("T1", "terminator", T1, 1),
                     (None, "", filler(300, 12), 1), ("P", "promoter", PROMOTER, 1)])
     r = C.run(ed)
@@ -226,9 +225,8 @@ def test_unit_extents_and_ends():
     assert exact == {"T7 promoter": True, "Pcons": True, "Pplain": False}
 
     # --- how units end ---
-    odd = filler(60, 32)
     ed = construct([("Pa", "promoter", PROMOTER, 1), ("T1", "terminator", T1, 1), (None, "", filler(50, 33), 1),
-                    ("Pb", "promoter", PROMOTER, 1), ("tR?", "terminator", odd, 1), (None, "", filler(50, 34), 1),
+                    ("Pb", "promoter", PROMOTER, 1), ("tR?", "terminator", filler(60, 32), 1), (None, "", filler(50, 34), 1),
                     ("CMV promoter", "promoter", filler(150, 35), 1), ("bGH polyA", "polyA_signal", POLYA, 1)], False)
     by = {u.promoter.label: u for u in C.run(ed).units}
     assert by["Pa"].ending == "intrinsic" and "hairpin" in by["Pa"].ending_detail
@@ -265,8 +263,7 @@ def test_origins_and_prediction_thresholds():
     assert len(C.predict_terminators(st, 18)) <= 8
 
     # --- motifs near the start of a linear sequence: a line's slices start at its first base ---
-    st = C.Strand("AGGAGGTTTTATG" + "GCT" * 20, 1, False)
-    assert C.sd_match(st, 10, 20) == (6, 0, 6)
+    assert C.sd_match(C.Strand("AGGAGGTTTTATG" + "GCT" * 20, 1, False), 10, 20) == (6, 0, 6)
 
 
 def test_library_parts_on_a_real_plasmid():
@@ -284,109 +281,16 @@ def test_library_parts_on_a_real_plasmid():
     assert any("arabinose" in x and "araC on the plasmid" in x for x in v["eilR"].reasons)
 
 
-def test_panel_tree_overlay_and_adding():
-    """One tree: each unit with the CDSs it carries (the verdict per host), then those no unit carries. While the panel
-    is shown, what it found is drawn in the document's own views as temporary features, under the document's filter;
-    hidden, they go. Adding the units to the document does not draw them twice."""
-    ed = construct([("Pcons", "promoter", PROMOTER, 1), ("rbs", "RBS", RBS, 1), ("gfp", "CDS", gene(), 1),
-                    ("T1", "terminator", T1, 1), (None, "", filler(100, 13), 1), ("lonely", "CDS", gene(seed=9), 1),
-                    (None, "", filler(100, 14), 1)])
-    d = C.CheckupDialog(None, ed)
-    tree = d.units_tree
-    top = [tree.topLevelItem(i) for i in range(tree.topLevelItemCount())]
-    assert [t.text(0) for t in top] == ["Pcons → T1 (intrinsic)", C.CheckupDialog.NONE]
-    assert top[0].child(0).text(0) == "gfp" and top[0].child(0).text(2) == C.YES
-    assert top[1].child(0).text(0) == "lonely" and top[1].child(0).text(2) == C.NO
-    assert [tree.headerItem().text(c) for c in range(tree.columnCount())] == ["Unit / CDS", "Location", C.BACTERIA, "Notes"]
-    assert ed.overlay_features == [], "nothing is drawn while the panel is not shown"
-    d.show()
-    temp = [f for f in ed.overlay_features if units.is_tu(f)]
-    assert len(temp) == 1 and temp[0] in ed.shown and not any(units.is_tu(f) for f in ed.features)
-    ed.set_display(units=False)   # the document's own filter
-    assert temp[0] not in ed.shown and temp[0] not in ed.visible_features(0, ed.length)
-    ed.set_display(units=True)
-    tree.setCurrentItem(top[0].child(0))
-    assert ed.end - ed.start == len(gene())
-    # A temporary feature can be selected and hovered, not edited or deleted.
-    from feature_dialog import edit_feature
-    from hover import describe
-    ed.select_feature(temp[0].index)
-    assert ed.end > ed.start and ed.current_feature is None
-    assert "Pcons" in describe(ed, temp[0].index) and edit_feature(None, ed, temp[0].index) is False
-    d.add_units()
-    assert sum(units.is_tu(f) for f in ed.features) == 1
-    d.refresh()
-    assert not any(units.is_tu(f) for f in ed.overlay_features), "the document's unit is not drawn twice"
-    d.hide()
-    assert ed.overlay_features == []
-    d.show()
-    d.close()
-    d.deleteLater()
-
-
-def test_checkup_tab_and_pane():
-    """Tools > Plasmid Checkup: a tab with the checkup beside the document's map and sequence, shown again instead of
-    made twice; chosen in a pane's view picker, the checkup adds the map and the sequence its tab lacks (on the right,
-    one over the other), a tab that already shows them gets nothing more, and a pane closed afterwards stays closed."""
-    from main import MainWindow
-    from workspace import pane
-    # --- the Tools menu opens a tab of panes ---
-    win = MainWindow()
-    assert win.load(ROOT / "demo" / "pBAD30_eilR.gb")
-    ws = win.workspace
-    before = ws.count()
-    win.open_checkup()
-    assert ws.count() == before + 1
-    names = [p.view_name for p in ws.ordered_panes(ws.currentWidget())]
-    assert names == [C.TOOL, "Map", "Sequence"]
-    ws.setCurrentIndex(0)
-    win.open_checkup()
-    assert ws.count() == before + 1 and ws.currentIndex() == before
-    win.editor.doc.modified = False
-    win.close()
-
-    # --- picking the checkup in a pane brings a map and a sequence ---
-    win = MainWindow()
-    assert win.load(ROOT / "demo" / "pBAD30_eilR.gb")
-    ws = win.workspace
-    ws.add_tab(None, pane("Features"), select=True)
-    p = ws.panes(ws.currentWidget())[0]
-    p.set_view(C.TOOL)
-    assert [q.view_name for q in ws.ordered_panes(ws.currentWidget())] == [C.TOOL, "Map", "Sequence"]
-    ws.close_pane(next(q for q in ws.panes(ws.currentWidget()) if q.view_name == "Map"))
-    assert [q.view_name for q in ws.ordered_panes(ws.currentWidget())] == [C.TOOL, "Sequence"]
-    # The standard tab has both already: only the pane changes.
-    ws.setCurrentIndex(0)
-    first = next(q for q in ws.panes(ws.widget(0)) if q.view_name == "Features")
-    first.set_view(C.TOOL)
-    assert sorted(q.view_name for q in ws.panes(ws.widget(0))) == sorted(["Sequence", "Map", C.TOOL])
-    win.editor.doc.modified = False
-    win.close()
-
-
-# ---- transcription units as features (units.py) -------------------------------------------------------------------
-def unit_doc(circular=True):
-    """Pcons → T1 on the plus strand, a promoter reading leftwards with no terminator (it runs on), as unit features."""
+def test_unit_features_keep_their_geometry_and_survive_a_file_round_trip(tmp_path):
+    """A transcription unit written as a feature: its +1, its thin promoter piece and thick transcript, on both strands
+    and across the origin (a plain mRNA is not a unit); its own display switch; and a file saved before the rename to
+    openDNA (/OpenGenEdit_tu) still reads as the same units, while exports leave the program's qualifier out."""
     ed = construct([("Pcons", "promoter", PROMOTER, 1), ("rbs", "RBS", RBS, 1), ("gfp", "CDS", gene(), 1),
                     ("T1", "terminator", T1, 1), (None, "", filler(150, 30), 1), ("Prev", "promoter", PROMOTER, -1),
-                    (None, "", filler(100, 31), 1)], circular)
-    r = C.run(ed)
-    ed.add_features([C.unit_feature(u, ed.length) for u in r.units])
-    return ed, r
+                    (None, "", filler(100, 31), 1)])
+    ed.add_features([C.unit_feature(u, ed.length) for u in C.run(ed).units])
 
-
-def test_units_as_features():
-    """Unit features: their geometry on both strands and across the origin (a plain mRNA is not a unit); the display
-    filter has a switch for units (not listed as mRNA), the views draw them (both strands, a stopped and a running-on
-    unit, a circle and a line) and the projects remember the switch; the flat toolbar icons use one colour."""
-    from PySide6.QtGui import QImage
-    from display_panel import DisplayPanel
-    from map_view import MapView
-    from sequence_view import SequenceView
-    import exports
-    import icons
     # --- geometry on both strands and across the origin ---
-    ed, r = unit_doc()
     fwd = next(f for f in ed.features if units.is_tu(f) and f.strand > 0)
     g = units.geometry(fwd, ed.length, True)
     tss = len(PROMOTER)
@@ -401,41 +305,18 @@ def test_units_as_features():
     thin = [(a, b) for a, b, heavy in g.pieces if not heavy]
     assert thin == [(p_end, p_end + len(PROMOTER))] and sum(b - a for a, b in thick) == ed.length - len(PROMOTER)
     assert len(rev.spans) == 2, "a full turn starting inside the sequence crosses the origin"
-    # A plain mRNA feature is not a unit.
     plain = next(f for f in ed.features if f.label == "gfp")
-    assert units.geometry(plain, ed.length, True) is None and units.tu_of(plain) is None
+    assert units.geometry(plain, ed.length, True) is None and units.tu_of(plain) is None, "a plain feature is not a unit"
 
-    # --- the display filter and the painting ---
-    for circular in (True, False):
-        ed, _ = unit_doc(circular)
-        panel = DisplayPanel(ed)
-        assert "mRNA" not in panel.kinds, "units have their own switch"
-        for view in (SequenceView(ed), MapView(ed)):
-            view.resize(900, 600)
-            view.render(QImage(900, 600, QImage.Format_ARGB32))   # an error while painting raises here
-        assert sum(units.is_tu(f) for f in ed.shown) == 2
-        panel.units.setChecked(False)
-        assert not any(units.is_tu(f) for f in ed.shown) and not any(units.is_tu(f) for f in ed.map_features)
-        assert exports.project_meta(ed, "x.odp")["display"]["units"] is False
-        ed.set_display(hidden_kinds={"mRNA"}, units=True)
-        assert sum(units.is_tu(f) for f in ed.shown) == 2, "hiding the mRNA type leaves units to their own switch"
-        assert units.TU_KEY not in exports.gff3_text(ed), "the program's own qualifier stays out of exports"
+    # --- units have a display switch of their own, apart from the mRNA type ---
+    assert sum(units.is_tu(f) for f in ed.shown) == 2
+    ed.set_display(units=False)
+    assert not any(units.is_tu(f) for f in ed.shown) and not any(units.is_tu(f) for f in ed.map_features)
+    assert exports.project_meta(ed, "x.odp")["display"]["units"] is False
+    ed.set_display(hidden_kinds={"mRNA"}, units=True)
+    assert sum(units.is_tu(f) for f in ed.shown) == 2, "hiding the mRNA type leaves units to their own switch"
 
-    # --- flat icons ---
-    for make in (icons.filter_icon, icons.history_icon):
-        img = make().pixmap(32, 32).toImage()
-        colors = {img.pixelColor(x, y).name() for x in range(32) for y in range(32) if img.pixelColor(x, y).alpha() > 200}
-        assert len(colors) <= 2 and colors, "one flat colour (antialiased edges aside)"
-
-
-def test_units_saved_before_the_rename_still_work(tmp_path):
-    """New files carry /OpenDNA_tu; units in a file saved before the rename to openDNA (/OpenGenEdit_tu) are still units: same
-    +1, same end, drawn by both views, the display switch hides them, and exports leave the old key out."""
-    from PySide6.QtGui import QImage
-    from map_view import MapView
-    from sequence_view import SequenceView
-    import exports
-    ed, _ = unit_doc()
+    # --- the file: the new key, and units saved under the old one still read back the same ---
     new, old = tmp_path / "new.gb", tmp_path / "old.gb"
     ed.doc.save_genbank(str(new))
     text = new.read_text(encoding="utf-8")
@@ -445,10 +326,8 @@ def test_units_saved_before_the_rename_still_work(tmp_path):
     before = [units.geometry(f, ed.length, True) for f in ed.features if units.is_tu(f)]
     after = [units.geometry(f, back.length, True) for f in back.features if units.is_tu(f)]
     assert len(after) == 2 and after == before, "the old units read back exactly as the new ones"
-    for view in (SequenceView(back), MapView(back)):
-        view.resize(900, 600)
-        view.render(QImage(900, 600, QImage.Format_ARGB32))
     assert sum(units.is_tu(f) for f in back.shown) == 2
     back.set_display(units=False)
     assert not any(units.is_tu(f) for f in back.shown)
+    assert units.TU_KEY not in exports.gff3_text(ed), "the program's own qualifier stays out of exports"
     assert "OpenGenEdit_tu" not in exports.gff3_text(back) and "OpenGenEdit_tu" not in exports.tbl_text(back)

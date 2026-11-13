@@ -6,6 +6,8 @@
 
 **Result:** ✅ passed · [line 245](../../core/src/tracks.rs#L245) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
+**Why it matters:** Loaded GFF/GTF/BED/VCF annotation tracks could show features off by one base, lose escaped names, or miss features in a region.
+
 GFF3/GTF, BED and VCF files load into an index: region lines skipped, ##FASTA ends parsing, URL-decoding, 1-based to 0-based, overlap queries via max_end, limit, density, name search, and bad lines rejected.
 
 | # | Input | Expected output |
@@ -18,7 +20,8 @@ GFF3/GTF, BED and VCF files load into an index: region lines skipped, ##FASTA en
 
 **Review notes:**
 
-- Fixed file names ge_test.gff3/.bed/.vcf in the shared temp dir (lines 247, 267, 276), never removed.
+- Fixed file names ge_test.gff3/.bed/.vcf in the shared temp dir, never removed.
+- Overlaps tests/test_core_formats.py::test_tracks_gff_bed_parsing_query_density_and_search (GFF/GTF/BED with a brute-force query check); only the VCF part is covered here alone.
 
 **Fixed by the audit of November 2026:**
 

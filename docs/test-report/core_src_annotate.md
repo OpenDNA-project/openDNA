@@ -6,6 +6,8 @@
 
 **Result:** ✅ passed · [line 201](../../core/src/annotate.rs#L201) · **Area:** Feature detection (known parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
+**Why it matters:** 'Detect common features' could miss known parts on the reverse strand, across the origin, or as codon-changed CDSs, or report the wrong identity.
+
 'Detect common features' finds a part forward, a mutated part on the reverse strand with the right identity, a part split across the origin of a circle, and a codon-recoded CDS at the protein level.
 
 | # | Input | Expected output |

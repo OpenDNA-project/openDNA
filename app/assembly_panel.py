@@ -707,7 +707,7 @@ class AssemblyPanel(QWidget):
                 ("perform", "Perform assembly", "Make the exact sequence the assembly would give (needs every junction to check out)",
                  self.perform)):
             self.buttons[key] = QPushButton(text, clicked=fn, toolTip=tip)
-        self.buttons["perform"].setObjectName("primary")
+        theme.mark_primary(self.buttons["perform"])
         self.status = QLabel(wordWrap=True)
         self.notes = QLabel(wordWrap=True, textFormat=Qt.RichText)
         actions = QWidget()
@@ -741,7 +741,7 @@ class AssemblyPanel(QWidget):
         self.by_primers = QRadioButton("PCR with two primers")
         self.forward, self.reverse = QComboBox(minimumContentsLength=14), QComboBox(minimumContentsLength=14)
         self.use = QPushButton("Use as fragment", clicked=self.use_selection)
-        self.use.setObjectName("primary")
+        theme.mark_primary(self.use)
         self.chosen = QLabel(wordWrap=True, styleSheet="color: gray")
         # Restriction / ligation: the site at each end of this fragment (the same one twice is allowed), and the fragments the source gives
         # when cut with them. A click on one uses it; a PCR product (the primers' tails carry the sites) is cut at the same two sites.
@@ -776,11 +776,6 @@ class AssemblyPanel(QWidget):
         middle.addLayout(left, 1)
         middle.addWidget(controls)
         lbox.addLayout(middle, 1)
-        # The two buttons that matter are drawn in the highlight colour of the theme.
-        self.setStyleSheet("QPushButton#primary { background: palette(highlight); color: palette(highlighted-text); "
-                           "font-weight: 700; padding: 8px 14px; border: 1px solid palette(highlight); border-radius: 4px; }"
-                           "QPushButton#primary:disabled { background: palette(button); color: palette(mid); "
-                           "border: 1px solid palette(mid); }")
         split = QSplitter(Qt.Vertical)
         split.setChildrenCollapsible(False)
         split.addWidget(upper)
