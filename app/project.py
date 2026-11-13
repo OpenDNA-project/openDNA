@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the folder zip is EXE_NAME-folder.zip).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.6.3"
+VERSION = "0.6.4"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,8 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = False
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.6.4": ["Circular sequences no longer list a second, shorter ORF inside one that crosses the origin.",
+              "Error reports and the log hide file paths that contain spaces; updates are only accepted with a checksum from openDNA's own releases."],
     "0.6.3": ["New forward / reverse primer from the selected bases with Ctrl+R / Ctrl+Shift+R.",
               "Local Align laid out as Query, Search in and results; the buttons that run a tool share one blue."],
     "0.6.2": ["The updater finds releases whose files carry the version in their name."],

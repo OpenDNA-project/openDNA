@@ -6,7 +6,7 @@ build-backend = "maturin"
 
 [project]
 name = "opendna_core"
-version = "0.6.3"
+version = "0.6.4"
 requires-python = ">=3.11"   # the app reads tool settings with tomllib (3.11+); the compiled module itself is abi3-py310
 
 [tool.maturin]
