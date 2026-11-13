@@ -10,8 +10,9 @@ A checklist for taking the project further. **Done so far:** the code is in a pr
   (2) To keep one project, the other levers: the **name policy** ([TRADEMARKS.md](../TRADEMARKS.md): forks are welcome under a
   name and an icon of their own; the AGPL's section 7(e) lets the author decline trademark rights), welcoming pull requests,
   and releases that work. A registered trademark on "openDNA" / "oDNA" would back the policy up; none is registered yet.
-  (3) Before accepting pull requests from other people, decide whether to ask for a contributor agreement (it keeps the
-  option of changing the licence later); without one, each contributor keeps the copyright of their part, under the AGPL.
+  (3) Contributions: decided. Contributors assign their copyright to the project owner, who stays the sole copyright holder and
+  can change the licence later ([CONTRIBUTING.md](../CONTRIBUTING.md#copyright-of-contributions); the pull-request template asks
+  them to tick that they agree). A signed agreement (for example through CLA Assistant) would be firmer than a checkbox.
   (4) The dependencies are compatible: PySide6 is LGPL, `gb-io` is MIT (its `LICENSE` is in `core/vendor/gb-io`), PyO3 is
   MIT/Apache-2.0, 3Dmol.js is BSD-3-Clause. The PyInstaller one-file `.exe` bundles Qt (LGPL), which asks that users can
   replace the Qt libraries: releases also carry a one-folder zip for that (see "Qt (LGPL)" below). (5) If the work was done

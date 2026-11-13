@@ -11,10 +11,30 @@ you cannot share). Security problems go through [SECURITY.md](SECURITY.md), not 
 
 ## Code changes
 
-Small pull requests are welcome; for a big change, open an issue first so we agree on it. By sending a change you agree that it is licensed under the
-same licence as the project, the **GNU AGPL v3** ([LICENSE](LICENSE)). Do not add files you do not have the right to share (real sequence files, other
+Small pull requests are welcome; for a big change, open an issue first so we agree on it. Read **Copyright of contributions** below
+first: sending a change means you accept it. Do not add files you do not have the right to share (real sequence files, other
 people's data, a library without a compatible licence: add new third-party pieces to [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). If a new panel is
 based on a paper or a dataset, add it to Help > Citations (`app/citations.py`).
+
+### Copyright of contributions
+
+openDNA has one copyright holder, Antoine Champie (the project owner), so that the project can change its licence later without
+having to find and ask every contributor. By submitting a contribution (a pull request, a patch, or code, text, images or data sent
+in any other way), you:
+
+1. **assign** to the project owner all copyright and related rights in your contribution, worldwide, for the full term of those
+   rights and at no charge;
+2. **waive**, or where a waiver is not possible agree not to assert, any right that cannot be assigned (such as moral rights in some
+   countries) against the project owner and anyone who receives openDNA from the project owner;
+3. agree that the project owner may publish, license and **relicense** openDNA, your contribution included, under any terms,
+   including a licence other than the AGPL, without asking you or telling you first;
+4. confirm that the contribution is your own work and that you have the right to make this assignment. If an employer or a
+   university may own what you write, get its written permission first. Code or data by others may be included only under a
+   licence compatible with the project's, named in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Your contribution is still released under the project's licence, the **GNU AGPL v3** ([LICENSE](LICENSE)), so you keep, like
+everyone, the rights that licence gives. If you do not agree with these terms, do not send the contribution. The pull-request
+template asks you to confirm them.
 
 **Unfinished features** carry an orange **WIP** tag. `FEATURES` in `app/wip.py` is the switch: one line per feature, `True` while it
 is a work in progress. Tag each place the feature shows with the helpers of that file (`wip.Badge("key")` beside a title or a choice,

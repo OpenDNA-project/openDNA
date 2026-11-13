@@ -142,6 +142,9 @@ Copyright (C) 2026 Antoine Champie. openDNA is free software under the **GNU Aff
 offered under the same licence with its source. Third-party components keep their own licences, including Qt under the LGPL:
 see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+**Contributions** are accepted only with the copyright assigned to the project owner, who stays the sole copyright holder and may
+relicense the project: see [CONTRIBUTING.md](CONTRIBUTING.md#copyright-of-contributions).
+
 **Forks are welcome, under another name**: the names "openDNA" and "oDNA" and the logo stay with this project
 ([TRADEMARKS.md](TRADEMARKS.md)).
 
