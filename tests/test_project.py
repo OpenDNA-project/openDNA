@@ -60,6 +60,16 @@ def test_release_metadata_and_exe_recipe_are_consistent():
     assert {"parts", "sponsors.json", "tools.toml", "vendor"} <= wanted, wanted   # the scan itself still finds them
     for name in wanted:
         assert f'"{name}"' in SPEC, f"app reads {name} but packaging/openDNA.spec does not bundle it"
+    # Run the spec's data section (everything before the version info, which needs PyInstaller) and read its real `datas`:
+    # a name only in a comment or an excludes list is no longer enough. Each file the app reads must land beside the modules
+    # (its own name, folder ".") or be the folder a list entry is copied into.
+    head, marker, _ = SPEC.partition('# Windows "Details"')
+    assert marker, "the spec's data section is no longer followed by the version info: update this split"
+    ns = {"SPECPATH": str(ROOT / "packaging"), "__name__": "spec_data"}
+    exec(compile(head, "openDNA.spec", "exec"), ns)
+    for name in wanted:
+        assert any((Path(src).name == name and dest == ".") or dest == name for src, dest in ns["datas"]), \
+            f"app reads {name} but packaging/openDNA.spec's datas does not bundle it"
     # The protein viewer's library is reached through the vendor folder.
     assert 'APP / "vendor" / "3Dmol-min.js"' in SPEC and 'APP / "vendor" / "3Dmol.LICENSE"' in SPEC
 

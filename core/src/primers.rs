@@ -398,8 +398,8 @@ mod tests {
 
     #[test]
     fn tm_and_tm_range_of_plain_and_degenerate_primers() {
-        // Exact values are checked against Biopython's Tm_NN (same model) in tests/test_core_sequence.py;
-        // here plausibility, input checks and tm_range.
+        // More exact values are checked against Biopython's Tm_NN (same model) in tests/test_core_sequence.py;
+        // here a few exact values, input checks and tm_range.
         let c = Conditions::default();
         let t = tm(b"AGCGGATAACAATTTCACACAGGA", &c).unwrap();
         assert!(t > 55.0 && t < 65.0, "{t}");
@@ -408,6 +408,16 @@ mod tests {
         // More salt or more primer = higher Tm.
         let salty = Conditions { na_mm: 200.0, ..c };
         assert!(tm(b"AGCGGATAACAATTTCACACAGGA", &salty).unwrap() > t);
+
+        // --- exact Tm (Biopython Tm_NN, DNA_NN3, saltcorr=5, Na 50, Mg 1.5, dNTPs 0.6) ---
+        // plain primer: dnac1 = dnac2 = primer/2
+        assert!((t - 60.80594739470723).abs() < 0.01, "{t}");
+        let more = Conditions { primer_nm: 500.0, ..c };
+        let t5 = tm(b"AGCGGATAACAATTTCACACAGGA", &more).unwrap();
+        assert!((t5 - 63.596206495371575).abs() < 0.01, "{t5}");
+        // self-complementary oligo: selfcomp=True, dnac1 = primer (C, not C/4, plus the symmetry term)
+        let s = tm(b"GAATTCGAATTC", &c).unwrap();
+        assert!((s - 30.94832964729642).abs() < 0.01, "{s}");
 
         // --- tm_range: a plain primer is its own Tm; bad letters give none (tm itself stays plain-ACGT only, above) ---
         let (lo, hi) = tm_range(b"AGCGGATAACAATTTCACACAGGA", &c).unwrap();

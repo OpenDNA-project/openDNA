@@ -40,6 +40,22 @@ def spans(hits):
     return [(h.start, h.end) for h in hits]
 
 
+IUPAC = {"A": "A", "C": "C", "G": "G", "T": "T", "R": "AG", "Y": "CT", "S": "CG", "W": "AT", "K": "GT", "M": "AC",
+         "B": "CGT", "D": "AGT", "H": "ACT", "V": "ACG", "N": "ACGT"}
+
+
+def brute_force(seq, query, max_mm):
+    """{(start, end): {strand: mismatches}} of every window of a linear seq matching the IUPAC query within max_mm, on the
+    top strand (1) or the bottom one (-1: the window's reverse complement matches)."""
+    out, n = {}, len(query)
+    for i in range(len(seq) - n + 1):
+        for strand, w in ((1, seq[i:i + n]), (-1, reverse_complement(seq[i:i + n]))):
+            mm = sum(b not in IUPAC[q] for b, q in zip(w, query))
+            if mm <= max_mm:
+                out.setdefault((i, i + n), {})[strand] = mm
+    return out
+
+
 
 def test_sequence_search_engine(tmp_path):
     """The search engine: DNA on both strands with IUPAC, mismatches and their limit, a site across a circle's origin, protein
@@ -56,6 +72,12 @@ def test_sequence_search_engine(tmp_path):
     assert search.search_sequence(ed, "GRATTC", Options(iupac=False))[0] == []
     # N in the query matches anything
     assert (700, 710) in spans(search.search_sequence(ed, "ACGTNCGTAC", Options())[0])
+    # every hit and only those: a brute-force scan of both strands with the IUPAC table (a palindrome is one hit)
+    for query in ("GRATTC", "ACGTNCGTAC", "GGATCCAAAT"):
+        found = search.search_sequence(ed, query, Options())[0]
+        expected = brute_force(SEQ, query, 0)
+        assert {(h.start, h.end) for h in found} == set(expected), query
+        assert len(found) == len(expected) and all(h.strand in expected[h.start, h.end] for h in found), query
     # --- fuzzy matching and its limit ---
     ed = editor()
     probe = SEQ[700:710]
@@ -63,6 +85,15 @@ def test_sequence_search_engine(tmp_path):
     assert (700, 710) not in spans(search.search_sequence(ed, mutated, Options())[0])
     hits, _ = search.search_sequence(ed, mutated, Options(fuzzy=1))
     assert any((h.start, h.end, h.mismatches) == (700, 710, 1) for h in hits)
+    # the limit holds: exactly the windows within 1 mismatch on either strand, each with its own count
+    for query, fuzzy in ((mutated, 1), (SEQ[1500:1508], 1), (SEQ[40:52], 2)):
+        limit = search.allowed_mismatches(Options(fuzzy=fuzzy), len(query))
+        assert limit == fuzzy
+        found = search.search_sequence(ed, query, Options(fuzzy=fuzzy))[0]
+        expected = brute_force(SEQ, query, limit)
+        assert sorted((h.start, h.end) for h in found) == sorted(expected), query
+        for h in found:
+            assert h.mismatches <= limit and h.mismatches == min(expected[h.start, h.end].values()), (query, h.start)
     # never more than a third of the query, whatever the setting: 1 mismatch in 4 bases, 3 in 30
     assert search.allowed_mismatches(Options(fuzzy=3), 4) == 1 and search.allowed_mismatches(Options(fuzzy=3), 30) == 3
     # --- circular site across the origin ---
@@ -79,6 +110,8 @@ def test_sequence_search_engine(tmp_path):
     assert search.search_sequence(ed, "AKW", Options())[0] == []     # translations off: AKW is not DNA, so a name search: nothing
     rc = editor(reverse_complement(ed.doc.sequence()))
     hits, _ = search.search_sequence(rc, "AXW", Options(translations=True))      # X = any
+    # the codons of A K W, read on the bottom strand of the 22 bp reverse complement: 22 - 12 = 10 to 22 - 3 = 19
+    assert [(h.start, h.end, h.kind, h.strand) for h in hits] == [(10, 19, "protein", -1)]
     # --- names, details, primers, enzymes ---
     ed = editor()
     ed.add_features([("CDS", "101..400", [("gene", "abcD"), ("product", "kinase"), ("db_xref", "needle")])])

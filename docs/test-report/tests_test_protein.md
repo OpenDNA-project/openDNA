@@ -4,7 +4,7 @@
 
 ## `test_mass_pi_charge_and_numbered_layout`
 
-**Result:** ✅ passed in 0.00 s · [line 16](../../tests/test_protein.py#L16) · **Area:** Protein properties · **Checked against:** hand-computed · **Strength:** 🔴 weak
+**Result:** ✅ passed in 0.01 s · [line 16](../../tests/test_protein.py#L16) · **Area:** Protein properties · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the protein panel could show a wrong molecular weight, pI or charge, or clicking in the numbered protein text could select the wrong residue.
 
@@ -24,3 +24,8 @@ Checks the mass of Gly-Gly against a hand value, pI and charge only in direction
 - pI and charge are checked only for sign/range on homopolymers: a wrong pKa table or a broken pI search could still pass. An exact pI and mass for a known protein (e.g. against Biopython ProtParam, which is installed in .venv) would make it strong.
 - Mass is checked for one dipeptide only; a wrong residue mass for any amino acid other than G would go unnoticed.
 - The index/offset check is a round trip only; offset_of and index_at that were wrong in the same way would pass.
+- 13 Nov 2026: the weaknesses above were fixed (see Changed by the audit); rated strong since.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Mass pinned only for G: 19 residue masses unchecked. \| pI and charge only by sign/range on homopolymers: any pKa table error passes. \| offset_of/index_at only as a round trip: both wrong the same way passes.

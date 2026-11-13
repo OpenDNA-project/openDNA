@@ -26,9 +26,13 @@ Checks project.py's version equals core/Cargo.toml and core/pyproject.toml and i
 - The bundling check is text matching on the spec ('"name"' appears anywhere), so a name mentioned but not actually bundled would pass.
 - Only catches data files reached through the exact with_name("...") pattern.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'every data file the app reads is bundled by the spec' is a substring test ('"name"' in SPEC): a name in a comment, a hiddenimports list or an excludes list satisfies it, so a frozen exe missing tools.toml would ship.
+
 ## `test_old_data_folder_is_copied_once`
 
-**Result:** ✅ passed in 0.01 s · [line 84](../../tests/test_project.py#L84) · **Area:** Data folder migration · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 94](../../tests/test_project.py#L94) · **Area:** Data folder migration · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, users upgrading from the program's old name could lose their primers and settings, or a later start could overwrite their new data with the old copy.
 

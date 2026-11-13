@@ -88,6 +88,9 @@ details.test > summary:hover { background: var(--sunk); }
 .tname { font: 500 14px/1.4 var(--mono); overflow-wrap: anywhere; }
 .tarea { grid-column: 2; font-size: 13px; color: var(--muted); }
 .trole { grid-column: 2 / -1; font-size: 13.5px; color: var(--fg); max-width: 90ch; }
+.gapbox { border-left: 3px solid var(--bad); background: var(--sunk); padding: 8px 12px; border-radius: 4px; max-width: 90ch; }
+.gapbox p, .gapbox ul { margin: 6px 0; }
+.evid { margin: 0; font-size: 13px; color: var(--muted); max-width: 90ch; }
 .why { margin: 0; max-width: 75ch; padding: 8px 12px; border-left: 3px solid var(--ok); background: var(--sunk); border-radius: 4px; }
 .chips { display: flex; gap: 6px; grid-row: 1; grid-column: 3; }
 .chip { font: 500 12px/1 var(--sans); padding: 4px 8px; border-radius: 99px; color: var(--c); background: var(--cs); white-space: nowrap; }
@@ -160,6 +163,7 @@ dl.guide dt { font-weight: 500; } dl.guide dd { margin: 0; color: var(--muted); 
         <label for="f-strength">Strength<select id="f-strength"><option value="">Any</option><option value="strong">Strong</option><option value="adequate">Adequate</option><option value="weak">Weak</option><option value="none">Not reviewed</option></select></label>
         <label for="f-oracle">Checked against<select id="f-oracle"><option value="">Anything</option></select></label>
         <label for="f-result">Last result<select id="f-result"><option value="">Any</option><option value="passed">Passed</option><option value="failed">Failed</option><option value="skipped">Skipped</option><option value="not run">Not run</option></select></label>
+        <label for="f-verdict">Proves its claim<select id="f-verdict"><option value="">Any</option><option value="sound">Sound</option><option value="gap">Gap found</option></select></label>
         <label class="check" for="f-notes"><input id="f-notes" type="checkbox"> Has review notes</label>
         <label class="check" for="f-fixed"><input id="f-fixed" type="checkbox"> Changed by the audit</label>
         <div class="count" id="count"></div>
@@ -180,6 +184,7 @@ dl.guide dt { font-weight: 500; } dl.guide dd { margin: 0; color: var(--muted); 
       <dt>Expected output</dt><dd>What the test asserts: exact coordinates, values, texts, or agreement with another program.</dd>
       <dt>Checked against</dt><dd><b>hand-computed</b>: worked out on paper and written in the test. <b>independent implementation</b>: another program, mostly Biopython, computes the answer. <b>in-test reference model</b>: a plain model written inside the test, such as the sequence as a Python string. <b>property/invariant</b>: a rule that must always hold, such as undo restoring the original. <b>round-trip/self-consistency</b>: save then reload gives the same thing. <b>GUI state</b>: what the window shows. <b>smoke</b>: only that nothing crashes.</dd>
       <dt>Strength</dt><dd><b>Strong</b>: exact values or an independent check, edge cases included. <b>Adequate</b>: the main behaviour, some edges or exact values missing. <b>Weak</b>: a clearly wrong program could still pass.</dd>
+      <dt>Sound / Gap</dt><dd>Whether the test really proves what it claims: each test was read against the code it exercises and, where cheap, run against a deliberately broken copy of that code. <b>Gap</b> lists what a bug could slip past and proposes a test that would catch it.</dd>
       <dt>Review notes</dt><dd>What the reviewer found could be checked better. <b>Changed by the audit</b> says what was fixed or added in November 2026.</dd>
       <dt>Not reviewed</dt><dd>A test without a written description. Its docstring and every assert line are shown as the code has them.</dd>
     </dl>
@@ -226,9 +231,9 @@ python scripts/test_report.py --junit junit.xml --cargo cargo.txt</code></pre>
   $("f-file").insertAdjacentHTML("beforeend", files.map((f) => `<option value="${esc(f)}">${esc(f)}</option>`).join(""));
   const oracles = [...new Set(T.map((t) => t.oracle).filter(Boolean))].sort();
   $("f-oracle").insertAdjacentHTML("beforeend", oracles.map((o) => `<option value="${esc(o)}">${esc(o)}</option>`).join(""));
-  const hay = T.map((t) => [t.id, t.area, t.role, t.purpose, t.oracle, t.doc, (t.cases || []).map((c) => c.input + " " + c.expected).join(" "),
+  const hay = T.map((t) => [t.id, t.area, t.role, t.purpose, (t.gaps || []).join(" "), t.proposal, t.oracle, t.doc, (t.cases || []).map((c) => c.input + " " + c.expected).join(" "),
     (t.issues || []).join(" "), (t.fixed || []).join(" "), (t.checks || []).join(" ")].join(" ").toLowerCase());
-  const ids = ["q", "f-suite", "f-file", "f-strength", "f-oracle", "f-result", "f-notes", "f-fixed"];
+  const ids = ["q", "f-suite", "f-file", "f-strength", "f-oracle", "f-result", "f-verdict", "f-notes", "f-fixed"];
 
   function chip(label, v) { return `<span class="chip" style="--c:var(${v});--cs:var(${v}-soft, var(--sunk))">${label}</span>`; }
   function source(t) { return D.repo ? `${D.repo}/blob/${D.ref}/${t.file}#L${t.line}` : ""; }
@@ -254,6 +259,10 @@ python scripts/test_report.py --junit junit.xml --cargo cargo.txt</code></pre>
     const notes = (t.issues || []).map((x) => `<li style="--c:var(--warn);--cs:var(--warn-soft)"><span class="tag">Review note</span>${rich(x)}</li>`)
       .concat((t.fixed || []).map((x) => `<li style="--c:var(--ok);--cs:var(--ok-soft)"><span class="tag">Changed by the audit</span>${rich(x)}</li>`));
     if (notes.length) h += `<ul class="notes">${notes.join("")}</ul>`;
+    if (t.verdict === "gap") {
+      h += `<div class="gapbox"><b>Does not fully prove its claim</b><ul>${(t.gaps || []).map((g) => `<li>${rich(g)}</li>`).join("")}</ul>` +
+        (t.proposal ? `<b>Proposed bulletproof test</b><p>${rich(t.proposal)}</p>` : "") + (t.evidence ? `<p class="evid">How it was checked: ${rich(t.evidence)}</p>` : "") + `</div>`;
+    } else if (t.verdict === "sound" && t.evidence) h += `<p class="evid">Checked sound: ${rich(t.evidence)}</p>`;
     return h;
   }
 
@@ -262,7 +271,7 @@ python scripts/test_report.py --junit junit.xml --cargo cargo.txt</code></pre>
     return `<details class="test" data-i="${i}"><summary>
       <span class="dot" style="--c:var(${r[1]})" title="${r[0]}"></span>
       <span class="tname">${esc(t.name).replace(/_/g, "_<wbr>")}</span>
-      <span class="chips">${t.result !== "passed" ? chip(r[0], r[1]) : ""}${chip(s[0], s[1])}</span>
+      <span class="chips">${t.result !== "passed" ? chip(r[0], r[1]) : ""}${t.verdict === "gap" ? chip("Gap", "--bad") : t.verdict === "sound" ? chip("Sound", "--ok") : ""}${chip(s[0], s[1])}</span>
       ${t.area ? `<span class="tarea">${esc(t.area)}</span>` : ""}
       ${t.role ? `<span class="trole">${rich(t.role)}</span>` : ""}
     </summary><div class="body"></div></details>`;
@@ -271,11 +280,11 @@ python scripts/test_report.py --junit junit.xml --cargo cargo.txt</code></pre>
   function apply() {
     const q = $("q").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const f = { suite: $("f-suite").value, file: $("f-file").value, strength: $("f-strength").value, oracle: $("f-oracle").value,
-      result: $("f-result").value, notes: $("f-notes").checked, fixed: $("f-fixed").checked };
+      result: $("f-result").value, verdict: $("f-verdict").value, notes: $("f-notes").checked, fixed: $("f-fixed").checked };
     const shown = T.map((t, i) => i).filter((i) => {
       const t = T[i];
       return (!f.suite || t.suite === f.suite) && (!f.file || t.file === f.file) && (!f.strength || strengthOf(t) === f.strength) &&
-        (!f.oracle || t.oracle === f.oracle) && (!f.result || t.result === f.result) && (!f.notes || (t.issues || []).length) &&
+        (!f.oracle || t.oracle === f.oracle) && (!f.verdict || t.verdict === f.verdict) && (!f.result || t.result === f.result) && (!f.notes || (t.issues || []).length) &&
         (!f.fixed || (t.fixed || []).length) && q.every((w) => hay[i].includes(w));
     });
     const groups = new Map();

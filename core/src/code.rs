@@ -427,9 +427,15 @@ mod tests {
         assert_eq!(cds_protein(&top, &f, 1).unwrap(), "MU");
         // The same without the exception has a stop inside: left alone.
         assert!(cds_protein(&top, &cds("complement(1..9)", &[]), 1).is_err());
-        // A form we cannot reproduce is an error, never translated silently.
+        // A form we cannot reproduce is an error, never translated silently. (This one is off the reading
+        // frame: its first base, 5, is not a codon start.)
         let odd = cds("complement(1..9)", &[("transl_except", "(pos:complement(4..5),aa:TERM)")]);
         assert!(cds_protein(&top, &odd, 1).is_err());
+        // --- a 2-base exception that does start a codon (first base 6 - 1 = 5 = codon 1): only the
+        // whole-codon rule rejects it, otherwise it would silently give "MU" ---
+        let short = cds("complement(1..9)", &[("transl_except", "(pos:complement(5..6),aa:Sec)")]);
+        let e = cds_protein(&top, &short, 1).unwrap_err();
+        assert!(matches!(e.0, Skip::Other) && e.1.contains("whole codon"), "{e:?}");
     }
 
     #[test]
@@ -437,6 +443,9 @@ mod tests {
         // join(1..3,7..12): ATG + AAATAA -> M K stop.
         let seq = b"ATGCCCAAATAA";
         assert_eq!(cds_protein(seq, &cds("join(1..3,7..12)", &[]), 1).unwrap(), "MK");
+        // --- parts read as written, not sorted: join(7..9,1..6) is ATG + AAATAA -> M K (sorted it would be
+        // AAA TAA ATG, a stop inside) ---
+        assert_eq!(cds_protein(b"AAATAAATG", &cds("join(7..9,1..6)", &[]), 1).unwrap(), "MK");
     }
 
     #[test]

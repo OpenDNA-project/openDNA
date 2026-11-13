@@ -37,9 +37,13 @@ A query with a SNP, a 3-base insertion and a 5-base deletion still aligns over t
 - Positions of the insertion (template 1150) and deletion (1250..1255) are never asserted, only their total sizes (lines 525-526); a misplaced indel would pass.
 - Reverse-strand case (line 530) checks only strand and span, not the mismatch/indel reports.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Indel positions are never asserted: only the sums of insertion lengths (3) and deletion lengths (5) are checked, so an insertion/deletion reported at the wrong template position passes (proven by the +7 shift). \| The inserted letters (GGG) equal the template base before the insertion point, so even an exact position assertion would be ambiguous (1149 vs 1150) with this input. \| Reverse-strand case checks only strand and span; its mismatch/insertion/deletion lists (the claim 'reports each difference, on both strands') are not asserted.
+
 ## `a_mismatch_near_either_end_of_a_long_query_is_reported_not_trimmed_away`
 
-**Result:** ✅ passed · [line 553](../../core/src/align.rs#L553) · **Area:** Quick alignment (BLAST-like) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 564](../../core/src/align.rs#L564) · **Area:** Quick alignment (BLAST-like) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A mismatch in the last few bases of a query (a typical mutation near a read or primer end) could be silently clipped off the hit, so the user would see a 'perfect' shorter match and miss the difference.
 
@@ -59,7 +63,7 @@ A single mismatch 6 or 11 bases from either end of a 300-bp query is kept inside
 
 ## `a_short_query_with_mismatches_near_both_ends_is_still_one_whole_hit`
 
-**Result:** ✅ passed · [line 566](../../core/src/align.rs#L566) · **Area:** Quick alignment (BLAST-like) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 577](../../core/src/align.rs#L577) · **Area:** Quick alignment (BLAST-like) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A short (45 bp, oligo-sized) query with a few mismatches near its ends could come back as a trimmed or broken hit, hiding the mismatches from the user.
 
@@ -76,7 +80,7 @@ A 45-bp query with 3 mismatches (query positions 9, 13, 35) is still aligned ove
 
 ## `no_hit_for_random_query`
 
-**Result:** ✅ passed · [line 577](../../core/src/align.rs#L577) · **Area:** Quick alignment (BLAST-like) · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 588](../../core/src/align.rs#L588) · **Area:** Quick alignment (BLAST-like) · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Quick Align could start reporting chance matches for an unrelated query, so users would trust false hits.
 
@@ -92,7 +96,7 @@ An unrelated random query gives no hits (no false positives above the score thre
 
 ## `query_hanging_off_the_template_end_aligns_only_the_overlap`
 
-**Result:** ✅ passed · [line 587](../../core/src/align.rs#L587) · **Area:** Quick alignment (BLAST-like) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 598](../../core/src/align.rs#L598) · **Area:** Quick alignment (BLAST-like) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A query running past the end of a linear sequence could be reported with invented bases or wrong query/template coordinates beyond the end.
 
@@ -106,7 +110,7 @@ A query that runs past either end of a linear template is aligned only over the 
 
 ## `overhanging_query_wraps_on_a_circle_and_a_tiny_overlap_is_no_hit`
 
-**Result:** ✅ passed · [line 610](../../core/src/align.rs#L610) · **Area:** Quick alignment (BLAST-like) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 621](../../core/src/align.rs#L621) · **Area:** Quick alignment (BLAST-like) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A read spanning the origin of a plasmid could be shown as two pieces (or as one on a linear sequence), and a tiny chance overlap at the end could appear as a hit.
 
@@ -124,7 +128,7 @@ End+start of the template is one hit across the origin on a circle and two piece
 
 ## `every_piece_of_a_patchwork_query_is_reported_including_the_inverted_one`
 
-**Result:** ✅ passed · [line 667](../../core/src/align.rs#L667) · **Area:** Quick alignment (structural variants) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 678](../../core/src/align.rs#L678) · **Area:** Quick alignment (structural variants) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Quick Align on a rearranged construct (insertion, inversion, reordering) could drop a piece or report the inverted piece on the wrong strand or place.
 
@@ -138,7 +142,7 @@ A query built from 4 template pieces (one inverted) plus a 200-bp random insert 
 
 ## `pieces_on_one_diagonal_with_a_long_unmatched_middle_are_not_merged`
 
-**Result:** ✅ passed · [line 682](../../core/src/align.rs#L682) · **Area:** Quick alignment (structural variants) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 693](../../core/src/align.rs#L693) · **Area:** Quick alignment (structural variants) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Separate matching pieces with a long unrelated stretch between them could be merged into one long low-identity hit, hiding a large insertion or deletion.
 
@@ -150,7 +154,7 @@ Pieces lying on the same diagonal but separated by long unmatched stretches are 
 
 ## `max_hits_still_limits_the_number_of_pieces_and_keeps_the_best`
 
-**Result:** ✅ passed · [line 694](../../core/src/align.rs#L694) · **Area:** Quick alignment (structural variants) · **Checked against:** property/invariant · **Strength:** 🔴 weak
+**Result:** ✅ passed · [line 705](../../core/src/align.rs#L705) · **Area:** Quick alignment (structural variants) · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** The max-hits setting could stop limiting the number of pieces returned for a patchwork query.
 
@@ -164,10 +168,15 @@ max_hits caps the number of reported pieces and hits are sorted best first.
 **Review notes:**
 
 - Name promises 'keeps the best' but lines 666-667 only check counts; nothing compares align(..,2) with the top 2 of align(..,10), so returning the 2 worst pieces would pass.
+- 13 Nov 2026: the weaknesses above were fixed (see Changed by the audit); rated strong since.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'keeps the best' is not tested: only the counts 2/1/0 are asserted, and the 'best first' check runs on max_hits=10 where all 4 pieces are kept anyway. \| With sv_query every piece is an exact 100-bp copy, so all four scores are equal (200); no input here can tell best from worst.
 
 ## `a_piece_repeated_in_the_query_is_found_twice_on_the_same_template_place`
 
-**Result:** ✅ passed · [line 705](../../core/src/align.rs#L705) · **Area:** Quick alignment (structural variants) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 727](../../core/src/align.rs#L727) · **Area:** Quick alignment (structural variants) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A tandem duplication in a query could be collapsed into one hit, so the user would not see the duplication.
 
@@ -179,7 +188,7 @@ A tandem duplication in the query (same 100 bp twice) gives two hits on the same
 
 ## `an_unmatched_stretch_is_cut_out_but_a_short_one_is_still_bridged`
 
-**Result:** ✅ passed · [line 717](../../core/src/align.rs#L717) · **Area:** Quick alignment (structural variants) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 739](../../core/src/align.rs#L739) · **Area:** Quick alignment (structural variants) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A short block of differences could split a hit into fragments, or a long unrelated stretch could be swallowed into one misleading hit.
 
@@ -194,3 +203,7 @@ A short unmatched stretch (8 bp) is bridged into one hit, while 40 bp or 120 bp 
 **Review notes:**
 
 - Comment line 689 says the 8 changed bases are 'shown as mismatches' but the mismatch list is not asserted.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The 8-bp case claims (comment) 'ONE bridged hit ... with the changes shown as mismatches', but only hits.len()==1 and (start,end)==(300,428) are asserted: neither the mismatch list, nor the absence of insertions/deletions, nor qstart/qend. \| So a scoring or traceback change that reports the 8 changed bases as an indel pair (or not at all) passes.

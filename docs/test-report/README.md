@@ -17,7 +17,7 @@ them well. **[AUDIT.md](AUDIT.md) lists every test on one page with why it matte
 
 Last run: ✅ 159 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
 
-Review: 🟡 adequate: 47 · 🟢 strong: 109 · 🔴 weak: 3
+Review: 🟡 adequate: 47 · 🟢 strong: 111 · 🔴 weak: 1
 
 ## Test files
 
@@ -42,7 +42,7 @@ Review: 🟡 adequate: 47 · 🟢 strong: 109 · 🔴 weak: 3
 | [`tests/test_primer_binding.py`](tests_test_primer_binding.md) | 5 | 5 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 4 |
 | [`tests/test_primer_design.py`](tests_test_primer_design.md) | 4 | 4 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 3 |
 | [`tests/test_project.py`](tests_test_project.md) | 2 | 2 | 0 | 0 | 0 | 🟡 adequate 2 |
-| [`tests/test_protein.py`](tests_test_protein.md) | 1 | 1 | 0 | 0 | 0 | 🔴 weak 1 |
+| [`tests/test_protein.py`](tests_test_protein.md) | 1 | 1 | 0 | 0 | 0 | 🟢 strong 1 |
 | [`tests/test_reference.py`](tests_test_reference.md) | 2 | 2 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 1 |
 | [`tests/test_repeats_msa.py`](tests_test_repeats_msa.md) | 2 | 2 | 0 | 0 | 0 | 🟡 adequate 2 |
 | [`tests/test_roundtrip.py`](tests_test_roundtrip.md) | 6 | 6 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 5 |
@@ -50,7 +50,7 @@ Review: 🟡 adequate: 47 · 🟢 strong: 109 · 🔴 weak: 3
 | [`tests/test_selftest.py`](tests_test_selftest.md) | 1 | 1 | 0 | 0 | 0 | 🟡 adequate 1 |
 | [`tests/test_updater.py`](tests_test_updater.md) | 5 | 5 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 4 |
 | [`tests/test_variants.py`](tests_test_variants.md) | 1 | 1 | 0 | 0 | 0 | 🟢 strong 1 |
-| [`core/src/align.rs`](core_src_align.md) | 12 | 12 | 0 | 0 | 0 | 🟡 adequate 3 · 🟢 strong 8 · 🔴 weak 1 |
+| [`core/src/align.rs`](core_src_align.md) | 12 | 12 | 0 | 0 | 0 | 🟡 adequate 3 · 🟢 strong 9 |
 | [`core/src/alignments.rs`](core_src_alignments.md) | 1 | 1 | 0 | 0 | 0 | 🟢 strong 1 |
 | [`core/src/annotate.rs`](core_src_annotate.md) | 1 | 1 | 0 | 0 | 0 | 🟢 strong 1 |
 | [`core/src/bio.rs`](core_src_bio.md) | 3 | 3 | 0 | 0 | 0 | 🟢 strong 3 |

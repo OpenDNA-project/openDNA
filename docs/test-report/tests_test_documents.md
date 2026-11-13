@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.66 s · [line 61](../../tests/test_documents.py#L61) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.54 s · [line 61](../../tests/test_documents.py#L61) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -29,7 +29,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.49 s · [line 144](../../tests/test_documents.py#L144) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.21 s · [line 144](../../tests/test_documents.py#L144) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -50,7 +50,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 17.82 s · [line 206](../../tests/test_documents.py#L206) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 16.91 s · [line 206](../../tests/test_documents.py#L206) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -89,10 +89,15 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 **Review notes:**
 
 - Across-origin case only checks the total length of ranges, not their positions.
+- Its older sequence is built with a new random.Random(N) per base, so it is one letter repeated; the sections added on 13 Nov 2026 build varied sequences, the older ones still use it.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'an edit across the circular origin survives ... rotation': after rotate(50) only the total length (7) is checked. A rotate that leaves the ranges at their pre-rotation offsets (not shifted by -50 mod length), or splits them wrongly at the origin, keeps the same total and passes. Same for the across-origin replace: the 6 G could be marked at any 6 positions.
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.07 s · [line 312](../../tests/test_documents.py#L312) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 334](../../tests/test_documents.py#L334) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
@@ -118,7 +123,7 @@ Checks the names of annotation steps, that primer database add/rename/edit/delet
 
 ## `test_copy_reverse_complement_keeps_annotations_flipped`
 
-**Result:** ✅ passed in 0.01 s · [line 433](../../tests/test_documents.py#L433) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 455](../../tests/test_documents.py#L455) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin.
 
@@ -137,10 +142,15 @@ Copies a selection as reverse complement and pastes it into another document, ch
 - Only 'top' gets an exact location check; 'bottom' and the join's parts are checked by strand or prefix only.
 - Across-origin case checks the bases but not that features are carried across the origin.
 - The RC helper is the app's own reverse_complement, so a bug shared by both would not be caught (it is simple enough that this is minor).
+- Its older sequence is built with a new random.Random(N) per base, so it is one letter repeated; the sections added on 13 Nov 2026 build varied sequences, the older ones still use it.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'a join keeps both parts, in the new reading order' is checked only with startswith('complement(join('): part coordinates and order are free. \| 'bottom' location is unchecked (strand only). \| 'works across the origin' checks bases only; features of an across-origin selection are never inspected.
 
 ## `test_text_exports_and_the_project_file`
 
-**Result:** ✅ passed in 0.04 s · [line 479](../../tests/test_documents.py#L479) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 518](../../tests/test_documents.py#L518) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.
 
@@ -166,9 +176,13 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 - Project round trip compares only sequence and feature count, not feature contents.
 - Exports and the project file are two topics merged into one test.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: GFF3 and BED coordinates are never checked (only header, line count and one strand column), so off-by-one starts, swapped start/end or a wrong seqid pass; a GFF3 with 0-based starts is malformed. \| Project round trip compares sequence and feature COUNT only: lost or altered qualifiers/locations, and primer sites written via file_primer_features(), are not checked.
+
 ## `test_gene_groups_and_display_switches`
 
-**Result:** ✅ passed in 0.01 s · [line 560](../../tests/test_documents.py#L560) · **Area:** Feature display / gene groups · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 617](../../tests/test_documents.py#L617) · **Area:** Feature display / gene groups · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, gene + CDS pairs might not group by locus_tag, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 

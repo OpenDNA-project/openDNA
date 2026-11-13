@@ -195,6 +195,12 @@ mod tests {
         let h = &hits[0][0];
         assert_eq!((h.start, h.end, h.forward), (5, 28, false), "PAM is on the left of the top strand");
         assert_eq!(&t.as_bytes()[h.start..h.start + 3], b"CCT", "reverse complement of AGG");
+        // --- with 5 bases on both sides the reverse-strand index equals the top-strand start; unequal flanks
+        // (5 / 10) tell them apart: top start 5, reverse-strand index 38 - 28 = 10 ---
+        let t = format!("TTTTT{site}CCCCCCCCCC");
+        let hits = find_guide_sites(t.as_bytes(), false, &guide(g), b"NGG", 0);
+        assert_eq!(hits[0].iter().map(|s| (s.start, s.end, s.forward)).collect::<Vec<_>>(), vec![(5, 28, false)]);
+        assert_eq!(&t.as_bytes()[5..8], b"CCT");
     }
 
     #[test]
@@ -205,6 +211,12 @@ mod tests {
         // ...but it is a perfect NNGRRT site for another nuclease when the PAM is written that way.
         let t2 = format!("TTTTT{g}ATGAAT");
         assert_eq!(find_guide_sites(t2.as_bytes(), false, &guide(g), b"NNGRRT", 0)[0].len(), 1);
+        // --- R (A or G) refuses a C, and takes a G: ATGCAT is no NNGRRT, ATGGGT is one, at 5..31 ---
+        let bad = format!("TTTTT{g}ATGCAT");
+        assert!(find_guide_sites(bad.as_bytes(), false, &guide(g), b"NNGRRT", 0)[0].is_empty());
+        let good = format!("TTTTT{g}ATGGGT");
+        let hits = find_guide_sites(good.as_bytes(), false, &guide(g), b"NNGRRT", 0);
+        assert_eq!(hits[0].iter().map(|s| (s.start, s.end, s.forward)).collect::<Vec<_>>(), vec![(5, 31, true)]);
     }
 
     #[test]
@@ -263,6 +275,10 @@ mod tests {
         let hits = find_sites(t2.as_bytes(), false, &guide(g), b"TTTV", 0, true);
         assert_eq!(hits[0].len(), 1);
         assert_eq!((hits[0][0].start, hits[0][0].end, hits[0][0].forward), (5, 29, false));
+        // --- unequal flanks (5 / 10): top start 5, reverse-strand index 39 - 29 = 10 ---
+        let t2 = format!("CCCCC{bottom}CCCCCCCCCC");
+        let hits = find_sites(t2.as_bytes(), false, &guide(g), b"TTTV", 0, true);
+        assert_eq!(hits[0].iter().map(|s| (s.start, s.end, s.forward, s.mismatches)).collect::<Vec<_>>(), vec![(5, 29, false, 0)]);
     }
 
     #[test]

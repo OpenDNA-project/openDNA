@@ -20,3 +20,7 @@
 
 - The promoter checks use contains() (lines 228-229), so extra spurious hits in the circular case would not be detected.
 - Protein-level search is only exercised on the forward strand; reverse-strand protein hits (coordinate mapping at line 164 of annotate.rs) are untested here.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Name says both strands and as protein, but the protein-level search is only exercised on the forward strand; the bottom-strand -> top-strand coordinate mapping for protein hits (annotate.rs line 164) is never reached. \| Promoter hits are checked with contains(), so duplicates or spurious extra hits in the circular case pass (the duplicate filter for the appended head is never exercised). \| Beware when fixing: with equal flanks (200 + 51 + 200) the reverse mapping is symmetric and the wrong formula gives the right number.

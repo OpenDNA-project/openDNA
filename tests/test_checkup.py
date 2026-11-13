@@ -240,7 +240,7 @@ def test_how_far_a_unit_runs_and_how_it_ends():
 
 def test_origins_and_prediction_thresholds():
     """Replication origins are named (with the pir note and the ColE1-group / no-origin remarks), the thresholds keep
-    chance hits rare in a 50 kb random sequence, and motifs near the start of a linear sequence are placed where they are."""
+    chance hits rare in a 50 kb random sequence while still finding a real promoter and terminator, and motifs near the start of a linear sequence are placed where they are."""
     # --- replication origins ---
     ed = construct([("pUC ori", "rep_origin", filler(600, 21), 1), ("p15A ori", "rep_origin", filler(500, 22), 1),
                     ("ColE1 origin", "rep_origin", filler(600, 23), 1), ("R6K gamma ori", "rep_origin", filler(400, 24), 1),
@@ -261,6 +261,22 @@ def test_origins_and_prediction_thresholds():
     st = C.Strand("".join(rnd.choice("ACGT") for _ in range(50_000)), 1, True)
     assert len(C.predict_promoters(st, 10)) <= 8
     assert len(C.predict_terminators(st, 18)) <= 8
+    # --- and a real promoter and terminator are found at those thresholds (the positive control) ---
+    # Alone in T-free filler: the -35 box starts at 200 and the -10 TATAAT is 200 + 25 = 225..231
+    (hit,) = C.predict_promoters(C.Strand(filler(200, 41) + PROMOTER + filler(200, 42), 1, False), 10)
+    assert hit.a == 200 and hit.b >= 231
+    (hit,) = C.predict_terminators(C.Strand(filler(200, 43) + T1 + filler(200, 44), 1, False), 18)
+    assert abs(hit.a - 200) <= 3 and hit.b <= 200 + len(T1) + 3
+    # 20 copies of each planted in 50 kb of random DNA: (nearly) all found, and the chance hits elsewhere still rare
+    seq = "".join(rnd.choice("ACGT") for _ in range(50_000))
+    proms, terms = [1000 + 2400 * i for i in range(20)], [2200 + 2400 * i for i in range(20)]
+    for at, part in [(x, PROMOTER) for x in proms] + [(x, T1) for x in terms]:
+        seq = seq[:at] + part + seq[at + len(part):]
+    st = C.Strand(seq, 1, True)
+    for hits, planted, size in ((C.predict_promoters(st, 10), proms, len(PROMOTER)), (C.predict_terminators(st, 18), terms, len(T1))):
+        inside = lambda h, x: h.a < x + size and h.b > x
+        assert sum(any(inside(h, x) for h in hits) for x in planted) >= 18
+        assert sum(not any(inside(h, x) for x in planted) for h in hits) <= 8
 
     # --- motifs near the start of a linear sequence: a line's slices start at its first base ---
     assert C.sd_match(C.Strand("AGGAGGTTTTATG" + "GCT" * 20, 1, False), 10, 20) == (6, 0, 6)
@@ -276,8 +292,26 @@ def test_library_parts_on_a_real_plasmid():
     assert not any(e.origin == "library" for e in r.elements), "nothing to add to an annotated plasmid"
     bare = Editor(Document.new_sequence("bare", ed.doc.sequence(), True), path)
     assert any(e.origin == "library" and e.kind == "terminator" for e in C.run(bare).elements)
+    # --- which part the library matched, and where ---
+    # The rrnB T1T2 row of the bundled library, read from the file; its place found by a plain string search
+    rows = [line.rstrip("\n").split("\t") for line in (ROOT / "app" / "parts" / "ncbi_vectors.tsv").open(encoding="utf-8")]
+    (part,) = [r[2].upper() for r in rows if r[0] == "rrnB T1T2 terminator" and r[1] == "terminator"]
+    seq = ed.doc.sequence().upper()
+    assert seq.count(part) == 1
+    pos = seq.index(part)
+    (el,) = [e for e in C.run(bare).elements if e.origin == "library" and e.kind == "terminator"]
+    assert (el.start, el.end, el.strand, el.label) == (pos, pos + len(part), 1, "rrnB T1T2 terminator")
+    assert bare.doc.sequence(el.start, el.end).upper() == part
+    # the annotated file's own terminator overlaps that match, which is why the library adds nothing there
+    (own,) = [f for f in ed.features if f.kind == "terminator"]
+    (fs, fe), = own.spans
+    assert fs < pos + len(part) and pos < fe
     v = {c.feature.label: c for c in r.cds}
     assert v["eilR"].verdict == C.YES and v["eilR"].unit.promoter.label == "araBAD promoter", v["eilR"].reasons
+    # the unit's promoter is the file's araBAD promoter feature itself, its bases and all
+    (ara,) = [f for f in ed.features if f.label == "araBAD promoter"]
+    prom = v["eilR"].unit.promoter
+    assert prom.origin == "annotated" and [(prom.start, prom.end)] == [tuple(x) for x in ara.spans] and prom.strand == ara.strand
     assert any("arabinose" in x and "araC on the plasmid" in x for x in v["eilR"].reasons)
 
 

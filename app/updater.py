@@ -208,9 +208,10 @@ def check(current_version=None, fetch=None):
                            "automatically.", latest=tag, page_url=page)
     try:
         check_url(assets[asset_name]), check_url(assets[asset_name + ".sha256"])
-        # The exe must come from this project's own releases, not just from any github.com address.
-        if not urlparse(assets[asset_name]).path.startswith(f"/{project.REPO}/releases/download/"):
-            raise UpdateError(f"Refused: {assets[asset_name]} is not in the releases of {project.REPO}.")
+        # The exe and its checksum must come from this project's own releases, not just from any github.com address.
+        for name in (asset_name, asset_name + ".sha256"):
+            if not urlparse(assets[name]).path.startswith(f"/{project.REPO}/releases/download/"):
+                raise UpdateError(f"Refused: {assets[name]} is not in the releases of {project.REPO}.")
     except UpdateError as e:
         return Check(error=str(e), latest=tag, page_url=page)
     notes = data.get("body") if isinstance(data.get("body"), str) else ""

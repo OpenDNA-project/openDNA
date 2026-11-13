@@ -93,8 +93,14 @@ def test_scrub_removes_private_text():
 
     # --- paths quoted with spaces and UNC
     out = feedback.scrub(f"FileNotFoundError: [Errno 2] No such file: {SECRET_PATH!r}")
-    assert "Lab Notes" not in out and "secret" not in out and "<path>" in out
-    assert "Lab" not in feedback.scrub(r"\\fileserver\lab\project\plasmid.fa not found")
+    assert out == "FileNotFoundError: [Errno 2] No such file: '<path>'"
+    # a network path, and unquoted paths that hold spaces: nothing of them is left, the words around them are kept
+    assert feedback.scrub(r"\\fileserver\lab\project\plasmid.fa not found") == "<path> not found"
+    for path in (r"\\fileserver\Lab Data\project\x.docx", SECRET_PATH, "/home/bobsmith/Lab Data/p.fa"):
+        out = feedback.scrub(f"open {path} now")
+        assert out == "open <path> now", out
+        for word in ("fileserver", "Lab", "Data", "Notes", "project", "Documents", "secret", "bobsmith"):
+            assert word.lower() not in out.lower(), (path, word)
 
     # --- traceback frames keep only the file name
     out = feedback.scrub('  File "C:\\Users\\bobsmith\\miniconda3\\lib\\site-packages\\x\\y.py", line 12, in run')

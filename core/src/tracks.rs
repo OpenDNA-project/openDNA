@@ -265,6 +265,9 @@ chr2\tsrc\tgene\t5\t6\t.\t.\t.\tgene_id \"x1\"; gene_name \"tiny\"\n\
         assert_eq!(t.query("chr2", 4, 5, 10).0[0].name, "tiny"); // GTF attributes
         assert_eq!(t.query("chr1", 9, 10, 10).0[0].start, 9); // 1-based -> 0-based
         assert_eq!(t.density("chr1", 0, 1000, 10)[0], 2); // lacZ + big gene in bin 0
+        // --- every bin (100 bp each): lacZ 9..100 -> bin 0; big 49..900 -> bins 0..8; araC 199..300 -> bins 1, 2
+        // (the region line is skipped) ---
+        assert_eq!(t.density("chr1", 0, 1000, 10), vec![2, 2, 2, 1, 1, 1, 1, 1, 1, 0]);
         assert_eq!(t.search("ARA", 10)[0].1.name, "araC");
 
         let bed = dir.join("ge_test.bed");

@@ -4,7 +4,7 @@
 
 ## `test_ncbi_client_search_cache_rate_limit_and_errors`
 
-**Result:** ✅ passed in 6.07 s · [line 153](../../tests/test_online.py#L153) · **Area:** NCBI download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 6.06 s · [line 153](../../tests/test_online.py#L153) · **Area:** NCBI download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it fetching sequences from NCBI could break, send wrong parameters, ignore NCBI's request rate limit (getting the user blocked), cache error pages as sequence files or fail on a temporary 429.
 
@@ -71,9 +71,13 @@ Checks UniProt accession extraction from feature qualifiers, HTML escaping of na
 
 - The accession_of check is unrelated to page safety; it would fit better with the structure-source test.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'an AlphaFold reply naming a non-AlphaFold URL is refused' is tested with file:/// only; a check that just requires https (or any scheme check) passes, so a reply could make the app fetch from any https host.
+
 ## `test_pdb_entries_and_the_model_read_from_a_pdb_text`
 
-**Result:** ✅ passed in 0.00 s · [line 290](../../tests/test_online.py#L290) · **Area:** 3D structure: PDB entries and model parsing · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 293](../../tests/test_online.py#L293) · **Area:** 3D structure: PDB entries and model parsing · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the PDB search list could show duplicates or wrong identity/coverage, linked entries could be badly ordered, and the 3D view could mis-read chains, ligands or secondary structure, or map protein residues to the wrong atoms.
 

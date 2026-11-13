@@ -15,7 +15,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "A tandem duplication in a query could be collapsed into one hit, so the user would not see the duplication."
+   "role": "A tandem duplication in a query could be collapsed into one hit, so the user would not see the duplication.",
+   "verdict": "sound",
+   "evidence": "Read: assert_pieces asserts exactly 2 pieces with both query ranges on 700..800; collapsing them (dedup on template overlap only) would fail the count.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/align.rs::tests::an_unmatched_stretch_is_cut_out_but_a_short_one_is_still_bridged",
@@ -41,7 +45,14 @@
    "issues": [
     "Comment line 689 says the 8 changed bases are 'shown as mismatches' but the mismatch list is not asserted."
    ],
-   "role": "A short block of differences could split a hit into fragments, or a long unrelated stretch could be swallowed into one misleading hit."
+   "role": "A short block of differences could split a hit into fragments, or a long unrelated stretch could be swallowed into one misleading hit.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): MISMATCH = -3 -> -6 (bridged differences become gaps / different alignment): every align test, including this one, still PASSES; a probe asserting the 8-bp case's mismatch list fails.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The 8-bp case claims (comment) 'ONE bridged hit ... with the changes shown as mismatches', but only hits.len()==1 and (start,end)==(300,428) are asserted: neither the mismatch list, nor the absence of insertions/deletions, nor qstart/qend. | So a scoring or traceback change that reports the 8 changed bases as an indel pair (or not at all) passes."
+   ]
   },
   {
    "id": "core/src/align.rs::tests::every_piece_of_a_patchwork_query_is_reported_including_the_inverted_one",
@@ -65,7 +76,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Quick Align on a rearranged construct (insertion, inversion, reordering) could drop a piece or report the inverted piece on the wrong strand or place."
+   "role": "Quick Align on a rearranged construct (insertion, inversion, reordering) could drop a piece or report the inverted piece on the wrong strand or place.",
+   "verdict": "sound",
+   "evidence": "Read: assert_pieces checks exact piece count and each (qstart,qend,strand,tstart,tend) within +-2 for three layouts and circular.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/align.rs::tests::exact_hit_forward_and_reverse",
@@ -87,7 +102,11 @@
    "issues": [
     "Forward case (line 502-505) does not assert hits.len()==1, so spurious extra hits would pass; the reverse case does (line 509)."
    ],
-   "role": "Quick Align (local alignment) could report a perfectly matching query at the wrong place, strand or identity and nobody would notice."
+   "role": "Quick Align (local alignment) could report a perfectly matching query at the wrong place, strand or identity and nobody would notice.",
+   "verdict": "sound",
+   "evidence": "Read test and align(). Start/end/strand/identity/qstart/qend are exact for the forward copy, strand/span and hits.len()==1 for the reverse copy. Informational mutation: disabling dedup (redundant() always false) is not needed for this input and is caught elsewhere (overhanging test). The missing forward len()==1 is a missing extra check, not an unpinned claim.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/align.rs::tests::max_hits_still_limits_the_number_of_pieces_and_keeps_the_best",
@@ -105,11 +124,19 @@
     }
    ],
    "oracle": "property/invariant",
-   "strength": "weak",
+   "strength": "strong",
    "issues": [
-    "Name promises 'keeps the best' but lines 666-667 only check counts; nothing compares align(..,2) with the top 2 of align(..,10), so returning the 2 worst pieces would pass."
+    "Name promises 'keeps the best' but lines 666-667 only check counts; nothing compares align(..,2) with the top 2 of align(..,10), so returning the 2 worst pieces would pass.",
+    "13 Nov 2026: the weaknesses above were fixed (see Changed by the audit); rated strong since."
    ],
-   "role": "The max-hits setting could stop limiting the number of pieces returned for a patchwork query."
+   "role": "The max-hits setting could stop limiting the number of pieces returned for a patchwork query.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): removed the score sort before the max_hits cut and sorted only the kept list afterwards (so align(..,k) keeps the first k pieces FOUND, not the best k): the test still PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'keeps the best' is not tested: only the counts 2/1/0 are asserted, and the 'best first' check runs on max_hits=10 where all 4 pieces are kept anyway. | With sv_query every piece is an exact 100-bp copy, so all four scores are equal (200); no input here can tell best from worst."
+   ]
   },
   {
    "id": "core/src/align.rs::tests::mismatch_insertion_and_deletion",
@@ -132,7 +159,14 @@
     "Positions of the insertion (template 1150) and deletion (1250..1255) are never asserted, only their total sizes (lines 525-526); a misplaced indel would pass.",
     "Reverse-strand case (line 530) checks only strand and span, not the mismatch/indel reports."
    ],
-   "role": "A query carrying a SNP and small indels could be split, truncated or reported with the wrong mismatch, so sequencing-read or clone checks against a plasmid would show false differences."
+   "role": "A query carrying a SNP and small indels could be split, truncated or reported with the wrong mismatch, so sequencing-read or clone checks against a plasmid would show false differences.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): Op::Insert(t) -> Op::Insert(t + 7) and Op::Delete(t - 1) -> Op::Delete(t - 1 + 7) (every insertion and deletion reported 7 bases off): the test still PASSES. Also with the original input the inserted GGG sits after t[1149]='G', so the insertion can legally slide between 1149 and 1150 (the code reports 1149); a +1 shift is indistinguishable there.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Indel positions are never asserted: only the sums of insertion lengths (3) and deletion lengths (5) are checked, so an insertion/deletion reported at the wrong template position passes (proven by the +7 shift). | The inserted letters (GGG) equal the template base before the insertion point, so even an exact position assertion would be ambiguous (1149 vs 1150) with this input. | Reverse-strand case checks only strand and span; its mismatch/insertion/deletion lists (the claim 'reports each difference, on both strands') are not asserted."
+   ]
   },
   {
    "id": "core/src/align.rs::tests::no_hit_for_random_query",
@@ -150,7 +184,11 @@
    "issues": [
     "Single seed pair only; a threshold regression that lets chance hits through on other seeds could pass."
    ],
-   "role": "Quick Align could start reporting chance matches for an unrelated query, so users would trust false hits."
+   "role": "Quick Align could start reporting chance matches for an unrelated query, so users would trust false hits.",
+   "verdict": "sound",
+   "evidence": "Read: min_score = min(1.2*m, 40) = 40 for m=500; the claim is that this random pair gives no hit, which is asserted. Threshold boundary is pinned separately by the 15-base overlap case.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/align.rs::tests::overhanging_query_wraps_on_a_circle_and_a_tiny_overlap_is_no_hit",
@@ -176,7 +214,11 @@
    "issues": [
     "Linear case (line 587) checks only the count 2, not the coordinates of the two halves."
    ],
-   "role": "A read spanning the origin of a plasmid could be shown as two pieces (or as one on a linear sequence), and a tiny chance overlap at the end could appear as a hit."
+   "role": "A read spanning the origin of a plasmid could be shown as two pieces (or as one on a linear sequence), and a tiny chance overlap at the end could appear as a hit.",
+   "verdict": "sound",
+   "evidence": "Read; informational mutation (dedup disabled) is caught by this test (circular duplicate). Circular hit exact; 15-base overlap below threshold on both topologies. The linear case only counts 2 pieces, which is what is claimed.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/align.rs::tests::pieces_on_one_diagonal_with_a_long_unmatched_middle_are_not_merged",
@@ -192,7 +234,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Separate matching pieces with a long unrelated stretch between them could be merged into one long low-identity hit, hiding a large insertion or deletion."
+   "role": "Separate matching pieces with a long unrelated stretch between them could be merged into one long low-identity hit, hiding a large insertion or deletion.",
+   "verdict": "sound",
+   "evidence": "Read: exact piece list plus span <= 102 and identity > 0.97 for every hit; a merged hit fails both.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/align.rs::tests::query_hanging_off_the_template_end_aligns_only_the_overlap",
@@ -216,7 +262,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "A query running past the end of a linear sequence could be reported with invented bases or wrong query/template coordinates beyond the end."
+   "role": "A query running past the end of a linear sequence could be reported with invented bases or wrong query/template coordinates beyond the end.",
+   "verdict": "sound",
+   "evidence": "Read: exact start/end/strand and qstart/qend for both strands and the mirror case; the reverse qstart/qend (60,100) pins the m - qend conversion.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/alignments.rs::tests::reads_mismatches_and_coverage",
@@ -259,7 +309,14 @@
     "Writes fixed file names ge_test_reads.bam/.sam into the shared system temp dir and never deletes them; two concurrent cargo test runs could clobber each other.",
     "Overlaps tests/test_core_formats.py::test_bam_reads_pileup_coverage_and_variants_match_a_model, which covers the same BAM decoding from Python with a model check on random reads; this is the faster unit-level copy."
    ],
-   "role": "Imported BAM reads could be drawn with wrong positions, strands, mismatches, indels or soft clips, and the coverage, pileup and variant tracks could show wrong numbers."
+   "role": "Imported BAM reads could be drawn with wrong positions, strands, mismatches, indels or soft clips, and the coverage, pileup and variant tracks could show wrong numbers.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): in for_each_aligned (used by coverage, depth_blocks and decode's mismatch scan) a CIGAR Deletion no longer advances the reference cursor (only Skip does): the test still PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Coverage is never computed over a read with an indel: the exact window 10..30 holds only the two plain reads, and the block path sums aligned bases per 128-bp block, where read r3 (5M3D5M at 50) lands in block 0 whether or not its deletion shifts the second half. So coverage could ignore deletions (or insertions) without any assertion failing. | decode's mismatch scan over r3 cannot notice the shift either, because the reference is all A and the read is all A."
+   ]
   },
   {
    "id": "core/src/annotate.rs::tests::finds_parts_on_both_strands_across_the_origin_and_as_protein",
@@ -286,7 +343,14 @@
     "The promoter checks use contains() (lines 228-229), so extra spurious hits in the circular case would not be detected.",
     "Protein-level search is only exercised on the forward strand; reverse-strand protein hits (coordinate mapping at line 164 of annotate.rs) are untested here."
    ],
-   "role": "'Detect common features' could miss known parts on the reverse strand, across the origin, or as codon-changed CDSs, or report the wrong identity."
+   "role": "'Detect common features' could miss known parts on the reverse strand, across the origin, or as codon-changed CDSs, or report the wrong identity.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): (a) reverse protein hit start = s instead of len2 - (s + len): test PASSES (no reverse protein case); (b) dropped the 'start < n' filter that removes the duplicate copy of a hit in the appended head of a circular template: test PASSES (no whole part lies in the appended head with this input, so the filter is unreachable; with a promoter copy at 100 the duplicate at n+100 appears).",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Name says both strands and as protein, but the protein-level search is only exercised on the forward strand; the bottom-strand -> top-strand coordinate mapping for protein hits (annotate.rs line 164) is never reached. | Promoter hits are checked with contains(), so duplicates or spurious extra hits in the circular case pass (the duplicate filter for the appended head is never exercised). | Beware when fixing: with equal flanks (200 + 51 + 200) the reverse mapping is symmetric and the wrong formula gives the right number."
+   ]
   },
   {
    "id": "core/src/bio.rs::tests::alternative_starts_and_other_tables",
@@ -316,7 +380,11 @@
    "issues": [
     "Table-4 case (line 102) checks only len()==1, not the coordinates 0..12."
    ],
-   "role": "The ORF finder could use alternative start codons when they are switched off or from the wrong genetic code, or read TGA as a stop in the Mycoplasma code."
+   "role": "The ORF finder could use alternative start codons when they are switched off or from the wrong genetic code, or read TGA as a stop in the Mycoplasma code.",
+   "verdict": "sound",
+   "evidence": "Read test and find_orfs_with/is_start. Each start/table claim has a negative and a positive input; table 4 checks only the count, but a stop at TGA would make the ORF 2 codons (< 4) and empty, so the count pins it.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/bio.rs::tests::finds_an_orf_that_crosses_the_origin_of_a_ring",
@@ -339,6 +407,10 @@
     {
      "input": "'CCATGAAAAAATAACC', circular",
      "expected": "exactly 1 ORF (not duplicated by the doubled scan)"
+    },
+    {
+     "input": "ring 'ATGAAATAA' + 'C'*30 + 'ATGAAA' (45 bp), min 3 codons; and its reverse complement",
+     "expected": "only (39, 54, +1); on the reverse complement only (36, 51, -1)"
     }
    ],
    "oracle": "hand-computed",
@@ -346,7 +418,15 @@
    "issues": [
     "No case for a ring with a start but no stop in a full lap (the 'full lap' guard, bio.rs line 42)."
    ],
-   "role": "An ORF that crosses the origin of a plasmid could be missed or reported twice."
+   "role": "An ORF that crosses the origin of a plasmid could be missed or reported twice.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): same s0 = a mutation as above: test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The bottom-strand-across-the-origin claim is symmetric: the ORF covers ring positions 36..41 and 0..5 (6 bases each side of the origin), so the mirrored start (42-48) mod 42 = 36 equals the unmirrored one; a wrong mapping passes. | The 'full lap without a stop' guard (bio.rs line 42) is not exercised (minor, not claimed).",
+    "13 Nov 2026: app bug fixed in core/src/bio.rs: on a ring an ATG just after the origin, inside an ORF that started before it, was reported as a second, shorter ORF with the same stop ('ATGAAATAA' + 30 C + 'ATGAAA' gave (0,9) and (39,54)). Now one stop gives one ORF, the longest, on both strands; the test checks that ring exactly and random rings for equality with the hand scan."
+   ]
   },
   {
    "id": "core/src/bio.rs::tests::finds_orfs_on_both_strands",
@@ -370,7 +450,14 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "The ORF finder could show ORFs at wrong coordinates, ignore the minimum length, or miss bottom-strand ORFs."
+   "role": "The ORF finder could show ORFs at wrong coordinates, ignore the minimum length, or miss bottom-strand ORFs.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): bottom-strand mapping s0 = (n - end) mod n replaced by s0 = a (no mirroring at all): test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The bottom-strand claim ('the same ORF written on the bottom strand is reported reverse' at top-strand 2..14) cannot fail for a wrong coordinate mapping: in 'CCATGAAAAAATAACC' (16 bp) the ORF 2..14 is centred, so its mirror n-end = 2 equals its bottom-strand start a = 2."
+   ]
   },
   {
    "id": "core/src/cas9.rs::tests::a_site_can_run_across_the_origin_of_a_circle",
@@ -392,7 +479,11 @@
    "issues": [
     "End is only checked as > length (line 235); exact end 48 and strand are not asserted."
    ],
-   "role": "A guide site crossing the origin of a plasmid could be missed."
+   "role": "A guide site crossing the origin of a plasmid could be missed.",
+   "verdict": "sound",
+   "evidence": "Read: exactly 1 site at start 25 = 43-18 on the circle, none on the line. end = start + span by construction, so 'end > len' adds nothing but no claim is left unpinned.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/cas9.rs::tests::counts_mismatches_and_records_where",
@@ -412,7 +503,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Off-target sites could be listed with the wrong number or positions of mismatches, misleading guide specificity checks."
+   "role": "Off-target sites could be listed with the wrong number or positions of mismatches, misleading guide specificity checks.",
+   "verdict": "sound",
+   "evidence": "Read: limit 1 refuses, limit 2 gives exactly 1 site with mismatches 2 and mask 1|(1<<19); both mask ends pinned.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/cas9.rs::tests::finds_a_site_on_the_bottom_strand",
@@ -428,7 +523,14 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Guide sites on the bottom strand could be missed or drawn at the wrong place."
+   "role": "Guide sites on the bottom strand could be missed or drawn at the wrong place.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): reverse-strand start = n - (i + span) replaced by start = i (no conversion to top-strand coordinates): test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The template is 'TTTTT' + 23-bp site + 'CCCCC': 5 bases on both sides, so the reverse-complement index i = 33-28 = 5 equals the correct top-strand start 5; the coordinate conversion the test claims ('reported in top-strand coordinates') is never really checked. The 'CCT' check reads the same position and passes too."
+   ]
   },
   {
    "id": "core/src/cas9.rs::tests::finds_a_site_whose_pam_comes_first",
@@ -452,7 +554,14 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Cas12a (5' TTTV PAM) sites could be searched in Cas9 orientation and so be missed or wrongly found."
+   "role": "Cas12a (5' TTTV PAM) sites could be searched in Cas9 orientation and so be missed or wrongly found.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): same start = i mutation for reverse-strand sites: test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The bottom-strand pam_first case is 'CCCCC' + 24-bp site + 'CCCCC' (symmetric), so the reverse-strand index equals the top-strand start (5) and the coordinate conversion is not checked."
+   ]
   },
   {
    "id": "core/src/cas9.rs::tests::finds_a_site_with_its_pam_on_the_top_strand",
@@ -468,7 +577,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Guide-site search could miss or misplace a perfect protospacer + NGG site on the top strand."
+   "role": "Guide-site search could miss or misplace a perfect protospacer + NGG site on the top strand.",
+   "verdict": "sound",
+   "evidence": "Read: exact (start,end,forward,mismatches,mask) and len()==1.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/cas9.rs::tests::mismatch_mask_counts_from_the_guides_5_prime_end_next_to_a_first_pam",
@@ -486,7 +599,11 @@
    "issues": [
     "Does not assert there is exactly one site or its position (line 275 indexes hits[0][0] directly)."
    ],
-   "role": "For Cas12a the mismatch positions could be counted from the wrong end, so a PAM-proximal mismatch would be weighted as distal in off-target scoring."
+   "role": "For Cas12a the mismatch positions could be counted from the wrong end, so a PAM-proximal mismatch would be weighted as distal in off-target scoring.",
+   "verdict": "sound",
+   "evidence": "Read: mismatches 1 and mask 1 for the base next to the PAM; counting from the other end would give 1<<19. Count of sites is not asserted but the claim is the mask.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/cas9.rs::tests::needs_the_pam",
@@ -508,7 +625,14 @@
    "issues": [
     "The NNGRRT case checks only the count, not position/strand."
    ],
-   "role": "Sites lacking a PAM could be reported as guide sites (false off-targets), or non-NGG PAMs such as SaCas9's NNGRRT could be ignored."
+   "role": "Sites lacking a PAM could be reported as guide sites (false off-targets), or non-NGG PAMs such as SaCas9's NNGRRT could be ignored.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): IUPAC 'R' made to fit any base (b'R' => true): test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'Other IUPAC PAMs (NNGRRT) are honoured' is tested by one positive case only ('ATGAAT', where A fits R anyway), and only by count; nothing shows an R refusing a C/T, so a wrong IUPAC table passes."
+   ]
   },
   {
    "id": "core/src/cas9.rs::tests::several_guides_and_lower_case",
@@ -526,7 +650,11 @@
    "issues": [
     "Only relative order is checked (line 246), not exact starts 6 and 35; lower-case guides (as opposed to template) are not tested."
    ],
-   "role": "Searching several guides at once, or a lower-case sequence, could return mixed-up or empty results."
+   "role": "Searching several guides at once, or a lower-case sequence, could return mixed-up or empty results.",
+   "verdict": "sound",
+   "evidence": "Read: one list per guide, each with 1 site; if the lists were swapped the order assertion (6 < 35) fails; lower-case template matches. Lower-case guides are not claimed.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/code.rs::tests::a_cds_is_translated_with_its_own_table_and_frame",
@@ -556,7 +684,11 @@
    "issues": [
     "Error cases use is_err() only (lines 366, 375): the error kind/message is not checked, so an error for a different reason would pass."
    ],
-   "role": "A CDS could be translated with the app default instead of its own /transl_table or /codon_start, or a broken CDS (internal stop, incomplete codon) could be translated silently."
+   "role": "A CDS could be translated with the app default instead of its own /transl_table or /codon_start, or a broken CDS (internal stop, incomplete codon) could be translated silently.",
+   "verdict": "sound",
+   "evidence": "Read and traced: the table-1 error can only come from the internal TGA (table 4 on the same feature gives MWV); the codon_start=2 error only from the 11-base length (the partial variant gives CEC). is_err is enough here.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/code.rs::tests::an_alternative_start_codon_is_read_as_methionine",
@@ -580,7 +712,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "A CDS starting with an alternative start such as GTG or TTG could show V or L instead of M as its first residue, or internal GTGs could wrongly become M."
+   "role": "A CDS starting with an alternative start such as GTG or TTG could show V or L instead of M as its first residue, or internal GTGs could wrongly become M.",
+   "verdict": "sound",
+   "evidence": "Read: MK / ML / LK pin start-only, internal and partial cases.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/code.rs::tests::bottom_strand_cds_and_transl_except",
@@ -606,7 +742,14 @@
    "issues": [
     "Error cases are is_err() only; the reason is not asserted."
    ],
-   "role": "A complement CDS could be translated from the wrong strand, or a /transl_except (e.g. selenocysteine) could be ignored."
+   "role": "A complement CDS could be translated from the wrong strand, or a /transl_except (e.g. selenocysteine) could be ignored.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): deleted the 'b - a != 2 -> not a whole codon' check in parse_exception: test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'An unsupported exception is an error rather than a silent translation' is tested with (pos:complement(4..5),aa:TERM), but that input is rejected anyway by the reading-frame check (first base 4 sits at offset 4, not a codon start), so the whole-codon rule itself is never exercised; is_err() hides which check fired."
+   ]
   },
   {
    "id": "core/src/code.rs::tests::joined_cds_reads_its_parts_in_order",
@@ -624,7 +767,14 @@
    "issues": [
     "Parts are in ascending order; a complement(join) or out-of-order join is not tested."
    ],
-   "role": "A spliced (join) CDS could be translated from its parts in the wrong order."
+   "role": "A spliced (join) CDS could be translated from its parts in the wrong order.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): ranges sorted by start in plain_location before translation: test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'Translated from its parts concatenated in order' is tested only with join(1..3,7..12), whose written order equals ascending order, so reading parts sorted (instead of as written) passes; complement(join) reading order is not covered either."
+   ]
   },
   {
    "id": "core/src/code.rs::tests::pseudo_and_partial_cds_are_skipped",
@@ -648,7 +798,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Pseudogenes and 5'-partial CDSs could get a nonsense /translation instead of being skipped with a reason."
+   "role": "Pseudogenes and 5'-partial CDSs could get a nonsense /translation instead of being skipped with a reason.",
+   "verdict": "sound",
+   "evidence": "Read: exact Skip kinds and the codon_start rescue.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/code.rs::tests::the_standard_code_and_the_known_differences",
@@ -676,7 +830,11 @@
    "oracle": "hand-computed",
    "strength": "adequate",
    "issues": [],
-   "role": "Translation could get basic codons wrong, ignore table-specific differences (TGA=W in table 4, AGA=stop in table 2), or reject lower-case or RNA input."
+   "role": "Translation could get basic codons wrong, ignore table-specific differences (TGA=W in table 4, AGA=stop in table 2), or reject lower-case or RNA input.",
+   "verdict": "sound",
+   "evidence": "Read: exact translations for each claimed difference, lower case + U ('aug').",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/dna_file.rs::tests::reads_synthetic_file",
@@ -710,7 +868,11 @@
    "issues": [
     "The primer site (0-based '9-12' -> 10..13) is not where 'GGGG' would actually anneal in this synthetic sequence, so the test fixes the 0-based convention by assertion only; it cannot confirm it against real bases (the code comment says real files were checked)."
    ],
-   "role": "Opening a SnapGene .dna file could lose or misplace its features, primers, topology or description."
+   "role": "Opening a SnapGene .dna file could lose or misplace its features, primers, topology or description.",
+   "verdict": "sound",
+   "evidence": "Read test and parser: sequence, topology, definition, feature count, locations (incl. origin-spanning complement(join)), unescaped note, directional qualifiers, primers and primer_bind location all exact. The 0-based primer convention is fixed by assertion (documented choice).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/dna_file.rs::tests::rejects_other_files",
@@ -732,7 +894,14 @@
    "issues": [
     "Truncated packets (length past end of data) are not tested."
    ],
-   "role": "Opening a non-.dna or a damaged .dna file could give an empty document instead of an error."
+   "role": "Opening a non-.dna or a damaged .dna file could give an empty document instead of an error.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): the signature check (first packet must be 0x09 starting 'SnapGene') replaced by 'if false': test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: b'LOCUS       x' is rejected as a 'truncated packet' (its length bytes are huge), before the signature check is reached; the second input has a valid cookie and fails for 'no DNA'. So the 'not a .dna file' check is never exercised, and is_err() does not say which check fired."
+   ]
   },
   {
    "id": "core/src/document.rs::tests::gc_bins_exact_and_from_blocks",
@@ -758,7 +927,14 @@
    "issues": [
     "The block path (lines 1468-1474) is only fed uniform sequences (all GC or all AT), so a wrong block index, off-by-one block edge or bins swapped would still give 1.0/0.0; a mixed sequence is needed to test it."
    ],
-   "role": "The GC-content plot could show wrong values, or stale values after an edit or undo on long sequences that use the block cache."
+   "role": "The GC-content plot could show wrong values, or stale values after an edit or undo on long sequences that use the block cache.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): block path sums bl[0..bb-ba] instead of bl[ba..bb] (every bin reads the first blocks): test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The cached-block path is only fed uniform sequences (all GC, then all AT), so every block has the same fraction: a wrong block index, an off-by-one at a block edge or swapped bins still gives 1.0/0.0. Only the cache invalidation (after edit and after undo) is really pinned."
+   ]
   },
   {
    "id": "core/src/document.rs::tests::random_edits_undo_redo_follow_a_snapshot_and_string_model",
@@ -780,7 +956,11 @@
    "issues": [
     "Feature locations are compared only with snapshots taken from the document itself (self-consistency); no independent model checks where features land after each edit (other drift tests cover that)."
    ],
-   "role": "Some combination of edits, pastes, rotations, flips, undo, redo and save could corrupt the bases, desynchronise undo/redo, or get the unsaved-changes flag wrong."
+   "role": "Some combination of edits, pastes, rotations, flips, undo, redo and save could corrupt the bases, desynchronise undo/redo, or get the unsaved-changes flag wrong.",
+   "verdict": "sound",
+   "evidence": "Read: after every one of 600 random ops per topology the bases equal an independent string model, the record equals the snapshot at that depth, undo/redo availability and the modified flag follow the model; final full undo/redo walk. Feature positions are only self-consistent snapshots, but this test does not claim independent feature placement (section-2 tests do).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/fasta.rs::tests::a_fasta_rewritten_in_the_same_clock_tick_is_re_indexed",
@@ -802,7 +982,11 @@
    "issues": [
     "Fixed file names in the shared system temp dir (ge_test_same_tick.fa, line 319); concurrent test runs can collide."
    ],
-   "role": "After a genome FASTA is rewritten quickly, a stale .fai could be trusted and fetches would return the old bases."
+   "role": "After a genome FASTA is rewritten quickly, a stale .fai could be trusted and fetches would return the old bases.",
+   "verdict": "sound",
+   "evidence": "Read: same mtime forces the strict '>' freshness test; length and fetched bases of the new file pinned (a '>=' would reuse the 20-base index and fail).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/fasta.rs::tests::fetch_across_line_breaks_with_crlf",
@@ -826,7 +1010,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Fetching a region from a Windows (CRLF) or wrapped genome FASTA could return bases shifted by the line endings."
+   "role": "Fetching a region from a Windows (CRLF) or wrapped genome FASTA could return bases shifted by the line endings.",
+   "verdict": "sound",
+   "evidence": "Read: exact bases across CRLF line breaks, end clamp, unknown name, .fai read-back equality.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/fasta.rs::tests::rejects_uneven_wrapping",
@@ -842,7 +1030,14 @@
    "oracle": "hand-computed",
    "strength": "adequate",
    "issues": [],
-   "role": "An unevenly wrapped FASTA could be indexed anyway, so every fetch from it would silently return wrong bases."
+   "role": "An unevenly wrapped FASTA could be indexed anyway, so every fetch from it would silently return wrong bases.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): removed the 'ended ||' condition (a short line followed by more sequence lines is accepted): test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Only one kind of unevenness is tested ('>x\\nACG\\nACGT\\n': a line longer than the first). The common case - a short line in the middle of a record ('ACGT/AC/ACGT') - and same base count with a different line width (mixed LF/CRLF) are never fed, so those two rejection branches are unverified."
+   ]
   },
   {
    "id": "core/src/fasta.rs::tests::replace_one_sequence_and_search",
@@ -872,7 +1067,11 @@
    "issues": [
     "Wrapping at 60 (80 new bases should be 60+20 lines) and the in-place case dst == src, both promised by write_replacing's doc, are not tested."
    ],
-   "role": "Saving one edited record into a multi-record FASTA could damage the other records, or motif search in a FASTA could miss or duplicate hits."
+   "role": "Saving one edited record into a multi-record FASTA could damage the other records, or motif search in a FASTA could miss or duplicate hits.",
+   "verdict": "sound",
+   "evidence": "Read: exact search hits (palindrome once, rc hits), replaced record bases, untouched neighbours, header line, unknown name error. Wrapping at 60 and in-place dst == src are not claimed by this test.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/locations.rs::tests::clip_window_keeps_parts_in_reading_order",
@@ -902,7 +1101,11 @@
    "issues": [
     "Fuzzy-marker dropping on cut ends (locations.rs line 159) is not tested."
    ],
-   "role": "Copying or rotating across the origin could scramble the order of a feature's parts, lose its strand, or keep parts outside the copied window."
+   "role": "Copying or rotating across the origin could scramble the order of a feature's parts, lose its strand, or keep parts outside the copied window.",
+   "verdict": "sound",
+   "evidence": "Read and traced Window::pieces/merged: exact spans for the origin-crossing join (merge of touching pieces), shift, drop, clip, complement order/strand, and the split range in both window positions. The reversed-piece-order mutation is caught here.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/locations.rs::tests::delete_rules",
@@ -924,7 +1127,11 @@
    "issues": [
     "No case for a deletion after the range (unchanged) or overlapping only the end."
    ],
-   "role": "Deleting bases could leave features shifted, wrongly trimmed, or not removed when fully deleted, especially multi-part complement features."
+   "role": "Deleting bases could leave features shifted, wrongly trimmed, or not removed when fully deleted, especially multi-part complement features.",
+   "verdict": "sound",
+   "evidence": "Read after_delete: the four Range cases hit all three branches of point() and the s2 >= e2 removal; the complement(join) collapse is exact. A deletion after the range or over its end goes through the same branches already pinned.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/locations.rs::tests::spans_and_strand",
@@ -946,7 +1153,11 @@
    "issues": [
     "Between (zero-width site) handling is not tested."
    ],
-   "role": "Feature locations could be flattened into wrong ranges or the wrong strand, which every drawing and export relies on."
+   "role": "Feature locations could be flattened into wrong ranges or the wrong strand, which every drawing and export relies on.",
+   "verdict": "sound",
+   "evidence": "Read: exact ranges and strand for complement(join) and a plain range (Between is not claimed).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/primers.rs::tests::annealing_extends_across_a_lone_mismatch",
@@ -974,7 +1185,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "A primer's displayed binding site could stop at a lone mismatch (showing too much tail) or run on past two mismatches, on either strand."
+   "role": "A primer's displayed binding site could stop at a lone mismatch (showing too much tail) or run on past two mismatches, on either strand.",
+   "verdict": "sound",
+   "evidence": "Read extend(): exact Site for crossed lone mismatch on both strands, start 13 for a 2-base tail, (17,17,0) for two mismatches in a row.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/primers.rs::tests::finds_sites_on_both_strands_with_tails_and_mismatches",
@@ -1002,7 +1217,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding."
+   "role": "Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding.",
+   "verdict": "sound",
+   "evidence": "Read: exact Site lists for tailed forward and reverse primers, seed mismatch only when allowed, 3'-terminal mismatch never binds.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/primers.rs::tests::site_across_the_origin",
@@ -1020,7 +1239,11 @@
    "issues": [
     "No linear counterpart (that the site is not found / is shorter on a linear template)."
    ],
-   "role": "A primer binding across the origin of a plasmid could be missed."
+   "role": "A primer binding across the origin of a plasmid could be missed.",
+   "verdict": "sound",
+   "evidence": "Read: exact single Site{26,20,fwd,0} on the circle; the 'one site' claim is pinned by vector equality.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/search.rs::tests::a_hit_can_run_across_the_origin_of_a_circle",
@@ -1040,7 +1263,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "A motif crossing the origin of a plasmid could be missed by the search."
+   "role": "A motif crossing the origin of a plasmid could be missed by the search.",
+   "verdict": "sound",
+   "evidence": "Read: exact MotifHit across the origin, empty on linear, reverse hit start 12.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/search.rs::tests::allows_a_number_of_mismatches_and_reports_how_many",
@@ -1060,7 +1287,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "Search with mismatches allowed could miss near-matches or report a wrong mismatch count."
+   "role": "Search with mismatches allowed could miss near-matches or report a wrong mismatch count.",
+   "verdict": "sound",
+   "evidence": "Read: exact (start, strand, mismatches) lists for 1 and 2 allowed, and on the reverse strand.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/search.rs::tests::finds_a_protein_motif_in_all_six_frames",
@@ -1094,7 +1325,14 @@
    "issues": [
     "Name says 'all six frames' but only the three forward frames are checked; the reverse-strand frame number is never asserted (line 309)."
    ],
-   "role": "Protein motif search could miss hits in some frames, report wrong DNA coordinates, or mishandle X wildcards and stops."
+   "role": "Protein motif search could miss hits in some frames, report wrong DNA coordinates, or mishandle X wildcards and stops.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): reverse-strand frame number reported as 3 - frame instead of frame + 1: test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Name says 'all six frames' but only the three forward frames are checked for their frame number; the one reverse case asserts strand and coordinates but not .frame, and only reverse frame 1 is ever exercised, so reverse frames 2 and 3 (and their coordinate mapping) are untested."
+   ]
   },
   {
    "id": "core/src/search.rs::tests::finds_an_exact_motif_on_both_strands_in_position_order",
@@ -1120,7 +1358,11 @@
    "issues": [
     "Comment line 236 says 'GGATCC too' but GGATCC is never searched."
    ],
-   "role": "Sequence search could miss bottom-strand hits, report palindromes twice, ignore the top-strand-only option, or be case-sensitive."
+   "role": "Sequence search could miss bottom-strand hits, report palindromes twice, ignore the top-strand-only option, or be case-sensitive.",
+   "verdict": "sound",
+   "evidence": "Read: palindrome reported once (exact list), rc hit as reverse, top-strand-only empty, lower case. GGATCC in the comment uses the same reverse != masks rule as GAATTC.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/search.rs::tests::iupac_letters_in_the_query_match_every_base_they_stand_for",
@@ -1148,7 +1390,11 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [],
-   "role": "IUPAC search queries could miss bases they stand for, or an N in the sequence could match everything, giving false or missing hits."
+   "role": "IUPAC search queries could miss bases they stand for, or an N in the sequence could match everything, giving false or missing hits.",
+   "verdict": "sound",
+   "evidence": "Read: positive and negative cases for R, N in query (IUPAC on/off), N in sequence, and a non-base letter.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/search.rs::tests::stops_at_the_limit_and_handles_tiny_and_empty_inputs",
@@ -1174,7 +1420,11 @@
    "issues": [
     "Limit test does not check that the first 3 hits (0, 2, 4) are the ones kept."
    ],
-   "role": "A search could run past its hit limit or crash on an empty or very short sequence or query."
+   "role": "A search could run past its hit limit or crash on an empty or very short sequence or query.",
+   "verdict": "sound",
+   "evidence": "Read: limit count, empty inputs, 1-base circle. Which hits are kept is not claimed beyond the count, and the scan breaks at the limit in position order.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/tracks.rs::tests::gff_bed_and_queries",
@@ -1210,9 +1460,14 @@
     "Overlaps tests/test_core_formats.py::test_tracks_gff_bed_parsing_query_density_and_search (GFF/GTF/BED with a brute-force query check); only the VCF part is covered here alone."
    ],
    "fixed": [
-    "The limit check compared a query with itself; it now asserts the two items kept (lacZ, big,gene), the cut flag, and no cut at a limit of 3."
+    "The limit check compared a query with itself; it now asserts the two items kept (lacZ, big,gene), the cut flag, and no cut at a limit of 3.",
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: density is checked only at bin 0 (= 2), and both items in bin 0 start there, so a density that ignores item ends (or miscomputes the end bin) passes; the 'density' claim is effectively untested. | Other parts (region skip, ##FASTA, URL decoding, 0-based conversion, max_end query, limit flag, BED, VCF, bad line) are pinned exactly."
    ],
-   "role": "Loaded GFF/GTF/BED/VCF annotation tracks could show features off by one base, lose escaped names, or miss features in a region."
+   "role": "Loaded GFF/GTF/BED/VCF annotation tracks could show features off by one base, lose escaped names, or miss features in a region.",
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): density() counts each item only in its FIRST bin (ignores where it ends): test PASSES.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython",
@@ -1261,7 +1516,11 @@
    "strength": "strong",
    "issues": [
     "The abs=0.5 comparison to the hand formula is made redundant by the abs=1e-6 one on the next line."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Hand SantaLucia 1998 table at 1 M (abs 1e-6) plus Biopython Tm_NN (saltcorr 5) on 200 random primers x 3 conditions (abs 0.01) and selfcomp palindromes: any wrong NN value, salt/Mg/dNTP correction, concentration convention or symmetry term breaks an exact comparison. tm_range compared to min/max of the 16 expansions computed in the test.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_core_sequence.py::test_hairpins_and_dimers",
@@ -1310,6 +1569,13 @@
    "strength": "adequate",
    "issues": [
     "No absolute dG value is checked against Primer3 or a hand calculation: a scaled or shifted energy model would still pass."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation pytest -p mutplug (scratch plugin audit_core/mutplug.py, env MUT=...), MUT=dg_scale: core.hairpin and core.dimer return 0.7 x the real dG; the test still passes. MUT=dg_salt (salt correction removed, only a 1e-6 monotone residue left) also passes. Read core/src/primers.rs stem_dg/loop_dg/hairpin_dg/dimer_dg.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: No absolute dG is asserted, so a wrong NN parameter, a wrong loop_dg table entry, a scaled energy or a broken salt correction (0.368*(N-1)*ln(Na_eq)) pass: only signs, symmetry and orderings are checked (proven with a 0.7x scale and with salt ignored). | The 3'-end flag is only checked on 2 hand cases plus any<=3' on random pairs; a 3' flag that is set for every hairpin ending within the last base or two is not distinguished."
    ]
   },
   {
@@ -1355,7 +1621,11 @@
    "strength": "strong",
    "issues": [
     "The block-based path is only checked to 0.02 tolerance, so a small rounding bug at block edges would pass."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read core/src/document.rs gc_bins. The block path is approximate by design (edges rounded to 1024); the uniform G*10000 (partial last block in the denominator), A*10001 and the 5120/5120 block-edge cases pin the block indexing and the 'total' denominator exactly; the base-by-base path is exact on 100 random bins; NaN/empty/inverted/0-bin edges asserted.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_core_sequence.py::test_orfs_match_a_brute_force_scan",
@@ -1398,6 +1668,10 @@
     {
      "input": "circular AAATAA + C*30 + ATGAAA (ORF over origin)",
      "expected": "exactly one forward ORF"
+    },
+    {
+     "input": "ring 'ATGAAATAA' + 'C'*30 + 'ATGAAA' (45 bp), min 3 codons; and its reverse complement",
+     "expected": "only (39, 54, +1); on the reverse complement only (36, 51, -1)"
     }
    ],
    "oracle": "in-test reference model",
@@ -1405,6 +1679,14 @@
    "issues": [
     "The ORF across the origin is only checked for count and strand, not for its start/end coordinates.",
     "Partly overlaps the ORF part of test_genetic_code.py::test_translation_tables_match_biopython (that one covers alternative tables and starts)."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation pytest -p mutplug (scratch plugin audit_core/mutplug.py, env MUT=...), MUT=orf_circ: Document.orfs on circular documents returns every ORF 3 bases late ((39,51,1) instead of the real (36,48,1)); the test still passes. The brute-force comparison only runs on linear sequences.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: ORF across the origin of a circle: only `len(orfs)==1 and strand==1` is asserted, so wrong start/end (or an end not past the length) passes (proven: shifted by 3). No reverse-strand origin case and no random circular comparison: circular ORF coordinates are untested.",
+    "13 Nov 2026: app bug fixed in core/src/bio.rs: on a ring an ATG just after the origin, inside an ORF that started before it, was reported as a second, shorter ORF with the same stop ('ATGAAATAA' + 30 C + 'ATGAAA' gave (0,9) and (39,54)). Now one stop gives one ORF, the longest, on both strands; the test checks that ring exactly and random rings for equality with the hand scan."
    ]
   },
   {
@@ -1455,6 +1737,13 @@
    "issues": [
     "The real-plasmid part silently does nothing if the sample file is missing (no skip reported).",
     "Picks EcoRI/BsaI by index COMMON[14]/COMMON[9]; guarded by a name assertion, but will fail if the enzyme list is reordered."
+   ],
+   "verdict": "sound",
+   "evidence": "Read + grep: the app's digest sizes come from app/tools.py fragments(length, circular, cuts); no test in this file (nor any test file) calls it. The 'fragments equal Biopython' asserts feed the test's own _digest_fragments with our cut positions and Biopython's cut positions, so once the cut lists are equal the fragment check is a tautology, and sum(fragments)==n is true for any cut list.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Claim 'digest fragments equal Biopython / sum to length': the fragment sizes the app shows (tools.fragments) are never exercised; a bug there (off-by-one on the wrap-around fragment, a missing last linear fragment, the single-cut circle size) cannot fail this test."
    ]
   },
   {
@@ -1506,7 +1795,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Exact tuples for planted hits on both strands, identity values 0.96/0.94/1-3/60, thresholds on both sides, origin hit (0, n-20, n+40, 1, 1.0, False), recoded coding part with its coordinates and flag, exact repeat/tandem lists: an off-by-one, wrong strand or ignored threshold fails an equality.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_core_alignment.py::test_align_single_queries_coordinates_indels_and_overhangs",
@@ -1572,6 +1865,13 @@
    "issues": [
     "Leftover 'for _ in range(100): ... break' loop around pick_unslidable does nothing.",
     "The linear over-origin check only asserts the hit is 100 bases and ends <= 1000, not which half."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation pytest -p mutplug (scratch plugin audit_core/mutplug.py, env MUT=...), MUT=align_lin_origin: for the linear over-origin query (t[900:]+t[:100]) the hit whose query part is 100..200 is reported at template 900..1000 (wrong half); the test still passes. Real output is two hits [(0,100,+1,q100..200),(900,1000,+1,q0..100)], so the test comment 'only the longer half is found' is also not what happens.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Linear template, query over the origin: only lin[0] is checked for length 100 and end<=1000; which template half pairs with which query half, and how many hits come back, are not asserted (proven: wrong template half passes)."
    ]
   },
   {
@@ -1609,7 +1909,11 @@
    "strength": "strong",
    "issues": [
     "Overlaps somewhat with the 'ends match, middle does not' section of test_align_single_queries_coordinates_indels_and_overhangs."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. assert_pieces requires exactly one hit per piece, correct strand, and covering coordinates within 2 bases (scenario() redraws until no chance base can extend a piece, so the 2-base tolerance is slack, not a hole for off-by-ones larger than 2); mirrored queries, origin piece, line split into two halves, max_hits, duplicated and messy pieces all pinned.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_core_alignment.py::test_local_align_query_cleaning_and_junction_texts",
@@ -1659,6 +1963,13 @@
    "issues": [
     "Junction texts are checked with startswith only, so the rest of each message (sizes, positions) is not verified.",
     "Duplication wording is mentioned in the docstring but no duplication junction is tested."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation pytest -p mutplug (scratch plugin audit_core/mutplug.py, env MUT=...), MUT=junction: local_align._junction returns template gap 0 for inversions and a sign-flipped gap for 'template jumps back' (text becomes 'template jumps back ...: 200 bp of the template skipped' instead of 'template back 200 bp'); test still passes.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'template jumps back' and 'inversion breakpoint' texts are checked with startswith on the label only: the distance after the colon (and the inversion's min-of-four-distances computation) is unchecked (proven). | The 'unmatched query in place of template' branch (query gap and template gap both > 0) and the 'queries overlap by N bp' text are never exercised. | Docstring says duplications are named; only the shared 'template jumps back (duplication or pieces out of order)' prefix is touched, never its detail."
    ]
   },
   {
@@ -1693,6 +2004,13 @@
    "issues": [
     "The cancellation check is weak: the query ACGTACGTACGT would almost certainly not be found in that folder anyway, so a search that ignores cancelled() would still pass.",
     "'files >= 5' depends on the contents of demo/."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation pytest -p mutplug (scratch plugin audit_core/mutplug.py, env MUT=...), MUT=folder_cancel: folder_search.search_folder ignores `cancelled`; the test still passes, because the query ACGTACGTACGT exists in none of the files, so the result is [] with or without cancelling.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Cancellation: the cancelled search uses a query that would find nothing anyway, so a search that never asks cancelled() passes (proven)."
    ]
   },
   {
@@ -1750,7 +2068,11 @@
    "strength": "strong",
    "issues": [
     "Very large test covering four functions (reads, pileup, coverage, variants); a failure early hides later sections. Could be split."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Hand-built BAM with exact tuples per read, pileup/coverage equal to an independent CIGAR-walk model on 300 random reads under 5 filter sets, SNP thresholds on both sides of each boundary. Checked the one loose spot: the reverse read's mismatch base is only asserted != ref; here ref[45]='T' and the read base is 'A', so a strand bug reporting the complement ('T') would fail it.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_core_formats.py::test_tracks_gff_bed_parsing_query_density_and_search",
@@ -1797,7 +2119,11 @@
    ],
    "oracle": "in-test reference model",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Exact 0-based coordinates/names/strands for GFF3/GTF/BED, name-preference ladder, malformed lines -> OSError, query and density equal a brute-force overlap on 400 random features, limit flag both sides, search case folding and limit.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_core_formats.py::test_feature_locations_round_trip",
@@ -1832,7 +2158,11 @@
    ],
    "oracle": "round-trip/self-consistency",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Every one of 20 location forms has hand-written expected text, 0-based spans and strand (not just a round trip), plus re-parse, set_feature, refusals with nothing added, fuzzy ranges kept verbatim through save, file round trip.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_core_formats.py::test_genome_fasta_fetch_and_search_match_slicing_and_brute_force",
@@ -1889,7 +2219,11 @@
    "strength": "strong",
    "issues": [
     "Overlaps a little with the FASTA genome part of test_primer_binding.py::test_binding_agrees_with_the_documented_rules_written_in_python and the file-scope part of test_search.py."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. fetch equals Python slicing at every line-break case and 300 random ranges; search equals a brute-force scan on both strands with exact lists, overlapping hits, palindrome once, case; search_motif claim is agreement with find_motif, which is asserted exactly.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_binding.py::test_binding_agrees_with_the_documented_rules_written_in_python",
@@ -1924,7 +2258,11 @@
    ],
    "oracle": "in-test reference model",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. reference_sites re-implements seed/3'-exact/extension rules independently; exact list equality (order included) on 1500 random cases with >500 sites, Document/Fasta paths equal to both find_primers and the reference.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_binding.py::test_binding_mismatches_seed_tails_and_extension",
@@ -1985,7 +2323,11 @@
    "strength": "strong",
    "issues": [
     "Partly redundant with the random comparison in test_binding_agrees_with_the_documented_rules_written_in_python, but it pins each rule by name, which makes failures easier to read."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Every single-mismatch position per length and strand against a hand rule, limit boundaries both sides, extension patterns with exact extension/mismatch counts, template ends, 600-case mirror symmetry per topology.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_binding.py::test_binding_origin_ends_repeats_and_letters",
@@ -2052,7 +2394,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Exact site lists for repeats, tandem, palindrome, origin (both strands, rotation), mismatches each side of the origin, short templates vs reference_sites, IUPAC/N/U/X letters with exact expected tuples.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_binding.py::test_binding_matches_the_primer_sites_stored_in_the_real_dna_file",
@@ -2081,7 +2427,11 @@
    "strength": "strong",
    "issues": [
     "Skips if the sample file is missing; depends on one specific private sample file."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only; sample_files.DNA_FILE exists on this machine so the test runs. Both directions compared (every computed site inside a stored one sharing its 3' base, every stored site found), exceptions pinned to exactly oAC812/oAC813.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_binding.py::test_editor_primer_sites_pcr_product_specificity_and_save",
@@ -2144,6 +2494,13 @@
     "Bundles four unrelated features (mismatch display, PCR product, non-specific priming check, save) into one test; would read better split.",
     "Leftover comment '# the dialog (built, not run) says the same size...' with no code under it.",
     "Uses a module-level RNG shared across tests, so the random data depends on which tests ran before."
+   ],
+   "verdict": "sound",
+   "evidence": "(1) Run alone (pytest tests/test_primer_binding.py::test_editor_primer_sites_pcr_product_specificity_and_save) it FAILS without any mutation: line 685, R site (300,325) != (300,324) - the module-level rng gives a template where the 10-base tail matches one neighbouring base by chance; it passes only when the earlier tests have consumed the rng. (2) Mutation via the scratch plugin, MUT=primer_tail: primer_panel.primer_checks re-executed with `core = sequence` (lower-case 5' tail no longer stripped); the whole file still passes (5 passed). Direct check: tailed primer 'gaattcgg'+p on a template holding p twice gives 'bad' really, 'ok' under the mutation.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Order-dependent: the PCR product section's exact coordinates hold only for the rng state left by earlier tests; alone it fails (shown above), so it does not pin the rule it claims, just one lucky draw. | 'A lower-case 5' tail is not part of what must match elsewhere': the only tailed check is on a unique template, where 'ok' comes out whether or not the tail is stripped (proven). | Tails in the PCR/mismatch sections are random letters, not built to differ from the neighbouring template base, hence the chance extension."
    ]
   },
   {
@@ -2207,6 +2564,13 @@
     "The reverse-strand protein search with 'AXW' computes hits but asserts nothing.",
     "IUPAC and fuzzy checks use 'in'/'any', so extra spurious hits would not be noticed.",
     "One long test mixing engine, editor bookkeeping and file search; a failure early hides the rest."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutations pytest -p mutplug (scratch plugin audit_core/mutplug.py, env MUT=...): MUT=search_rev_protein drops every reverse-strand protein hit -> test passes (the 'AXW' search on the reverse complement asserts nothing; real result is [(10,19,-1)]). MUT=search_fuzzy_limit makes a fuzzy=1 search allow 3 mismatches (returns hits with mismatches=3) -> test passes.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Protein motif on the reverse strand (and X as a wildcard): computed but never asserted (proven). | Mismatch limit in the search itself: fuzzy hits are checked with any(...), so extra hits with more mismatches than allowed pass (proven); only the helper allowed_mismatches is pinned. | IUPAC searches are checked with `in`, so spurious extra hits (e.g. R treated as N) are not noticed."
    ]
   },
   {
@@ -2265,7 +2629,11 @@
    "issues": [
     "The line asserting str(Seq(codon).translate()) == aa only checks Biopython against itself.",
     "The ORF table/start section partly overlaps test_core_sequence.py::test_orfs_match_a_brute_force_scan (that one covers table 1 only)."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (plus app/genetic_code.py and lib.rs genetic_codes): the Python tables are built from Rust's genetic_codes(), so the per-codon comparison of translate (Rust) and codon_map/start/stop sets (from the Rust data) against Biopython covers both sides. The Seq(codon).translate() line is Biopython vs itself but harmless; ORF start/stop cases are exact tuples.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_genetic_code.py::test_cds_translation_and_translation_refresh",
@@ -2314,7 +2682,11 @@
    "strength": "strong",
    "issues": [
     "Changes shared tool settings during the test (restored by the fixture)."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Hand-written expected proteins for table/codon_start/transl_except/partial, refresh statuses and values, undo; exports.protein_of is built on sequence_view.cds_codons, so 'refresh == protein_of' does compare against what the views draw.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_repeats_msa.py::test_repeats_are_found_where_planted_and_not_in_random_dna",
@@ -2369,6 +2741,13 @@
     "Positions are checked within 2 bases and lengths within a range, so small off-by-one errors pass.",
     "pair_dots is checked only for being non-empty.",
     "In the two-sequence check `near` uses zip without a length check."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation pytest -p mutplug (scratch plugin audit_core/mutplug.py, env MUT=...), MUT=pair_dots_swap: repeats.pair_dots returns (inverted, direct) swapped; the test still passes ('assert direct and inverted').",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: pair_dots is only checked to return two non-empty lists: swapped kinds, wrong coordinates or wrong diagonals pass (proven)."
    ]
   },
   {
@@ -2411,7 +2790,11 @@
    "issues": [
     "identity(1) for sub120 (row 2) is not checked.",
     "Parsing accepts rows of different widths (5 and 6) without comment; the test does not say whether that should be refused."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact rows, gap at 80..83, consensus, identities 100 / 199/200 / 197/200, conservation values, position/column maps and parsed rows are all equalities. identity(2) is not asserted but uses the same code path as identity(1) (a row-specific bug is not plausible).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_assembly.py::test_fragment_and_gibson_products",
@@ -2461,7 +2844,11 @@
    "issues": [
     "Long test covering four separate behaviours; a failure in the last block does not say which engine is wrong without reading the loop.",
     "Tm threshold 52 is hard-coded here and also in the primer tests."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/assembly.py). Every claim is pinned by a value a bug would move: the fragment's seq/tails/core are written out from the template string, the flip swaps the primer names, auto_primers must return 3 and the joint pairs are (A,B),(B,C),(C,A), the product length 950 is the sum of the three cores (so an overlap eating into the cores instead of coming from the tails would change it), 'Homology unique' and the short-homology warn are checked by name and level, and joined_bases(d, j) == j.seq re-reads the product round the circle for every junction of every method.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_assembly.py::test_golden_gate_products_and_overhang_checks",
@@ -2514,7 +2901,11 @@
    "strength": "strong",
    "issues": [
     "Also re-tests the overhangs module directly (OH.assess, pair_risk, junction_checks), which could live in its own test."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/assembly.py, app/overhangs.py). The overhangs each end carries are read back and compared with the ring the test built (TCGC, CAGT, GGAG in that order), the product length 3*(4+250) pins that each piece contributes its left overhang exactly once, the mismatch / no-site / internal-site errors are matched on their text and level, and every junction-check level is asserted per overhang set, including 'bad' for a reverse-complement pair. OH.VALIDATED is pinned to 25 distinct 4 nt overhangs with no bad or warn.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_assembly.py::test_sidewinder_oligos_toeholds_and_barcodes",
@@ -2567,7 +2958,11 @@
    "strength": "strong",
    "issues": [
     "The opening loop over 60 seeds hides how often a random design is rejected; if the toehold picker regressed to accept almost nothing, the test would still pass on a later seed."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. The product is compared with an independent concatenation of the fragments' own sequences; each toehold must equal product[pos:pos+TOEHOLD], occur once in the product and sit within MAX_SHIFT of the boundary; the coding oligos are compared slice by slice with the product; the barcode arms are checked for length, GC count, homopolymers and 8-mer orthogonality against each other and against every toehold; the planted-repeat case forces the slide and still requires the oligos to concatenate to the product.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_assembly.py::test_products_keep_every_orf_on_its_own_bases",
@@ -2604,7 +2999,11 @@
    "strength": "strong",
    "issues": [
     "Slowest test in the file (many seeds x methods); the Golden Gate loop over 6 seeds adds little once one seed passes."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. The oracle is independent: each ORF's bases are kept as the test built them, read back out of the product through the feature's spans (not through the location text) and compared string for string, plus a Biopython translation that must start with M, end with * and hold no internal stop. A CDS shifted by one base under any method fails both the string compare and the translation.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_assembly.py::test_the_product_carries_the_features_and_the_primers_of_its_fragments",
@@ -2658,7 +3057,11 @@
    "issues": [
     "Very long; mixes feature transfer, primer annotation, preview colouring and junction wording in one function, so a failure needs the line number to interpret.",
     "One assertion checks a full English sentence verbatim, which will break on any rewording."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Hand values throughout: the feature spans [(475,495),(50,120),(800,900)], the six primer_bind features matched on name + sequence + strand + covered length, the origin-crossing primer in two spans, 60 bp of tail features for three 20 bp overlaps, and junction_facts (20, shared 0, two 10 nt tails) against (30, [], 30) for purely shared bases and (20, [('right-F',1,'start',10)], 10) for the half-and-half case, with the tail feature required at (480,490).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_assembly.py::test_restriction_ligation_products",
@@ -2691,7 +3094,11 @@
    "strength": "strong",
    "issues": [
     "Depends on two demo GenBank files; if those are edited the expected arcs change silently."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Each product is written out as an exact expression of the input strings (vec[327:]+vec[:301]+'AATTC'+mid+'G', blunt_vec[303:]+blunt_vec[:303]+'GGG'+mid2+'CCC', and seq[xho+1:]+seq[:bam+1]+seq[bam+1:xho+1] for the demo plasmid), so the wrong arc, a shifted cut or a flipped insert all fail. Feature transfer is checked by comparing the bases under each feature in the product with the bases of its source.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_assembly.py::test_restriction_ligation_end_rules_and_warnings",
@@ -2742,7 +3149,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. ends_fit is exercised base by base (same sticky bases, 5' versus 3' kind, blunt with blunt, and a hand-built End carrying the same bases on the other strand), the Orientation and self-ligation warnings are checked by level, by text and by being in global_checks, both ValueErrors are matched on their message, and the digest pieces are pinned to their enzyme pairs and re-cut to the same two ends and the same kept length.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_assembly.py::test_assembly_reports_bad_input_instead_of_failing",
@@ -2780,7 +3191,11 @@
    "issues": [
     "Mostly asserts 'not ok and some bad check', so a wrong but non-crashing message would pass.",
     "The repeated-overhang case overlaps with the ('unique','bad') case in test_golden_gate_products_and_overhang_checks."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. 'Never an exception' is pinned by running analyse and auto_primers over 3 methods x 2 topologies x 3 sizes, and the branch after auto_primers names the check it wants ('Fragment length' == 'warn', with 'B' in its text), so dropping or mis-naming the length check fails there. The empty-stretch cases and the repeated-overhang block are pinned by value.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_enzymes_and_guides.py::test_cut_finder_the_common_list_and_the_filter",
@@ -2827,7 +3242,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/enzymes.py). Every cut is a hand-computed pair ((5,7),(14,16) for AccI's degenerate site, (9,6) for BglI's 3' overhang, (30,28),(64,62) for BcgI cutting both sides, (9,13) and (15,19) for BsaI on the two strands, (11,3) across the origin), the common list's offsets and describe() strings are literal, and the filter is exercised one criterion at a time and combined, including the site-count band.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_enzymes_and_guides.py::test_what_a_cut_says_about_itself",
@@ -2868,7 +3287,11 @@
    "strength": "strong",
    "issues": [
     "Asserts on exact English sentences, so harmless rewording of the tooltip breaks the test."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/cut_sites.py). The tooltip sentences are asserted verbatim with the cut bases spelled out ('Cuts after base 9 ... after base 13'), the bottom-strand case is cross-checked against find_cuts' own (7,11), and the overhang bases (AATT, GTAC, AGGA) are pinned, so a wrong base, a wrong strand or a wrong overhang fails.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_enzymes_and_guides.py::test_guide_candidates_cuts_and_scores",
@@ -2919,7 +3342,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/cas9.py). Start, end, strand, guide, PAM and the cut base are hand values for SpCas9 on both strands, for an offset stretch, across the origin, for SaCas9's NNGRRT and for Cas12a's two staggered cuts (50+4+18 and 50+4+23), with the slice compared to rc(guide+pam). The TTTT case pins that the PAM starts after the first T, and the ranking test requires the good guide first.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_enzymes_and_guides.py::test_other_guide_sites_here_and_in_a_genome",
@@ -2962,7 +3389,11 @@
    ],
    "oracle": "independent implementation",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. The mismatch classes are hand-built with a bend() helper, each verdict is asserted, the 'genome is the same document' case is pinned to None, and the Rust search is compared against a brute-force Python scan of both strands over 4000 random bases - a genuinely independent oracle.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_enzymes_and_guides.py::test_a_saved_guide_site_is_read_back_and_round_trips_in_the_file",
@@ -3015,7 +3446,11 @@
    "strength": "strong",
    "issues": [
     "Six separate concerns (layout, tooltip, parsing, file bytes, legacy key, exports) in one function."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/cut_sites.py, app/exports.py). Layout spans, gaps and the tooltip's cut base are hand values on both strands and for Cas12a, save/load/save must give identical bytes, Biopython re-reads the feature's start, strand and qualifiers, and the legacy /OpenGenEdit_cas9 file must give the same gap while neither export format may carry the key.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_codons.py::test_recoding_preserves_the_protein_and_obeys_the_constraints",
@@ -3038,7 +3473,11 @@
    ],
    "oracle": "property/invariant",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Mutation: replaced codon_tools.gc with a broken version counting only G - the same helper the recoder uses, so the GC window check could have been circular. The test failed on 'min(windows) >= 40', so that block is not self-fulfilling. The protein invariant, the find_cuts sweep over left+seq+right, the regex run length and the 'Impossible site at bases 4-9' message are all independent of the recoder.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_codons.py::test_codon_choice_follows_the_table_and_the_edit_is_one_undo_step",
@@ -3079,7 +3518,11 @@
    "strength": "strong",
    "issues": [
     "The frequency-matched tolerance (+-0.04 on 3000 codons) is loose enough that a moderately skewed sampler would pass."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. The highest-frequency claim is checked against a `best` mapping the test computes itself from the usage table, the zero-frequency rules are absolute (CTG never chosen; TGG kept because Trp has no synonym), the seed claim compares seed 3 with itself and with seed 4, the selection errors are matched on text, and the apply/undo block pins the bases, the length, the CDS reading and the whole feature list.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_codons.py::test_comparing_a_cds_under_two_genetic_codes",
@@ -3112,7 +3555,11 @@
    "strength": "strong",
    "issues": [
     "The HTML assertion is a weak substring check ('14' could match anything)."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation: rewrote comparison_html's row number from 14 to 13, since the '14' substring check looked vacuous. The test caught it - the colour hex #e53935 and the protein letters hold no '14'. The gained / lost / differ lists and the two proteins are hand values.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_codons.py::test_usage_tables_their_files_and_what_they_say_about_a_gene",
@@ -3170,7 +3617,11 @@
    "issues": [
     "Far too large: CSV parsing, user-file storage, write failures, CAI maths, checkup notes and genetic-code management are six independent features in one test; a single failure stops the rest from running.",
     "Mutates global state (active table, tool settings) and relies on try/finally to clean up."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/codon_usage.py, app/genetic_code.py). Every branch carries a concrete value: the CSV round trip down to the per-thousand numbers and the '# code:' line, the four refused files matched on their message, the file name and folder of a user table, the PermissionError path asserting that nothing was registered, CAI compared with hand arithmetic (1/50 and its square root), the checkup note's exact phrases, and translate('AGAAGG', code) == 'XR'.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_checkup.py::test_bacterial_cds_verdicts",
@@ -3205,7 +3656,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/checkup.py). Each construct is built from a real consensus sigma-70 promoter, rrnB T1 and a strong RBS, and the verdict, the unit's promoter / RBS / terminator labels and the first reason's text are all asserted, including the predicted-elements case on both strands (kind, origin and strand of each predicted element).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_checkup.py::test_eukaryotic_hosts_and_unit_ends",
@@ -3234,7 +3689,11 @@
    "strength": "strong",
    "issues": [
     "The CMV and U6 promoters are random filler named 'CMV promoter' / 'U6 promoter', so this exercises name-based recognition only, not any sequence motif."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. The per-host verdicts are asserted for every CDS of the shuttle construct, and the two 'ends at its own terminator' claims are pinned by label (Pcons -> T1, CMV promoter -> bGH polyA), which is exactly the confusion a bug would cause. The CMV and U6 promoters being filler recognised by their label is how the app works here; the test claims nothing about motif detection for them.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_checkup.py::test_how_far_a_unit_runs_and_how_it_ends",
@@ -3265,7 +3724,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. The extent is compared with a hand expression (ed.length - (0 if circular else u.a)), the origin-crossing unit must give one mRNA feature with 2 spans, the exact-TSS claim is pinned to hand bases (17 for T7, the annotated TSS base computed from the part lengths) and re-checked through units.geometry after the unit features are written, and each ending word and unit label is a literal.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_checkup.py::test_origins_and_prediction_thresholds",
@@ -3299,6 +3762,15 @@
    "issues": [
     "The <= 8 bounds on a single random sequence are a loose regression threshold, not a real false-positive rate; a predictor that returned zero hits would also pass.",
     "Origin recognition here is driven by the feature labels, not the sequence."
+   ],
+   "verdict": "gap",
+   "evidence": "Mutation: replaced checkup.predict_promoters and checkup.predict_terminators with functions returning [] - predictors that find nothing at all. The test still passed (1 passed). The only assertions about the predictors are upper bounds (<= 8 hits on 50 kb of random DNA).",
+   "gaps": [
+    "The ColE1-group note is asserted on a construct whose five origins are random filler named by label, so nothing distinguishes a note driven by the origin families from one driven by the number of rep_origin features."
+   ],
+   "proposal": "Add a positive control beside the noise bound, in the same test. (1) Recall: st = C.Strand(filler(200, 41) + PROMOTER + filler(200, 42), 1, False), with PROMOTER the module-level consensus sigma-70 string 'TTGACAATTAATCATCCGGCTCGTATAATGTGTGGAA' (-35 at offset 0, -10 TATAAT at offset 25, so the -10 box sits at base 200 + 25 = 225 and the filler is T-free, hence nothing else can score); assert len(C.predict_promoters(st, 10)) == 1 and that the hit's interval covers 200..237. Same for terminators: st2 = C.Strand(filler(200, 43) + T1 + filler(200, 44), 1, False) with the rrnB T1 string already in the file; assert len(C.predict_terminators(st2, 18)) == 1 and abs(hit.a - 200) <= 3. (2) Turn the noise bound into a measured rate: plant 20 copies of PROMOTER at known bases inside the 50 000 random bases, assert at least 18 of the 20 planted windows hold a hit and that hits outside every planted window are still <= 8. This catches the proven mutation (predictors returning []) and any threshold change that silences them, which the present bounds welcome.",
+   "fixed": [
+    "13 Nov 2026: positive controls added for the promoter and terminator predictors (a predictor that finds nothing now fails)."
    ]
   },
   {
@@ -3325,6 +3797,13 @@
    "issues": [
     "Only three assertions over one file; it shows the library is consulted but not that any particular part is matched correctly.",
     "Tied to a demo file whose annotation changes would change the result."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation: wrapped checkup.library_elements so that, on a document with no features (the bare plasmid), every library element is moved 500 bp away and given a 40 bp length. The test still passed. A cruder first mutation that moved the elements on the annotated file too was caught, by the 'nothing to add to an annotated plasmid' assertion.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'the library supplies the terminator a bare sequence needs' is tested only as existence: any element with origin == 'library' and kind == 'terminator' satisfies it, wherever it sits and whichever part it came from. Proven: library elements moved 500 bp off their real match still pass. | Nothing checks which part matched, its identity score, its strand, or that the bare run finds the same terminator the annotated file annotates, so a library matching the wrong part - or the right part against the wrong stretch - passes. | The eilR block asserts the verdict and the promoter's label but never the base range of the araBAD promoter element, so a unit built from the wrong upstream element that happens to carry the right label would pass."
    ]
   },
   {
@@ -3364,7 +3843,11 @@
    ],
    "oracle": "round-trip/self-consistency",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/units.py). The geometry is hand-computed from the part lengths (tss == len(PROMOTER), end == len(PROMOTER+RBS+gene()+T1), the thin/thick split, the reverse unit's thick total == length - len(PROMOTER), 2 spans across the origin), a plain mRNA must give None, the display switch is checked in shown, map_features and project_meta, and the legacy-key file must give a geometry list equal to the original one.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_design.py::test_primer_check_levels_follow_their_limits",
@@ -3413,7 +3896,11 @@
    "strength": "strong",
    "issues": [
     "Tm is stubbed to a fixed value, so the actual melting-temperature calculation is not exercised here."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/primer_panel.py). Each level is asserted at its threshold and 0.1 either side (Tm, GC by exact G count, 3' clamp by the last five bases), the limits are then moved and the verdict must move with them, the structure limits are crossed at +-0.01 around the primer's own dG, and the roll-up and the short-primer case are literal. Tm is stubbed deliberately: the test claims the levels, not the melting-temperature maths.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_design.py::test_where_a_primer_comes_from_decides_how_it_is_kept",
@@ -3460,7 +3947,11 @@
    ],
    "oracle": "round-trip/self-consistency",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/primer_db.py, app/feature_table.py). The three flags, the colour and the drawn set are asserted for all four origins under every display combination, primers_to_import is compared with an exact list, the import is pinned to one history step with its exact text and survives undo and redo, and the file is reopened after the database entry is removed, which proves the bases were really written.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_design.py::test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle",
@@ -3497,7 +3988,11 @@
    "strength": "adequate",
    "issues": [
     "Only checks that pairs exist and are self-consistent; nothing here checks that the chosen primers are good ones (Tm, specificity), so a designer returning poor pairs would pass."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/primer_design.py). Each claim it makes is pinned: the primers' bases are compared with (seq*2) read at the reported coordinates, so a primer not on the template fails; the modular gaps before and after the target being <= 150 also prove the product contains the whole target, since a primer inside the target makes the modular gap about n; and the reported size must equal the sum of its parts. It claims nothing about primer quality, and indeed does not test it.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_primer_design.py::test_the_files_written_for_ordering",
@@ -3536,7 +4031,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. The well order is an exact list, the 96/4 split and the H12 / A1 / P96 boundary are literal, scale and purification are checked on every row, the odd name and the degenerate bases are compared verbatim, and the empty order must raise and leave the directory empty (os.listdir).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_variants.py::test_variants_are_written_into_the_bases_or_annotated_beside_them",
@@ -3585,7 +4084,11 @@
    "strength": "strong",
    "issues": [
     "One long function covering apply, ordering, locking and annotation; splitting it would make failures easier to read."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/variants.py). The oracle is a plain Python string edit written out for each case, including the first base, the last base and past the end; the multi-variant case compares both orders against one hand-written expected string, which is exactly what a left-to-right application would break; the lock case asserts no history entry at all and an untouched BAM entry; the variation features are pinned to their 1-based locations, their replace value and their note.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_genes_and_history.py::test_gene_groups_fold_their_parts_and_survive_edits",
@@ -3624,7 +4127,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only (test + app/genes.py, app/editor.py). The groups, the master and the part order are literal, the three view switches give exact label sets, and after the edits each feature's covered bases are compared with hand-sliced expressions of what it covered before (before['cA'][:110] + before['cA'][120:]), with the untouched features required to be identical and the undo required to restore the whole map.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_genes_and_history.py::test_history_texts",
@@ -3674,6 +4181,13 @@
    "issues": [
     "Entirely string-literal assertions on UI wording: it pins the current text but a wrong-but-plausible message (e.g. an off-by-one position) is only caught where the position is spelled out.",
     "One assertion builds its expected text from the history entry it is checking, so that part cannot fail."
+   ],
+   "verdict": "sound",
+   "evidence": "Mutation: patched history_panel._bases to reverse any 30-character text. The test caught it, but only because the expected string is built from the raw history field while the shown text passes through _bases - which is the shape of the problem: at that row the expected value is computed from the very value under test (ed.doc.history()[0][-1][1]), so no value stored there can make it fail. Reading app/history_panel.py:describe confirms both sides read the same field.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'the text shows the first 30 of the 40 deleted bases' is not tested: the expected text at the long-delete step is 'Deleted 40 bp at 101-140: ' + ed.doc.history()[0][-1][1] + ellipsis, so the stored bases are compared with themselves. If the undo record kept the last 30 removed bases, bases from the wrong offset, or the inserted bases instead, the row would be wrong on screen and the test would still pass. (The insert side, 'C'*30, is a literal and is pinned.) | The last circular case is matched only with startswith and endswith, so the base it names ('across the origin from <base>') is never checked - an off-by-one in the position of a delete across the origin slips through, although the same position is spelled out and checked for the replace one line above."
    ]
   },
   {
@@ -3726,6 +4240,13 @@
     "The source id 'genome_dna' actually refers to the GenBank file BW25113_2026.gb (GENOME), not a .dna file: misleading name.",
     "Saving and reloading the 4.6 Mb genome three times makes this one of the slower tests.",
     "The is_directional checks are unrelated to round trips and could live in a feature-direction test."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched): test_roundtrip.Document replaced by a reader that silently drops every /locus_tag (and, separately, every /EC_number) qualifier when it opens a .gb file. Test still PASSES (1 passed) for both. Dropping /translation instead is caught, but only because the .dna source (read by the untouched .dna reader) carries translations.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'load, save, reload is identical' and 'Biopython agrees' both compare against the document our own reader built from the ORIGINAL file; the original file is never compared with an independent reading of it. A GenBank reader that loses a qualifier, a feature or bases on open then writes the loss, reloads the loss and Biopython reads the loss: everything agrees. This is exactly the role ('opening and saving a real plasmid or genome could silently drop or alter features, qualifiers'). | The genome (the only file with /EC_number, most /locus_tag) is excluded from every Biopython comparison."
    ]
   },
   {
@@ -3780,6 +4301,13 @@
    "issues": [
     "Very long test mixing many unrelated edge cases; a single failure hides the rest. Could be split into location forms, topology, tiny sequences and case.",
     "The empty-sequence-after-delete case only checks the file exists, not that it reloads."
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (the edit lives in the Rust core; not mutated). Lines 286-290: the 'ACGT' deleted to nothing case asserts only out.exists(), not doc.modified-state AND content of the written file.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: tests.json case \"'ACGT' deleted down to nothing => reloads length 0, '', same topology and name\" is not asserted: the shrunk document's file is never reloaded, so a writer that falls back to the original/stale bases (or writes a malformed LOCUS) when length drops to 0 after an edit would pass. Only the new_sequence('empty','') path is reloaded."
    ]
   },
   {
@@ -3815,7 +4343,11 @@
    ],
    "oracle": "independent implementation",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Oracle is a hand formula (whitespace runs collapsed, translation whitespace removed) plus Biopython reading the file; byte-identical resave, 80-byte line limit, unicode, long-word and last-line-full cases all pinned by exact assertions.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_roundtrip.py::test_primers_survive_save",
@@ -3845,7 +4377,11 @@
    "issues": [
     "The .dna section is skipped if the demo .dna file is missing.",
     "Overlaps with test_multi_record's .dna-primers-as-primer_bind check and with primer tests elsewhere."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact (name, full sequence incl. 5' tail, location) tuples; .dna primer list compared name->sequence; Editor.save asserts no primer_bind before import, exact site '6..27' after, and history depth 1 (no extra undo step).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_roundtrip.py::test_fasta_files_are_read_like_biopython",
@@ -3880,7 +4416,11 @@
    ],
    "oracle": "independent implementation",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Every fetch, clipped fetch and line-crossing slice is compared with Biopython; 8 line-ending/case variants checked against both Biopython and the generated bases; BOM case has hand values.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_roundtrip.py::test_fasta_writing_is_the_string_edit_of_the_file",
@@ -3917,7 +4457,11 @@
    "strength": "strong",
    "issues": [
     "Partly overlaps test_multi_record::test_records_are_added_reordered_and_removed_byte_for_byte (CRLF/BOM byte preservation), but that one tests reorder/append rather than edit-in-place."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Expected bytes built from an independent string model of the same edits; exact byte equality for LF, in-place, CRLF and BOM cases; source untouched and no *.tmp asserted.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_documents.py::test_saving_never_damages_the_original",
@@ -3967,7 +4511,11 @@
    "issues": [
     "The rename-wait check only proves the wait on Windows; elsewhere it only checks the result.",
     "Timing-based assertions (>= 0.4 s, < 2 s) could be flaky on a loaded machine."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Every failure mode asserts original bytes, modified flag, no *.tmp and folder untouched; the Windows retry is timed (we are on Windows, so a replace without retry raises PermissionError and fails the test).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_documents.py::test_corrupt_and_truncated_files_are_a_clear_error",
@@ -4001,7 +4549,11 @@
    "issues": [
     "'errors > 100' is a loose count; it does not say which cut points must fail.",
     "Parts depend on demo files being present."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Each of ~160 cut points must be OSError-with-message or the full sequence and feature count; a partial open fails the cut. 'errors > 100' is loose but the per-cut invariant carries the claim.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_documents.py::test_random_edits_keep_bases_and_features_then_undo_redo_exactly",
@@ -4027,7 +4579,11 @@
    "issues": [
     "The models and assertions live in app/selftest.py, not in the test, so the report reader cannot see them here; the test is a one-line wrapper.",
     "The app's own self-check runs shorter versions (seeds 1 and 2, 150 edits) of the same machinery: overlapping by design."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read app/selftest.py run_random_edits/IdModel: independent per-base identity model and plain-string model, exactly one undo step per edit, full snapshot equality for every undo and redo depth, and no redo at the top. Pasted features are compared as id sets only (structure of a pasted join not pinned), a minor looseness.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_documents.py::test_edited_base_ranges_follow_edits_undo_redo_and_saves",
@@ -4071,7 +4627,15 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [
-    "Across-origin case only checks the total length of ranges, not their positions."
+    "Across-origin case only checks the total length of ranges, not their positions.",
+    "Its older sequence is built with a new random.Random(N) per base, so it is one letter repeated; the sections added on 13 Nov 2026 build varied sequences, the older ones still use it."
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (edited_ranges is computed in the Rust core). Lines 285-301: the circular section asserts sum(b - a) == 6 and == 7, never positions.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'an edit across the circular origin survives ... rotation': after rotate(50) only the total length (7) is checked. A rotate that leaves the ranges at their pre-rotation offsets (not shifted by -50 mod length), or splits them wrongly at the origin, keeps the same total and passes. Same for the across-origin replace: the 6 G could be marked at any 6 positions."
    ]
   },
   {
@@ -4129,7 +4693,11 @@
    "strength": "strong",
    "issues": [
     "Five fairly independent features (annotation step names, primer undo, primer conflicts, DNA lock, FileHistory) in one test; the DNA lock and FileHistory parts could be separate tests."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact step texts, exact primer database contents after each undo/redo, row equality including date, conflict messages, DNA lock refusal with sequence check, and exact FileHistory logs.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_documents.py::test_copy_reverse_complement_keeps_annotations_flipped",
@@ -4163,7 +4731,15 @@
    "issues": [
     "Only 'top' gets an exact location check; 'bottom' and the join's parts are checked by strand or prefix only.",
     "Across-origin case checks the bases but not that features are carried across the origin.",
-    "The RC helper is the app's own reverse_complement, so a bug shared by both would not be caught (it is simple enough that this is minor)."
+    "The RC helper is the app's own reverse_complement, so a bug shared by both would not be caught (it is simple enough that this is minor).",
+    "Its older sequence is built with a new random.Random(N) per base, so it is one letter repeated; the sections added on 13 Nov 2026 build varied sequences, the older ones still use it."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, D2_rc_join_part_moved): the reverse-complement clip moves the first part of a join 5 bases (pasted 'split' becomes complement(join(46..55,111..120)) instead of complement(join(41..50,111..120)), confirmed by scratch verify.py). Test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'a join keeps both parts, in the new reading order' is checked only with startswith('complement(join('): part coordinates and order are free. | 'bottom' location is unchecked (strand only). | 'works across the origin' checks bases only; features of an across-origin selection are never inspected."
    ]
   },
   {
@@ -4223,6 +4799,13 @@
     "GFF3, BED and proteins_fasta checks on the demo vector are shallow (line counts, prefix, one strand column); a wrong coordinate would pass.",
     "Project round trip compares only sequence and feature count, not feature contents.",
     "Exports and the project file are two topics merged into one test."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, D1_gff_bed_off_by_one): gff3_text writes 0-based starts (str(s) instead of str(s+1)) and bed_text writes 1-based starts. Test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: GFF3 and BED coordinates are never checked (only header, line count and one strand column), so off-by-one starts, swapped start/end or a wrong seqid pass; a GFF3 with 0-based starts is malformed. | Project round trip compares sequence and feature COUNT only: lost or altered qualifiers/locations, and primer sites written via file_primer_features(), are not checked."
    ]
   },
   {
@@ -4254,7 +4837,11 @@
     "Docstring says the switch 'also dropped the Local Align hits' while the test asserts they are kept; it refers to an old bug and reads backwards.",
     "Group T_F expects 2 parts although gene F has a gene, a CDS and a misc_feature; the intent (the gene feature is the group head, not a part) is not explained in the test.",
     "Does not check collapse_genes actually changes what is shown."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact group count and parts, exact kind_counts, spy proves features() not re-read and query_hits kept, shown list checked, counts updated after an add. (Collapse effect on 'shown' is not claimed.)",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_multi_record.py::test_one_record_is_read_and_saved_in_place",
@@ -4296,7 +4883,11 @@
    "issues": [
     "Skips entirely if the demo plasmids are missing.",
     "match_contig and other_records_note are main-window helpers unrelated to in-place saving; they would fit better in a tracks or FASTA-save test."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Edited record read back exactly, other records byte-identical, failed rename leaves bytes identical and no *.saving; hand values for match_contig and Vibrio. (chunks() relies on multigb.record_spans, but names/read_record cross-check it.)",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_multi_record.py::test_records_are_added_reordered_and_removed_byte_for_byte",
@@ -4342,6 +4933,13 @@
    "issues": [
     "The .dna-with-primers part only checks that some primer_bind exists, not names or positions.",
     "The test builds the primer_bind list itself, so it does not test how the app's Add Record dialog builds it."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, MR1_only_first_primer): renamed_genbank writes only the first of the passed primer_bind features. Test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'a .dna source brings its primers as primer_bind features' is asserted as any(kind == 'primer_bind'): one primer out of 15 satisfies it; names, locations and sequences are not compared."
    ]
   },
   {
@@ -4385,6 +4983,13 @@
     "Not a test of DNA editing; it is a release-hygiene check. Relevant for packaging but could be marked as such.",
     "The bundling check is text matching on the spec ('\"name\"' appears anywhere), so a name mentioned but not actually bundled would pass.",
     "Only catches data files reached through the exact with_name(\"...\") pattern."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, PJ1_spec_mention_only): every spec line containing '\"tools.toml\"' removed and a comment '# \"tools.toml\" is no longer bundled' appended. Test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'every data file the app reads is bundled by the spec' is a substring test ('\"name\"' in SPEC): a name in a comment, a hiddenimports list or an excludes list satisfies it, so a frozen exe missing tools.toml would ship."
    ]
   },
   {
@@ -4411,7 +5016,11 @@
    "issues": [
     "Lives in test_project.py (release metadata) though it is about primer_db's data migration.",
     "The copy-error path (half copy returns False) is not tested."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact file text after copy, old folder still present, second call returns False and leaves 'changed', missing old folder False.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_parts_library.py::test_collections_sources_and_switches",
@@ -4449,7 +5058,11 @@
    "issues": [
     "The first two sections rewrite the same two files without clearing; harmless but redundant.",
     "Five subtopics in one test (the docstring calls it a merged test)."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact metadata, counts, strengths, describe() text, switch effects, dedup (case and against shipped), only-Local removal with header kept, broken rows skipped.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_parts_library.py::test_shipped_parts_meet_the_data_quality_rules",
@@ -4480,7 +5093,11 @@
     "A data-lint check on shipped files rather than a code test; it fails when data changes, not when code breaks. Still useful as a guard.",
     "The rules (NEVER, FLOORS) come from scripts/build_parts.py, so a loosened rule there would pass silently.",
     "Duplicate check is exact sequence only; reverse-complement duplicates or near-duplicates are not caught."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Data lint over the shipped files; every rule is an assertion per part, raw rows checked for duplicate sequences. Rules imported from scripts/build_parts.py by design.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_reference.py::test_off_target_search_covers_every_record",
@@ -4526,7 +5143,11 @@
    "issues": [
     "The time-out section injects a result into the private _cache dict, coupling the test to implementation details.",
     "Random 'dna' filler uses a module-level RNG, so sequence content depends on the order tests run in that module (a chance extra match is unlikely but possible)."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Hand-placed copies on chr2/chr3 with exact coordinate text, open record excluded, time/cancel not conclusive, 3' copy warn, windowed search equals whole with exact positions [395, 700].",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_reference.py::test_ncbi_genome_search_and_download",
@@ -4560,7 +5181,11 @@
    "issues": [
     "Network is faked at ncbi.fetch/open_url, so a change in NCBI's real API or response format would not be caught.",
     "Unrelated to the multi-record off-target search that names this file; could live with other NCBI tests."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. URLs asserted, parsed report exact, joined FASTA read back with exact record lengths (a missing newline changes chr1's length), no .part, second call cached with one network call.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_updater.py::test_release_check_offers_only_a_newer_complete_release",
@@ -4626,6 +5251,13 @@
    "issues": [
     "Large multi-section test; a failure in an early section hides the later ones.",
     "Error texts are checked by substring ('Refused', 'understood', 'failed'), not exact message."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, U1_check_sha_host): check() no longer validates the .sha256 asset URL. Test PASSES; scratch verify.py shows the mutated check offering an Update with sha256_url='http://evil.example.com/x.sha256' that the original refuses.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Claim 'both the exe and its .sha256 on the project's own repo': only the EXE URL is ever moved off-host in the test; the checksum URL is never tested, so check() may offer a release whose checksum comes from any host/scheme (code also does not enforce the own-repo path for the .sha256, so the json claim overstates the code)."
    ]
   },
   {
@@ -4691,6 +5323,13 @@
    "strength": "strong",
    "issues": [
     "The real network path is not exercised (correct for a unit test); the redirect check calls the handler method directly rather than going through a real redirect."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, U2_fetch_no_redirect_guard): fetch() builds its opener with build_opener() instead of build_opener(_SafeRedirects). Test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'enforced by the real fetch ... on redirects': the test calls _SafeRedirects.redirect_request directly; nothing shows fetch() installs that handler, so a fetch that follows a redirect to any host would pass."
    ]
   },
   {
@@ -4730,7 +5369,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Exact file contents after swap, stale .old replaced, frozen path, child env cleaned and reset flag set, cleanup leaves only the exe, source-run untouched, held file retried (a no-wait cleanup fails the last assertion).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_updater.py::test_install_refuses_or_rolls_back_leaving_the_old_program",
@@ -4777,7 +5420,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Every refusal and rollback asserts exact OLD/NEW contents and absence of .old, retry count == RETRIES, relaunch failure restores; missing-file case would hit a different message if the is_file check went.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_updater.py::test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip",
@@ -4810,6 +5457,13 @@
    "strength": "adequate",
    "issues": [
     "Only checks that a skipped version is stored, not that the automatic check then stays quiet about it (that logic, if in main.py, is untested here)."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, U3_skip_ignored): startup_check opens the dialog for any update, ignoring skipped_version(). Test PASSES (startup_check is never called by any test: grep).",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'remembers a skip' (role: 'forget a version the user chose to skip'): only the store round trip is tested; the one place the skip has an effect, startup_check's `result.update.version != skipped_version()`, is untested, so a skipped version would be offered again every day. | startup_check's own obedience to auto_check_due and its mark_checked call are untested too."
    ]
   },
   {
@@ -4860,6 +5514,13 @@
    "issues": [
     "Mostly 'not in' checks: a scrub that removed too much would pass most rows (only the plain-sentence row, the traceback row and the placeholder counts guard against over-scrubbing).",
     "The /home/bobsmith input is scrubbed and checked twice in a row with overlapping assertions (lines 90-91)."
+   ],
+   "verdict": "sound",
+   "evidence": "Two proven gaps (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched). F1_no_quoted_path (quoted-path rule removed): scrub of the quoted 'Lab Notes' path gives \"'C:<path> Notes\\\\<file>'\", leaking the folder name 'Notes'; test PASSES because it checks only that the substring 'Lab Notes' is gone. F2_no_unc_path (UNC rule removed): output '\\\\fileserver\\lab\\project\\<file> not found' leaks server and folders; test PASSES because it asserts 'Lab' not in the output while the input only contains lower-case 'lab' (the assertion cannot fail). Side finding (code): even unmutated, an unquoted UNC path with a space leaks: scrub('open \\\\fileserver\\Lab Data\\project\\x.docx now') == 'open <path> Data\\project\\x.docx now'.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: UNC row: `\"Lab\" not in scrub(r\"\\\\fileserver\\lab\\...\")` is vacuous (case mismatch); UNC scrubbing is untested. | Quoted-path row: 'Lab Notes' not in out is satisfied when only 'Lab' is removed; the space-containing folder part 'Notes' may leak. | Over-scrubbing is guarded by one sentence only (already listed in issues)."
    ]
   },
   {
@@ -4905,7 +5566,11 @@
    "strength": "strong",
    "issues": [
     "The privacy section partly re-tests scrub (previous test) through the link builder; reasonable as an end-to-end guard."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Query decoded and compared exactly (title, version, logs round trip with &, #, %, newline, unicode), cap and tail kept, last-30 boundary entry-069/070, every decoded field of three URLs checked for six private strings (removing scrub from summary/details/feature fails).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_feedback.py::test_log_file_and_error_hooks",
@@ -4963,7 +5628,14 @@
    "issues": [
     "Very long test bundling about ten independent features; splitting it would make a failure point at one feature.",
     "The assertion that 'needs+a+report' is not in the URL is an indirect check of the encoding style; its intent is unclear."
-   ]
+   ],
+   "verdict": "gap",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, F3_worker_bridge_dead): in _handle_exception the worker-thread path `_state['bridge'].requested.emit(summary, details)` replaced by pass. Test PASSES.",
+   "gaps": [
+    "'one dialog per distinct error (main and worker threads)': because the test injects show_dialog, _handle_exception takes the `_state['dialog'] is not None` shortcut and calls the dialog directly IN the worker thread. The production path (no injected dialog, worker thread -> Qt signal bridge -> main thread) is never exercised, so a dead or disconnected bridge means worker errors never show a dialog.",
+    "Still open: Needs a running Qt event loop (the worker-thread signal path), out of scope for a suite without UI tests."
+   ],
+   "proposal": "Set up with show_dialog=None but patch feedback._default_dialog with a recorder that also records threading.current_thread() (and patch opener/clipboard). Raise in a worker thread, join, then QCoreApplication.processEvents() (or QTest.qWait(50)). Assert one call, summary 'ValueError: from a worker', and the recorded thread is threading.main_thread(). Catches F3 and a bridge that calls the dialog off the GUI thread."
   },
   {
    "id": "tests/test_file_assoc.py::test_register_writes_only_our_keys_and_status_reads_them_back",
@@ -5016,7 +5688,11 @@
    "strength": "strong",
    "issues": [
     "The fake registry is the test's own model of winreg; the real WinRegistry wrapper is not exercised here, so a bug in that thin layer would go unnoticed."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact command/icon strings, every write path whitelisted, UserChoice never written, refusals leave the registry unchanged, status/stale/case, settings URI fallback, legacy removal. The real WinRegistry wrapper is untested (already in issues; it would need a fake winreg module, never the real registry).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_file_assoc.py::test_unregister_removes_exactly_what_we_added",
@@ -5043,7 +5719,11 @@
    ],
    "oracle": "round-trip/self-consistency",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read only. Full snapshot equality with other programs' keys, UserChoice and a foreign RegisteredApplications value present; second unregister False and notification count exact; empty-registry skeleton; older extension removed.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_file_assoc.py::test_startup_question_decision_table",
@@ -5090,7 +5770,14 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "gap",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, A1_answers_not_saved): in ask_at_startup's answered() handler the writes of dont_ask=true and asked=true removed. Test PASSES.",
+   "gaps": [
+    "'asks once' and 'don't ask again wins' are tested only with flags the test writes into the ini by hand; the box's buttons (yes_button, later_button, never_button), which are what write those flags, are never clicked, so the app could ask at every start (the role's 'nag users at every start', 'ignore don't ask again').",
+    "Still open: Clicking the question's buttons needs a real QMessageBox, out of scope for a suite without UI tests."
+   ],
+   "proposal": "frozen=True, windows=True, fresh ini, empty FakeRegistry: box = F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True); assert box; box.later_button.click(); assert ini.value('asked') == 'true' and should_ask(...) is None and box not in F._open_boxes. New ini: box.never_button.click(); reload with F.open_settings(path) and assert _flag dont_ask true and should_ask None. New ini: box.yes_button.click() (register_now with the fake registry; patch QMessageBox notice if it blocks) and assert is_registered_for_current_exe(reg, EXE) and asked true. Catches A1."
   },
   {
    "id": "tests/test_online.py::test_ncbi_client_search_cache_rate_limit_and_errors",
@@ -5140,7 +5827,11 @@
    "issues": [
     "The rate-limit check uses real wall-clock time (adds about 0.6 s; the '< 0.6 s with a key' branch could be flaky on a very slow machine).",
     "The 429 retry checks a single retry only; the retry limit and giving up are not checked."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact request parameters (tool, api_key, no email), exact parsed record, cache hit with zero requests, size limit, error page not cached, rate limit timed, 429 retried.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_online.py::test_structure_sources_cache_and_auto_order",
@@ -5193,7 +5884,11 @@
    "strength": "adequate",
    "issues": [
     "Checks on the returned models are mostly presence checks (plddt truthy, 'ATOM' in text, id in detail) rather than content; the ESMFold 0-1 to 0-100 scaling is the one exact value."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Source choice, error messages, cache with zero network calls, Auto order (AlphaFold first, no AlphaFold without accession), combined error and local command all asserted; model content is presence-only but no content claim is made beyond the ESMFold scaling, which is exact.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_online.py::test_structure_page_script_safety_and_alphafold_reply_not_followed",
@@ -5222,6 +5917,13 @@
    "strength": "strong",
    "issues": [
     "The accession_of check is unrelated to page safety; it would fit better with the structure-source test."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, O1_alphafold_any_https): the pdbUrl check weakened to url.startswith('https://'). Test PASSES; scratch verify.py shows the mutated from_alphafold fetching 'https://evil.example.com/x.pdb'.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'an AlphaFold reply naming a non-AlphaFold URL is refused' is tested with file:/// only; a check that just requires https (or any scheme check) passes, so a reply could make the app fetch from any https host."
    ]
   },
   {
@@ -5275,7 +5977,11 @@
    "strength": "strong",
    "issues": [
     "Two unrelated topics (RCSB search/linking and PDB text parsing) in one test; could be split."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only. Exact hit list, exact info dict, exact similarity values, ordering by best chain with exact coverage, exact ligands and secondary structure strings from synthetic geometry, exact residue map.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_protein.py::test_mass_pi_charge_and_numbered_layout",
@@ -5309,11 +6015,19 @@
     }
    ],
    "oracle": "hand-computed",
-   "strength": "weak",
+   "strength": "strong",
    "issues": [
     "pI and charge are checked only for sign/range on homopolymers: a wrong pKa table or a broken pI search could still pass. An exact pI and mass for a known protein (e.g. against Biopython ProtParam, which is installed in .venv) would make it strong.",
     "Mass is checked for one dipeptide only; a wrong residue mass for any amino acid other than G would go unnoticed.",
-    "The index/offset check is a round trip only; offset_of and index_at that were wrong in the same way would pass."
+    "The index/offset check is a round trip only; offset_of and index_at that were wrong in the same way would pass.",
+    "13 Nov 2026: the weaknesses above were fixed (see Changed by the audit); rated strong since."
+   ],
+   "verdict": "sound",
+   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, P1_wrong_mass_and_pka): RESIDUE_MASS['W'] 186.2132 -> 168.0, pKa H 6.5 -> 9.0, pKa K 10.8 -> 9.5 (mass('W') 204.23 -> 186.02, pI('HHHHKK') 10.81 -> 9.93). Test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Mass pinned only for G: 19 residue masses unchecked. | pI and charge only by sign/range on homopolymers: any pKa table error passes. | offset_of/index_at only as a round trip: both wrong the same way passes."
    ]
   },
   {
@@ -5336,7 +6050,11 @@
    "issues": [
     "The real checks live in app/selftest.py; this test's strength is theirs and cannot be judged from the test file.",
     "Overlap: tests/test_documents.py::test_random_edits_keep_bases_and_features_then_undo_redo_exactly runs the same selftest.run_random_edits machinery with 500 edits; this test re-runs the short in-app versions. Still worth keeping as the guard that the in-app self-test itself passes."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read app/selftest.py: every check raises AssertionError on a mismatch with an independent string/identity model or hand values; run_check turns exceptions into failures; the test fails listing them and requires >= 9 registered checks.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_input_parsing.py::test_typed_or_imported_text_is_parsed_or_refused_with_a_reason",
@@ -5394,7 +6112,11 @@
    "issues": [
     "Bundles five unrelated input areas (range box, protein paste, name/key validation, primer lists, primer database) in one test; a failure in the range box hides all the primer checks. Splitting into 2-3 tests would help.",
     "Writes good1, good2 and fine_one into the primer database of the module's temp data dir; harmless, but state is shared with anything else in the same process using that dir."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read only (and read PrimerDB.add/update: validation precedes any change). Exact range tuples and refusals, exact rejected line numbers and reasons, database lookups for rejected names, add/add_many/update refusals.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/align.rs::tests::a_mismatch_near_either_end_of_a_long_query_is_reported_not_trimmed_away",
@@ -5425,7 +6147,11 @@
    "issues": [
     "Forward strand only; the end-trimming rule on a reverse-complement query is not checked.",
     "Does not assert hits.len()==1 (indexes [0] directly); an extra spurious hit would pass."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read test and the trimming code (TRIM_RUN/KEEP_RUN loops in smith_waterman). For at=6,11 the left KEEP_RUN loop is what keeps the mismatch, for 288,293 the right one; without them the hit would be trimmed to 1007/1012.. or ..1288/1293 and the exact (start,end,qstart,qend)==(1000,1300,0,300) plus the exact mismatch list would fail.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/align.rs::tests::a_short_query_with_mismatches_near_both_ends_is_still_one_whole_hit",
@@ -5444,7 +6170,11 @@
    "issues": [
     "Mismatch positions and qstart/qend are not asserted, only the count 3; nor is hits.len()==1, despite the name 'one whole hit'.",
     "The mismatch at 35 is 10 bases from the end, so only one end (base 9) is really 'near' an end."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read test and trimming code. Traced: first exact run f=14, last l=45 after KEEP_RUN extension, (45-14)*4=124 < 135, so the 'keep whole' fallback is what yields 1000..1045; removing it would give start 1014 and fail. Mismatch positions are not asserted here but are pinned exactly by the neighbouring end-mismatch test through the same code path.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/document.rs::tests::features_follow_every_kind_of_edit",
@@ -5553,6 +6283,13 @@
     "(was complement_feature_keeps_its_bases_and_strand_through_edits) bio == rc(covered) (line 2137) is true by construction of the helper for any strand -1 feature, so it adds nothing.",
     "(was complement_join_order_survives_edits_and_reverse_complement) The reverse-complement half overlaps reverse_complement_flips_every_feature_onto_the_same_bases (same join and complement(join) shapes); the outside-edit half is unique.",
     "(was fuzzy_locations_survive_edits_and_saves_with_their_markers) Fixed temp file name ge_test_fuzzy.gb (line 2279)."
+   ],
+   "verdict": "sound",
+   "evidence": "Read all 9 sections. mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): locations::after_delete of a Join returns None as soon as ANY part is deleted (whole multi-part feature dropped on a partial delete) combined with a clip_window piece-order mutation: this test still PASSES (only locations::delete_rules and other document tests notice).",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Section 'deleting exactly the feature or more removes it': all five ranges (50,100),(49,101),(0,200),(30,100),(50,130) cover the whole 0-based 50..100 of complement(join(51..70,81..100)), so the else branch 'must keep what is left of it' is never executed: a partial delete of a complement(join) (one part removed, both parts trimmed) is not tested in this section. | Section 'complement feature': bio == rc(covered) is true by construction of the helpers (adds nothing; the other assertions there do pin the claim). | Other sections are sound: string-model covered() comparisons, exact spans, exact gb text for fuzzy markers, record equality after undo."
    ]
   },
   {
@@ -5617,7 +6354,11 @@
     "(was rejects_bad_edits) Largely redundant: invalid letters are covered more thoroughly by letters_are_kept_as_typed_and_invalid_ones_are_refused_not_dropped and out-of-range replaces by editing_an_empty_sequence; only the inverted range (5,4) is unique here.",
     "(was overwrite_keeps_length_moves_nothing_and_is_one_step_per_call) The overwritten bases themselves are never checked (e.g. seq[10..14]=='TTTT').",
     "(was editing_an_empty_sequence) gc_bins on an empty range only checks there are 3 values (expected NaN), not their value."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read all 5 sections: refused edits checked for error, record equality (letters section) and no undo step; empty edits leave record and history unchanged; overwrite keeps length, features, one step per call, exact undo (the overwritten bases themselves are pinned by the random string-model test and pcr overwrite check, not claimed here); empty-sequence edge cases do not panic.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/document.rs::tests::genbank_text_and_qualifiers_survive_saves_and_edits",
@@ -5651,7 +6392,11 @@
    "issues": [
     "(was wrapped_qualifiers_are_stable_across_saves) Fixed file name ge_test_wrapped.gb in the shared temp dir (line 1280), never removed.",
     "(was genbank_round_trip) Topology and definition are not compared after the round trip."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read all 4 sections: exact joined note/translation text, feature equality across two save/reopen cycles, quoted note at 120 offsets, round trip of seq+features with modified cleared, qualifiers equal after each of 60 edits.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/document.rs::tests::feature_edits_and_translation_refresh_are_single_undo_steps",
@@ -5702,7 +6447,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read all 3 sections: exact index/normalised note, error cases leave no step (undo count), atomic batch result compared with a hand-built expected list, invalid batch leaves features unchanged, refresh report/translations/history depth exact.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/document.rs::tests::copy_paste_and_reverse_complement_keep_features_on_their_bases",
@@ -5758,7 +6507,11 @@
     "(was reverse_complement_twice_is_identity) Overlaps reverse_complement_flips_every_feature_onto_the_same_bases (feature flipping on linear and circular, with undo) and complement_join_order_survives_edits_and_reverse_complement (twice = identity); what is unique here is the hand-computed sequence and coordinates on the shared sample.",
     "(was pasted_features_cover_the_pasted_bases_and_existing_ones_shift_correctly) Old h and the complement join k are set up but never checked after the paste, although the name says existing ones shift correctly.",
     "(was paste_at_every_boundary_matches_the_string_model_and_is_one_step) For (12,14) only the length of g is checked (line 1897), not its bases."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read all 6 sections: exact relative locations, hand-computed rc sequence and location, per-feature own sequence/strand/mirrored spans on linear and circular, string-model paste at 9 boundaries with the pasted feature exactly on the pasted bases and g's bases. Unchecked extras (old h/k after paste, (12,14) only by length) go through the same move_features code that the replace cases pin exactly.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/document.rs::tests::primer_sites_and_pcr_products",
@@ -5795,7 +6548,11 @@
    "strength": "strong",
    "issues": [
     "(was saving_replaces_primer_sites_without_touching_the_document) Comment says 'nothing written' for the bad site but the file content after the failed save is not checked."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read both sections: exact product bases with tails, shifted lacZ, origin-spanning product bases, refused ranges/tails, overwrite keeps the location; save-with-primers keeps the in-memory record and history, file has exactly one primer_bind 'new' and the same feature count; out-of-range site refused (check_feature runs before writing).",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/document.rs::tests::circular_edits_across_the_origin",
@@ -5856,7 +6613,11 @@
    "strength": "strong",
    "issues": [
     "(was circular_edit_across_the_origin_equals_the_rotated_string_edit) Only 'is some rotation' of the model is checked (line 1832), not the exact rotation, and the two genes' positions after the edit are never asserted."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read all 5 sections: features_across exact spans/strand, return value and bases, string model up to rotation plus got[at..] == new (the exact rotation is additionally pinned by the random test's edit_across_origin model [cur[end-n..start], bases]), per-feature covered bases at 0/n inserts, wrapping deletes, 12 rotations, both sides of an across-origin replace, pasted feature position.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/document.rs::tests::rotating_and_making_linear",
@@ -5889,6 +6650,13 @@
    "strength": "strong",
    "issues": [
     "(was making_linear_is_one_undo_step_that_rotates_and_undo_gives_the_circle_back) Line 2396 says linearize(50) 'cuts the feature cut (bases 31..70)', but nothing asserts what happens to 'cut' (two pieces on the right bases), the most interesting case here."
+   ],
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): Window::pieces returns its pieces in reverse order (a feature cut by the new origin reads its second half first): this test PASSES (locations::clip_window_keeps_parts_in_reading_order catches it, this test does not).",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: linearize(50) cuts the feature 'cut' (31..70) - the comment says so and it is the interesting case - but nothing asserts what becomes of it; g and o are not split by this cut (o's two pieces merge into one range), so a feature split by linearize/rotate is never checked here. Current behaviour is join(81..100,1..20) on the now-linear record."
    ]
   },
   {
@@ -5940,7 +6708,11 @@
    ],
    "oracle": "hand-computed",
    "strength": "strong",
-   "issues": []
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "Read all 3 sections: exact summary fields per step, modified flag after every edit/undo/redo/save including the unreachable saved state, external steps' order, tokens, flag and redo dropping.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/document.rs::tests::edited_ranges_follow_edits_undo_redo_the_origin_and_save",
@@ -5978,6 +6750,13 @@
    "issues": [
     "(was edited_ranges_follow_every_edit_undo_and_redo) Line 2477 'if pos > 0 && doc.undo()' silently skips when undo() unexpectedly returns false, so a missing undo step would not fail the test (it would desync later, or not at all).",
     "(was edited_ranges_basics_origin_and_save) Docstring (lines 2496-2497) says the origin edit 'marks the new bases on both sides', but lines 2524-2528 only check one range of width 3; its position is never compared with where 'GGG' actually is."
+   ],
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): Remap::Across forward places the marked stretch one base too far right (edited_forward(pos - head + 1, ..)): test PASSES.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Origin section: after edit_across_origin(18,22,'GGG') only the count (1) and width (3) of the marked range are asserted, never its position (it must be 16..19 where the GGG is). | Undo/redo of every step in this test restore the highlight from the per-step memo; the remap fallback (used when a save happened between the edit and the undo/redo: edited_backward, Rotate/Mirror undo, Remap::Across) is never reached with a non-empty result - the only save is followed by an undo onto an empty list - so the promised 'save then undo/redo' behaviour is untested. | Random section: 'if pos > 0 && doc.undo()' silently skips when undo() unexpectedly returns false."
    ]
   },
   {
@@ -6036,6 +6815,13 @@
     "(was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.",
     "(was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.",
     "(was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers)."
+   ],
+   "verdict": "sound",
+   "evidence": "mutation in a scratch copy of core/ (cargo test with PYO3_PYTHON=.venv, own CARGO_TARGET_DIR): in tm() dropped the self-complementary terms (no -1.4 symmetry entropy, concentration C/4 even for a self-complementary oligo): test PASSES. Control: disabling the self-complementary widening in tm_range IS caught (bracket fails), so that part is sound.",
+   "gaps": [],
+   "proposal": "",
+   "fixed": [
+    "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: tm() is only checked to lie in a 10 degree window (55..65) and to rise with salt; the comment's 'more primer = higher Tm' is never tested, and the self-complementary branch of tm() (C instead of C/4, -1.4 cal/K/mol) is never compared with anything: the bracket check compares tm_range with tm(), so a wrong tm() symmetric branch moves both sides together. | The two self-complementary degenerate primers are checked only for bracketing (by design: the documented shortcut widens the range; on 'GAATTCNNGAATTC' lo = 32.17 vs true min 33.42)."
    ]
   },
   {
@@ -6070,7 +6856,11 @@
     "(was a_degenerate_reverse_primer_binds_the_opposite_strand_using_complemented_codes) One degenerate letter, one positive case and no negative case (an R facing a base it does not pair with), so code that let every IUPAC letter match anything would pass.",
     "(was a_degenerate_reverse_primer_binds_the_opposite_strand_using_complemented_codes) The code comment 'opposite a T on the top strand?' (with a question mark) is wrong: primer base 5 faces top-strand position 34, a C, which pairs with G (allowed by R).",
     "(was a_degenerate_reverse_primer_binds_the_opposite_strand_using_complemented_codes) Redundant with tests/test_primer_binding.py::test_binding_origin_ends_repeats_and_letters, which binds a three-letter degenerate primer to the reverse-complemented template (three sites, all reverse strand, 0 mismatches)."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read and traced: exact forward starts and len 20/0 mismatches (a position-2 degenerate base failing in the extension would give len 17); negative cases at position 12 for a base outside the code and for a template N; the reverse case would fail if revcomp did not complement R to Y (the reverse primer is searched through its reverse complement). An 'every IUPAC letter matches' bug is caught by the forward negative case through the shared 'same' closure.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "core/src/code.rs::tests::a_registered_code_is_found_by_id_and_a_removed_codon_reads_x",
@@ -6115,7 +6905,11 @@
     "(was a_registered_code_is_found_by_id_and_a_removed_codon_reads_x) The Python binding register_genetic_code (lib.rs) is not called by any Python test; this is the only test of the code registry.",
     "(was every_table_has_64_codons_and_known_ids) Only lengths are checked; the module doc says 'the tests compare every codon' against Biopython: that is done in Python, not here, so these Rust tests alone would not catch a wrong letter in a table.",
     "(was every_table_has_64_codons_and_known_ids) Largely superseded by tests/test_genetic_code.py::test_translation_tables_match_biopython, which compares every codon of every table (a wrong length would fail there too); this only adds a fast length/id smoke check."
-   ]
+   ],
+   "verdict": "sound",
+   "evidence": "Read: each is_err case differs from the valid call in exactly one property (id < 100; 4-letter strings), so is_err pins the reason; stored name and 'MXXS*' translation pinned; lengths/ids of built-in tables as claimed (letters are checked against Biopython in Python, not claimed here).",
+   "gaps": [],
+   "proposal": ""
   }
  ],
  "removed": [

@@ -31,7 +31,7 @@ Compares every codon of every embedded NCBI table (except 27, 28, 31) with Biopy
 
 ## `test_cds_translation_and_translation_refresh`
 
-**Result:** ✅ passed in 0.32 s · [line 178](../../tests/test_genetic_code.py#L178) · **Area:** CDS translation and /translation refresh · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.31 s · [line 178](../../tests/test_genetic_code.py#L178) · **Area:** CDS translation and /translation refresh · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, CDS amino acids shown in the views and exported, and the /translation qualifiers rewritten by the refresh command, could ignore /transl_table, /codon_start or /transl_except, or overwrite pseudo/partial genes.
 

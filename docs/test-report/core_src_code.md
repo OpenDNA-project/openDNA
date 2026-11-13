@@ -94,9 +94,13 @@ A complement CDS is read from the bottom strand, /transl_except (Sec) is applied
 
 - Error cases are is_err() only; the reason is not asserted.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'An unsupported exception is an error rather than a silent translation' is tested with (pos:complement(4..5),aa:TERM), but that input is rejected anyway by the reading-frame check (first base 4 sits at offset 4, not a codon start), so the whole-codon rule itself is never exercised; is_err() hides which check fired.
+
 ## `joined_cds_reads_its_parts_in_order`
 
-**Result:** ✅ passed · [line 436](../../core/src/code.rs#L436) · **Area:** CDS translation · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 442](../../core/src/code.rs#L442) · **Area:** CDS translation · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A spliced (join) CDS could be translated from its parts in the wrong order.
 
@@ -110,9 +114,13 @@ A join() CDS is translated from its parts concatenated in order.
 
 - Parts are in ascending order; a complement(join) or out-of-order join is not tested.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'Translated from its parts concatenated in order' is tested only with join(1..3,7..12), whose written order equals ascending order, so reading parts sorted (instead of as written) passes; complement(join) reading order is not covered either.
+
 ## `pseudo_and_partial_cds_are_skipped`
 
-**Result:** ✅ passed · [line 443](../../core/src/code.rs#L443) · **Area:** CDS translation · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 452](../../core/src/code.rs#L452) · **Area:** CDS translation · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Pseudogenes and 5'-partial CDSs could get a nonsense /translation instead of being skipped with a reason.
 

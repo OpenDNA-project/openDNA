@@ -4,7 +4,7 @@
 
 ## `test_sequence_search_engine`
 
-**Result:** ✅ passed in 0.02 s · [line 44](../../tests/test_search.py#L44) · **Area:** Sequence search (Find) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 60](../../tests/test_search.py#L60) · **Area:** Sequence search (Find) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the Find box could miss DNA matches on the other strand or with IUPAC/mismatches, fail across the origin, ignore its options for names, primers, enzymes and translations, or search outside the selection.
 
@@ -30,3 +30,7 @@ Runs search.search_sequence on a 2000 bp random sequence with planted sites and 
 - The reverse-strand protein search with 'AXW' computes hits but asserts nothing.
 - IUPAC and fuzzy checks use 'in'/'any', so extra spurious hits would not be noticed.
 - One long test mixing engine, editor bookkeeping and file search; a failure early hides the rest.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Protein motif on the reverse strand (and X as a wildcard): computed but never asserted (proven). \| Mismatch limit in the search itself: fuzzy hits are checked with any(...), so extra hits with more mismatches than allowed pass (proven); only the helper allowed_mismatches is pinned. \| IUPAC searches are checked with `in`, so spurious extra hits (e.g. R treated as N) are not noticed.

@@ -4,7 +4,7 @@
 
 ## `test_real_files_round_trip_and_agree_with_biopython`
 
-**Result:** ✅ passed in 1.13 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.90 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a real plasmid or genome could silently drop or alter features, qualifiers or bases, or write a file other tools read differently.
 
@@ -29,9 +29,13 @@ Loads every real and demo file (the two plasmids, the .dna file, the demo_*.gb f
 - Saving and reloading the 4.6 Mb genome three times makes this one of the slower tests.
 - The is_directional checks are unrelated to round trips and could live in a feature-direction test.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'load, save, reload is identical' and 'Biopython agrees' both compare against the document our own reader built from the ORIGINAL file; the original file is never compared with an independent reading of it. A GenBank reader that loses a qualifier, a feature or bases on open then writes the loss, reloads the loss and Biopython reads the loss: everything agrees. This is exactly the role ('opening and saving a real plasmid or genome could silently drop or alter features, qualifiers'). \| The genome (the only file with /EC_number, most /locus_tag) is excluded from every Biopython comparison.
+
 ## `test_unusual_records_round_trip`
 
-**Result:** ✅ passed in 0.16 s · [line 209](../../tests/test_roundtrip.py#L209) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 214](../../tests/test_roundtrip.py#L214) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, unusual but legal locations (joins, fuzzy ends, order(), across the origin, between sites), tiny or empty sequences, or lower-case bases could be corrupted on save without anyone noticing.
 
@@ -55,9 +59,13 @@ Saves made-up records that hit the edges of the GenBank format, reloads them wit
 - Very long test mixing many unrelated edge cases; a single failure hides the rest. Could be split into location forms, topology, tiny sequences and case.
 - The empty-sequence-after-delete case only checks the file exists, not that it reloads.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: tests.json case "'ACGT' deleted down to nothing => reloads length 0, '', same topology and name" is not asserted: the shrunk document's file is never reloaded, so a writer that falls back to the original/stale bases (or writes a malformed LOCUS) when length drops to 0 after an edit would pass. Only the new_sequence('empty','') path is reloaded.
+
 ## `test_qualifier_text_survives_and_is_written_as_documented`
 
-**Result:** ✅ passed in 0.26 s · [line 328](../../tests/test_roundtrip.py#L328) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.11 s · [line 340](../../tests/test_roundtrip.py#L340) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, notes with quotes, unicode or long text could be mangled, wrapped badly or gain spaces when saved, so other tools (or a reload) would show different annotation text.
 
@@ -74,7 +82,7 @@ Writes a feature with awkward qualifier values and checks the reload equals the 
 
 ## `test_primers_survive_save`
 
-**Result:** ✅ passed in 0.03 s · [line 398](../../tests/test_roundtrip.py#L398) · **Area:** Primers in saved files · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 410](../../tests/test_roundtrip.py#L410) · **Area:** Primers in saved files · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, primers attached to a plasmid (from a .dna file or imported from the database) could vanish or lose their full sequence when the file is saved as GenBank.
 
@@ -94,7 +102,7 @@ Checks primer_bind features passed to save_genbank are written with name and ful
 
 ## `test_fasta_files_are_read_like_biopython`
 
-**Result:** ✅ passed in 0.05 s · [line 441](../../tests/test_roundtrip.py#L441) · **Area:** FASTA reading · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 453](../../tests/test_roundtrip.py#L453) · **Area:** FASTA reading · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a multi-sequence FASTA (genomes, Windows line endings, BOM, lower case) could return wrong bases at line breaks or include stray characters, corrupting what the user sees and edits.
 
@@ -111,7 +119,7 @@ Checks the indexed FASTA reader against Biopython for record list, full fetches,
 
 ## `test_fasta_writing_is_the_string_edit_of_the_file`
 
-**Result:** ✅ passed in 0.02 s · [line 493](../../tests/test_roundtrip.py#L493) · **Area:** FASTA writing · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 505](../../tests/test_roundtrip.py#L505) · **Area:** FASTA writing · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, saving an edited chromosome back into a multi-FASTA could damage the other records, lose CRLF or a BOM, leave a stale index, or write the wrong edited bases.
 

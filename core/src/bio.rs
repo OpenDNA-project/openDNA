@@ -65,6 +65,15 @@ pub fn find_orfs_with(seq: &[u8], min_codons: usize, circular: bool, table: &Gen
             }
         }
     }
+    if circular && n > 0 {
+        // Each frame is read from base 0, unaware of an ORF that started before the origin and is still open there: an ATG
+        // near base 0 then starts a shorter ORF ending at the same stop. On a ring one stop has one ORF, the longest, so keep
+        // only that one per strand and stop (the stop's place taken modulo the length; in top-strand coordinates a bottom-strand
+        // ORF's stop is at its start).
+        let stop = |o: &Orf| if o.forward { o.end % n } else { o.start % n };
+        out.sort_by_key(|o| (o.forward, stop(o), std::cmp::Reverse(o.end - o.start)));
+        out.dedup_by_key(|o| (o.forward, stop(o)));
+    }
     out.sort_by_key(|o| o.start);
     out
 }
@@ -82,6 +91,10 @@ mod tests {
         // The same ORF written on the bottom strand.
         let rev = revcomp(fwd);
         assert_eq!(find_orfs(&rev, 4, false), vec![Orf { start: 2, end: 14, forward: false }]);
+        // --- the ORF above is centred, so its mirror lands on the same place; with unequal flanks (19 bp,
+        // ORF 2..14) top position p is 18 - p on the reverse complement, so the ORF covers 5..17 there ---
+        let fwd = b"CCATGAAAAAATAACCCCC";
+        assert_eq!(find_orfs(&revcomp(fwd), 4, false), vec![Orf { start: 5, end: 17, forward: false }]);
     }
 
     #[test]
@@ -110,10 +123,24 @@ mod tests {
         assert!(find_orfs(ring.as_bytes(), 4, false).is_empty(), "a line has no such ORF");
         let found = find_orfs(ring.as_bytes(), 4, true);
         assert_eq!(found, vec![Orf { start: 36, end: 36 + 12, forward: true }]);
-        // The reverse complement of the ring has its ORF on the bottom strand, at the same place on this ring's top strand.
+        // The reverse complement of the ring has its ORF on the bottom strand. (This ORF has 6 bases on each
+        // side of the origin, so its mirrored place is 36 again: the asymmetric ring below pins the mapping.)
         let rc = revcomp(ring.as_bytes());
         assert_eq!(find_orfs(&rc, 4, true), vec![Orf { start: 36, end: 48, forward: false }]);
+        // --- asymmetric ring (45 bp): ATG AAA at 39..45, then AAA AAA TAA at 0..9, so the ORF is 39..54; on the
+        // reverse complement p becomes 44 - p, which puts it at 36..51 on the bottom strand ---
+        let ring = format!("AAAAAATAA{}ATGAAA", "C".repeat(30));
+        assert_eq!(find_orfs(ring.as_bytes(), 4, true), vec![Orf { start: 39, end: 54, forward: true }]);
+        assert_eq!(find_orfs(&revcomp(ring.as_bytes()), 4, true), vec![Orf { start: 36, end: 51, forward: false }]);
         // An ORF inside a ring is reported once, not twice.
         assert_eq!(find_orfs(b"CCATGAAAAAATAACC", 4, true).len(), 1);
+        // --- an ATG just after the origin, inside an ORF that started before it, is not a second ORF: ATG AAA TAA at 0..9 and
+        // ATG AAA at 39..45 read round the ring as one ORF 39..54 (its stop is the TAA at 6..9); the shorter 0..9 shares that stop
+        // and used to be reported too. Same on the bottom strand (p becomes 44 - p: 36..51) ---
+        let ring = format!("ATGAAATAA{}ATGAAA", "C".repeat(30));
+        assert_eq!(find_orfs(ring.as_bytes(), 3, true), vec![Orf { start: 39, end: 54, forward: true }]);
+        assert_eq!(find_orfs(&revcomp(ring.as_bytes()), 3, true), vec![Orf { start: 36, end: 51, forward: false }]);
+        // as a line, both ATG..stop stretches that fit are separate ORFs: only 0..9 here (39..45 has no stop)
+        assert_eq!(find_orfs(ring.as_bytes(), 3, false), vec![Orf { start: 0, end: 9, forward: true }]);
     }
 }

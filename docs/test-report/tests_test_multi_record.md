@@ -27,7 +27,7 @@ Builds a three-record GenBank from the demo plasmids and checks detection, listi
 
 ## `test_records_are_added_reordered_and_removed_byte_for_byte`
 
-**Result:** ✅ passed in 0.15 s · [line 101](../../tests/test_multi_record.py#L101) · **Area:** Multi-record files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.14 s · [line 101](../../tests/test_multi_record.py#L101) · **Area:** Multi-record files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, reordering, removing or adding records in a GenBank or FASTA file could alter untouched records, break CRLF/BOM files, reuse a stale index, or create duplicate record names.
 
@@ -48,3 +48,7 @@ Checks reorder/remove of GenBank and FASTA records keeps each record byte-identi
 
 - The .dna-with-primers part only checks that some primer_bind exists, not names or positions.
 - The test builds the primer_bind list itself, so it does not test how the app's Add Record dialog builds it.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'a .dna source brings its primers as primer_bind features' is asserted as any(kind == 'primer_bind'): one primer out of 15 satisfies it; names, locations and sequences are not compared.

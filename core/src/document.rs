@@ -1286,6 +1286,24 @@ mod tests {
             assert_eq!(doc.record.features, before.features);
         }
         }
+        // --- deleting part of a complement(join) keeps what is left of it ---
+        // (The ranges above all cover the whole feature.) Inside part 1, across the gap, all of part 1, and
+        // part 2 trimmed past its end: the feature keeps exactly its bases outside the deleted range.
+        {
+        for (a, b) in [(55usize, 65usize), (60, 85), (45, 75), (85, 110)] {
+            let mut f = feat("CDS", "complement(join(51..70,81..100))", "f");
+            f.qualifiers.push(("note".into(), Some("keep me".to_string())));
+            let (mut doc, s) = drift_doc(vec![f]);
+            let before = doc.record.clone();
+            doc.replace(a, b, b"").unwrap();
+            assert_eq!(doc.record.features.len(), 1, "delete({a},{b}) must keep what is left of it");
+            let want: Vec<u8> = (50..70).chain(80..100).filter(|i| *i < a || *i >= b).map(|i| s[i]).collect();
+            assert_eq!((covered(&doc, "f"), strand_of(&doc, "f")), (want, -1), "delete({a},{b})");
+            assert_eq!(doc.record.features[0].qualifiers, before.features[0].qualifiers);
+            assert!(doc.undo());
+            assert_eq!(doc.record, before, "delete({a},{b}): undo");
+        }
+        }
         // --- replace over part of a feature follows the documented rules ---
         {
         // Documented rule (locations.rs): a replace is "delete the range, then insert at
@@ -1846,6 +1864,12 @@ ORIGIN
         assert_eq!(doc.gc_bins(0, 40_000, 2), vec![0.0, 0.0]);
         assert!(doc.undo());
         assert_eq!(doc.gc_bins(0, 40_000, 1), vec![1.0]);
+        // --- blocks that differ (1024-base blocks: 20 all G, then 20 all A), so each bin must read its own ---
+        let bases = [vec![b'G'; 20480], vec![b'A'; 20480]].concat();
+        let mixed = Document::new_sequence("g", &bases, false).unwrap();
+        assert_eq!(mixed.gc_bins(0, 40960, 2), vec![1.0, 0.0]);
+        assert_eq!(mixed.gc_bins(0, 40960, 4), vec![1.0, 1.0, 0.0, 0.0]);
+        assert_eq!(mixed.gc_bins(10240, 40960, 3), vec![1.0, 0.0, 0.0]);
     }
 
     #[test]
@@ -2025,6 +2049,10 @@ ORIGIN
         assert_eq!(doc.record.seq, [&seq[50..], &seq[..50]].concat());
         assert_eq!(bio(&doc, "g"), seq[20..40].to_vec());
         assert_eq!(bio(&doc, "o"), o, "the origin feature changed its bases");
+        // --- the cut feature: old base p moves to (p - 50) mod 100, so 30..50 -> 80..100 and 50..70 -> 0..20,
+        // read in that order (its first half first) ---
+        assert_eq!((spans_of(&doc, "cut"), strand_of(&doc, "cut")), (vec![(80, 100), (0, 20)], 1));
+        assert_eq!(covered(&doc, "cut"), seq[30..70].to_vec());
         assert_eq!(doc.history().0.len(), 1, "make linear must be ONE undo step");
         assert!(doc.undo() && !doc.undo());
         assert_eq!(doc.record, before, "undo must give back the circle with its old origin");
@@ -2441,7 +2469,8 @@ ORIGIN
                     }
                     _ => {
                         // go back one step (and sometimes forward again)
-                        if pos > 0 && doc.undo() {
+                        if pos > 0 {
+                            assert!(doc.undo(), "step {step}: undo with {pos} steps to undo");
                             pos -= 1;
                             assert_eq!(doc.edited_ranges(), runs(&states[pos]).as_slice(), "step {step}: after undo");
                             if rng.below(2) == 0 {
@@ -2495,6 +2524,18 @@ ORIGIN
         assert_eq!(n, 19);
         assert!(c.undo() && c.edited_ranges().is_empty());
         assert!(c.redo() && c.edited_ranges().len() == 1);
+        // --- the marked range is where the GGG is: the result is seq[2..18] + GGG, so 16..19 ---
+        assert_eq!(c.record.seq[16..19].to_vec(), b"GGG".to_vec());
+        assert_eq!(c.edited_ranges(), &[(16, 19)]);
+        // --- save between the edit and its redo: the stored highlight is stale, so it is recomputed (the
+        // across-the-origin remap) and must land on the GGG again ---
+        c.replace(5, 5, b"T").unwrap();
+        let path = std::env::temp_dir().join("opendna_edited_ranges_origin_test.gb");
+        c.save_genbank(&path, None).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(c.undo() && c.undo() && c.redo());
+        assert_eq!(c.record.seq[16..19].to_vec(), b"GGG".to_vec());
+        assert_eq!(c.edited_ranges(), &[(16, 19)]);
         }
     }
 

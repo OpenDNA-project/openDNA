@@ -4,7 +4,7 @@
 
 ## `test_binding_agrees_with_the_documented_rules_written_in_python`
 
-**Result:** ✅ passed in 0.14 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.12 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer binding sites shown on the map could deviate from the documented seed/extension rules on any of thousands of combinations of mismatches, tails, strands and topologies.
 
@@ -118,3 +118,7 @@ Uses Editor objects with primers to check mismatch positions in template coordin
 - Bundles four unrelated features (mismatch display, PCR product, non-specific priming check, save) into one test; would read better split.
 - Leftover comment '# the dialog (built, not run) says the same size...' with no code under it.
 - Uses a module-level RNG shared across tests, so the random data depends on which tests ran before.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Order-dependent: the PCR product section's exact coordinates hold only for the rng state left by earlier tests; alone it fails (shown above), so it does not pin the rule it claims, just one lucky draw. \| 'A lower-case 5' tail is not part of what must match elsewhere': the only tailed check is on a unique template, where 'ok' comes out whether or not the tail is stripped (proven). \| Tails in the PCR/mismatch sections are random letters, not built to differ from the neighbouring template base, hence the chance extension.

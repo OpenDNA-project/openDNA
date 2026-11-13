@@ -272,15 +272,18 @@ def test_structure_page_script_safety_and_alphafold_reply_not_followed(monkeypat
     assert "$3Dmol" in html and "ATOM" in html and "My &lt;protein&gt;" in html
     assert html.count("</script>") == 2, "a stray </script> in the data cannot end a script early"
     # --- an AlphaFold reply pointing elsewhere is not followed ---
-    calls = []
+    # (another scheme, another host, a look-alike host, AlphaFold only in the query string, plain http)
+    for elsewhere in ("file:///C:/Windows/win.ini", "https://evil.example.com/x.pdb", "http://alphafold.ebi.ac.uk/files/x.pdb",
+                      "https://alphafold.ebi.ac.uk.evil.example.com/x.pdb", "https://evil.example.com/?https://alphafold.ebi.ac.uk/"):
+        calls = []
 
-    def fake(url, data=None, headers=None, timeout=30):
-        calls.append(url)
-        return json.dumps([{"modelEntityId": "AF-X", "pdbUrl": "file:///C:/Windows/win.ini"}]).encode()
-    monkeypatch.setattr(structure, "fetch", fake)
-    with pytest.raises(StructureError, match="somewhere else"):
-        structure.from_alphafold("P12345")
-    assert len(calls) == 1, "only the API address was fetched, never the file the reply named"
+        def fake(url, data=None, headers=None, timeout=30, elsewhere=elsewhere):
+            calls.append(url)
+            return json.dumps([{"modelEntityId": "AF-X", "pdbUrl": elsewhere}]).encode()
+        monkeypatch.setattr(structure, "fetch", fake)
+        with pytest.raises(StructureError, match="somewhere else"):
+            structure.from_alphafold("P12345")
+        assert len(calls) == 1, f"only the API address was fetched, never {elsewhere}"
     # --- a closing script tag in the PDB cannot end the page script ---
     s = structure.Structure(pdb(90.0) + "REMARK </script><script>alert(1)</script>\n", "ESMFold", "d", True)
     html = structure.viewer_html(s, "t")

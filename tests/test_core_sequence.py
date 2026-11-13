@@ -22,6 +22,7 @@ import opendna_core as core
 from opendna_core import Document, tm, tm_range
 
 import enzymes
+import tools
 from enzymes import Enzyme
 
 from sample_files import PLASMID   # a copy (see sample_files.py)
@@ -181,6 +182,32 @@ def test_hairpins_and_dimers():
     # More salt: more stable (more negative)
     assert core.hairpin("GCGCGCTTTTGCGCGC", na_mm=200)[0] < core.hairpin("GCGCGCTTTTGCGCGC", na_mm=20)[0]
     assert core.dimer(pal := "GAATTCGAATTC", pal, na_mm=200)[0] < core.dimer(pal, pal, na_mm=20)[0]
+    # --- exact energies by hand from the SL98 table above ---
+    # dG37 = dH - 310.15 * (dS + 0.368 * (N - 1) * ln(Na / 1 M)) / 1000; dimers add the initiation of both ends, hairpins
+    # the SantaLucia & Hicks 2004 loop term (3: 3.5, 4: 3.5, 5: 3.3, 6: 4.0 kcal/mol). No Mg, no dNTP: Na_eq = Na.
+    def stem_by_hand(stem, na_mm, init):
+        dh = sum(SL98[a + b][0] for a, b in zip(stem, stem[1:]))
+        ds = sum(SL98[a + b][1] for a, b in zip(stem, stem[1:]))
+        if init:
+            for end in (stem[0], stem[-1]):
+                h, s = SL98_INIT["AT" if end in "AT" else "GC"]
+                dh, ds = dh + h, ds + s
+        return dh - 310.15 * (ds + 0.368 * (len(stem) - 1) * math.log(na_mm / 1000)) / 1000
+    salt = dict(mg_mm=0, dntp_mm=0)
+    # GCGCGCGC with itself: 4 GC + 3 CG steps and two GC ends: dH -70.8, dS -184.8, dG -70.8 + 310.15 * 0.1848 = -13.48428
+    assert stem_by_hand("GCGCGCGC", 1000, True) == pytest.approx(-13.48428, abs=1e-9)
+    assert core.dimer("GCGCGCGC", "GCGCGCGC", na_mm=1000, **salt) == pytest.approx((-13.48428, -13.48428), abs=1e-6)
+    # Hairpin: 6 bp GCGCGC stem (dH -50.6, dS -127.6: -11.02486) + loop of 4 (3.5) = -7.52486, at 1 M and at 50 mM Na
+    stem6 = stem_by_hand("GCGCGC", 1000, False)
+    assert stem6 == pytest.approx(-11.02486, abs=1e-9)
+    assert core.hairpin("GCGCGCTTTTGCGCGC", na_mm=1000, **salt) == pytest.approx((stem6 + 3.5,) * 2, abs=1e-6)
+    assert stem_by_hand("GCGCGC", 50, False) + 3.5 == pytest.approx(-5.815267, abs=1e-6)   # dS += 0.368 * 5 * ln(0.05)
+    assert core.hairpin("GCGCGCTTTTGCGCGC", na_mm=50, **salt) == pytest.approx((-5.815267,) * 2, abs=1e-5)
+    # 3' flag: one or two unpairable bases after the stem leave no 3' hairpin; + GC makes a new one ending at the 3' base
+    # (G0..C5 pair the last six bases G12..C17, loop TTTTGC of 6: -11.02486 + 4.0)
+    for tail in ("A", "CC", "A" * 10):
+        assert core.hairpin("GCGCGCTTTTGCGCGC" + tail, na_mm=1000, **salt) == pytest.approx((stem6 + 3.5, 0.0), abs=1e-6), tail
+    assert core.hairpin("GCGCGCTTTTGCGCGCGC", na_mm=1000, **salt) == pytest.approx((stem6 + 3.5, stem6 + 4.0), abs=1e-6)
 
 
 def test_gc_bins_match_an_exact_count():
@@ -245,9 +272,34 @@ def orfs_by_hand(seq, min_codons):
     return sorted(out, key=lambda o: o[0])
 
 
+def circ_orfs_by_hand(seq, min_codons):
+    """ORFs of a ring: from every stop, walk back codon by codon round the ring to the furthest ATG before the previous
+    in-frame stop (an ORF is at most one lap). Start in [0, n), end past n when it crosses the origin; (start, end, strand)."""
+    n, out = len(seq), set()
+    for strand, s in ((1, seq), (-1, rc(seq))):
+        ring = s + s
+        codon = lambda i: ring[i % n:i % n + 3]
+        for p in range(n):
+            if codon(p) not in STOPS:
+                continue
+            best = None
+            for k in range(1, n // 3 + 1):
+                c = codon(p - 3 * k)
+                if c in STOPS:
+                    break
+                if c == "ATG" and 3 * k + 3 <= n:
+                    best = k
+            if best is not None and best + 1 >= min_codons:
+                a, size = (p - 3 * best) % n, 3 * best + 3
+                b = (-(a + size)) % n   # bottom strand: the same bases counted from the top-strand start
+                out.add((a, a + size, 1) if strand == 1 else (b, b + size, -1))
+    return sorted(out)
+
+
 def test_orfs_match_a_brute_force_scan():
     """ORFs: minimum length, stop coordinates, both strands, every stop codon; nested, back-to-back, open, missing start or
-    stop; agreement with a brute-force scan on random sequences; an ORF across the origin of a circle."""
+    stop; agreement with a brute-force scan on random sequences; ORFs across the origin of a circle, on both strands and
+    on random rings."""
     # --- orfs minimum length stop coordinates and strands ---
     #            0  3   6   9   12
     seq = "CC" + "ATG" + "AAA" + "AAA" + "TAA" + "CC"   # 4 codons (ATG AAA AAA TAA) at 2..14
@@ -294,8 +346,28 @@ def test_orfs_match_a_brute_force_scan():
     # ATG AAA AAA TAA read through the origin (the last 6 bases of the ORF are at the start of the file):
     # the filler is all C, which holds no ATG and no stop
     seq = "AAATAA" + "C" * 30 + "ATGAAA"       # circular: ...ATG AAA | AAA TAA...
-    orfs = Document.new_sequence("c", seq, True).orfs(4)
-    assert len(orfs) == 1 and orfs[0][2] == 1
+    # ATG at 36, n = 42: the ORF ends 6 bases past the origin, at 42 + 6 = 48 (end past the length, like a wrapping feature)
+    assert Document.new_sequence("c", seq, True).orfs(4) == [(36, 48, 1)]
+    # The same ring written the other way round: the same bases, now on the bottom strand
+    assert Document.new_sequence("c", rc(seq), True).orfs(4) == [(36, 48, -1)]
+    # An ATG just after the origin, inside an ORF that started before it, is not a second ORF: one stop, one ORF, the longest
+    # (this ring used to give [(0, 9, 1), (39, 54, 1)])
+    nested = "ATGAAATAA" + "C" * 30 + "ATGAAA"
+    assert Document.new_sequence("c", nested, True).orfs(3) == [(39, 54, 1)]
+    assert Document.new_sequence("c", rc(nested), True).orfs(3) == [(36, 51, -1)]
+    # Random rings (n not a multiple of 3, so the frame changes at the origin): exactly the ORFs of circ_orfs_by_hand, and
+    # each is a real ORF read round the ring.
+    for _ in range(3):
+        seq = rand_dna(rng, 3001)
+        ring = seq + seq
+        for min_codons in (1, 10, 30):
+            found = Document.new_sequence("r", seq, True).orfs(min_codons)
+            assert sorted(circ_orfs_by_hand(seq, min_codons)) == sorted(found), min_codons
+            for s, e, strand in found:
+                assert 0 <= s < 3001 and e - s < 3001 and (e - s) // 3 >= min_codons
+                orf = ring[s:e] if strand == 1 else rc(ring[s:e])
+                codons = [orf[i:i + 3] for i in range(0, len(orf), 3)]
+                assert len(orf) % 3 == 0 and codons[0] == "ATG" and codons[-1] in STOPS and not STOPS & set(codons[:-1])
 
 
 def _digest_fragments(cut_positions, n, circular):
@@ -377,6 +449,25 @@ def test_restriction_cuts_and_digests_match_biopython():
     # N in the middle of a site: BglI GCCNNNN^NGGC (3' overhang)
     bgli = Enzyme("BglI", "GCCNNNNNGGC", ((7, 4),), False)
     assert enzymes.find_cuts("TT" + "GCCATCGTGGC" + "TT", False, [bgli]) == {"BglI": [(9, 6)]}
+    # --- the fragment sizes the app shows (tools.fragments) ---
+    # One cut in a circle opens it: one fragment of the whole length, from the cut back round to it
+    assert tools.fragments(100, True, {10: ["A"]}) == [(100, 10, 10, ["A"], ["A"])]
+    assert tools.fragments(100, True, {10: ["A"], 60: ["B"]}) == [(50, 10, 60, ["A"], ["B"]), (50, 60, 10, ["B"], ["A"])]
+    assert tools.fragments(100, True, {90: ["A"], 20: ["B"]}) == [(70, 20, 90, ["B"], ["A"]), (30, 90, 20, ["A"], ["B"])]
+    # Two cuts in a line: three pieces, the ends of the line bounding the outer two
+    assert tools.fragments(100, False, {10: ["A"], 60: ["B"]}) == [(10, 0, 10, [], ["A"]), (50, 10, 60, ["A"], ["B"]),
+                                                                   (40, 60, 100, ["B"], [])]
+    assert tools.fragments(100, False, {}) == [(100, 0, 100, [], [])]
+
+    def digest_sizes(seq, circular, e):
+        """Fragment sizes of a single digest, as the Digest tool builds them: {top-strand cut: [enzyme]} into tools.fragments."""
+        cuts = {t: [e.name] for t, _ in enzymes.find_cuts(seq, circular, [e]).get(e.name, [])}
+        return sorted(size for size, *_ in tools.fragments(len(seq), circular, cuts))
+
+    def biopython_digest(name, seq, circular):
+        from Bio import Restriction
+        return sorted(len(f) for f in getattr(Restriction, name).catalyse(Seq(seq), linear=not circular))
+
     # --- the real plasmid, every common enzyme, against Biopython ---
     if PLASMID.exists():   # (a missing sample file only leaves this part out)
         doc = Document(str(PLASMID))
@@ -390,12 +481,14 @@ def test_restriction_cuts_and_digests_match_biopython():
             assert _digest_fragments(ours, n, True) == _digest_fragments(theirs, n, True)
             assert sum(_digest_fragments(ours, n, True)) == n
             checked += bool(ours)
+            assert digest_sizes(seq, True, e) == biopython_digest(e.name, seq, True), e.name
         assert checked >= 10, "at least 10 enzymes actually cut this plasmid"
         # Opened as a line (cut positions only inside the sequence)
         lin = seq
         for e in enzymes.COMMON[:20]:
             ours = sorted({t for t, _ in enzymes.find_cuts(lin, False, [e]).get(e.name, [])})
             assert ours == _biopython_cuts(e.name, lin, False), e.name
+            assert digest_sizes(lin, False, e) == biopython_digest(e.name, lin, False), e.name
     # --- every enzyme planted in random circles, one across the origin, against Biopython ---
     rng = random.Random(33)
     n = 4000
@@ -419,6 +512,9 @@ def test_restriction_cuts_and_digests_match_biopython():
             for circular in (True, False):
                 ours = sorted({t for t, _ in enzymes.find_cuts(seq, circular, [e]).get(e.name, [])})
                 assert ours == _biopython_cuts(e.name, seq, circular), (e.name, circular)
+                # the sizes the app shows, against the hand formula on Biopython's cuts (not catalyse: on a ring whose
+                # site crosses the origin Biopython's catalyse returns nonsense, e.g. [0, 4517] for a 4000 bp BsaI digest)
+                assert digest_sizes(seq, circular, e) == _digest_fragments(_biopython_cuts(e.name, seq, circular), n, circular)
                 if circular:
                     assert sum(_digest_fragments(ours, n, True)) == n
                     cutting += bool(ours)

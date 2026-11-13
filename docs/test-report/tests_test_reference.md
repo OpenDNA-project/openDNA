@@ -4,7 +4,7 @@
 
 ## `test_off_target_search_covers_every_record`
 
-**Result:** ✅ passed in 0.08 s · [line 79](../../tests/test_reference.py#L79) · **Area:** Off-target search (reference genome) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 79](../../tests/test_reference.py#L79) · **Area:** Off-target search (reference genome) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer and guide off-target checks could miss copies on the second or later chromosome, report the open sequence as its own off-target, show green after a search that timed out, or lose/double hits at window edges.
 

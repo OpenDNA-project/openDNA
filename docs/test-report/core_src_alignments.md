@@ -24,3 +24,7 @@ A small synthetic BAM is indexed, exported as SAM, and decoded into reads with c
 
 - Writes fixed file names ge_test_reads.bam/.sam into the shared system temp dir and never deletes them; two concurrent cargo test runs could clobber each other.
 - Overlaps tests/test_core_formats.py::test_bam_reads_pileup_coverage_and_variants_match_a_model, which covers the same BAM decoding from Python with a model check on random reads; this is the faster unit-level copy.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Coverage is never computed over a read with an indel: the exact window 10..30 holds only the two plain reads, and the block path sums aligned bases per 128-bp block, where read r3 (5M3D5M at 50) lands in block 0 whether or not its deletion shifts the second half. So coverage could ignore deletions (or insertions) without any assertion failing. \| decode's mismatch scan over r3 cannot notice the shift either, because the reference is all A and the read is all A.

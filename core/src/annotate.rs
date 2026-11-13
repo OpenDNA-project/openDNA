@@ -222,11 +222,21 @@ mod tests {
         let simple: Vec<_> = hits.iter().map(|h| (h.part, h.start, h.len, h.forward, h.protein)).collect();
         assert!(simple.contains(&(0, 25 + 500, 40, true, false)), "{simple:?}"); // the promoter, shifted by 25
         assert!(simple.contains(&(0, n - 15, 40, true, false)), "{simple:?}"); // across the origin
+        // --- exactly these hits, no extra or duplicate ones ---
+        assert_eq!(simple, vec![(0, 25 + 500, 40, true, false), (1, 25 + 1040, 300, false, false), (0, n - 15, 40, true, false)]);
         let g = hits.iter().find(|h| h.part == 1).unwrap();
         assert_eq!((g.start, g.forward, g.protein), (25 + 1040, false, false));
         assert!((g.identity - 294.0 / 300.0).abs() < 1e-6);
         // Linear: no hit across the origin.
         assert_eq!(find_parts(&circ, false, &parts[..1], &[false], 0.95, 0.9).len(), 1);
+        // --- a whole promoter copy inside the head that the circular search appends: found once, at 100
+        // (not again at n + 100); everything after it moves 40 on ---
+        let mut head = circ.clone();
+        head.splice(100..100, promoter.iter().copied());
+        let n2 = head.len();
+        let hits = find_parts(&head, true, &parts, &[false, true], 0.95, 0.9);
+        let simple: Vec<_> = hits.iter().map(|h| (h.part, h.start, h.len, h.forward, h.protein)).collect();
+        assert_eq!(simple, vec![(0, 100, 40, true, false), (0, 565, 40, true, false), (1, 1105, 300, false, false), (0, n2 - 15, 40, true, false)]);
 
         // A recoded gene (synonymous codons): the DNA differs a lot, the protein not at all.
         let cds = b"ATGCTGCTGCTGAGCAGCAGCCGTCGTCGTGGTGGTGGTCTGCTGCTGTAA".to_vec(); // M LLL SSS RRR GGG LLL *
@@ -237,6 +247,15 @@ mod tests {
         let hits = find_parts(&host, false, &[cds.clone()], &[true], 0.95, 0.9);
         assert_eq!(hits.len(), 1, "{hits:?}");
         assert_eq!((hits[0].start, hits[0].len, hits[0].forward, hits[0].protein), (200, cds.len(), true, true));
+        assert_eq!(hits[0].identity, 1.0);
+        // --- the same protein on the bottom strand, with unequal flanks (200 / 300) so the bottom-strand
+        // position (300) cannot pass for the top-strand one (200) ---
+        let mut host = random_dna(200, 4);
+        host.extend(revcomp(&recoded));
+        host.extend(random_dna(300, 5));
+        let hits = find_parts(&host, false, &[cds.clone()], &[true], 0.95, 0.9);
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!((hits[0].start, hits[0].len, hits[0].forward, hits[0].protein), (200, 51, false, true));
         assert_eq!(hits[0].identity, 1.0);
     }
 }

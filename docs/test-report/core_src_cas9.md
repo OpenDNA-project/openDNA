@@ -26,9 +26,13 @@ A site written on the bottom strand is found and reported in top-strand coordina
 |---|---|---|
 | 1 | template 'TTTTT' + revcomp(guide + 'AGG') + 'CCCCC'; NGG, 0 mm | exactly 1 site: (5, 28, forward=false); template[5..8] = 'CCT' |
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The template is 'TTTTT' + 23-bp site + 'CCCCC': 5 bases on both sides, so the reverse-complement index i = 33-28 = 5 equals the correct top-strand start 5; the coordinate conversion the test claims ('reported in top-strand coordinates') is never really checked. The 'CCT' check reads the same position and passes too.
+
 ## `needs_the_pam`
 
-**Result:** ✅ passed · [line 201](../../core/src/cas9.rs#L201) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 207](../../core/src/cas9.rs#L207) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Sites lacking a PAM could be reported as guide sites (false off-targets), or non-NGG PAMs such as SaCas9's NNGRRT could be ignored.
 
@@ -43,9 +47,13 @@ Without a fitting PAM there is no site even with mismatches allowed; other IUPAC
 
 - The NNGRRT case checks only the count, not position/strand.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'Other IUPAC PAMs (NNGRRT) are honoured' is tested by one positive case only ('ATGAAT', where A fits R anyway), and only by count; nothing shows an R refusing a C/T, so a wrong IUPAC table passes.
+
 ## `counts_mismatches_and_records_where`
 
-**Result:** ✅ passed · [line 211](../../core/src/cas9.rs#L211) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 223](../../core/src/cas9.rs#L223) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Off-target sites could be listed with the wrong number or positions of mismatches, misleading guide specificity checks.
 
@@ -58,7 +66,7 @@ Mismatches are counted against the limit and their guide positions are recorded 
 
 ## `a_site_can_run_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed · [line 226](../../core/src/cas9.rs#L226) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 238](../../core/src/cas9.rs#L238) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A guide site crossing the origin of a plasmid could be missed.
 
@@ -75,7 +83,7 @@ On a circular template a site split across the origin is found once, with end pa
 
 ## `several_guides_and_lower_case`
 
-**Result:** ✅ passed · [line 240](../../core/src/cas9.rs#L240) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 252](../../core/src/cas9.rs#L252) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Searching several guides at once, or a lower-case sequence, could return mixed-up or empty results.
 
@@ -91,7 +99,7 @@ Several guides are searched in one call (one result list each) and a lower-case 
 
 ## `finds_a_site_whose_pam_comes_first`
 
-**Result:** ✅ passed · [line 250](../../core/src/cas9.rs#L250) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 262](../../core/src/cas9.rs#L262) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Cas12a (5' TTTV PAM) sites could be searched in Cas9 orientation and so be missed or wrongly found.
 
@@ -103,9 +111,13 @@ With pam_first (Cas12a, TTTV) the PAM is matched 5' of the protospacer, on both 
 | 2 | same text, pam_first=false | no site |
 | 3 | 'CCCCC' + revcomp('TTTC' + guide) + 'CCCCC', pam_first=true | 1 site (5, 29, forward=false) |
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The bottom-strand pam_first case is 'CCCCC' + 24-bp site + 'CCCCC' (symmetric), so the reverse-strand index equals the top-strand start (5) and the coordinate conversion is not checked.
+
 ## `mismatch_mask_counts_from_the_guides_5_prime_end_next_to_a_first_pam`
 
-**Result:** ✅ passed · [line 269](../../core/src/cas9.rs#L269) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 285](../../core/src/cas9.rs#L285) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** For Cas12a the mismatch positions could be counted from the wrong end, so a PAM-proximal mismatch would be weighted as distal in off-target scoring.
 

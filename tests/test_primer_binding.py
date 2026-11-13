@@ -644,6 +644,7 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     """Primer sites in an editor: mismatch positions in template coordinates (both strands, tails, across the origin); a pair's
     PCR product (tails, a reverse primer upstream, across the origin, a mismatched primer); the non-specific priming check in
     the sequence and in a genome; sites written on save change neither the document nor its undo stack."""
+    rng.seed(643)   # this test's own data, whatever ran before it (the exact coordinates below must not depend on test order)
     # --- the mismatched letters of a site (what the primer list colours red): N and R pair with what they stand for ---
     assert primer_panel.mismatch_indices("ACGTNR", "ACCTGA") == [2]
     # --- on both strands ---
@@ -680,13 +681,15 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
         assert site.mismatch_at == [] and site.mismatches == 0
     # --- a primer pair's PCR product ---
     template = dna(500)
-    ed = pair_editor(template, False, (100, 124), (300, 324), "GGAATTCC", "CCAAGCTTGG")
+    # tails built to differ from the template base by base next to each site, so no tail can extend a site by chance
+    f_tail, r_tail = mutate(template[92:100], range(8)), rc(mutate(template[324:334], range(10)))
+    ed = pair_editor(template, False, (100, 124), (300, 324), f_tail, r_tail)
     f, r = site_named(ed, "F"), site_named(ed, "R")
     assert (f.strand, r.strand) == (1, -1) and (f.start, f.end, r.start, r.end) == (100, 124, 300, 324)
     assert (f.tail, r.tail) == (8, 10)
     assert tools.product_range(ed, f, r) == (100, 324)
     doc = tools.pcr_product(ed, f, r)
-    assert doc.sequence() == "GGAATTCC" + template[100:324] + rc("CCAAGCTTGG")
+    assert doc.sequence() == f_tail + template[100:324] + rc(r_tail)
     assert doc.length == 224 + 8 + 10 and not doc.circular
     # the dialog (built, not run) says the same size and makes the same product
     # --- reverse primer upstream of the forward one ---
@@ -695,11 +698,12 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     ed = pair_editor(template, False, (350, 374), (50, 74))
     f, r = site_named(ed, "F"), site_named(ed, "R")
     assert tools.product_range(ed, f, r) is None
-    ed = pair_editor(template, True, (350, 374), (50, 74), "GG", "CC")
+    f_tail, r_tail = mutate(template[348:350], range(2)), rc(mutate(template[74:76], range(2)))
+    ed = pair_editor(template, True, (350, 374), (50, 74), f_tail, r_tail)
     f, r = site_named(ed, "F"), site_named(ed, "R")
     assert tools.product_range(ed, f, r) == (350, 574)
     doc = tools.pcr_product(ed, f, r)
-    assert doc.sequence() == "GG" + template[350:] + template[:74] + "GG"
+    assert doc.sequence() == f_tail + template[350:] + template[:74] + rc(r_tail)
     assert doc.length == 150 + 74 + 4
     # --- across the origin ---
     template = dna(400)
@@ -751,6 +755,11 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     assert checks_by_name(ed, "gaattcgg" + primer)["Non-specific (sequence)"][0] == "ok"
     assert checks_by_name(ed, rc(primer))["Non-specific (sequence)"][0] == "ok"
     assert checks_by_name(editor_with(template[:400] + primer + template[424:], False, []), rc(primer))["Non-specific (sequence)"][0] == "bad"
+    # the tail is really left out: with the primer twice, a tailed primer is judged on its binding part alone (an unstripped tail
+    # would find no second full match and say "ok")
+    twice = editor_with(template[:400] + primer + template[424:], False, [])
+    assert checks_by_name(twice, "gaattcgg" + primer)["Non-specific (sequence)"][0] == "bad"
+    assert checks_by_name(twice, "gaattcgg" + rc(primer))["Non-specific (sequence)"][0] == "bad"
 
     # --- in the genome ---
     monkeypatch.setattr(primer_panel, "homology_settings", lambda: (12, 0))

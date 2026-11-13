@@ -175,6 +175,13 @@ def test_release_check_offers_only_a_newer_complete_release(monkeypatch):
         data["assets"][0]["browser_download_url"] = url
         result = updater.check("0.1.0", Fake(json.dumps(data)))
         assert result.update is None and "Refused" in result.error, url
+    # the checksum file is held to the same rule: a checksum from elsewhere could vouch for a tampered exe
+    for url in ("https://evil.example.com/x.sha256", "http://github.com/x.sha256",
+                "https://github.com/someone/else/releases/download/v9/x.sha256"):
+        data = json.loads(release())
+        data["assets"][1]["browser_download_url"] = url
+        result = updater.check("0.1.0", Fake(json.dumps(data)))
+        assert result.update is None and "Refused" in result.error, url
     assert updater.check("0.1.0", Fake(release(html_url="https://evil.example.com/x"))).update.page_url == project.RELEASES_URL
 
     # --- network errors and garbage never raise
@@ -222,6 +229,17 @@ def test_download_comes_only_from_github_and_is_kept_only_when_it_matches_its_ch
     with pytest.raises(UpdateError):
         handler.redirect_request(request, None, 302, "Found", {}, "https://evil.example.com/openDNA.exe")
     assert handler.redirect_request(request, None, 302, "Found", {}, "https://objects.githubusercontent.com/x") is not None
+    # ... and fetch() really uses that guard: the opener it builds carries _SafeRedirects (no network: the opener is recorded, then stopped)
+    seen = []
+
+    def recorder(*handlers):
+        seen.extend(handlers)
+        raise updater.urllib.error.URLError("stopped by the test")
+    with monkeypatch.context() as patch:
+        patch.setattr(updater.urllib.request, "build_opener", recorder)
+        with pytest.raises(UpdateError):
+            updater.fetch("https://github.com/a/b/releases/download/v1/openDNA.exe")
+    assert any(h is updater._SafeRedirects or isinstance(h, updater._SafeRedirects) for h in seen), seen
 
     # --- checksum file forms
     assert updater.parse_checksum(f"{DIGEST}  {updater.ASSET_NAME}\n") == DIGEST
@@ -465,3 +483,19 @@ def test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip
     assert updater.skipped_version() == ""
     updater.skip_version("0.2.0")
     assert updater.skipped_version() == "0.2.0"
+
+    # --- the start-up check: offers a new version once a day, never a skipped one (run synchronously, the dialog recorded)
+    shown = []
+    monkeypatch.setattr(updater, "cleanup_old_in_background", lambda: None)
+    monkeypatch.setattr(updater, "check_in_background", lambda got, fetch=None, **kw: got(updater.check("0.1.0", fetch)))
+    monkeypatch.setattr(updater, "open_dialog", lambda window, update, **kw: shown.append(update.version))
+    now = 2_000_000.0
+    forget_state()
+    assert updater.startup_check(None, fetch=Fake(release()), now=now) is True and shown == ["0.2.0"]
+    assert updater.startup_check(None, fetch=Fake(release()), now=now + 60) is False and shown == ["0.2.0"], "once a day"
+    forget_state()
+    updater.skip_version("0.2.0")
+    assert updater.startup_check(None, fetch=Fake(release()), now=now) is True and shown == ["0.2.0"], "a skipped version is not offered"
+    forget_state()
+    updater.skip_version("0.1.5")                               # skipping an older version does not hide a newer one
+    assert updater.startup_check(None, fetch=Fake(release()), now=now) is True and shown == ["0.2.0", "0.2.0"]

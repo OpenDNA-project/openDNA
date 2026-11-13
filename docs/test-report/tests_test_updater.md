@@ -31,9 +31,13 @@ Checks version parsing and numeric comparison, then feeds updater.check fake Git
 - Large multi-section test; a failure in an early section hides the later ones.
 - Error texts are checked by substring ('Refused', 'understood', 'failed'), not exact message.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Claim 'both the exe and its .sha256 on the project's own repo': only the EXE URL is ever moved off-host in the test; the checksum URL is never tested, so check() may offer a release whose checksum comes from any host/scheme (code also does not enforce the own-repo path for the .sha256, so the json claim overstates the code).
+
 ## `test_download_comes_only_from_github_and_is_kept_only_when_it_matches_its_checksum`
 
-**Result:** ✅ passed in 0.03 s · [line 189](../../tests/test_updater.py#L189) · **Area:** Updater: download safety · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 196](../../tests/test_updater.py#L196) · **Area:** Updater: download safety · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the updater could download a program from a look-alike or hijacked host, follow a redirect off GitHub, or install a tampered or partial file.
 
@@ -59,9 +63,13 @@ Checks the HTTPS GitHub host allow-list (direct and on redirects), the real fetc
 
 - The real network path is not exercised (correct for a unit test); the redirect check calls the handler method directly rather than going through a real redirect.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'enforced by the real fetch ... on redirects': the test calls _SafeRedirects.redirect_request directly; nothing shows fetch() installs that handler, so a fetch that follows a redirect to any host would pass.
+
 ## `test_install_swaps_relaunches_and_cleans_up`
 
-**Result:** ✅ passed in 0.01 s · [line 291](../../tests/test_updater.py#L291) · **Area:** Updater: install and cleanup · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 309](../../tests/test_updater.py#L309) · **Area:** Updater: install and cleanup · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it a successful update could fail to replace the running exe, fail to restart the program, start the new program with a broken PyInstaller environment, or leave .old/.part files behind (or delete the wrong file).
 
@@ -79,7 +87,7 @@ On fake files in temp folders, checks that install_update swaps new over current
 
 ## `test_install_refuses_or_rolls_back_leaving_the_old_program`
 
-**Result:** ✅ passed in 0.01 s · [line 355](../../tests/test_updater.py#L355) · **Area:** Updater: refusal and rollback · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 373](../../tests/test_updater.py#L373) · **Area:** Updater: refusal and rollback · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it a failed update (no write access, antivirus lock, broken new exe, wrong build type or platform) could leave the user with no working program.
 
@@ -99,7 +107,7 @@ Checks that install refuses when run from source, on macOS/Linux and in the one-
 
 ## `test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip`
 
-**Result:** ✅ passed in 0.07 s · [line 441](../../tests/test_updater.py#L441) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.14 s · [line 459](../../tests/test_updater.py#L459) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the app could check for updates when the user turned it off, check on every start, stop checking after the clock goes back, or forget a version the user chose to skip.
 
@@ -116,3 +124,7 @@ Checks that the automatic check follows the user setting and the project-wide UP
 **Review notes:**
 
 - Only checks that a skipped version is stored, not that the automatic check then stays quiet about it (that logic, if in main.py, is untested here).
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'remembers a skip' (role: 'forget a version the user chose to skip'): only the store round trip is tested; the one place the skip has an effect, startup_check's `result.update.version != skipped_version()`, is untested, so a skipped version would be offered again every day. \| startup_check's own obedience to auto_check_due and its mark_checked call are untested too.

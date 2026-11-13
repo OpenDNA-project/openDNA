@@ -56,7 +56,7 @@ Checks that a promoter without a terminator runs round a circle or to the end of
 
 ## `test_origins_and_prediction_thresholds`
 
-**Result:** ✅ passed in 0.07 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.14 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the Checkup could name the wrong origin family (or miss that a plasmid has none, or needs a pir host), and the motif predictors could flood a real plasmid with chance hits.
 
@@ -70,14 +70,24 @@ Checks that annotated rep_origin features are mapped to origin names, hosts and 
 | 4 | 50 000 random bases, predict_promoters(threshold 10) and predict_terminators(18) | at most 8 predictions each |
 | 5 | sd_match on AGGAGGTTTTATG + GCT x 20 from base 10 to 20, linear | (6, 0, 6) |
 
+**Does not fully prove its claim:**
+
+- The ColE1-group note is asserted on a construct whose five origins are random filler named by label, so nothing distinguishes a note driven by the origin families from one driven by the number of rep_origin features.
+
+**Proposed bulletproof test:** Add a positive control beside the noise bound, in the same test. (1) Recall: st = C.Strand(filler(200, 41) + PROMOTER + filler(200, 42), 1, False), with PROMOTER the module-level consensus sigma-70 string 'TTGACAATTAATCATCCGGCTCGTATAATGTGTGGAA' (-35 at offset 0, -10 TATAAT at offset 25, so the -10 box sits at base 200 + 25 = 225 and the filler is T-free, hence nothing else can score); assert len(C.predict_promoters(st, 10)) == 1 and that the hit's interval covers 200..237. Same for terminators: st2 = C.Strand(filler(200, 43) + T1 + filler(200, 44), 1, False) with the rrnB T1 string already in the file; assert len(C.predict_terminators(st2, 18)) == 1 and abs(hit.a - 200) <= 3. (2) Turn the noise bound into a measured rate: plant 20 copies of PROMOTER at known bases inside the 50 000 random bases, assert at least 18 of the 20 planted windows hold a hit and that hits outside every planted window are still <= 8. This catches the proven mutation (predictors returning []) and any threshold change that silences them, which the present bounds welcome.
+
 **Review notes:**
 
 - The <= 8 bounds on a single random sequence are a loose regression threshold, not a real false-positive rate; a predictor that returned zero hits would also pass.
 - Origin recognition here is driven by the feature labels, not the sequence.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: positive controls added for the promoter and terminator predictors (a predictor that finds nothing now fails).
+
 ## `test_library_parts_on_a_real_plasmid`
 
-**Result:** ✅ passed in 0.04 s · [line 269](../../tests/test_checkup.py#L269) · **Area:** Plasmid checkup (parts library) · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.06 s · [line 285](../../tests/test_checkup.py#L285) · **Area:** Plasmid checkup (parts library) · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the built-in parts library could override a file's own annotations, or fail to supply the terminator a bare sequence needs, changing the verdicts on real plasmids.
 
@@ -94,9 +104,13 @@ Runs the Checkup on the annotated demo plasmid pBAD30_eilR and on the same bases
 - Only three assertions over one file; it shows the library is consulted but not that any particular part is matched correctly.
 - Tied to a demo file whose annotation changes would change the result.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'the library supplies the terminator a bare sequence needs' is tested only as existence: any element with origin == 'library' and kind == 'terminator' satisfies it, wherever it sits and whichever part it came from. Proven: library elements moved 500 bp off their real match still pass. \| Nothing checks which part matched, its identity score, its strand, or that the bare run finds the same terminator the annotated file annotates, so a library matching the wrong part - or the right part against the wrong stretch - passes. \| The eilR block asserts the verdict and the promoter's label but never the base range of the araBAD promoter element, so a unit built from the wrong upstream element that happens to carry the right label would pass.
+
 ## `test_unit_features_keep_their_geometry_and_survive_a_file_round_trip`
 
-**Result:** ✅ passed in 0.04 s · [line 284](../../tests/test_checkup.py#L284) · **Area:** Transcription unit features · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 318](../../tests/test_checkup.py#L318) · **Area:** Transcription unit features · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a transcription unit saved into a file could be drawn with the wrong +1, the wrong thick/thin split or lost altogether on reload, and old files written under the program's former name would stop working.
 

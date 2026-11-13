@@ -27,9 +27,13 @@ Checks feedback.scrub on strings containing the username, home paths, quoted and
 - Mostly 'not in' checks: a scrub that removed too much would pass most rows (only the plain-sentence row, the traceback row and the placeholder counts guard against over-scrubbing).
 - The /home/bobsmith input is scrubbed and checked twice in a row with overlapping assertions (lines 90-91).
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: UNC row: `"Lab" not in scrub(r"\\fileserver\lab\...")` is vacuous (case mismatch); UNC scrubbing is untested. \| Quoted-path row: 'Lab Notes' not in out is satisfied when only 'Lab' is removed; the space-containing folder part 'Notes' may leak. \| Over-scrubbing is guarded by one sentence only (already listed in issues).
+
 ## `test_report_links_are_encoded_capped_and_carry_nothing_private`
 
-**Result:** ✅ passed in 0.12 s · [line 120](../../tests/test_feedback.py#L120) · **Area:** Error reports: GitHub issue links · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.12 s · [line 126](../../tests/test_feedback.py#L126) · **Area:** Error reports: GitHub issue links · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the 'Report a bug' / 'Request a feature' links could be malformed, too long for the browser, lose the end of the log, or carry private data to GitHub.
 
@@ -52,7 +56,7 @@ Builds bug and feature issue URLs and decodes their query: template, title prefi
 
 ## `test_log_file_and_error_hooks`
 
-**Result:** ✅ passed in 0.10 s · [line 191](../../tests/test_feedback.py#L191) · **Area:** Error reports: log file and crash dialog · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.10 s · [line 197](../../tests/test_feedback.py#L197) · **Area:** Error reports: log file and crash dialog · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it unhandled errors could go unlogged or unreported, the same error could pop a dialog repeatedly, the log could grow without bound or contain private data, or the error dialog itself could crash the app.
 
@@ -71,6 +75,13 @@ Installs the logging and exception hooks with fake dialog, opener and clipboard 
 | 9 | Dialog raising RuntimeError; a KeyboardInterrupt | Hook does not raise / no dialog |
 | 10 | Same ValueError raised in two worker threads | One dialog, summary 'ValueError: from a worker' |
 | 11 | setup_logging(hooks=False); teardown twice | sys/threading excepthooks unchanged; double teardown harmless |
+
+**Does not fully prove its claim:**
+
+- 'one dialog per distinct error (main and worker threads)': because the test injects show_dialog, _handle_exception takes the `_state['dialog'] is not None` shortcut and calls the dialog directly IN the worker thread. The production path (no injected dialog, worker thread -> Qt signal bridge -> main thread) is never exercised, so a dead or disconnected bridge means worker errors never show a dialog.
+- Still open: Needs a running Qt event loop (the worker-thread signal path), out of scope for a suite without UI tests.
+
+**Proposed bulletproof test:** Set up with show_dialog=None but patch feedback._default_dialog with a recorder that also records threading.current_thread() (and patch opener/clipboard). Raise in a worker thread, join, then QCoreApplication.processEvents() (or QTest.qWait(50)). Assert one call, summary 'ValueError: from a worker', and the recorded thread is threading.main_thread(). Catches F3 and a bridge that calls the dialog off the GUI thread.
 
 **Review notes:**
 

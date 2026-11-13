@@ -60,7 +60,7 @@ Checks that comparing a CDS under two genetic codes reports the gained and lost 
 
 ## `test_usage_tables_their_files_and_what_they_say_about_a_gene`
 
-**Result:** ✅ passed in 0.19 s · [line 201](../../tests/test_codons.py#L201) · **Area:** Codon usage tables and genetic codes · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.15 s · [line 201](../../tests/test_codons.py#L201) · **Area:** Codon usage tables and genetic codes · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a user's imported or self-made codon table or genetic code could be lost, mis-parsed, or silently saved nowhere, and the adaptation index and checkup notes computed from it could be wrong.
 

@@ -87,7 +87,20 @@ def test_repeats_are_found_where_planted_and_not_in_random_dna():
     (r,) = repeats.pair_repeats(seq, seq, 30).repeats   # itself: the pair once, not the main diagonal
     assert r[0] == "direct" and near(r[1:4], (100, 240, 40))
     direct, inverted, _ = repeats.pair_dots(a, b)
-    assert direct and inverted
+    # the dots are the middles of equal 12-base windows: d (a[50:90] = b[100:140]) is the diagonal y - x = 50, window middles
+    # 56..84; e (a[150:180], its reverse complement at b[30:60]) the anti-diagonal x + y = 156 + 54 = 210, middles 156..174.
+    # A random flank base that happens to agree lengthens a stretch: count those bases on each side.
+    agree = lambda pairs: next((i for i, (u, v) in enumerate(pairs) if u != v), len(pairs))
+    d_left, d_right = agree(list(zip(a[49::-1], b[99::-1]))), agree(list(zip(a[90:], b[140:])))
+    e_left, e_right = agree(list(zip(a[149::-1], rc(b[60:])[::-1]))), agree(list(zip(a[180:], rc(b[:30]))))
+    assert {y - x for x, y in direct} == {50.0}
+    assert sorted(x for x, _ in direct) == [56.0 + i for i in range(-d_left, 29 + d_right)]
+    assert {x + y for x, y in inverted} == {210.0}
+    assert sorted(x for x, _ in inverted) == [156.0 + i for i in range(-e_left, 19 + e_right)]
+    # and exactly the dots of a brute-force comparison of every window pair
+    windows = lambda s: [(i + 6.0, s[i:i + 12]) for i in range(len(s) - 11)]
+    assert sorted(direct) == sorted((x, y) for x, u in windows(a) for y, v in windows(b) if u == v)
+    assert sorted(inverted) == sorted((x, y) for x, u in windows(a) for y, v in windows(b) if u == rc(v))
 
 
 def planted():

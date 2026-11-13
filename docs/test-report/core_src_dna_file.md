@@ -38,3 +38,7 @@ Non-.dna data and a .dna file without a DNA packet are rejected instead of yield
 **Review notes:**
 
 - Truncated packets (length past end of data) are not tested.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: b'LOCUS       x' is rejected as a 'truncated packet' (its length bytes are huge), before the signature check is reached; the second input has a valid cookie and fails for 'no DNA'. So the 'not a .dna file' check is never exercised, and is_err() does not say which check fired.

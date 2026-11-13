@@ -152,6 +152,14 @@ def test_records_are_added_reordered_and_removed_byte_for_byte(tmp_path):
         multigb.append_genbank(one, [multigb.renamed_genbank(dna, "from_dna", primers)])
         assert names(one) == [first, name, "from_dna"]
         assert any(f.kind == "primer_bind" for f in multigb.read_record(one, "from_dna").features())
+        # Every primer comes back, in order, with its name, location and sequence (not just one of them); the bases at
+        # each location are the primer itself, read from the saved record.
+        rec = multigb.read_record(one, "from_dna")
+        got = [(f.label, f.location, dict(f.qualifiers).get("note")) for f in rec.features() if f.kind == "primer_bind"]
+        assert got == [(q[0][1], loc, q[1][1]) for _, loc, q in primers]
+        for _, loc, q in primers:
+            a, b = (int(x) for x in loc.split(".."))
+            assert rec.sequence()[a - 1:b].upper() == q[1][1][len("sequence: "):].upper(), loc
 
     # --- FASTA sequences added: the file's line endings, the old last line ended, the index rebuilt
     target = tmp_path / "genome.fa"

@@ -28,7 +28,7 @@ Checks that the documented default limits are exactly what the settings declare 
 
 ## `test_where_a_primer_comes_from_decides_how_it_is_kept`
 
-**Result:** ✅ passed in 0.02 s · [line 160](../../tests/test_primer_design.py#L160) · **Area:** Primer sources and storage · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 160](../../tests/test_primer_design.py#L160) · **Area:** Primer sources and storage · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a primer from the shared database could be confused with one stored in the file, be drawn in the wrong colour or hidden by the wrong filter, or an imported primer could fail to be saved or to undo cleanly.
 
@@ -48,7 +48,7 @@ Checks the flags, colour and display-filter behaviour of the four primer origins
 
 ## `test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.08 s · [line 220](../../tests/test_primer_design.py#L220) · **Area:** Primer design on circular DNA · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.09 s · [line 220](../../tests/test_primer_design.py#L220) · **Area:** Primer design on circular DNA · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, designing primers for a target at or across a plasmid's origin could return nothing, or primers whose bases are not actually on the template or whose product does not contain the target.
 
@@ -69,7 +69,7 @@ Checks that on a circular 3000 bp sequence the designer returns pairs for a targ
 
 ## `test_the_files_written_for_ordering`
 
-**Result:** ✅ passed in 0.03 s · [line 241](../../tests/test_primer_design.py#L241) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 241](../../tests/test_primer_design.py#L241) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the plate file sent to a synthesis company could put oligos in the wrong wells, overflow past well 96, drop the scale or purification, or corrupt names and sequences - a real-money error.
 

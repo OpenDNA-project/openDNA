@@ -63,3 +63,7 @@ A FASTA whose lines are wrapped unevenly inside a record is rejected, because of
 | # | Input | Expected output |
 |---|---|---|
 | 1 | '>x\nACG\nACGT\n' | build_fai error |
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Only one kind of unevenness is tested ('>x\nACG\nACGT\n': a line longer than the first). The common case - a short line in the middle of a record ('ACGT/AC/ACGT') - and same base count with a different line width (mixed LF/CRLF) are never fed, so those two rejection branches are unverified.

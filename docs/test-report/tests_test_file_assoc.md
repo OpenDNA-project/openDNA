@@ -61,3 +61,10 @@ Walks the should_ask / ask_at_startup decision table with the fake registry and 
 | 7 | asked=true written to an ini file and reloaded | None (the boolean survives the reload) |
 | 8 | accepted=true, registered for another path, ask_at_startup | None, and the registration now points to this exe (silent repair) |
 | 9 | asked=true but an OpenGenEdit registration present | should_ask 'stale'; ask_at_startup repairs silently and removes the legacy keys; then None |
+
+**Does not fully prove its claim:**
+
+- 'asks once' and 'don't ask again wins' are tested only with flags the test writes into the ini by hand; the box's buttons (yes_button, later_button, never_button), which are what write those flags, are never clicked, so the app could ask at every start (the role's 'nag users at every start', 'ignore don't ask again').
+- Still open: Clicking the question's buttons needs a real QMessageBox, out of scope for a suite without UI tests.
+
+**Proposed bulletproof test:** frozen=True, windows=True, fresh ini, empty FakeRegistry: box = F.ask_at_startup(None, ini, reg, EXE, windows=True, frozen=True); assert box; box.later_button.click(); assert ini.value('asked') == 'true' and should_ask(...) is None and box not in F._open_boxes. New ini: box.never_button.click(); reload with F.open_settings(path) and assert _flag dont_ask true and should_ask None. New ini: box.yes_button.click() (register_now with the fake registry; patch QMessageBox notice if it blocks) and assert is_registered_for_current_exe(reg, EXE) and asked true. Catches A1.

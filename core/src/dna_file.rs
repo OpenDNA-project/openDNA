@@ -359,9 +359,15 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_other_files() {
-        assert!(parse(b"LOCUS       x").is_err());
+        // A GenBank text: its "length" bytes are huge, so it fails as a truncated packet.
+        assert!(parse(b"LOCUS       x").unwrap_err().to_string().contains("truncated"));
         let mut no_dna = packet(0x09, b"SnapGene\x00");
         no_dna.extend(packet(0x06, b"<Notes/>"));
         assert!(parse(&no_dna).is_err());
+        // --- well-formed packets with a DNA packet but the wrong cookie: only the signature check rejects it ---
+        let mut f = packet(0x09, b"NotSnapGene");
+        f.extend(packet(0x00, b"\x00ACGT"));
+        let e = parse(&f).unwrap_err();
+        assert!(e.to_string().contains("not a .dna file"), "{e}");
     }
 }

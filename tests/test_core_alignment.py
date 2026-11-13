@@ -120,15 +120,19 @@ def test_align_single_queries_coordinates_indels_and_overhangs():
     assert (h[0][5], h[0][6]) == (60, 210), "the part of the query that aligned"
     h = core.align(t, rc(longer))
     assert (h[0][0], h[0][1], h[0][2]) == (0, 150, -1)
-    # A circle: the query runs through the origin, so end passes the length. On a line, only the longer half is found.
+    # A circle: the query runs through the origin, so end passes the length. On a line, each half is found where it is.
     t = rand_dna(rng, 1000)
     q = t[900:] + t[:100]
     h = core.align(t, q, circular=True)[0]
     assert (h[0], h[1], h[2], h[4]) == (900, 1100, 1, 1.0)
     h = core.align(t, rc(q), circular=True)[0]
     assert (h[0], h[1], h[2]) == (900, 1100, -1)
+    # On a line, two hits: q[100:200] is t[0:100] and q[0:100] is t[900:1000] (both score 200, then by position); typed as
+    # the reverse complement, the same template places with the query parts mirrored
     lin = core.align(t, q, circular=False)
-    assert lin and lin[0][1] <= 1000 and lin[0][1] - lin[0][0] == 100
+    assert [(x[0], x[1], x[2], x[5], x[6]) for x in lin] == [(0, 100, 1, 100, 200), (900, 1000, 1, 0, 100)]
+    lin = core.align(t, rc(q), circular=False)
+    assert [(x[0], x[1], x[2], x[5], x[6]) for x in lin] == [(0, 100, -1, 0, 100), (900, 1000, -1, 100, 200)]
     # a hit at the very start of a circle is reported once (not again as a copy past the end)
     assert len(core.align(t, t[:80], circular=True)) == 1
     # Audit (see docs/TEST_CATALOGUE.md section 8): the tests above cover a query LONGER than the template (flanks on
@@ -380,15 +384,26 @@ def test_local_align_query_cleaning_and_junction_texts():
     n = 5000
     a = hit(0, 100, 1000, 1100)
     assert junction_text(a, hit(100, 200, 1100, 1200), n, False) == "contiguous"
-    assert junction_text(a, hit(300, 400, 1100, 1200), n, False).startswith("insertion in the query: 200 bp unmatched")
-    assert junction_text(a, hit(100, 200, 1150, 1250), n, False).startswith("deletion from the query: 50 bp of the template skipped")
-    assert junction_text(a, hit(100, 200, 900, 1000), n, False).startswith("template jumps back")
-    assert junction_text(a, hit(100, 200, 1500, 1600, -1), n, False).startswith("inversion breakpoint")
+    # whole texts, the distances worked out by hand (query gap = next qstart - qend; template gap = next start - end)
+    assert junction_text(a, hit(300, 400, 1100, 1200), n, False) == "insertion in the query: 200 bp unmatched in the query"
+    assert junction_text(a, hit(100, 200, 1150, 1250), n, False) == "deletion from the query: 50 bp of the template skipped"
+    # 900 - 1100 = -200: the template goes back 200 bp
+    assert junction_text(a, hit(100, 200, 900, 1000), n, False) == (
+        "template jumps back (duplication or pieces out of order): template back 200 bp")
+    # strand change: the closest pair of ends, min(|1500-1100|, |1000-1600|, |1500-1000|, |1600-1100|) = 400
+    assert junction_text(a, hit(100, 200, 1500, 1600, -1), n, False) == (
+        "inversion breakpoint (strand changes): 400 bp of the template skipped")
+    # 50 bp of query between the pieces where 100 bp of template are skipped
+    assert junction_text(a, hit(150, 250, 1200, 1300), n, False) == (
+        "unmatched query in place of template: 50 bp unmatched in the query; 100 bp of the template skipped")
+    # the pieces share 20 query bases, the template runs straight on
+    assert junction_text(a, hit(80, 180, 1100, 1200), n, False) == "contiguous: queries overlap by 20 bp"
     # two reverse pieces: the template runs backwards along the query
     r1, r2 = hit(0, 100, 1000, 1100, -1), hit(100, 200, 900, 1000, -1)
     assert junction_text(r1, r2, n, False) == "contiguous"
     # a circle: the short way round the origin is a small gap, not a jump back of nearly the whole template
-    assert junction_text(hit(0, 100, 4900, 5000), hit(100, 200, 50, 150), n, True).startswith("deletion from the query: 50 bp")
+    assert junction_text(hit(0, 100, 4900, 5000), hit(100, 200, 50, 150), n, True) == (
+        "deletion from the query: 50 bp of the template skipped")
     assert summarize([a], n, False) == "1 piece: 1 forward"
     s = summarize([a, hit(300, 400, 1100, 1200), hit(400, 500, 3000, 3100, -1)], n, False)
     assert s.startswith("3 pieces: 2 forward, 1 inverted (reverse complement); gaps in the query between pieces: 200 bp unmatched (#1→#2)")
@@ -423,3 +438,9 @@ def test_folder_search_finds_a_query_in_its_file_record_place_and_strand(tmp_pat
     # --- cancelling ---
     (tmp_path / "a.fa").write_text(">a\nACGT\n")
     assert search_folder(tmp_path, "ACGTACGTACGT", cancelled=lambda: True)[0] == []
+    # a query that IS found (('second', 500, 560, +1) above) finds nothing when cancelled before the first file
+    assert search_folder(tmp_path, b[500:560], cancelled=lambda: True) == ([], 0, 3)
+    # cancelled once the first file is done: no second file is read
+    calls = []
+    search_folder(tmp_path, b[500:560], progress=lambda done, total: calls.append(done), cancelled=lambda: len(calls) >= 1)
+    assert calls == [1]

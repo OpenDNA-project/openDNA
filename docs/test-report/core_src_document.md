@@ -44,9 +44,13 @@ An insertion inside a feature grows it, marks the document modified, and undo/re
 - (was complement_join_order_survives_edits_and_reverse_complement) The reverse-complement half overlaps reverse_complement_flips_every_feature_onto_the_same_bases (same join and complement(join) shapes); the outside-edit half is unique.
 - (was fuzzy_locations_survive_edits_and_saves_with_their_markers) Fixed temp file name ge_test_fuzzy.gb (line 2279).
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Section 'deleting exactly the feature or more removes it': all five ranges (50,100),(49,101),(0,200),(30,100),(50,130) cover the whole 0-based 50..100 of complement(join(51..70,81..100)), so the else branch 'must keep what is left of it' is never executed: a partial delete of a complement(join) (one part removed, both parts trimmed) is not tested in this section. \| Section 'complement feature': bio == rc(covered) is true by construction of the helpers (adds nothing; the other assertions there do pin the claim). \| Other sections are sound: string-model covered() comparisons, exact spans, exact gb text for fuzzy markers, record equality after undo.
+
 ## `edits_are_validated_and_empty_or_overwrite_edits_behave`
 
-**Result:** ✅ passed · [line 1413](../../core/src/document.rs#L1413) · **Area:** Document editing / validation · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 1431](../../core/src/document.rs#L1431) · **Area:** Document editing / validation · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, bad ranges or letters could corrupt the sequence or be silently dropped, and empty or overwrite edits could change bases or features they should not.
 
@@ -76,7 +80,7 @@ Inverted ranges, ranges past the end and invalid letters are refused and leave n
 
 ## `genbank_text_and_qualifiers_survive_saves_and_edits`
 
-**Result:** ✅ passed · [line 1496](../../core/src/document.rs#L1496) · **Area:** GenBank I/O · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1514](../../core/src/document.rs#L1514) · **Area:** GenBank I/O · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, saving could rewrap, unquote or alter qualifier text and a GenBank file would no longer reload as it was written.
 
@@ -97,7 +101,7 @@ Qualifiers wrapped over several lines are joined correctly on read (spaces in no
 
 ## `feature_edits_and_translation_refresh_are_single_undo_steps`
 
-**Result:** ✅ passed · [line 1579](../../core/src/document.rs#L1579) · **Area:** Feature editing / undo · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1597](../../core/src/document.rs#L1597) · **Area:** Feature editing / undo · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a feature change or a /translation refresh could take several undos, or one undo could leave the annotations half restored.
 
@@ -118,7 +122,7 @@ Adding and deleting features are undo steps; multi-line qualifier text is normal
 
 ## `copy_paste_and_reverse_complement_keep_features_on_their_bases`
 
-**Result:** ✅ passed · [line 1653](../../core/src/document.rs#L1653) · **Area:** Copy/paste with features · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1671](../../core/src/document.rs#L1671) · **Area:** Copy/paste with features · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, pasted or reverse-complemented annotations could land on the wrong bases or strand.
 
@@ -146,7 +150,7 @@ Copying a range brings the overlapping part of features with relative coordinate
 
 ## `primer_sites_and_pcr_products`
 
-**Result:** ✅ passed · [line 1792](../../core/src/document.rs#L1792) · **Area:** PCR product · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1810](../../core/src/document.rs#L1810) · **Area:** PCR product · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a PCR product could have the wrong bases or tails, and saving primer sites could change the document or its undo history.
 
@@ -167,7 +171,7 @@ A PCR product is a new linear, unsaved document with primer tails added and feat
 
 ## `gc_bins_exact_and_from_blocks`
 
-**Result:** ✅ passed · [line 1838](../../core/src/document.rs#L1838) · **Area:** GC content plot · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 1856](../../core/src/document.rs#L1856) · **Area:** GC content plot · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** The GC-content plot could show wrong values, or stale values after an edit or undo on long sequences that use the block cache.
 
@@ -183,9 +187,13 @@ GC fractions per bin are exact for short ranges and correct through the cached-b
 
 - The block path (lines 1468-1474) is only fed uniform sequences (all GC or all AT), so a wrong block index, off-by-one block edge or bins swapped would still give 1.0/0.0; a mixed sequence is needed to test it.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: The cached-block path is only fed uniform sequences (all GC, then all AT), so every block has the same fraction: a wrong block index, an off-by-one at a block edge or swapped bins still gives 1.0/0.0. Only the cache invalidation (after edit and after undo) is really pinned.
+
 ## `circular_edits_across_the_origin`
 
-**Result:** ✅ passed · [line 1852](../../core/src/document.rs#L1852) · **Area:** Circular editing across the origin · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1876](../../core/src/document.rs#L1876) · **Area:** Circular editing across the origin · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, edits, copies and features across a plasmid's origin could lose or shift bases.
 
@@ -212,7 +220,7 @@ Copying across the origin brings an origin-spanning feature as one contiguous ra
 
 ## `rotating_and_making_linear`
 
-**Result:** ✅ passed · [line 1998](../../core/src/document.rs#L1998) · **Area:** Rotate (set origin) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 2022](../../core/src/document.rs#L2022) · **Area:** Rotate (set origin) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, rotating a circle or making it linear could move features off their bases or not undo back to the circle.
 
@@ -230,9 +238,13 @@ Rotating a circular sequence moves bases and features; an origin-spanning featur
 
 - (was making_linear_is_one_undo_step_that_rotates_and_undo_gives_the_circle_back) Line 2396 says linearize(50) 'cuts the feature cut (bases 31..70)', but nothing asserts what happens to 'cut' (two pieces on the right bases), the most interesting case here.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: linearize(50) cuts the feature 'cut' (31..70) - the comment says so and it is the interesting case - but nothing asserts what becomes of it; g and o are not split by this cut (o's two pieces merge into one range), so a feature split by linearize/rotate is never checked here. Current behaviour is join(81..100,1..20) on the now-linear record.
+
 ## `history_texts_and_the_modified_flag`
 
-**Result:** ✅ passed · [line 2050](../../core/src/document.rs#L2050) · **Area:** History panel · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 2078](../../core/src/document.rs#L2078) · **Area:** History panel · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could describe steps wrongly and the unsaved-changes flag could lie, so changes could be lost on close.
 
@@ -253,7 +265,7 @@ The history summary records position, removed length, inserted text and feature 
 
 ## `random_edits_undo_redo_follow_a_snapshot_and_string_model`
 
-**Result:** ✅ passed · [line 2230](../../core/src/document.rs#L2230) · **Area:** Document editing / undo (model-based) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 2258](../../core/src/document.rs#L2258) · **Area:** Document editing / undo (model-based) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Some combination of edits, pastes, rotations, flips, undo, redo and save could corrupt the bases, desynchronise undo/redo, or get the unsaved-changes flag wrong.
 
@@ -270,7 +282,7 @@ The history summary records position, removed length, inserted text and feature 
 
 ## `edited_ranges_follow_edits_undo_redo_the_origin_and_save`
 
-**Result:** ✅ passed · [line 2387](../../core/src/document.rs#L2387) · **Area:** Edited-bases highlight · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 2415](../../core/src/document.rs#L2415) · **Area:** Edited-bases highlight · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the blue marking of edited bases could point at the wrong bases after edits, undo, redo or a save.
 
@@ -289,3 +301,7 @@ The yellow 'edited bases' ranges agree with a one-flag-per-base model through 30
 
 - (was edited_ranges_follow_every_edit_undo_and_redo) Line 2477 'if pos > 0 && doc.undo()' silently skips when undo() unexpectedly returns false, so a missing undo step would not fail the test (it would desync later, or not at all).
 - (was edited_ranges_basics_origin_and_save) Docstring (lines 2496-2497) says the origin edit 'marks the new bases on both sides', but lines 2524-2528 only check one range of width 3; its position is never compared with where 'GGG' actually is.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Origin section: after edit_across_origin(18,22,'GGG') only the count (1) and width (3) of the marked range are asserted, never its position (it must be 16..19 where the GGG is). \| Undo/redo of every step in this test restore the highlight from the per-step memo; the remap fallback (used when a save happened between the edit and the undo/redo: edited_backward, Rotate/Mirror undo, Remap::Across) is never reached with a non-empty result - the only save is followed by an undo onto an empty list - so the promised 'save then undo/redo' behaviour is untested. \| Random section: 'if pos > 0 && doc.undo()' silently skips when undo() unexpectedly returns false.

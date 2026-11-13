@@ -366,5 +366,14 @@ ACGTACGTAC
     fn rejects_uneven_wrapping() {
         let p = write_tmp("ge_test_uneven.fa", ">x\nACG\nACGT\n");
         assert!(build_fai(&p).is_err());
+        // --- a short line that is not the last of its record, and the same bases on a wider (CRLF) line ---
+        let p = write_tmp("ge_test_uneven.fa", ">x\nACGT\nAC\nACGT\n");
+        assert!(build_fai(&p).is_err());
+        let p = write_tmp("ge_test_uneven.fa", ">x\nACGT\nACGT\r\nAC\n");
+        assert!(build_fai(&p).is_err());
+        // --- control: a short LAST line, a blank line and another record are fine ---
+        let p = write_tmp("ge_test_uneven.fa", ">x\nACGT\nACGT\nAC\n\n>y\nA\n");
+        let fai = build_fai(&p).unwrap();
+        assert_eq!(fai.iter().map(|e| (e.name.as_str(), e.length)).collect::<Vec<_>>(), vec![("x", 10), ("y", 1)]);
     }
 }

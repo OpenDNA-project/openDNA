@@ -312,6 +312,11 @@ mod tests {
         assert_eq!(find_protein(b"ATGAAAGGGTTT", b"KGF", 0, 10)[0].frame, 1);
         assert_eq!(find_protein(b"CATGAAAGGGTTT", b"KGF", 0, 10)[0].frame, 2);
         assert_eq!(find_protein(b"CCATGAAAGGGTTT", b"KGF", 0, 10)[0].frame, 3);
+        // --- the three reverse frames: MKGF on the bottom strand at frame - 1, always top-strand 0..12 ---
+        for (fwd, frame) in [(&b"ATGAAAGGGTTT"[..], 1usize), (b"CATGAAAGGGTTT", 2), (b"CCATGAAAGGGTTT", 3)] {
+            let rc = revcomp(fwd);
+            assert_eq!(find_protein(&rc, b"MKGF", 0, 10), vec![ProteinHit { start: 0, end: 12, forward: false, frame, mismatches: 0 }], "frame {frame}");
+        }
         // X in the query is any amino acid; a mismatch is allowed when asked for
         assert_eq!(find_protein(fwd, b"MXGF", 0, 10).len(), 1);
         assert!(find_protein(fwd, b"MLGF", 0, 10).is_empty());

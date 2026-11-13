@@ -300,6 +300,28 @@ def test_edited_base_ranges_follow_edits_undo_redo_and_saves(tmp_path):
     ed.doc.undo()
     assert ed.doc.edited_ranges() == []
 
+    # --- the same across the origin, with the bases as the oracle for the positions. (`base` above is all G: it builds a
+    # new Random(5) for every base. Here no G, so the typed G's can be found in the string.)
+    pick = random.Random(5)
+    circ = "".join(pick.choice("ACT") for _ in range(200))
+    ed = editor(circ, circular=True)
+    ed.select(190, 205)           # removes 190..199 and 0..4; the G's go where the selection ended, after base[5:190]
+    ed.type_bases("GGGGGG")
+    model = circ[5:190] + "GGGGGG"
+    assert ed.doc.sequence() == model and model.index("G") == 185
+    assert ed.doc.edited_ranges() == [(185, 191)]
+    assert "".join(ed.doc.sequence()[a:b] for a, b in ed.doc.edited_ranges()) == "GGGGGG"
+    ed.set_cursor(0)
+    ed.type_bases("A")
+    marked = {0} | set(range(186, 192))
+    model = "A" + model
+    ed.doc.rotate(50)             # every marked base moves 50 back, around the circle
+    model = model[50:] + model[:50]
+    assert ed.doc.sequence() == model
+    now = {p for a, b in ed.doc.edited_ranges() for p in range(a, b)}
+    assert now == {(p - 50) % len(model) for p in marked}
+    assert sorted(model[p] for p in now) == sorted("AGGGGGG")
+
 
 def texts(ed):
     return [text for _, _, text in group(ed.doc.history()[0])]
@@ -452,6 +474,10 @@ def test_copy_reverse_complement_keeps_annotations_flipped():
     # "top" covered 61..100 of the original: in the reversed copy of 41..160, pasted at 10
     assert pasted["top"].location == "complement(%d..%d)" % (10 + 160 - 100 + 1, 10 + 160 - 61 + 1)
     assert pasted["split"].location.startswith("complement(join("), "a join keeps both parts, in the new reading order"
+    # Exact locations by hand: a base at 0-based p of the copied 40..159 lands at 10 + 159 - p. bottom [110,140) -> [30,60);
+    # split's parts [50,60) -> [110,120) and [120,130) -> [40,50), listed in the new reading order.
+    assert pasted["bottom"].location == "31..60"
+    assert pasted["split"].location == "complement(join(41..50,111..120))"
 
     # --- the plain copy keeps them unflipped
     ed = editor(seq, features=feats)
@@ -472,6 +498,19 @@ def test_copy_reverse_complement_keeps_annotations_flipped():
     middle.paste_mime(mime)
     middle.select(0, 40)
     assert middle.copy_reverse_complement_mime().text() == seq[280:] + seq[:20]
+
+    # --- a feature across the origin goes along, at the place the bases say (`seq` above is one letter repeated: it builds a
+    # new Random(9) for every base; this sequence is varied so the bases can tell positions apart)
+    pick = random.Random(9)
+    varied = "".join(pick.choice("ACGT") for _ in range(300))
+    ed = editor(varied, circular=True, features=[("misc_feature", "join(291..300,1..10)", [("label", "ori")])])
+    ed.select(280, 320)   # copied: varied[280:300] + varied[0:20]; ori is copy[10:30], which the reversal keeps at [10,30)
+    target = editor("A" * 10)
+    target.set_cursor(0)
+    assert target.paste_mime(ed.copy_reverse_complement_mime())
+    ori = features_by_label(target)["ori"]
+    assert ori.location == "complement(11..30)"
+    assert target.doc.sequence()[10:30] == reverse_complement(varied[290:300] + varied[:10])
 
 
 # ---- exports and the project file ------------------------------------------------------------------------------------------
@@ -503,6 +542,17 @@ def test_text_exports_and_the_project_file(tmp_path):
     assert [exports.protein_of(built, f) for f in exports.cds_features(built)] == ["MKPG", "MKPG"]
     lines = exports.tbl_text(built).splitlines()
     assert "3\t17\tCDS" in lines and "34\t20\tCDS" in lines and "\t\t\tnote\trev" in lines
+    # GFF3 (1-based, end inclusive) and BED (0-based start, end exclusive) coordinates by hand for CDS 3..17 and
+    # complement(20..34), and the bases at each GFF3 line are the CDS on its strand
+    sid = exports.seq_id(built)
+    body = [l for l in exports.gff3_text(built).splitlines() if not l.startswith("#")]
+    assert body == [f"{sid}\topenDNA\tCDS\t3\t17\t.\t+\t.\tID=f0;Name=fwd", f"{sid}\topenDNA\tCDS\t20\t34\t.\t-\t.\tID=f1;Name=rev"]
+    assert exports.bed_text(built).splitlines() == [f"{sid}\t2\t17\tfwd\t0\t+", f"{sid}\t19\t34\trev\t0\t-"]
+    whole = built.doc.sequence()
+    for l in body:
+        _, _, _, start, end, _, strand, _, _ = l.split("\t")
+        got = whole[int(start) - 1:int(end)]
+        assert (got if strand == "+" else reverse_complement(got)) == gene, l
     assert exports.translate("ATGAAATAA") == "MK*"
     assert exports.fasta_text("x", "A" * 75).splitlines()[1:] == ["A" * 70, "A" * 5]
     # --- the submission pair
@@ -515,6 +565,9 @@ def test_text_exports_and_the_project_file(tmp_path):
     ed.tracks.append(SimpleNamespace(name=track.name, path=str(track), seqid=ed.doc.name))   # as the window's load_track does
     ed.set_display(enzymes=True, hidden_kinds={"misc_feature"})
     ed.dna_locked = True
+    site = ed.doc.sequence()[100:120]
+    assert ed.doc.sequence().upper().count(site.upper()) == 1 and reverse_complement(site).upper() not in ed.doc.sequence().upper()
+    assert ed.import_primers([("pX", site)]) == 1     # a primer of this file: written as a primer_bind feature
     project = tmp_path / "work.odp"
     exports.save_project(ed, project)
     with zipfile.ZipFile(project) as z:
@@ -525,7 +578,11 @@ def test_text_exports_and_the_project_file(tmp_path):
     assert meta["display"]["enzymes"] and meta["display"]["hidden_kinds"] == ["misc_feature"]
     assert not list(tmp_path.glob("*.part")), "written through a temporary file"
     doc, back = exports.open_project(project)
-    assert doc.sequence() == ed.doc.sequence() and len(doc.features()) == len(ed.doc.features()) and back == meta
+    assert doc.sequence() == ed.doc.sequence() and back == meta
+    # every feature comes back whole (kind, location, qualifiers), plus the file's primer at the site its bases say
+    want = [(f.kind, f.location, list(f.qualifiers)) for f in ed.doc.features()]
+    want.append(("primer_bind", "101..120", [("label", "pX"), ("note", f"sequence: {site}")]))
+    assert sorted((f.kind, f.location, list(f.qualifiers)) for f in doc.features()) == sorted(want)
     moved = tmp_path / "moved"
     moved.mkdir()
     (moved / "extra.gff3").write_text(track.read_text())

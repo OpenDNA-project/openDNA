@@ -141,6 +141,10 @@ def test_real_files_round_trip_and_agree_with_biopython(tmp_path):
         doc = Document(path)
         before = snap(doc)
         assert before["features"], f"{pid}: the file should have annotations to make this meaningful"
+        # --- what we read from the ORIGINAL file = Biopython's reading of it (bases, every feature, part and qualifier; the
+        # genome too: about a second). Otherwise a reader that drops a qualifier on open saves, reloads and agrees with itself.
+        if path.suffix == ".gb":
+            assert_biopython_agrees(path, doc)
         if pid == "genome_dna":   # the 4.6 Mb E. coli genome, the largest file
             assert doc.length > 4_500_000 and doc.circular and len(doc.features()) > 4000
         first, second, third = tmp_path / "1.gb", tmp_path / "2.gb", tmp_path / "3.gb"
@@ -164,6 +168,7 @@ def test_real_files_round_trip_and_agree_with_biopython(tmp_path):
         if path.exists():
             doc = Document(path)
             assert doc.features() and doc.circular and doc.length == length, path.name
+            assert_biopython_agrees(path, doc)   # pFG051_Chlor.gb is not among the sources above
 
     if not (PLASMID_DNA.exists() and PLASMID2.exists()):
         return
@@ -283,11 +288,18 @@ def test_unusual_records_round_trip(tmp_path):
         doc.save_genbank(out)
         back = Document(out)
         assert (back.length, back.sequence(), back.circular, back.name) == (0, "", circular, "empty"), circular
-    doc = Document.new_sequence("shrunk", "ACGT", False)
-    doc.delete(0, 4)
-    out = tmp_path / "s.gb"
-    doc.save_genbank(out)
-    assert out.exists() and not doc.modified and doc.length == 0
+    # edited down to nothing: the file written holds no bases (not the 4 it had), reloads empty, Biopython reads 0 bases
+    for circular in (False, True):
+        doc = Document.new_sequence("shrunk", "ACGT", circular)
+        doc.delete(0, 4)
+        out = tmp_path / "s.gb"
+        doc.save_genbank(out)
+        assert out.exists() and not doc.modified and doc.length == 0
+        back = Document(out)
+        assert (back.length, back.sequence(), back.circular, back.name) == (0, "", circular, "shrunk"), circular
+        text = out.read_text(encoding="utf-8")
+        assert "ORIGIN" in text and not any(c in "ACGTacgt" for c in text.split("ORIGIN", 1)[1]), circular
+        assert len(bio_read(out).seq) == 0, circular
 
     # --- a gap letter
     doc = Document.new_sequence("gap", "ACGT-ACGT", False)

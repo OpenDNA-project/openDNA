@@ -32,9 +32,13 @@ Nearest-neighbour Tm is in a plausible range, rejects non-ACGT and too-short inp
 - (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.
 - (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: tm() is only checked to lie in a 10 degree window (55..65) and to rise with salt; the comment's 'more primer = higher Tm' is never tested, and the self-complementary branch of tm() (C instead of C/4, -1.4 cal/K/mol) is never compared with anything: the bracket check compares tm_range with tm(), so a wrong tm() symmetric branch moves both sides together. \| The two self-complementary degenerate primers are checked only for bracketing (by design: the documented shortcut widens the range; on 'GAATTCNNGAATTC' lo = 32.17 vs true min 33.42).
+
 ## `a_degenerate_primer_binds_every_site_it_matches_on_either_strand`
 
-**Result:** ✅ passed · [line 443](../../core/src/primers.rs#L443) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 453](../../core/src/primers.rs#L453) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a degenerate primer could miss sites it matches, or bind sites it does not, on either strand.
 
@@ -58,7 +62,7 @@ A 20-nt primer with R, N and Y binds three template variants each with zero mism
 
 ## `annealing_extends_across_a_lone_mismatch`
 
-**Result:** ✅ passed · [line 481](../../core/src/primers.rs#L481) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 491](../../core/src/primers.rs#L491) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A primer's displayed binding site could stop at a lone mismatch (showing too much tail) or run on past two mismatches, on either strand.
 
@@ -73,7 +77,7 @@ Binding-site extension past the 15-nt 3' seed crosses a lone mismatch when enoug
 
 ## `finds_sites_on_both_strands_with_tails_and_mismatches`
 
-**Result:** ✅ passed · [line 511](../../core/src/primers.rs#L511) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 521](../../core/src/primers.rs#L521) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding.
 
@@ -88,7 +92,7 @@ A primer with a 5' tail binds only over its annealing part; reverse primers are 
 
 ## `site_across_the_origin`
 
-**Result:** ✅ passed · [line 535](../../core/src/primers.rs#L535) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 545](../../core/src/primers.rs#L545) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A primer binding across the origin of a plasmid could be missed.
 

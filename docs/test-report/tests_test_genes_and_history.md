@@ -44,3 +44,7 @@ Checks the exact text written for each kind of edit (insert, delete, short and l
 
 - Entirely string-literal assertions on UI wording: it pins the current text but a wrong-but-plausible message (e.g. an off-by-one position) is only caught where the position is spelled out.
 - One assertion builds its expected text from the history entry it is checking, so that part cannot fail.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'the text shows the first 30 of the 40 deleted bases' is not tested: the expected text at the long-delete step is 'Deleted 40 bp at 101-140: ' + ed.doc.history()[0][-1][1] + ellipsis, so the stored bases are compared with themselves. If the undo record kept the last 30 removed bases, bases from the wrong offset, or the inserted bases instead, the row would be wrong on screen and the test would still pass. (The insert side, 'C'*30, is a literal and is pinned.) \| The last circular case is matched only with startswith and endswith, so the base it names ('across the origin from <base>') is never checked - an off-by-one in the position of a delete across the origin slips through, although the same position is spelled out and checked for the replace one line above.

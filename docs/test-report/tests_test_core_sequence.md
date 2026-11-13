@@ -4,7 +4,7 @@
 
 ## `test_melting_temperature_matches_santalucia_and_biopython`
 
-**Result:** ✅ passed in 0.02 s · [line 73](../../tests/test_core_sequence.py#L73) · **Area:** Primer Tm · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 74](../../tests/test_core_sequence.py#L74) · **Area:** Primer Tm · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer melting temperatures shown everywhere in the editor (primer list, PCR design) could drift from the published SantaLucia/Primer3 values and nobody would notice.
 
@@ -28,7 +28,7 @@ Checks core.tm against a hand-coded SantaLucia 1998 calculation and against Biop
 
 ## `test_hairpins_and_dimers`
 
-**Result:** ✅ passed in 0.01 s · [line 146](../../tests/test_core_sequence.py#L146) · **Area:** Primer hairpins and dimers · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 147](../../tests/test_core_sequence.py#L147) · **Area:** Primer hairpins and dimers · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the hairpin and primer-dimer warnings in primer checks could report nonsense (positive energies, asymmetric pairs, wrong 3'-end flag) without being caught.
 
@@ -50,9 +50,13 @@ Checks core.hairpin and core.dimer on designed palindromes and stems, and genera
 
 - No absolute dG value is checked against Primer3 or a hand calculation: a scaled or shifted energy model would still pass.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: No absolute dG is asserted, so a wrong NN parameter, a wrong loop_dg table entry, a scaled energy or a broken salt correction (0.368*(N-1)*ln(Na_eq)) pass: only signs, symmetry and orderings are checked (proven with a 0.7x scale and with salt ignored). \| The 3'-end flag is only checked on 2 hand cases plus any<=3' on random pairs; a 3' flag that is set for every hairpin ending within the last base or two is not distinguished.
+
 ## `test_gc_bins_match_an_exact_count`
 
-**Result:** ✅ passed in 0.03 s · [line 186](../../tests/test_core_sequence.py#L186) · **Area:** GC content plot · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 213](../../tests/test_core_sequence.py#L213) · **Area:** GC content plot · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the GC-content track could show wrong percentages, especially zoomed out where cached 1024-base blocks are used, or misbehave at sequence ends.
 
@@ -75,7 +79,7 @@ Checks Document.gc_bins on uniform and mixed sequences, compares block-based and
 
 ## `test_orfs_match_a_brute_force_scan`
 
-**Result:** ✅ passed in 0.01 s · [line 248](../../tests/test_core_sequence.py#L248) · **Area:** ORF finder · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 299](../../tests/test_core_sequence.py#L299) · **Area:** ORF finder · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the ORF track could miss open reading frames, report nested duplicates, or place reverse-strand ORFs at wrong coordinates.
 
@@ -92,15 +96,21 @@ Checks Document.orfs on hand-made cases (minimum length, all three stops, strand
 | 7 | random 500 and 3001 bp, min codons 1/10/30 | equal to brute-force orfs_by_hand |
 | 8 | random 6000 bp, min 40 codons | each ORF starts with ATG, ends with the first in-frame stop, length multiple of 3 |
 | 9 | circular AAATAA + C*30 + ATGAAA (ORF over origin) | exactly one forward ORF |
+| 10 | ring 'ATGAAATAA' + 'C'*30 + 'ATGAAA' (45 bp), min 3 codons; and its reverse complement | only (39, 54, +1); on the reverse complement only (36, 51, -1) |
 
 **Review notes:**
 
 - The ORF across the origin is only checked for count and strand, not for its start/end coordinates.
 - Partly overlaps the ORF part of test_genetic_code.py::test_translation_tables_match_biopython (that one covers alternative tables and starts).
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: ORF across the origin of a circle: only `len(orfs)==1 and strand==1` is asserted, so wrong start/end (or an end not past the length) passes (proven: shifted by 3). No reverse-strand origin case and no random circular comparison: circular ORF coordinates are untested.
+- 13 Nov 2026: app bug fixed in core/src/bio.rs: on a ring an ATG just after the origin, inside an ORF that started before it, was reported as a second, shorter ORF with the same stop ('ATGAAATAA' + 30 C + 'ATGAAA' gave (0,9) and (39,54)). Now one stop gives one ORF, the longest, on both strands; the test checks that ring exactly and random rings for equality with the hand scan.
+
 ## `test_restriction_cuts_and_digests_match_biopython`
 
-**Result:** ✅ passed in 0.20 s · [line 320](../../tests/test_core_sequence.py#L320) · **Area:** Restriction digest · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.22 s · [line 392](../../tests/test_core_sequence.py#L392) · **Area:** Restriction digest · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, enzyme cut sites, overhangs and digest fragment sizes shown on the map could be wrong (strand, Type IIS offsets, origin-spanning sites, degenerate sites) and cloning plans built on them would fail.
 
@@ -123,9 +133,13 @@ Checks enzymes.find_cuts / site_spans on hand-made sequences (overhang types, Ty
 - The real-plasmid part silently does nothing if the sample file is missing (no skip reported).
 - Picks EcoRI/BsaI by index COMMON[14]/COMMON[9]; guarded by a name assertion, but will fail if the enzyme list is reordered.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Claim 'digest fragments equal Biopython / sum to length': the fragment sizes the app shows (tools.fragments) are never exercised; a bug there (off-by-one on the wrap-around fragment, a missing last linear fragment, the single-cut circle size) cannot fail this test.
+
 ## `test_find_parts_identity_coding_and_repeated_parts`
 
-**Result:** ✅ passed in 0.00 s · [line 439](../../tests/test_core_sequence.py#L439) · **Area:** Feature detection (find_parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 535](../../tests/test_core_sequence.py#L535) · **Area:** Feature detection (find_parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, automatic annotation of known parts could miss mutated or recoded copies, ignore identity thresholds, or report duplicated/overlapping hits.
 

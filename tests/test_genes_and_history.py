@@ -141,9 +141,11 @@ def test_history_texts():
     ed.set_cursor(0)
     ed.type_bases("C" * 40)
     step("Inserted 40 bp at 1: " + "C" * 30 + "…")                   # the first 30 bases, then an ellipsis
+    gone = ed.doc.sequence(100, 140)     # the bases about to go, read from the sequence itself (not the undo record)
+    assert len(gone) == 40
     ed.select(100, 140)
     ed.backspace()
-    step("Deleted 40 bp at 101–140: " + ed.doc.history()[0][-1][1] + "…")      # the first 30 of the 40 bases
+    step("Deleted 40 bp at 101–140: " + gone[:30] + "…")                   # the first 30 of the 40 bases
     # Paste: the bases and the features that came with them.
     ed.set_cursor(200)
     ed.paste("GGGCCC", clip=("GGGCCC", [("misc_feature", "1..3", [("label", "pf")])]))
@@ -185,7 +187,7 @@ def test_history_texts():
     assert texts[3] == "Made the sequence linear (broke the circle elsewhere)"
     assert texts[4] == "Made the sequence circular"
     assert texts[5] == "Replaced 15 bp across the origin from 191 with GG"
-    ed.select(ed.length - 5, ed.length + 10)
-    ed.backspace()                       # deleting across the origin
-    last = group(ed.doc.history()[0])[-1][2]
-    assert last.startswith("Replaced 15 bp across the origin from ") and last.endswith(" (deleted)")
+    n = ed.length
+    ed.select(n - 5, n + 10)
+    ed.backspace()                       # deleting across the origin: from 0-based n - 5, so base n - 4
+    assert group(ed.doc.history()[0])[-1][2] == f"Replaced 15 bp across the origin from {n - 4} (deleted)"

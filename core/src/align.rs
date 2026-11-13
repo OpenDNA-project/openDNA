@@ -532,9 +532,12 @@ mod tests {
     fn mismatch_insertion_and_deletion() {
         let t = random_dna(3000, 2);
         let mut q = t[1000..1300].to_vec();
+        // The template bases next to each gap differ from what is inserted/deleted, so no gap can slide:
+        // the positions checked below are the only right answer.
+        assert_eq!((t[1149], t[1150], t[1249], t[1254], t[1250], t[1255]), (b'G', b'A', b'G', b'A', b'T', b'G'));
         // Edit from the back so earlier positions stay valid: delete 5 bases, insert 3, mutate 1.
         q.drain(250..255);
-        for (i, b) in b"GGG".iter().enumerate() { q.insert(150 + i, *b); }
+        for (i, b) in b"TTT".iter().enumerate() { q.insert(150 + i, *b); }
         let wrong = if q[50] == b'A' { b'C' } else { b'A' };
         q[50] = wrong;
         let hits = align(&t, &q, false, 10);
@@ -544,9 +547,17 @@ mod tests {
         assert_eq!(h.insertions.iter().map(|x| x.1).sum::<usize>(), 3);
         assert_eq!(h.deletions.iter().map(|x| x.1 - x.0).sum::<usize>(), 5);
         assert!(h.identity > 0.95);
-        // Same on the other strand.
+        // --- exact places: 3 bases inserted before template 1150, template 1250..1255 deleted ---
+        assert_eq!(hits.len(), 1);
+        assert_eq!((h.qstart, h.qend), (0, 298)); // 300 - 5 + 3
+        assert_eq!(h.insertions, vec![(1150, 3)]);
+        assert_eq!(h.deletions, vec![(1250, 1255)]);
+        // Same on the other strand, every difference reported in top-strand terms.
         let hits = align(&t, &revcomp(&q), false, 10);
         assert!(!hits[0].forward && hits[0].start == 1000 && hits[0].end == 1300);
+        let r = &hits[0];
+        assert_eq!((r.qstart, r.qend), (0, 298));
+        assert_eq!((&r.mismatches, &r.insertions, &r.deletions), (&vec![(1050, wrong)], &vec![(1150, 3)], &vec![(1250, 1255)]));
     }
 
     #[test]
@@ -699,6 +710,17 @@ mod tests {
         assert!(align(&t, &q, false, 0).is_empty());
         let all = align(&t, &q, false, 10);
         assert!(all.windows(2).all(|w| w[0].score >= w[1].score), "best first"); // windows(2): each neighbouring pair
+        // --- the cut keeps the BEST pieces, not the first found (the pieces above all score the same): pieces
+        // of 80, 100 and 150 bases, the longest one inverted so it is found last (second strand pass) ---
+        let mut q = t[100..180].to_vec();
+        q.extend(random_dna(60, 31));
+        q.extend_from_slice(&t[600..700]);
+        q.extend(random_dna(60, 32));
+        q.extend(revcomp(&t[1100..1250]));
+        let all = align(&t, &q, false, 10);
+        let one = align(&t, &q, false, 1);
+        assert_eq!((one[0].start, one[0].end, one[0].forward), (1100, 1250, false));
+        assert_eq!(align(&t, &q, false, 2), all[..2].to_vec());
     }
 
     #[test]
@@ -724,6 +746,11 @@ mod tests {
         let hits = align(&t, &q, false, 10);
         assert_eq!(hits.len(), 1);
         assert_eq!((hits[0].start, hits[0].end), (300, 428));
+        // --- the 8 changed bases are mismatches at their own template places, not gaps ---
+        let model: Vec<(usize, u8)> = (0..8).filter(|&i| q[60 + i] != t[360 + i]).map(|i| (360 + i, q[60 + i])).collect();
+        assert_eq!((hits[0].qstart, hits[0].qend), (0, 128));
+        assert_eq!(hits[0].mismatches, model);
+        assert!(hits[0].insertions.is_empty() && hits[0].deletions.is_empty());
         // 40 unmatched bases cost more than the rule allows (MAX_DRAWDOWN): two pieces.
         let mut q = t[300..360].to_vec();
         q.extend(random_dna(40, 15));

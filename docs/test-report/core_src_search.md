@@ -98,3 +98,7 @@ Protein motif search translates frames on both strands, reports top-strand coord
 **Review notes:**
 
 - Name says 'all six frames' but only the three forward frames are checked; the reverse-strand frame number is never asserted (line 309).
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Name says 'all six frames' but only the three forward frames are checked for their frame number; the one reverse case asserts strand and coordinates but not .frame, and only reverse frame 1 is ever exercised, so reverse frames 2 and 3 (and their coordinate mapping) are untested.

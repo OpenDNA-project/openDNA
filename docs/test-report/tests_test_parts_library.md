@@ -4,7 +4,7 @@
 
 ## `test_collections_sources_and_switches`
 
-**Result:** ✅ passed in 0.13 s · [line 60](../../tests/test_parts_library.py#L60) · **Area:** Features Database (parts library) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 60](../../tests/test_parts_library.py#L60) · **Area:** Features Database (parts library) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the parts library could show parts from a source the user switched off, lose source/measurement metadata, let users delete shipped parts, or crash on one bad row.
 

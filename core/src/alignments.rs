@@ -541,6 +541,16 @@ mod tests {
 
         // Exact coverage: bins of 5 bp over 10..30: 5, 10 (two reads overlap 15..20), 5, 0.
         assert_eq!(bam.coverage("ref", 10, 30, 4).unwrap(), vec![1.0, 2.0, 1.0, 0.0]);
+        // --- per-base coverage across the indel reads: r2 (5M2I5M) covers 30..40, r3 (5M3D5M) 50..55 and 58..63 ---
+        let want: Vec<f32> = (28..65).map(|p| if (30..40).contains(&p) || (50..55).contains(&p) || (58..63).contains(&p) { 1.0 } else { 0.0 }).collect();
+        assert_eq!(bam.coverage("ref", 28, 65, 37).unwrap(), want);
+        // --- the mismatch scan skips the deleted bases too: C only under the deletion (55..58), so a read
+        // whose second half is not shifted past it would show C mismatches ---
+        let mut gap_ref = vec![b'A'; 100];
+        gap_ref[55..58].copy_from_slice(b"CCC");
+        let (r, _) = bam.reads("ref", 0, 100, &gap_ref, 100).unwrap();
+        assert_eq!((r[3].start, r[3].end), (50, 63));
+        assert!(r[3].mismatches.is_empty(), "{:?}", r[3].mismatches);
         // Block coverage (bins wide enough): 10+10+10+10+8 aligned bases, all in block 0
         // except the last read (block 7).
         assert!(!bam.has_depth("ref"));

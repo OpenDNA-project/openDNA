@@ -29,3 +29,34 @@ def test_mass_pi_charge_and_numbered_layout():
     for i in (0, 9, 10, 49, 50, 119):
         line, off = protein.offset_of(i)
         assert protein.index_at(off, line) == i, i
+
+    # --- every residue's mass against Biopython's ProtParam (independent table), alone and in one chain
+    from Bio.SeqUtils.ProtParam import ProteinAnalysis
+    all20 = "ACDEFGHIKLMNPQRSTVWY"
+    assert protein.mass(all20) == pytest.approx(ProteinAnalysis(all20).molecular_weight(), abs=0.05)
+    for a in all20:
+        assert protein.mass(a) - 18.0153 == pytest.approx(ProteinAnalysis(a).molecular_weight() - 18.015, abs=0.01), a
+
+    # --- charge at each side chain's own pKa, by hand from the EMBOSS iep table typed here (not read from the module):
+    # the side chain is half charged there; the termini (N 8.6, C 3.6) add their own Henderson-Hasselbalch terms
+    def n_term(ph):
+        return 1 / (1 + 10 ** (ph - 8.6))
+
+    def c_term(ph):
+        return 1 / (1 + 10 ** (3.6 - ph))
+    for aa, pka in (("K", 10.8), ("R", 12.5), ("H", 6.5)):
+        assert protein.charge(aa, pka) == pytest.approx(n_term(pka) + 0.5 - c_term(pka), abs=1e-6), aa
+    for aa, pka in (("D", 3.9), ("E", 4.1), ("C", 8.5), ("Y", 10.1)):
+        assert protein.charge(aa, pka) == pytest.approx(n_term(pka) - 0.5 - c_term(pka), abs=1e-6), aa
+    assert protein.isoelectric_point("G") == pytest.approx((8.6 + 3.6) / 2, abs=0.01)
+
+    # --- offset_of / index_at against the layout text itself: the i-th letter of the text sits where offset_of(i) says,
+    # and index_at on that letter gives i back (both wrong the same way no longer passes)
+    assert [protein.offset_of(i) for i in (0, 10, 50)] == [(0, 8), (0, 19), (1, 8)]
+    seen = 0
+    for n, line in enumerate(lines):
+        for off, ch in enumerate(line):
+            if off >= 8 and ch == "A":
+                assert protein.offset_of(seen) == (n, off) and protein.index_at(off, n) == seen, (n, off)
+                seen += 1
+    assert seen == 120

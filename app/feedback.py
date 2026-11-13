@@ -50,9 +50,12 @@ _FILE_EXTENSIONS = ("gb", "gbk", "gbff", "genbank", "dna", "fa", "fasta", "fna",
                     "bam", "bai", "sam", "vcf", "tsv", "csv", "txt", "ab1", "gz", "json")
 _RE_FRAME = re.compile(r'File "([^"\n]*)"')
 _RE_QUOTED_PATH = re.compile(r"""(['"])((?:[A-Za-z]:[\\/]|\\\\|/)[^'"\n]*[\\/][^'"\n]*)\1""")
-_RE_WIN_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\s'\"<>|*?]*")
-_RE_UNC_PATH = re.compile(r"\\\\[^\s'\"<>|*?\\]+\\[^\s'\"<>|*?]*")
-_RE_POSIX_PATH = re.compile(r"(?<![\w:/.~])/(?:[^\s/'\"<>]+/)+[^\s/'\"<>]*")
+# An unquoted path may hold spaces ("C:\Lab Data\x.fa"): after the path, every following word that still has a separator in it
+# is taken as part of it, so nothing after a space leaks (at worst a word like "and/or" right after a path is scrubbed too).
+_CONT_WIN = r"(?:[ \t]+[^\s'\"<>|*?]*[\\/][^\s'\"<>|*?]*)*"
+_RE_WIN_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\s'\"<>|*?]*" + _CONT_WIN)
+_RE_UNC_PATH = re.compile(r"\\\\[^\s'\"<>|*?\\]+\\[^\s'\"<>|*?]*" + _CONT_WIN)
+_RE_POSIX_PATH = re.compile(r"(?<![\w:/.~])/(?:[^\s/'\"<>]+/)+[^\s/'\"<>]*(?:[ \t]+[^\s'\"<>]*/[^\s'\"<>]*)*")
 _RE_FILE_NAME = re.compile(r"(?<![\w.-])[\w\-.]+\.(?:%s)(?![\w])" % "|".join(_FILE_EXTENSIONS), re.IGNORECASE)
 # 12+ nucleotide letters (IUPAC) in a row, or 25+ capitals in a row (a protein), or GenBank-style blocks of ten letters.
 _RE_DNA = re.compile(r"(?<![A-Za-z])[ACGTUNRYKMSWBDHVacgtunrykmswbdhv]{12,}(?![A-Za-z])")

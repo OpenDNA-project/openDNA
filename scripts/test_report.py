@@ -137,6 +137,10 @@ def write(tests, described, results):
                 lines += [d.get("purpose", ""), "", "| # | Input | Expected output |", "|---|---|---|"]
                 lines += [f"| {i} | {cell(c.get('input', ''))} | {cell(c.get('expected', ''))} |" for i, c in enumerate(d.get("cases", []), 1)]
                 lines.append("")
+                if d.get("verdict") == "gap":
+                    lines += ["**Does not fully prove its claim:**", ""] + [f"- {cell(x)}" for x in d.get("gaps", [])] + [""]
+                    if d.get("proposal"):
+                        lines += [f"**Proposed bulletproof test:** {d['proposal']}", ""]
                 if d.get("issues"):
                     lines += ["**Review notes:**", ""] + [f"- {cell(x)}" for x in d["issues"]] + [""]
                 if d.get("fixed"):
@@ -213,19 +217,27 @@ def write_audit(tests, described, results):
     flagged = [t for t in tests if strength(t) in ("weak", "not reviewed")]
     lines += [f"- `{t['id']}` ({strength(t)}): " + cell("; ".join((described.get(t["id"]) or {}).get("issues") or ["no written description"]))
               for t in flagged] or ["None."]
+    gaps = [t for t in tests if (described.get(t["id"]) or {}).get("verdict") == "gap"]
+    lines += ["", f"## Gaps and proposed tests ({len(gaps)} of {len(tests)} tests)", "",
+              "Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.", ""]
+    for t in gaps:
+        d = described[t["id"]]
+        lines += [f"### `{t['id']}`", ""] + [f"- {cell(g)}" for g in d.get("gaps", [])] + [""]
+        if d.get("proposal"):
+            lines += [f"**Proposed test:** {cell(d['proposal'])}", ""]
     lines += ["", "## Every test, by file", ""]
     by_file = defaultdict(list)
     for t in tests:
         by_file[t["file"]].append(t)
     for file, group in by_file.items():
         lines += [f"### `{file}` ({len(group)} test{'s' if len(group) > 1 else ''})", "",
-                  "| Test | Why it matters | Checked against | Strength | Review notes |", "|---|---|---|---|---|"]
+                  "| Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |", "|---|---|---|---|---|---|"]
         for t in group:
             d = described.get(t["id"]) or {}
             status = results.get(t["id"], ("not run",))[0]
             name = f"`{t['name']}`" + ("" if status == "passed" else f" ({status})")
             lines.append(f"| {name} | {cell(d.get('role') or d.get('purpose') or t['doc'] or '')} | {cell(d.get('oracle', ''))} | "
-                         f"{strength(t)} | {cell('<br>'.join(d.get('issues') or []))} |")
+                         f"{strength(t)} | {d.get('verdict') or 'not checked'} | {cell('<br>'.join(d.get('issues') or []))} |")
         lines.append("")
     (OUT / "AUDIT.md").write_text("\n".join(lines), encoding="utf-8")
 
@@ -288,7 +300,7 @@ def write_html(tests, described, results, path, bare=False, repo="", ref="main")
         d = described.get(t["id"]) or {}
         status, seconds, message = results.get(t["id"], ("not run", None, ""))
         rows.append({"id": t["id"], "file": t["file"], "name": t["name"], "line": t["line"], "suite": "py" if t["file"].endswith(".py") else "rs",
-                     "result": status, "seconds": seconds, "message": message, "described": bool(d), "area": d.get("area", ""), "role": d.get("role", ""),
+                     "result": status, "seconds": seconds, "message": message, "described": bool(d), "area": d.get("area", ""), "role": d.get("role", ""), "verdict": d.get("verdict", ""), "gaps": d.get("gaps", []), "proposal": d.get("proposal", ""), "evidence": d.get("evidence", ""),
                      "purpose": d.get("purpose", ""), "cases": d.get("cases", []), "oracle": d.get("oracle", ""), "strength": d.get("strength", ""),
                      "issues": d.get("issues", []), "fixed": d.get("fixed", []), "doc": t["doc"], "checks": t["checks"]})
     audit = OUT / "AUDIT.md"

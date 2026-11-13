@@ -26,3 +26,4 @@ GFF3/GTF, BED and VCF files load into an index: region lines skipped, ##FASTA en
 **Fixed by the audit of November 2026:**
 
 - The limit check compared a query with itself; it now asserts the two items kept (lacZ, big,gene), the cut flag, and no cut at a limit of 3.
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: density is checked only at bin 0 (= 2), and both items in bin 0 start there, so a density that ignores item ends (or miscomputes the end bin) passes; the 'density' claim is effectively untested. \| Other parts (region skip, ##FASTA, URL decoding, 0-based conversion, max_end query, limit flag, BED, VCF, bad line) are pinned exactly.

@@ -4,7 +4,7 @@
 
 ## `test_every_selftest_check_passes`
 
-**Result:** ✅ passed in 0.39 s · [line 14](../../tests/test_selftest.py#L14) · **Area:** In-app self-test · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.40 s · [line 14](../../tests/test_selftest.py#L14) · **Area:** In-app self-test · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the Help > Troubleshooting > Self-Test checks could start failing in a release without anyone noticing before a user runs them.
 

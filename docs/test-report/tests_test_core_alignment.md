@@ -31,9 +31,13 @@ Checks core.align with planted queries in random templates and exact expected hi
 - Leftover 'for _ in range(100): ... break' loop around pick_unslidable does nothing.
 - The linear over-origin check only asserts the hit is 100 bases and ends <= 1000, not which half.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Linear template, query over the origin: only lin[0] is checked for length 100 and end<=1000; which template half pairs with which query half, and how many hits come back, are not asserted (proven: wrong template half passes).
+
 ## `test_align_finds_every_piece_of_a_structural_variant_query`
 
-**Result:** ✅ passed in 0.06 s · [line 299](../../tests/test_core_alignment.py#L299) · **Area:** Local alignment, structural variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 303](../../tests/test_core_alignment.py#L303) · **Area:** Local alignment, structural variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Local Align could merge, drop or misplace pieces of a rearranged construct (insertion, inversion, shuffled or duplicated segments), which is what users rely on to diagnose structural variants.
 
@@ -54,7 +58,7 @@ Builds A-gap-B-C(inverted)-D queries for six template layouts, on lines and circ
 
 ## `test_local_align_query_cleaning_and_junction_texts`
 
-**Result:** ✅ passed in 0.03 s · [line 356](../../tests/test_core_alignment.py#L356) · **Area:** Local Align query input and report text · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 360](../../tests/test_core_alignment.py#L360) · **Area:** Local Align query input and report text · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, pasting a FASTA, GenBank ORIGIN or RNA query could be rejected or mangled, and the junction descriptions (insertion, deletion, inversion) in the Local Align report could be wrong.
 
@@ -77,9 +81,13 @@ Checks local_align.clean_query on accepted formats and on errors with their mess
 - Junction texts are checked with startswith only, so the rest of each message (sizes, positions) is not verified.
 - Duplication wording is mentioned in the docstring but no duplication junction is tested.
 
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'template jumps back' and 'inversion breakpoint' texts are checked with startswith on the label only: the distance after the colon (and the inversion's min-of-four-distances computation) is unchecked (proven). \| The 'unmatched query in place of template' branch (query gap and template gap both > 0) and the 'queries overlap by N bp' text are never exercised. \| Docstring says duplications are named; only the shared 'template jumps back (duplication or pieces out of order)' prefix is touched, never its detail.
+
 ## `test_folder_search_finds_a_query_in_its_file_record_place_and_strand`
 
-**Result:** ✅ passed in 1.30 s · [line 399](../../tests/test_core_alignment.py#L399) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.22 s · [line 414](../../tests/test_core_alignment.py#L414) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file.
 
@@ -97,3 +105,7 @@ Searches the demo folder and a temporary folder with search_folder and checks th
 
 - The cancellation check is weak: the query ACGTACGTACGT would almost certainly not be found in that folder anyway, so a search that ignores cancelled() would still pass.
 - 'files >= 5' depends on the contents of demo/.
+
+**Fixed by the audit of November 2026:**
+
+- 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Cancellation: the cancelled search uses a query that would find nothing anyway, so a search that never asks cancelled() passes (proven).
