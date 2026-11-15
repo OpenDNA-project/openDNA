@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the folder zip is EXE_NAME-folder.zip).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.6.4"
+VERSION = "0.7.0"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,8 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = False
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.7.0": ["New Terminal (pick it under Tools in any pane): a bash session with pipelines to align reads, assemble with Unicycler and run MAFFT or Clustal Omega, each with presets, a QC summary and a diagram of its steps.",
+              "The Alignment view labels every variant and marks where reads break (insertions, inversions, rearrangements) and stretches with no reads."],
     "0.6.4": ["Circular sequences no longer list a second, shorter ORF inside one that crosses the origin.",
               "Error reports and the log hide file paths that contain spaces; updates are only accepted with a checksum from openDNA's own releases."],
     "0.6.3": ["New forward / reverse primer from the selected bases with Ctrl+R / Ctrl+Shift+R.",
