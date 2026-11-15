@@ -13,6 +13,7 @@ the columns (`feature_columns`, e.g. Source and From instead of Location) and th
 `database` makes the right-click menu the database's own.
 """
 import heapq
+from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, Qt
 from PySide6.QtGui import QFont, QGuiApplication, QKeySequence
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 import genes
+import runner
 import validate
 import value_filter
 from uikit import ask, fit_columns, plural
@@ -525,7 +527,22 @@ def selection_menu(parent, editor, global_pos):
     add_edit_actions(menu, editor, getattr(parent, "editable", True))   # Cut / Copy / Paste / Select All, as on empty space
     menu.addAction("Copy Reverse Complement\t" + QKeySequence("Ctrl+Shift+C").toString(QKeySequence.NativeText),
                    lambda: QGuiApplication.clipboard().setMimeData(editor.copy_reverse_complement_mime()))
+    if hasattr(window, "open_untitled"):
+        menu.addAction("Isolate as New Sequence", lambda: isolate_selection(window, editor))
     menu.exec(global_pos)
+
+
+def isolate_selection(window, editor):
+    """The selected bases as a new, linear, unsaved sequence in a new window, like another .gb file. Features that overlap the
+    selection come along, the ones it cuts clipped to it (Document.copy_features, as Copy does)."""
+    from opendna_core import Document
+    name = f"{editor.doc.name} {editor.start + 1}-{(editor.end - 1) % editor.length + 1}"
+    doc = Document.new_sequence(name, editor.selected_sequence(), False)
+    feats = editor.doc.copy_features(editor.start, editor.end)
+    if feats:
+        doc.add_features([(f.kind, f.location, f.qualifiers) for f in feats])
+    doc.modified = False
+    window.open_untitled(doc, Path(runner.safe_name(name) + ".gb"))
 
 
 def reverse_primer_dialog(parent, editor):
