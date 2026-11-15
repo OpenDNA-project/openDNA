@@ -629,6 +629,8 @@ METHOD_WIP = [None, "golden_gate", "sidewinder", None, "recombineering"]   # per
 class AssemblyPanel(QWidget):
     """See the module docstring. `win`: the main window (for the open files and for opening the product)."""
 
+    METHODS = ["Gibson / HiFi", "Golden Gate", "Sidewinder", "Restriction / ligation"]
+
     def __init__(self, win):
         super().__init__()
         self.win = win
@@ -637,7 +639,7 @@ class AssemblyPanel(QWidget):
         self.design, self.error, self.dialogs = None, "", []
         self.product_view, self.product_shown = None, False   # the preview of the product, in the sequence stack
         self.method = QComboBox()
-        self.method.addItems(["Gibson / HiFi", "Golden Gate", "Sidewinder", "Restriction / ligation", "Recombineering"])
+        self.method.addItems(self.METHODS)
         # The unfinished methods carry the "WIP" tag: in the list, and beside the box while one is chosen (wip.FEATURES).
         self.method.setItemDelegate(wip.Delegate(lambda index: METHOD_WIP[index.row()], self.method))
         self.method_wip = wip.Badge(None)
@@ -818,11 +820,13 @@ class AssemblyPanel(QWidget):
         m = self.method.currentIndex()
         if m == 4 and len(self.slots) != 2:
             self.count.setValue(2)      # the genome and the cassette
-        self.count.setEnabled(m != 4)
         self.strip.titles = ["Genome", "Cassette"] if m == 4 else None
         for lab, w, only in self.options:
             lab.setVisible(only is None or m in only)
             w.setVisible(only is None or m in only)
+        for lab, w, _ in self.options[:2]:   # recombineering has one method and two boxes, always: nothing to choose
+            lab.setVisible(m != 4)
+            w.setVisible(m != 4)
         self.circular.setEnabled(m not in (2, 4))
         for w in self.site_widgets:
             w.setVisible(m == 3)
@@ -1037,8 +1041,9 @@ class AssemblyPanel(QWidget):
             self._fill_primer_lists(src)
             if f is not None:
                 ed = src.editor
-                ed.select(f.start, f.end)
-                ed.reveal.emit(f.start)
+                start, end = (f.end - f.src.length, f.start) if self.method.currentIndex() == 4 and i == 0 else (f.start, f.end)   # the genome box: its region
+                ed.select(start, end)
+                ed.reveal.emit(start)
                 for box, p in ((self.forward, f.fwd), (self.reverse, f.rev)):
                     for k in range(box.count()):
                         if p and box.itemData(k).label == p[0]:
@@ -1420,3 +1425,12 @@ class AssemblyPanel(QWidget):
                                if counts["invalid"] else ""))
         self.status.setStyleSheet("")
         self._refresh_primers()   # the ones now in the database are regular primers
+
+
+class RecombineeringPanel(AssemblyPanel):
+    """Tools > Recombineering: the assembly panel with its one method, for a genome and a cassette (see docs/specs/recombineering.md)."""
+    METHODS = AssemblyPanel.METHODS + ["Recombineering"]
+
+    def __init__(self, win):
+        super().__init__(win)
+        self.method.setCurrentIndex(4)

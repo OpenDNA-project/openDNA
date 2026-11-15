@@ -13,8 +13,8 @@ Simulate λ Red recombineering with a dsDNA cassette. Two ways in, one engine:
 
 ## Decisions
 
-1. **Where it lives.** A new method, "Recombineering", in the assembly panel beside Gibson, Golden
-   Gate and Sidewinder. It reuses the panel's flow (fragments, design, simulate, checks) and the
+1. **Where it lives.** Its own entry, Tools > Recombineering (and in the view pickers), with no method
+   or fragment-count choice. It is built on the assembly panel (`RecombineeringPanel`) and reuses the panel's flow (fragments, design, simulate, checks) and the
    helpers in `app/assembly.py` (`Design`, `auto_primers`, `simulate`, `placed_features`, `wrapped`,
    `anneal_len`, `oligo_checks`).
    In the panel the two boxes are "Genome" and "Cassette". The genome box holds what is kept (from the

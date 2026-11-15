@@ -130,6 +130,13 @@ HELP = {
         "Design primers adds the tails the method needs.",
         "Perform assembly opens the product as a new sequence.",
     ],
+    "Recombineering": [
+        "Replaces, deletes or inserts a region of a circular genome with a cassette.",
+        "Genome: click its box, choose the file, select the region to replace, press Use.",
+        "Cassette: choose its file, select the stretch to insert, press Use.",
+        "Design primers gives the cassette the genome's homologies as 5' tails.",
+        "Right-click the cassette to reverse complement it. Perform assembly opens the new genome.",
+    ],
 }
 
 # Where each view's options live: the page of the view's own name in Tools > Settings (its group is the picker's).
