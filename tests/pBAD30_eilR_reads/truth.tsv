@@ -1,0 +1,12 @@
+clone	share	kind	start	end	change	description
+pBAD30_eilR_clone	100%	dup	150	200	51 bp	51-bp tandem duplication in the rrnB terminator
+pBAD30_eilR_clone	20%	is	900	900	+768 bp	768-bp foreign insertion in bla (AmpR) in 20 % (IS-like transposon, 9-bp TSD)
+pBAD30_eilR_clone	100%	del	2000	2099	100 bp	100-bp deletion between the f1 and p15A origins
+pBAD30_eilR_clone	100%	snp	4000	4000	C>A	point mutation in araC
+pBAD30_eilR_clone	30%	snp	4200	4200	A>T	mixed colony: araC mutation in 30 % of the plasmids
+pBAD30_eilR_clone	100%	ins	4700	4700	+A	1-bp insertion in the araBAD promoter
+pBAD30_eilR_clone	100%	inv	4871	5100	230 bp	eilR promoter inverted (fragment ligated backwards)
+pBAD30_eilR_clone	100%	snp	5300	5300	T>A	point mutation in eilR
+pBAD30_eilR_clone	100%	del	5400	5402	3 bp	3-bp in-frame deletion in eilR (one codon lost)
+pBAD30_eilR_clone	100%	del	5564	5564	1 bp	1-bp deletion in a 4-base homopolymer (frameshift)
+pBAD30_eilR_clone	100%	snp	5680	5680	C>A	mutation inside the oAC1346 primer (oligo synthesis error)

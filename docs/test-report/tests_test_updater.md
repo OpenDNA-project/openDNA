@@ -87,7 +87,7 @@ On fake files in temp folders, checks that install_update swaps new over current
 
 ## `test_install_refuses_or_rolls_back_leaving_the_old_program`
 
-**Result:** ✅ passed in 0.01 s · [line 373](../../tests/test_updater.py#L373) · **Area:** Updater: refusal and rollback · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 373](../../tests/test_updater.py#L373) · **Area:** Updater: refusal and rollback · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it a failed update (no write access, antivirus lock, broken new exe, wrong build type or platform) could leave the user with no working program.
 
@@ -107,7 +107,7 @@ Checks that install refuses when run from source, on macOS/Linux and in the one-
 
 ## `test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip`
 
-**Result:** ✅ passed in 0.15 s · [line 459](../../tests/test_updater.py#L459) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.13 s · [line 459](../../tests/test_updater.py#L459) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the app could check for updates when the user turned it off, check on every start, stop checking after the clock goes back, or forget a version the user chose to skip.
 

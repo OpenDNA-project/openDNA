@@ -61,8 +61,8 @@ import db_tabs
 from reference_picker import ReferencePicker
 import theme
 import track_check
-from runner import RunDialog
 from sequence_view import SequenceView
+from terminal import Terminal
 from workspace import DEFAULT as DEFAULT_LAYOUT, Workspace, pane, split
 from annotation import DetectDialog, import_files
 from parts_library import user_library
@@ -294,7 +294,7 @@ class MainWindow(QMainWindow):
                                            "protein"))
         alignments = imp.addMenu("&Alignments")
         action(alignments, "Aligned &Reads (BAM)…", None, lambda: self.load_tracks(BAM_FILTER))
-        wip.mark_action(action(alignments, "&Map Reads (FASTQ) to This Sequence…", None, self.map_reads), "mapping")
+        wip.mark_action(action(alignments, "&Map Reads (FASTQ) to This Sequence…", None, lambda: self.show_terminal("align")), "mapping")
         primer_import = imp.addMenu("P&rimers")
         primer_import.addAction(QAction("Primer &List (TSV, CSV, FASTA)…", self, triggered=self.import_primer_list))
 
@@ -411,10 +411,6 @@ class MainWindow(QMainWindow):
         action(tools, "Plasmid C&heckup (expression of each CDS)…", None, self.open_checkup)
         tools.addAction(QAction("&Import Features to Features Database…", self, triggered=self.import_parts))
         tools.addSeparator()
-        wip.mark_action(action(tools, "&Map Reads to This Sequence…", None, self.map_reads), "mapping")
-        tools.addAction(wip.mark_action(QAction("Check Mapping &Tools…", self, triggered=lambda: RunDialog(
-            self, "Mapping tools", [runner.CHECK]).exec()), "mapping"))
-        tools.addAction(wip.mark_action(QAction("I&nstall Mapping Tools (conda)…", self, triggered=self.install_tools), "mapping"))
         tools.addSeparator()
         tools.addAction(QAction("&Settings…", self, triggered=lambda: self.open_settings()))
 
@@ -1146,10 +1142,13 @@ class MainWindow(QMainWindow):
             return None
         return open_window(doc, self.editor.path.with_name(f"{doc.name}.gb"), untitled=True)
 
+    def open_windows(self):
+        """Every window of this program with a file open, this one first."""
+        return [w for w in [self] + [w for w in WINDOWS if w is not self] if w.editor is not None]
+
     def open_documents(self):
         """[(file name, Document)] of every file open in a window of this program (for the Assembly panel)."""
-        return [(w.editor.path.name, w.editor.doc) for w in [self] + [w for w in WINDOWS if w is not self]
-                if w.editor is not None]
+        return [(w.editor.path.name, w.editor.doc) for w in self.open_windows()]
 
     def show_assembly(self):
         """Tools > Assembly: the Assembly panel as a tab."""
@@ -1158,6 +1157,13 @@ class MainWindow(QMainWindow):
     def show_recombineering(self):
         """Tools > Recombineering: a genome and a cassette, as a tab."""
         self.recombineering = self.show_tool_tab("Recombineering", lambda: RecombineeringPanel(self))
+
+    def show_terminal(self, pipeline=None):
+        """The Terminal view (bash session and pipelines; any pane's picker → Terminal), added if missing (`pipeline`: the one to show)."""
+        terminal = self.workspace.ensure(Terminal)
+        if pipeline:
+            terminal.select(pipeline)
+        return terminal
 
     def show_tool_tab(self, title, make):
         """A tool as a tab (of the workspace, or on its own while no file is open): made by `make()` the first time, the same
@@ -1672,31 +1678,6 @@ class MainWindow(QMainWindow):
         ed.display_changed.emit()
         return entry
 
-    def map_reads(self):
-        """Map reads to the current sequence with an external mapper, then show the BAM."""
-        ed = self.editor
-        name = runner.safe_name(ed.fasta_record or ed.doc.name)
-        dialog = runner.MapReadsDialog(self, name)
-        if dialog.exec() != QDialog.Accepted:
-            return None
-        folder = runner.run_folder(dialog.out.text())
-        reference = folder / "ref.fa"
-        try:
-            folder.mkdir(parents=True, exist_ok=True)
-            seq = ed.doc.sequence()  # current (edited) sequence, so reads line up with it
-            run_busy(self, "Writing the reference…", lambda: reference.write_text(f">{name}\n{seq}\n"))
-            steps, result = dialog.plan(reference)
-        except (OSError, ValueError) as e:
-            QMessageBox.critical(self, "Map Reads", str(e))
-            return None
-        if self.picker.count() > 1:   # a multi-sequence FASTA: the mapper only gets the open sequence
-            self.statusBar().showMessage(f"Reads are mapped to {name} only: reads from the other "
-                                         f"{plural(self.picker.count() - 1, 'sequence')} of the file stay unmapped.", 10000)
-        run = RunDialog(self, f"Mapping reads to {name}", steps, folder)
-        if run.exec() == QDialog.Accepted and run.ok:
-            return self.load_track(str(result))
-        return None
-
     def import_parts(self, paths=None):
         """Every named feature of your own files goes in the Features Database, as a Local feature."""
         if not paths:
@@ -1716,13 +1697,6 @@ class MainWindow(QMainWindow):
             text += f"\n… and {len(rejected) - 15} more." if len(rejected) > 15 else ""
         (QMessageBox.warning if rejected else QMessageBox.information)(self, "Import features to the Features Database", text)
         return added
-
-    def install_tools(self):
-        if QMessageBox.question(
-                self, "Install Mapping Tools",
-                f"Create the conda environment '{runner.ENV}' with {', '.join(runner.TOOLS)} from bioconda "
-                f"({'inside WSL, ' if runner.use_wsl() else ''}downloads a few hundred MB)?") == QMessageBox.Yes:
-            RunDialog(self, "Installing mapping tools", [runner.INSTALL]).exec()
 
     def remove_tracks(self):
         """File > Remove Tracks: every annotation / variant track and read alignment loaded on this sequence (the files are not
@@ -1786,6 +1760,8 @@ class MainWindow(QMainWindow):
         if self._confirm_discard():
             self._drop_autosave()
             self._save_window()
+            for terminal in self.workspace.views(Terminal) if self.workspace is not None else []:
+                terminal.close_session()
             event.accept()
         else:
             event.ignore()

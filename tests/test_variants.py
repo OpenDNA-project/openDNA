@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 from opendna_core import Document
 
 from assembly_panel import FragmentEditor
-from variants import annotate_variants, apply_variants, can_apply, change_text, variant_feature
+from variants import annotate_variants, apply_variants, can_apply, change_text, short_text, variant_feature
 
 SEQ = "ACGTACGTAAGGCCTTACGTACGTAAGGCCTT"   # 32 bases
 
@@ -106,6 +106,18 @@ def test_variants_are_written_into_the_bases_or_annotated_beside_them():
     assert variant_feature(variant("ins", 0, alt="C"), 32)[1] == "1..1"     # before the first base
     assert variant_feature(variant("ins", 32, alt="C"), 32)[1] == "32..32"  # after the last base
     assert dict(variant_feature(variant("snp", 1, "C", "A", count=0, depth=0), 32)[2])["note"] == "0 of 0 reads (0 %)"
+
+    # --- reads breaking at one spot and stretches no read covers: annotated, never written in ---
+    clip, gap = variant("clip", 9, count=12, depth=30), variant("gap", 8, "AAGG", count=0, depth=0)
+    assert not can_apply(clip) and not can_apply(gap)
+    assert apply_variants(editor()[0], entry(), [clip, gap]) == 0
+    assert variant_feature(clip, 32)[1] == "10" and variant_feature(gap, 32)[1] == "9..12"
+    assert dict(variant_feature(gap, 32)[2])["replace"] == ""
+    assert change_text(clip).startswith("12 reads break here: they stop matching") and change_text(gap).startswith("no reads over 4 bp")
+    # the short labels drawn on the variants track
+    assert [short_text(v) for v in (variant("snp", 5, "C", "T"), variant("del", 8, "AAGG"), variant("ins", 8, alt="CCC"),
+                                    variant("ins", 8, alt="A" * 768), clip, gap)] == [
+        "C>T", "−4 bp", "+CCC", "+768 bp", "12 reads break here", "no reads, 4 bp"]
 
     # --- annotating: one feature per variant, one undo step, the bases untouched ---
     ed, _ = editor()

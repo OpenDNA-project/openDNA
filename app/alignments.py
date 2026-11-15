@@ -123,6 +123,10 @@ def describe(pos, kind, ref, alt, count, depth):
         return f"{pos + 1:,} {ref}>{alt}  {pct}"
     if kind == "del":
         return f"{pos + 1:,} deletion of {len(ref)} bp ({ref if len(ref) <= 12 else ref[:12] + '…'})  {pct}"
+    if kind == "clip":
+        return f"{pos + 1:,} {count} of {depth} reads break here: they stop matching the sequence (likely the edge of an insertion, an inversion or a rearrangement)"
+    if kind == "gap":
+        return f"{pos + 1:,}–{pos + len(ref):,} no reads over {len(ref):,} bp (deletion longer than the reads, or not covered)"
     return f"{pos + 1:,} insertion of {alt or '?'}  {pct}"
 
 
@@ -145,7 +149,9 @@ def start_scan(entry, editor):
         except OSError as e:
             found, entry.error = [], str(e)
         result = [SimpleNamespace(pos=pos, kind=kind, ref=ref, alt=alt, count=n, depth=d,
-                                  level=flag_level(n, d, (min_depth, variant_pct, consensus_pct)) or "variant",
+                                  # breaks and gaps are already filtered by the scan: always flagged
+                                  level="consensus" if kind in ("clip", "gap") else
+                                  flag_level(n, d, (min_depth, variant_pct, consensus_pct)) or "variant",
                                   text=describe(pos, kind, ref, alt, n, d))
                   for pos, kind, ref, alt, n, d in found]
         if token == entry.scan_token:

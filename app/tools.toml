@@ -1,51 +1,163 @@
-# External command-line tools openDNA can run (Tools → Map Reads…).
-# Adding a tool = adding a recipe here, no code. Placeholders, filled by the app:
-#   {ref}      the current sequence, written to <run folder>/ref.fa
-#   {reads1}   first reads file;  {reads2} second (mate) reads file, empty if not given
-#   {out}      output path without extension (the BAM is {out}.bam)
-#   {threads}  number of CPU threads
-# Every file path is quoted for the shell. On Windows commands run in WSL (bash).
-# `prepare` runs first unless the file in `prepared` already exists.
-# `result` is opened as a track of the genome view when the run succeeds.
+# Pipelines of the Terminal tab (terminal.py). Adding a pipeline = adding an entry here, no code.
+#
+# A pipeline's `steps` are bash, joined with && and run in its run folder (<output>_run/) inside
+# the document's Terminal session. Placeholders, filled by the app (file values quoted for bash):
+#   {reads1} {reads2} {long}  reads files (empty when not given)
+#   {ref}       the reference, written to <run folder>/ref.fa
+#   {seqs}      the sequences to align, written to <run folder>/sequences.fa
+#   {out}       the output path the user chose
+#   {threads}   number of CPU threads
+#   {<option>}  each option's value; a choice option's value is bash text that may hold placeholders too
+# Any other {...} is left alone, so bash's ${VAR:+...} works.
+#
+# `inputs`: what the form asks for (reads1, reads2, long, reference, sequences).
+# `needs`: tools the steps may call; those a run actually uses are checked first (`need` in the session).
+# `output`: default output name ({doc} the document, {reads} the first reads file), beside the reads
+#   (or the document when the pipeline takes no reads).
+# `presets`: named option values for common cases (`inputs` there narrows the inputs shown).
+# The run folder keeps command.txt, log.txt and the tools' own reports; the QC summary is read from
+# fastp.json, flagstat.txt and quast/report.tsv found there.
 
-[bwa_mem]
-label = "Short reads, Illumina (bwa mem)"
-needs = ["bwa", "samtools"]
-prepared = "{ref}.bwt"
-prepare = "bwa index {ref}"
-run = "bwa mem -t {threads} {ref} {reads1} {reads2} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
-result = "{out}.bam"
+[align]
+label = "Align reads"
+inputs = ["reads1", "reads2", "reference"]
+needs = ["fastp", "filtlong", "bwa", "minimap2", "samtools"]
+output = "{doc}_{reads}.bam"
+steps = [
+    'R1={reads1}; R2={reads2}',
+    '{cleanup}',
+    '{aligner} | samtools sort -@ {threads} -o {out} -',
+    'samtools index {out}',
+    'samtools flagstat {out} | tee flagstat.txt',
+    'open {out}',
+]
 
-[minimap2_sr]
-label = "Short reads, fast (minimap2 -x sr)"
-needs = ["minimap2", "samtools"]
-run = "minimap2 -ax sr -t {threads} {ref} {reads1} {reads2} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
-result = "{out}.bam"
+[align.presets."Illumina paired-end"]
+cleanup = "fastp"
+aligner = "bwa"
 
-[minimap2_ont]
-label = "Long reads, Nanopore (minimap2 -x map-ont)"
-needs = ["minimap2", "samtools"]
-run = "minimap2 -ax map-ont -t {threads} {ref} {reads1} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
-result = "{out}.bam"
+[align.presets."Illumina, fast"]
+cleanup = "fastp"
+aligner = "minimap2_sr"
 
-[minimap2_pacbio]
-label = "Long reads, PacBio HiFi (minimap2 -x map-hifi)"
-needs = ["minimap2", "samtools"]
-run = "minimap2 -ax map-hifi -t {threads} {ref} {reads1} | samtools sort -@ {threads} -o {out}.bam - && samtools index {out}.bam"
-result = "{out}.bam"
+[align.presets."Nanopore"]
+inputs = ["reads1", "reference"]
+cleanup = "filtlong"
+aligner = "minimap2_ont"
 
-# Multiple sequence alignment (the Multiple Alignment view). {ref} is a FASTA of the sequences to align, `kind = "msa"` keeps
-# these out of the mapper list of Map Reads, and `result` is the aligned FASTA the view reads back.
-[mafft]
-kind = "msa"
-label = "MAFFT"
-needs = ["mafft"]
-run = "mafft --auto --thread {threads} {ref} > {out}.fa"
-result = "{out}.fa"
+[align.presets."PacBio HiFi"]
+inputs = ["reads1", "reference"]
+cleanup = "filtlong"
+aligner = "minimap2_hifi"
 
-[clustalo]
-kind = "msa"
-label = "Clustal Omega"
-needs = ["clustalo"]
-run = "clustalo -i {ref} -o {out}.fa --outfmt=fa --force --threads={threads}"
-result = "{out}.fa"
+[align.options.cleanup]
+label = "Read cleanup"
+default = "fastp"
+[align.options.cleanup.choices]
+fastp = 'fastp -w {threads} -q {min_qual} -l {min_len} -i "$R1" ${R2:+-I "$R2"} -o clean_1.fq.gz ${R2:+-O clean_2.fq.gz} -j fastp.json -h fastp.html && R1=clean_1.fq.gz && R2=${R2:+clean_2.fq.gz}'
+filtlong = 'filtlong --min_length {min_long_len} --keep_percent {keep_percent} "$R1" | gzip > clean_long.fq.gz && R1=clean_long.fq.gz'
+none = 'true'
+
+[align.options.aligner]
+label = "Aligner"
+default = "bwa"
+[align.options.aligner.choices]
+bwa = 'bwa index {ref} && bwa mem -t {threads} {ref} "$R1" ${R2:+"$R2"}'
+minimap2_sr = 'minimap2 -ax sr -t {threads} {ref} "$R1" ${R2:+"$R2"}'
+minimap2_ont = 'minimap2 -ax map-ont -t {threads} {ref} "$R1"'
+minimap2_hifi = 'minimap2 -ax map-hifi -t {threads} {ref} "$R1"'
+
+[align.options.min_qual]
+label = "Minimum base quality (fastp)"
+default = 20
+
+[align.options.min_len]
+label = "Minimum read length (fastp)"
+default = 50
+
+[align.options.min_long_len]
+label = "Minimum read length (filtlong)"
+default = 1000
+
+[align.options.keep_percent]
+label = "Keep best % of bases (filtlong)"
+default = 90
+
+
+[assemble]
+label = "Assemble (Unicycler)"
+inputs = ["reads1", "reads2", "long"]
+needs = ["fastp", "filtlong", "unicycler", "quast"]
+output = "{reads}_assembly"
+steps = [
+    'R1={reads1}; R2={reads2}; L={long}',
+    '{cleanup}',
+    'unicycler -t {threads} --mode {mode} ${R1:+-1 "$R1"} ${R2:+-2 "$R2"} ${L:+-l "$L"} -o {out}',
+    'quast -o quast {out}/assembly.fasta',
+    'open {out}/assembly.fasta',
+]
+
+[assemble.presets."Illumina only"]
+inputs = ["reads1", "reads2"]
+
+[assemble.presets."Nanopore only"]
+inputs = ["long"]
+
+[assemble.presets."Hybrid (Illumina + Nanopore)"]
+inputs = ["reads1", "reads2", "long"]
+
+[assemble.options.cleanup]
+label = "Read cleanup"
+default = "auto"
+[assemble.options.cleanup.choices]
+auto = 'if [ -n "$R1" ]; then fastp -w {threads} -q {min_qual} -l {min_len} -i "$R1" ${R2:+-I "$R2"} -o clean_1.fq.gz ${R2:+-O clean_2.fq.gz} -j fastp.json -h fastp.html && R1=clean_1.fq.gz && R2=${R2:+clean_2.fq.gz}; fi && if [ -n "$L" ]; then filtlong --min_length {min_long_len} --keep_percent {keep_percent} "$L" | gzip > clean_long.fq.gz && L=clean_long.fq.gz; fi'
+none = 'true'
+
+[assemble.options.mode]
+label = "Unicycler mode"
+default = "normal"
+[assemble.options.mode.choices]
+normal = 'normal'
+conservative = 'conservative'
+bold = 'bold'
+
+[assemble.options.min_qual]
+label = "Minimum base quality (fastp)"
+default = 20
+
+[assemble.options.min_len]
+label = "Minimum read length (fastp)"
+default = 50
+
+[assemble.options.min_long_len]
+label = "Minimum read length (filtlong)"
+default = 1000
+
+[assemble.options.keep_percent]
+label = "Keep best % of bases (filtlong)"
+default = 90
+
+
+[msa]
+label = "Multiple alignment"
+inputs = ["sequences"]
+needs = ["mafft", "clustalo"]
+output = "{doc}_aligned.fa"
+steps = ['{aligner}', 'open --msa {out}']
+
+[msa.presets."MAFFT auto"]
+aligner = "mafft_auto"
+
+[msa.presets."MAFFT accurate (L-INS-i, under 200 sequences)"]
+aligner = "mafft_linsi"
+
+[msa.presets."Clustal Omega"]
+aligner = "clustalo"
+
+[msa.options.aligner]
+label = "Aligner"
+default = "mafft_auto"
+[msa.options.aligner.choices]
+mafft_auto = 'mafft --auto --thread {threads} {seqs} > {out}'
+mafft_linsi = 'mafft --localpair --maxiterate 1000 --thread {threads} {seqs} > {out}'
+clustalo = 'clustalo -i {seqs} -o {out} --outfmt=fa --force --output-order=input-order --threads={threads}'

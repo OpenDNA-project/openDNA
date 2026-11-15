@@ -8,7 +8,7 @@ analyses run on them.
 ### Terminal
 
 **Terminal**:
-The tab where command-line programs run against the current document and other files, in one
+The view where command-line programs run against the current document and other files, in one
 persistent shell. Everything external openDNA runs goes through it.
 _Avoid_: console, shell tab
 

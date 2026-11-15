@@ -21,6 +21,7 @@ Checks the label given to each kind of change and which can be applied at all, t
 | 7 | apply with an empty list / only an unsettled insertion | returns 0, nothing changed |
 | 8 | variant_feature for snp at 5 (7 of 10 reads), del 8-12, ins at 8, ins at 0, ins at 32, snp with 0 of 0 reads | ('variation','6') with label 'C > T', replace 'T', note '7 of 10 reads (70 %) in sample.bam'; '9..12' with replace ''; '8..9'; '1..1'; '32..32'; note '0 of 0 reads (0 %)' |
 | 9 | annotate_variants with a SNP and a deletion, then undo | returns 2, features at '6' and '9..12' covering the reference bases, sequence untouched, one undo removes both; an empty list returns 0 |
+| 10 | reads breaking at one spot (clip, 12 of 30 reads at 10) and a gap (8..11, AAGG) | never applied; annotated at 10 and 9..12 with no /replace; short labels C>T, −4 bp, +CCC, +768 bp, 12 reads break here, no reads, 4 bp |
 
 **Review notes:**
 

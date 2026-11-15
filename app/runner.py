@@ -1,43 +1,35 @@
-"""Runs external command-line tools (bwa, minimap2, samtools…) and opens their output.
+"""The logic behind the Terminal tab (terminal.py): pipelines read from tools.toml turned into bash,
+paths between Windows and WSL, what `open` does with a file, and the QC summary of a run.
 
-Recipes live in tools.toml (one entry per tool, no code). On Windows the commands run in
-WSL through `wsl -e bash -lc`, with Windows paths turned into /mnt/<drive>/… paths;
-elsewhere through bash directly. Tools are looked up first in a dedicated conda env
-(opendna-tools, see INSTALL), then on the normal PATH.
+On Windows the session runs in WSL (`wsl -e bash`), with Windows paths turned into /mnt/<drive>/…
+paths; elsewhere in bash directly. Tools are looked up first in a dedicated conda env
+(opendna-tools, see install()), then on the normal PATH.
 
-Each run gets a folder next to its output (<out>_run/) with the reference, the exact
-commands (command.txt) and the full log (log.txt), so it can be re-run by hand.
+Each pipeline run gets a folder next to its output (<out>_run/) with its inputs, the exact command
+(command.txt), the log (log.txt) and the tools' own reports, so it can be re-run by hand.
 """
-import os
+import json
+import re
 import shlex
 import sys
 import tomllib
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QProcess
-from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSpinBox, QVBoxLayout, QWidget,
-)
-
-import wip
-
 RECIPES = Path(__file__).with_name("tools.toml")
 ENV = "opendna-tools"
 # Where the tools env usually is (Miniforge, Miniconda, Mambaforge); searched before PATH.
 TOOL_DIRS = [f"$HOME/{base}/envs/{ENV}/bin" for base in ("miniforge3", "miniconda3", "mambaforge")]
-TOOLS = ["bwa", "samtools", "minimap2"]
-CHECK = "; ".join(f'printf "%-9s " {t}; command -v {t} || echo "MISSING"' for t in TOOLS)
-INSTALL = (
-    'for c in "$HOME"/miniforge3/bin/conda "$HOME"/miniconda3/bin/conda "$HOME"/mambaforge/bin/conda; do '
-    f'if [ -x "$c" ]; then "$c" create -y -n {ENV} -c conda-forge -c bioconda {" ".join(TOOLS)}; exit $?; fi; done; '
-    'echo "conda not found: install Miniforge first (https://conda-forge.org/download/)"; exit 1'
-)
 FASTQ_FILTER = "Reads (*.fastq *.fq *.fastq.gz *.fq.gz *.fasta *.fa *.fa.gz);;All files (*)"
+SEQ_FILTER = "Sequences (*.gb *.gbk *.gbff *.fa *.fasta *.fna *.dna);;All files (*)"
+TRACK_EXT = (".bam", ".vcf", ".vcf.gz", ".gff", ".gff3", ".gtf", ".bed")
+SEQ_EXT = (".fa", ".fasta", ".fna", ".fas", ".gb", ".gbk", ".gbff", ".dna")
+FASTA_EXT = (".fa", ".fasta", ".fna", ".fas")
+MSA_SNIFF_LIMIT = 50_000_000   # bytes: a bigger FASTA is not read to look for an alignment
+PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
-def recipes():
+def pipelines():
     with open(RECIPES, "rb") as fh:
         return tomllib.load(fh)
 
@@ -56,249 +48,192 @@ def shell_path(path):
     return f"/mnt/{path[0].lower()}{path[2:].replace(chr(92), '/')}"
 
 
-def fill(template, files, threads):
-    """Recipe text -> shell text. File values are quoted (never pasted raw); an empty one
-    (e.g. no mate reads) disappears."""
-    values = {k: shlex.quote(shell_path(v)) if v else "" for k, v in files.items()}
-    return template.format(threads=int(threads), **values)
-
-
-def script(command):
-    """Full bash script: tools env first on PATH, a pipeline fails if any step fails, and
-    the shell's PID is printed first so Cancel can stop it (see RunDialog.cancel)."""
-    return f'echo "__PID__ $$"; export PATH="{":".join(TOOL_DIRS)}:$PATH"; set -o pipefail; {command}'
-
-
-def command_line(text):
-    return (["wsl", "-e", "bash", "-lc", text] if use_wsl() else ["bash", "-lc", text])
-
-
-def steps_for(recipe, files, threads):
-    """[shell command] to run for a recipe, `prepare` first unless already done."""
-    steps = []
-    done = recipe.get("prepared")
-    if recipe.get("prepare") and not (done and Path(done.format(**files)).exists()):
-        steps.append(fill(recipe["prepare"], files, threads))
-    steps.append(fill(recipe["run"], files, threads))
-    return steps
-
-
-class RunDialog(QDialog):
-    """Runs shell commands one after another with a live log and a Cancel button. Also
-    writes command.txt / log.txt into `folder` (if given)."""
-
-    def __init__(self, parent, title, steps, folder=None):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.resize(820, 480)
-        self.steps, self.folder = list(steps), folder
-        self.ok, self.pid, self.cancelled = False, None, False
-        self.log = QPlainTextEdit(readOnly=True)
-        self.log.setMaximumBlockCount(20000)
-        self.log.setLineWrapMode(QPlainTextEdit.NoWrap)
-        self.status = QLabel("Running…")
-        self.busy = QProgressBar(minimum=0, maximum=0, textVisible=False, maximumWidth=160)   # moving while a step runs
-        self.button = QPushButton("Cancel", clicked=self.ask_cancel)
-        bottom = QHBoxLayout()
-        bottom.addWidget(self.status, 1)
-        bottom.addWidget(self.busy)
-        bottom.addWidget(self.button)
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.log)
-        layout.addLayout(bottom)
-        self.process = QProcess(self)
-        self.process.setProcessChannelMode(QProcess.MergedChannels)
-        self.process.readyReadStandardOutput.connect(self._read)
-        self.process.finished.connect(self._finished)
-        self.process.errorOccurred.connect(self._error)
-        if folder:
-            Path(folder).mkdir(parents=True, exist_ok=True)
-            (Path(folder) / "command.txt").write_text("\n".join(self.steps) + "\n", encoding="utf-8")
-        self._next()
-
-    def _append(self, text):
-        self.log.appendPlainText(text.rstrip("\n"))
-        if self.folder:
-            with open(Path(self.folder) / "log.txt", "a", encoding="utf-8") as fh:
-                fh.write(text if text.endswith("\n") else text + "\n")
-
-    def _next(self):
-        command = self.steps.pop(0)
-        self._append(f"$ {command}")
-        args = command_line(script(command))
-        self.process.start(args[0], args[1:])
-
-    def _read(self):
-        text = bytes(self.process.readAllStandardOutput()).decode("utf-8", "replace")
-        lines = []
-        for line in text.splitlines():
-            if line.startswith("__PID__ "):
-                self.pid = line.split()[1]
-            else:
-                lines.append(line)
-        if lines:
-            self._append("\n".join(lines))
-
-    def _error(self, error):
-        if error == QProcess.FailedToStart:
-            hint = "Install WSL (wsl --install) and the tools (Tools → Install Mapping Tools)." if use_wsl() else ""
-            self._append(f"Cannot start {self.process.program()}. {hint}")
-            self._done(False)
-
-    def _finished(self, code, _status):
-        self._read()
-        if self.cancelled or code != 0:
-            self._append("Cancelled." if self.cancelled else f"Failed (exit code {code}).")
-            self._done(False, "" if self.cancelled else f"Failed (exit code {code}).")
-        elif self.steps:
-            self._next()
-        else:
-            self._done(True)
-
-    def _done(self, ok, why=""):
-        self.ok = ok
-        self.status.setText("Done." if ok else why or "Stopped.")
-        self.busy.hide()
-        self.button.setText("Close")
-        self.button.clicked.disconnect()
-        self.button.clicked.connect(self.accept if ok else self.reject)
-
-    def running(self):
-        return self.process.state() != QProcess.NotRunning
-
-    def ask_cancel(self):
-        """Cancel, Escape or the window's close button while a step runs: asked first (No by default: a long mapping is lost),
-        then the run is stopped. True when nothing runs any more."""
-        if not self.running():
-            return True
-        if QMessageBox.question(self, self.windowTitle(), "Stop the run? What it has written so far is kept in its run folder.",
-                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
-            return False
-        self.cancel()
-        self.process.waitForFinished(3000)
-        return True
-
-    def cancel(self):
-        """Stop the running command and the programs it started. Killing wsl.exe alone
-        would leave bwa running inside WSL, so the shell's children are stopped first."""
-        self.cancelled = True
-        if self.pid:
-            stop = f"pkill -TERM -P {int(self.pid)}; kill -TERM {int(self.pid)}"
-            args = command_line(stop)
-            QProcess.execute(args[0], args[1:])
-        self.process.kill()
-
-    def reject(self):
-        # Escape comes here, not through closeEvent: without this it hid the window while bwa / minimap2 went on running
-        if self.ask_cancel():
-            super().reject()
-
-    def closeEvent(self, event):
-        if not self.ask_cancel():
-            event.ignore()
-            return
-        super().closeEvent(event)
-
-
-class MapReadsDialog(QDialog):
-    """Pick a mapping recipe, reads and the output BAM."""
-
-    def __init__(self, parent, seq_name):
-        super().__init__(parent)
-        self.setWindowTitle(f"Map Reads to {seq_name}")
-        self.recipes = recipes()
-        self.recipe = QComboBox()
-        for key, r in self.recipes.items():
-            if r.get("kind") == "msa":   # an aligner, not a mapper
-                continue
-            self.recipe.addItem(r.get("label", key), key)
-        self.reads1, self.reads2 = QLineEdit(), QLineEdit(placeholderText="optional: mate reads (paired-end)")
-        self.out = QLineEdit()
-        self.threads = QSpinBox(minimum=1, maximum=256, value=max(1, (os.cpu_count() or 2) - 1))
-        form = QFormLayout(self)
-        mapper = QHBoxLayout()   # the "WIP" tag while mapping is unfinished (wip.FEATURES)
-        mapper.addWidget(self.recipe, 1)
-        mapper.addWidget(wip.Badge("mapping"))
-        form.addRow("Mapper", mapper)
-        form.addRow("Reads", self._with_browse(self.reads1, self._pick_reads1))
-        self.reads2_row = self._with_browse(self.reads2, lambda: self._pick(self.reads2))
-        form.addRow("Mate reads", self.reads2_row)
-        form.addRow("Output BAM", self._with_browse(self.out, self._pick_out))
-        form.addRow("Threads", self.threads)
-        form.addRow(QLabel("Runs in WSL on Windows. The run folder (<output>_run) keeps the reference, "
-                           "commands and log.", wordWrap=True))
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Ok).setText("Run")
-        buttons.accepted.connect(self._accept)
-        buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
-        self.form, self.seq_name = form, seq_name
-        self.recipe.currentIndexChanged.connect(self._recipe_changed)
-        self._recipe_changed()
-
-    def _with_browse(self, edit, slot):
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(edit, 1)
-        layout.addWidget(QPushButton("…", clicked=slot, maximumWidth=30))
-        return row
-
-    def _recipe_changed(self):
-        paired = "{reads2}" in self.current()["run"]
-        self.form.setRowVisible(self.reads2_row, paired)
-
-    def current(self):
-        return self.recipes[self.recipe.currentData()]
-
-    def _pick(self, edit):
-        path, _ = QFileDialog.getOpenFileName(self, "Reads", edit.text(), FASTQ_FILTER)
-        if path:
-            edit.setText(path)
+def windows_path(path):
+    """The reverse of shell_path for a /mnt/<drive>/… path; any other path is returned as it is."""
+    m = re.match(r"^/mnt/([a-z])(/.*)?$", path)
+    if not use_wsl() or not m:
         return path
+    return f"{m.group(1).upper()}:{(m.group(2) or '/').replace('/', chr(92))}"
 
-    def _pick_reads1(self):
-        if self._pick(self.reads1) and not self.out.text():
-            stem = Path(self.reads1.text()).name.split(".")[0]
-            for tag in ("_R1", "_1"):  # sample_R1.fastq.gz -> sample
-                stem = stem[: -len(tag)] if stem.endswith(tag) else stem
-            self.out.setText(str(Path(self.reads1.text()).with_name(f"{stem}_{safe_name(self.seq_name)}.bam")))
 
-    def _pick_out(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Output BAM", self.out.text(), "BAM (*.bam)")
-        if path:
-            self.out.setText(path)
+def command_line(args):
+    """argv that starts bash (in WSL on Windows) with `args` (e.g. ["-lc", text], or ["-ls"] for a session)."""
+    return (["wsl", "-e", "bash"] if use_wsl() else ["bash"]) + list(args)
 
-    def _accept(self):
-        for edit, what, needed in ((self.reads1, "reads", True), (self.reads2, "mate reads", "{reads2}" in self.current()["run"])):
-            path = edit.text().strip()
-            if needed and (path or edit is self.reads1) and not Path(path).is_file():
-                QMessageBox.warning(self, "Map reads", f"The {what} file '{path}' was not found: use … to pick it." if path
-                                    else "Pick the reads file (FASTQ) first.")
-                edit.setFocus()
-                return
-        out = self.out.text().strip()
-        if not out or Path(out).name.lower() in (".bam", ""):
-            QMessageBox.warning(self, "Map reads", "Choose where to write the output BAM file.")
-            self.out.setFocus()
-            return
-        if not Path(out).parent.is_dir():
-            QMessageBox.warning(self, "Map reads", f"The folder of '{out}' does not exist.")
-            self.out.setFocus()
-            return
-        self.out.setText(out if out.lower().endswith(".bam") else out + ".bam")
-        self.accept()
 
-    def plan(self, reference):
-        """(run folder, steps, result BAM) once the reference is written to `reference`."""
-        out = Path(self.out.text())
-        files = {"ref": str(reference), "reads1": self.reads1.text(),
-                 # The recipe decides (not the row's visibility: the dialog is closed by now).
-                 "reads2": self.reads2.text() if "{reads2}" in self.current()["run"] else "",
-                 "out": str(out.with_suffix(""))}
-        recipe = self.current()
-        steps = steps_for(recipe, files, self.threads.value())
-        return steps, Path(recipe["result"].format(**files))
+def fill(template, values):
+    """Put values in for {name} placeholders; unknown names (bash's ${R2:+...}) are left alone."""
+    return PLACEHOLDER.sub(lambda m: str(values[m.group(1)]) if m.group(1) in values else m.group(0), template)
+
+
+def options_for(pipeline, preset):
+    """{option: value} of a preset: its own values, the options' defaults for the rest."""
+    chosen = pipeline.get("presets", {}).get(preset, {})
+    return {key: chosen.get(key, opt["default"]) for key, opt in pipeline.get("options", {}).items()}
+
+
+def inputs_for(pipeline, preset):
+    return pipeline.get("presets", {}).get(preset, {}).get("inputs", pipeline["inputs"])
+
+
+INPUT_NAMES = {"reads1": "Reads", "reads2": "Mate reads", "long": "Long reads", "reference": "Reference", "sequences": "Sequences"}
+ASSIGN_ONLY = re.compile(r"^\s*(\w+=\S*\s*;?\s*)+$")
+
+
+def diagram(pipeline, options, inputs):
+    """The flow chart of a pipeline as the Terminal draws it: [(kind, text)] in order, kind "input", "step",
+    "skipped" (a choice that does nothing, e.g. cleanup off) or "output". Read from tools.toml alone, so a new
+    pipeline gets its diagram with no code: a step that is one {choice} becomes "<option label>: <choice>",
+    each tool of `needs` in a step becomes "<tool> <subcommand>", the other choices of the step are added in
+    brackets, `open` is the output, and steps that only set variables are left out."""
+    opts = pipeline.get("options", {})
+    nodes = [("input", INPUT_NAMES.get(name, name)) for name in inputs]
+    for step in pipeline["steps"]:
+        if ASSIGN_ONLY.match(step):
+            continue
+        if step.lstrip().startswith("open "):
+            nodes.append(("output", "Open in openDNA"))
+            continue
+        used = [k for k in PLACEHOLDER.findall(step) if "choices" in opts.get(k, {})]
+        if step.strip() in (f"{{{k}}}" for k in used):
+            key = used[0]
+            nodes.append(("skipped" if opts[key]["choices"][options[key]].strip() == "true" else "step",
+                          f"{opts[key]['label']}: {options[key]}"))
+            continue
+        for key in used:
+            if step.lstrip().startswith(f"{{{key}}}"):   # {aligner} | samtools sort …: the choice, then the rest
+                nodes.append(("step", f"{opts[key]['label']}: {options[key]}"))
+        rest = PLACEHOLDER.sub(" ", step)
+        extra = ", ".join(f"{opts[k]['label']}: {options[k]}" for k in used if not step.lstrip().startswith(f"{{{k}}}"))
+        for m in re.finditer(r"(?:^|[;|&(])\s*(" +"|".join(map(re.escape, pipeline.get("needs", []))) + r")(?: ([a-z]\w*))?", rest):
+            nodes.append(("step", " ".join(filter(None, m.groups())) + (f" ({extra})" if extra else "")))
+    return nodes
+
+
+def build(pipeline, options, files, threads, folder):
+    """(bash command, tools it uses) for a run: steps joined with &&, run in `folder` in a subshell
+    (so the session's own directory and variables stay as they were). `files`: {placeholder: path or ""}."""
+    values = {key: shlex.quote(shell_path(v)) if v else "''" for key, v in files.items()}
+    values["threads"] = int(threads)
+    for key, opt in pipeline.get("options", {}).items():
+        value = options[key]
+        values[key] = opt["choices"][value] if "choices" in opt else int(value) if isinstance(opt["default"], int) else value
+    # two passes: a choice's text holds placeholders of its own ({threads}, {min_qual}…)
+    steps = [fill(fill(step, values), values) for step in pipeline["steps"]]
+    body = " && ".join(steps)
+    used = [t for t in pipeline.get("needs", []) if re.search(rf"(^|[\s;|&(]){re.escape(t)}\s", body)]
+    need = f"need {' '.join(used)} && " if used else ""
+    return f"( {need}cd {shlex.quote(shell_path(folder))} && {body} )", used
+
+
+def install(tools):
+    """bash that installs `tools` from bioconda into the opendna-tools env (created if missing), installing
+    Miniforge into ~/miniforge3 first when no conda is found."""
+    names = " ".join(shlex.quote(t) for t in tools)
+    miniforge = "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh"
+    return ('( c=; for x in "$HOME"/miniforge3/bin/conda "$HOME"/miniconda3/bin/conda "$HOME"/mambaforge/bin/conda; do '
+            '[ -x "$x" ] && { c=$x; break; }; done; '
+            'if [ -z "$c" ]; then echo "No conda found: installing Miniforge into ~/miniforge3"; '
+            f'curl -fsSL -o /tmp/miniforge.sh "{miniforge}" && bash /tmp/miniforge.sh -b -p "$HOME/miniforge3" '
+            '&& rm -f /tmp/miniforge.sh && c="$HOME/miniforge3/bin/conda" || exit 1; fi; '   # exit leaves the ( ) only, not the session
+            f'if [ -d "${{c%/bin/conda}}/envs/{ENV}" ]; then "$c" install -y -n {ENV} -c conda-forge -c bioconda {names}; '
+            f'else "$c" create -y -n {ENV} -c conda-forge -c bioconda {names}; fi )')
+
+
+def session_setup(folder):
+    """What the session runs first: its PID (for Stop), tools on PATH, the `need` and `open` commands, the start folder."""
+    return "\n".join([
+        # output through a pipe: in WSL it is a socket otherwise, and tools that open /dev/stderr (MAFFT) fail on it
+        'exec > >(cat) 2>&1',
+        'echo "__PID__ $$ $!"',
+        f'export PATH="{":".join(TOOL_DIRS)}:$PATH"; set -o pipefail',
+        'need() { local m=; for t; do command -v "$t" >/dev/null || m="$m $t"; done; '
+        '[ -z "$m" ] || { echo "Missing tools:$m. Press Install in the pipeline form."; return 1; }; }',
+        # open: the app catches the marker; a path outside /mnt goes through wslpath so Windows can read it
+        'open() { local tag=__OPEN__; [ "$1" = --msa ] && { tag=__OPENMSA__; shift; }; local f p; for f; do '
+        'p=$(realpath -- "$f") || return 1; case "$p" in /mnt/*) ;; *) command -v wslpath >/dev/null && p=$(wslpath -w "$p");; esac; '
+        'echo "$tag $p"; done; }',
+        f"cd {shlex.quote(shell_path(folder))} 2>/dev/null",
+        "",
+    ])
+
+
+def wrap(command):
+    """A user's line as the session runs it: eval (a syntax error must not end the shell), no stdin (a
+    program waiting for input would read the next commands), then the exit status after a marker."""
+    return f"eval {shlex.quote(command)} </dev/null; printf '\\n__DONE__ %s\\n' $?\n"
+
+
+def stop_children(pid, keep):
+    """bash that stops every program the session started (all descendants of its shell), not the shell
+    and not `keep` (the cat that carries the session's output)."""
+    pid, keep = int(pid), int(keep)
+    return (f"d() {{ for c in $(pgrep -P $1); do [ $c = {keep} ] && continue; echo $c; d $c; done; }}; "
+            f"kill -TERM $(d {pid}) 2>/dev/null; true")
+
+
+def open_kind(path, msa=False):
+    """What `open` does with a file: "track" (genome view), "msa" (Multiple Alignment view), "document"
+    (a new window) or "browser" (the system's default program: HTML reports and anything else)."""
+    name = str(path).lower()
+    if msa:
+        return "msa"
+    if name.endswith(TRACK_EXT):
+        return "track"
+    if name.endswith(FASTA_EXT) and Path(path).is_file() and Path(path).stat().st_size <= MSA_SNIFF_LIMIT:
+        if is_alignment(Path(path).read_text(encoding="utf-8", errors="replace")):
+            return "msa"
+    return "document" if name.endswith(SEQ_EXT) else "browser"
+
+
+def is_alignment(fasta_text):
+    """An aligned FASTA: at least two records, all of one length, with gaps."""
+    names, rows = [], []
+    for line in fasta_text.splitlines():
+        if line.startswith(">"):
+            names.append(line)
+            rows.append([])
+        elif rows:
+            rows[-1].append(line.strip())
+    rows = ["".join(r) for r in rows]
+    return len(rows) >= 2 and len(set(map(len, rows))) == 1 and any("-" in r for r in rows)
+
+
+def summary(folder):
+    """The QC summary lines of a run, read from what its tools left in `folder`."""
+    folder, lines = Path(folder), []
+    fastp = folder / "fastp.json"
+    if fastp.is_file():
+        s = json.loads(fastp.read_text(encoding="utf-8"))["summary"]
+        before, after = s["before_filtering"]["total_reads"], s["after_filtering"]["total_reads"]
+        lines.append(f"fastp: {before:,} reads in, {after:,} kept ({after / max(before, 1):.0%}), "
+                     f"Q30 {s['after_filtering']['q30_rate']:.0%}")
+    flagstat = folder / "flagstat.txt"
+    if flagstat.is_file():
+        m = re.search(r"^(\d+) \+ \d+ mapped \(([\d.]+)%", flagstat.read_text(encoding="utf-8"), re.M)
+        if m:
+            lines.append(f"samtools flagstat: {int(m.group(1)):,} reads mapped ({m.group(2)}%)")
+    quast = folder / "quast" / "report.tsv"
+    if quast.is_file():
+        rows = dict(line.split("\t")[:2] for line in quast.read_text(encoding="utf-8").splitlines() if "\t" in line)
+        lines.append(f"QUAST: {rows.get('# contigs', '?')} contigs, {int(rows.get('Total length', 0)):,} bp, "
+                     f"N50 {int(rows.get('N50', 0)):,} bp")
+    return lines
+
+
+def reports(folder):
+    """The tools' own HTML reports in a run folder."""
+    return sorted(str(p) for p in Path(folder).rglob("*.html") if "icarus" not in p.parts[-2] + p.name)
+
+
+def default_output(pipeline, doc, reads1, doc_path):
+    """The output path a run suggests: the pipeline's `output` name beside the reads (or the document)."""
+    stem = Path(reads1).name.split(".")[0] if reads1 else ""
+    for tag in ("_R1", "_1"):  # sample_R1.fastq.gz -> sample
+        stem = stem[: -len(tag)] if stem.endswith(tag) else stem
+    name = pipeline["output"].format(doc=safe_name(doc), reads=stem or "reads")
+    base = Path(reads1).parent if reads1 else Path(doc_path).parent if doc_path else Path.home()
+    return str(base / name)
 
 
 def safe_name(name):
@@ -306,8 +241,9 @@ def safe_name(name):
     return "".join(c if c.isalnum() or c in "._-" else "_" for c in name) or "sequence"
 
 
-def run_folder(out_bam):
-    folder = Path(out_bam).with_name(Path(out_bam).stem + "_run")
+def run_folder(out):
+    path = Path(out)
+    folder = path.with_name((path.stem if path.suffix else path.name) + "_run")
     if folder.exists() and any(folder.iterdir()):
         folder = folder.with_name(folder.name + datetime.now().strftime("_%Y%m%d_%H%M%S"))
     return folder

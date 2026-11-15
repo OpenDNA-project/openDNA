@@ -110,7 +110,7 @@ Checks Document.orfs on hand-made cases (minimum length, all three stops, strand
 
 ## `test_restriction_cuts_and_digests_match_biopython`
 
-**Result:** ✅ passed in 0.25 s · [line 392](../../tests/test_core_sequence.py#L392) · **Area:** Restriction digest · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.21 s · [line 392](../../tests/test_core_sequence.py#L392) · **Area:** Restriction digest · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, enzyme cut sites, overhangs and digest fragment sizes shown on the map could be wrong (strand, Type IIS offsets, origin-spanning sites, degenerate sites) and cloning plans built on them would fail.
 
@@ -139,7 +139,7 @@ Checks enzymes.find_cuts / site_spans on hand-made sequences (overhang types, Ty
 
 ## `test_find_parts_identity_coding_and_repeated_parts`
 
-**Result:** ✅ passed in 0.01 s · [line 535](../../tests/test_core_sequence.py#L535) · **Area:** Feature detection (find_parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 535](../../tests/test_core_sequence.py#L535) · **Area:** Feature detection (find_parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, automatic annotation of known parts could miss mutated or recoded copies, ignore identity thresholds, or report duplicated/overlapping hits.
 

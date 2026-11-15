@@ -4,7 +4,7 @@
 
 ## `reads_mismatches_and_coverage`
 
-**Result:** ✅ passed · [line 505](../../core/src/alignments.rs#L505) · **Area:** BAM reads, coverage, pileup and variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 559](../../core/src/alignments.rs#L559) · **Area:** BAM reads, coverage, pileup and variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Imported BAM reads could be drawn with wrong positions, strands, mismatches, indels or soft clips, and the coverage, pileup and variant tracks could show wrong numbers.
 
@@ -19,6 +19,7 @@ A small synthetic BAM is indexed, exported as SAM, and decoded into reads with c
 | 5 | coverage 10..30 in 4 bins; coverage 0..1024 in 2 bins (block path) | [1.0, 2.0, 1.0, 0.0]; has_depth false before, true after; [40/512, 8/512]; unknown 'chrX' -> error |
 | 6 | pileup 15..20; pileup 50..60; pileup with min_mapq 61 | pos 17 = [A1,C0,G1,T0,N0,del0,ins0]; DEL count at 55 = 1; all zeros with mapq filter |
 | 7 | variants(all-A ref, min_depth 1, min_frac 0.5); min_depth 3 | [(17,snp,A,G,1,2), (35,ins,'',TT,1,1), (55,del,AAA,'',1,1)]; empty with min_depth 3 |
+| 8 | three reads soft-clipped by 12 bases at 700; uncovered stretches between reads | clip at 700 (3 reads); gaps 25 (5 bp), 40 (10), 63 (637), 708 (192); none at the sequence ends |
 
 **Review notes:**
 

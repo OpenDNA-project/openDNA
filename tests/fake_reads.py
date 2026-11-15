@@ -1,15 +1,16 @@
 """Simulated sequencing of a plasmid with the usual cloning problems, to try the genome view.
 
-    python tests/fake_reads.py [plasmid.dna|.gb] [out folder]
+    python tests/fake_reads.py [plasmid.dna|.gb] [out folder] [--no-map]
     (defaults: demo/pFG051_Chlor.gb, tests/fake_reads/)
 
-Makes three "clones" of the plasmid, each a mix of variants (haplotypes) at given shares, and
-sequences each one twice at ~30x:
+Makes "clones" of the plasmid (CLONES: demo/pFG051_Chlor or demo/pBAD30_eilR), each a mix of variants
+(haplotypes) at given shares, and sequences each one twice at ~30x:
 - Element AVITI: 2x150 paired-end, ~350-bp inserts, very few errors;
 - Oxford Nanopore: mostly full-length linearised plasmid reads, ~4 % errors, most of them
   one base too many or too few in homopolymers (the ONT signature).
-Reads are mapped with the app's own recipes (tools.toml: bwa mem / minimap2 map-ont, in WSL on
-Windows), so the BAMs are what Tools -> Map Reads would give. truth.tsv lists every change.
+Reads are mapped with the Align reads pipeline (tools.toml, read cleanup off, in WSL on
+Windows), so the BAMs are what the Terminal tab would give (--no-map: reads only). truth.tsv lists
+every change.
 """
 import random
 import subprocess
@@ -88,6 +89,27 @@ def clones(ref, rng):
     }
 
 
+def pbad30_clones(ref, rng):
+    """pBAD30_eilR: one clone carrying most defects, with a minority population on top."""
+    base = [
+        ("snp", 5300, other_base(ref, 5300, rng), "point mutation in eilR"),
+        ("snp", 4000, other_base(ref, 4000, rng), "point mutation in araC"),
+        ("snp", 5680, other_base(ref, 5680, rng), "mutation inside the oAC1346 primer (oligo synthesis error)"),
+        ("ins", 4700, "A", "1-bp insertion in the araBAD promoter"),
+        ("del", 5400, 5402, "3-bp in-frame deletion in eilR (one codon lost)"),
+        homopolymer_deletion(ref, 5450, 5690),
+        ("del", 2000, 2099, "100-bp deletion between the f1 and p15A origins"),
+        ("inv", 4871, 5100, "eilR promoter inverted (fragment ligated backwards)"),
+        ("dup", 150, 200, "51-bp tandem duplication in the rrnB terminator"),
+    ]
+    mixed = ("snp", 4200, other_base(ref, 4200, rng), "mixed colony: araC mutation in 30 % of the plasmids")
+    transposon = ("is", 900, 768, "768-bp foreign insertion in bla (AmpR) in 20 % (IS-like transposon, 9-bp TSD)")
+    return {"pBAD30_eilR_clone": [(0.5, base), (0.3, base + [mixed]), (0.2, base + [transposon])]}
+
+
+CLONES = {"pFG051_Chlor": clones, "pBAD30_eilR": pbad30_clones}
+
+
 def pick(haplotypes, n):
     """Haplotype of read n: evenly spread (golden-ratio steps), so with only ~40 nanopore reads
     the shares still match truth.tsv instead of drifting by chance."""
@@ -163,17 +185,23 @@ def nanopore(haplotypes, length, rng):
     return reads
 
 
-def map_reads(recipe, ref, reads1, reads2, out):
-    files = {"ref": str(ref), "reads1": str(reads1), "reads2": str(reads2 or ""), "out": str(out)}
-    steps = runner.steps_for(runner.recipes()[recipe], files, 4)
-    done = subprocess.run(runner.command_line(runner.script(" && ".join(steps))), capture_output=True, text=True)
+def map_reads(preset, ref, reads1, reads2, out):
+    align = runner.pipelines()["align"]
+    files = {"ref": str(ref), "reads1": str(reads1), "reads2": str(reads2 or ""), "out": f"{out}.bam"}
+    folder = runner.run_folder(files["out"])
+    folder.mkdir(parents=True, exist_ok=True)
+    command, _ = runner.build(align, dict(runner.options_for(align, preset), cleanup="none"), files, 4, folder)
+    done = subprocess.run(runner.command_line(["-lc", runner.session_setup(folder) + command]), capture_output=True, text=True)
     if done.returncode != 0:
-        sys.exit(f"{recipe} failed:\n{done.stdout}\n{done.stderr}")
+        sys.exit(f"{preset} failed:\n{done.stdout}\n{done.stderr}")
 
 
 def main():
-    source = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "demo" / "pFG051_Chlor.gb"
-    folder = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "tests" / "fake_reads"
+    args = [a for a in sys.argv[1:] if a != "--no-map"]
+    source = Path(args[0]) if args else ROOT / "demo" / "pFG051_Chlor.gb"
+    folder = Path(args[1]) if len(args) > 1 else ROOT / "tests" / "fake_reads"
+    if source.stem not in CLONES:
+        sys.exit(f"no clones planned for {source.stem}: add them to CLONES ({', '.join(CLONES)})")
     folder.mkdir(parents=True, exist_ok=True)
     doc = Document(str(source))
     ref, name = doc.sequence().upper(), runner.safe_name(doc.name)
@@ -181,7 +209,7 @@ def main():
     fasta.write_text(f">{name}\n{ref}\n")
     rng = random.Random(55)
     truth = ["clone\tshare\tkind\tstart\tend\tchange\tdescription"]
-    for clone, haplotypes in clones(ref, rng).items():
+    for clone, haplotypes in CLONES[source.stem](ref, rng).items():
         for event in sorted({e for _, events in haplotypes for e in events}, key=lambda e: e[1]):
             share = sum(w for w, events in haplotypes if event in events)
             kind, a, b, text = event
@@ -198,8 +226,11 @@ def main():
         with open(ont, "w") as f:
             for n, (r, q) in enumerate(nanopore(seqs, len(ref), rng)):
                 f.write(f"@{clone}_ont{n}\n{r}\n+\n{q}\n")
-        map_reads("bwa_mem", fasta, r1, r2, folder / f"{clone}_element")
-        map_reads("minimap2_ont", fasta, ont, None, folder / f"{clone}_ont")
+        if "--no-map" in sys.argv:
+            print(f"{clone}: {r1.name}, {r2.name}, {ont.name}")
+            continue
+        map_reads("Illumina paired-end", fasta, r1, r2, folder / f"{clone}_element")
+        map_reads("Nanopore", fasta, ont, None, folder / f"{clone}_ont")
         print(f"{clone}: {clone}_element.bam, {clone}_ont.bam")
     (folder / "truth.tsv").write_text("\n".join(truth) + "\n")
     print(f"done: {folder}")

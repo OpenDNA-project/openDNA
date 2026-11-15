@@ -20,7 +20,7 @@ edit. You can design primers, Cas9 guides and assemblies on your own computer, a
 | **Linux** | 64-bit (x86-64) with glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+ (`ldd --version` shows it; not RHEL / Rocky 9). A desktop (X11 or Wayland) with OpenGL and fontconfig. | **[oDNA_beta_<version>-linux-x86_64.tar.gz](https://github.com/OpenDNA-project/openDNA/releases/latest)** (about 74 MB): `tar -xzf oDNA_beta-linux-x86_64.tar.gz`, then run `openDNA/openDNA` |
 
 Older systems, Windows on ARM, or anything else: [run from source](CONTRIBUTING.md#run-from-source) (Python 3.11+ and Rust).
-Read mapping (optional) also needs bwa, samtools and minimap2: on Windows through WSL (*Tools → Install Mapping Tools*).
+The Terminal's pipelines (optional: read mapping, assembly, MAFFT / Clustal Omega) run bioconda tools, on Windows through WSL (*Install tools* in each pipeline).
 
 Every download has a `.sha256` file beside it on the [releases page](https://github.com/OpenDNA-project/openDNA/releases).
 
