@@ -4,7 +4,7 @@
 
 ## `test_one_record_is_read_and_saved_in_place`
 
-**Result:** ✅ passed in 0.12 s · [line 45](../../tests/test_multi_record.py#L45) · **Area:** Multi-record files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.13 s · [line 45](../../tests/test_multi_record.py#L45) · **Area:** Multi-record files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, editing one chromosome or plasmid inside a multi-record GenBank file could corrupt the other records or leave the file half-written when the save fails.
 
@@ -27,7 +27,7 @@ Builds a three-record GenBank from the demo plasmids and checks detection, listi
 
 ## `test_records_are_added_reordered_and_removed_byte_for_byte`
 
-**Result:** ✅ passed in 0.14 s · [line 101](../../tests/test_multi_record.py#L101) · **Area:** Multi-record files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.17 s · [line 101](../../tests/test_multi_record.py#L101) · **Area:** Multi-record files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, reordering, removing or adding records in a GenBank or FASTA file could alter untouched records, break CRLF/BOM files, reuse a stale index, or create duplicate record names.
 

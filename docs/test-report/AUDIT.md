@@ -2,21 +2,21 @@
 
 [← unit-test report](README.md)
 
-Built by `scripts/test_report.py` on 2026-11-13 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
+Built by `scripts/test_report.py` on 2026-11-14 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
 
 ## Totals
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 94 | 94 | 0 | 69 | 25 | 0 | 0 | 72 |
+| Python | 95 | 95 | 0 | 69 | 26 | 0 | 0 | 73 |
 | Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 159 | 159 | 0 | 111 | 47 | 1 | 0 | 116 |
+| **All** | 160 | 160 | 0 | 111 | 48 | 1 | 0 | 117 |
 
 ## Weak or unreviewed tests
 
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 159 tests)
+## Gaps and proposed tests (3 of 160 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -43,7 +43,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 ## Every test, by file
 
-### `tests/test_assembly.py` (8 tests)
+### `tests/test_assembly.py` (9 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -55,6 +55,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_restriction_ligation_products` | Without it, the predicted ligation product could be the wrong arc of the vector or have the insert at the wrong place, so the user would clone a construct different from the one shown. | hand-computed | strong | sound | Depends on two demo GenBank files; if those are edited the expected arcs change silently. |
 | `test_restriction_ligation_end_rules_and_warnings` | Without it, the program could pair ends that cannot actually ligate (or refuse ones that can) and stay silent about an insert that can go in backwards or a vector that will re-close on itself. | hand-computed | strong | sound |  |
 | `test_assembly_reports_bad_input_instead_of_failing` | Without it, a zero-length or very short fragment could crash the assembly panel with a traceback instead of showing the user a red check saying what is wrong. | property/invariant | adequate | sound | Mostly asserts 'not ok and some bad check', so a wrong but non-crashing message would pass.<br>The repeated-overhang case overlaps with the ('unique','bad') case in test_golden_gate_products_and_overhang_checks. |
+| `test_recombineering_design_and_check` | A cassette could land on the wrong bases, a region across the origin could scramble the genome, or a non-specific homology could go unreported, so the user would build the wrong strain. | hand-computed | adequate | not checked | Mismatch tolerance and the two-hit warning are tested on one planted case each; no test of an arm that matches on the wrong strand only. |
 
 ### `tests/test_checkup.py` (6 tests)
 

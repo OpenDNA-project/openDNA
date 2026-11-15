@@ -86,7 +86,7 @@ Checks off-target counting by mismatch class in the construct and in a reference
 
 ## `test_a_saved_guide_site_is_read_back_and_round_trips_in_the_file`
 
-**Result:** ✅ passed in 0.01 s · [line 284](../../tests/test_enzymes_and_guides.py#L284) · **Area:** Guide site storage and display · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 284](../../tests/test_enzymes_and_guides.py#L284) · **Area:** Guide site storage and display · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a saved guide could come back from a GenBank file with the protospacer, PAM or cut drawn in the wrong place, be unreadable in other software, or break for files written under the program's former name.
 

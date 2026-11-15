@@ -1,4 +1,4 @@
-"""Assembly engines: Gibson, Golden Gate, Sidewinder and restriction / ligation. The products are checked base for base,
+"""Assembly engines: Gibson, Golden Gate, Sidewinder, restriction / ligation and recombineering. The products are checked base for base,
 with the features and primers they must carry; no window, panel or drawing is involved."""
 import os
 import random
@@ -17,6 +17,7 @@ from opendna_core import Document
 import assembly as A
 import assembly_panel as P
 import overhangs as OH
+import recombineering as R
 from editor import reverse_complement
 
 rng = random.Random(1)
@@ -736,3 +737,42 @@ def test_assembly_reports_bad_input_instead_of_failing():
     flagged = [c for c in d.checks if c[0].endswith("unique") and c[1] == "bad"]
     assert flagged and "same overhang" in flagged[0][2] and not d.ok
     assert A.analyse(ring(["GGAG", "TCGC", "CAGT"]), 1, True, "BsaI").ok   # the same ring with three different ones is fine
+
+
+def test_recombineering_design_and_check():
+    """A cassette replaces, deletes or inserts at the right bases of a circular genome (also across its origin); the primers
+    carry the genome's homologies; the check finds the same site from the fragment or from the primers, and reports a mutated
+    arm and a near-copy of an arm elsewhere."""
+    g, cas = random_dna(1000, 11), random_dna(200, 12)
+    genome, cassette = Document.new_sequence("g", g, True), Document.new_sequence("c", cas, False)
+    seq = lambda doc: doc.sequence(0, None)
+    # --- replace, delete, insert, the region across the origin, the cassette reversed ---
+    d = R.design(genome, cassette, 400, 500)
+    assert seq(d.product) == g[:400] + cas + g[500:] and d.product.circular
+    assert (d.left, d.right) == (g[350:400], g[500:550])
+    assert d.rows[0][1].startswith(g[350:400]) and d.rows[1][1].startswith(rc(g[500:550]))
+    assert d.rows[0][1][50:50 + d.rows[0][2]] == cas[:d.rows[0][2]] and d.rows[1][1][50:] == rc(cas)[:d.rows[1][2]]
+    assert seq(R.design(genome, cassette, 400, 500, flip=True).product) == g[:400] + rc(cas) + g[500:]
+    assert seq(R.design(genome, Document.new_sequence("e", "", False), 400, 500).product) == g[:400] + g[500:]
+    assert R.design(genome, Document.new_sequence("e", "", False), 400, 500).rows == []
+    assert seq(R.design(genome, cassette, 400, 400).product) == g[:400] + cas + g[400:]
+    wrap = R.design(genome, cassette, 950, 1030)   # replaces g[950:] and g[:30]; the origin stays where it was
+    assert seq(wrap.product) == g[30:950] + cas and (wrap.left, wrap.right) == (g[900:950], g[30:80])
+    with pytest.raises(ValueError):
+        R.design(Document.new_sequence("l", g, False), cassette, 10, 100)    # no room for 50 nt of homology on a line
+    # --- the check, from the fragment and from the primers, either strand ---
+    fragment = d.rows[0][1][:50] + cas + rc(d.rows[1][1][:50])
+    for query, forward in ((fragment, True), (rc(fragment), False)):
+        r = R.check(genome, query)
+        assert (r.region, r.forward, r.checks) == ((400, 500), forward, []) and seq(r.product) == seq(d.product)
+    template = Document.new_sequence("t", random_dna(300, 13) + cas + random_dna(300, 14), False)
+    assert R.amplicon(seq(template), False, d.rows[0][1], d.rows[1][1]) == fragment
+    # --- a mutated arm and a near-copy of an arm elsewhere ---
+    mutated = fragment[:10] + ("A" if fragment[10] != "A" else "C") + fragment[11:]
+    r = R.check(genome, mutated)
+    assert r.region == (400, 500) and [(c[0], c[1]) for c in r.checks] == [("left homology", "bad")] and "1 mismatch" in r.checks[0][2]
+    assert seq(r.product) == g[:350] + mutated + g[550:]  # the fragment's bases win: the mutation is introduced
+    copy = g[:700] + g[350:400][:20] + ("A" if g[370] != "A" else "C") + g[371:400] + g[751:]
+    r = R.check(Document.new_sequence("g2", copy, True), fragment)
+    assert r.region == (400, 500) and any("also matches" in c[2] and "701..750" in c[2] for c in r.checks)
+    assert R.check(genome, random_dna(200, 15)).region is None

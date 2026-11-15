@@ -23,6 +23,7 @@ SHOW_TAGS = True
 FEATURES = {
     "golden_gate": ("Golden Gate assembly", True),
     "sidewinder": ("Sidewinder assembly", True),
+    "recombineering": ("Recombineering (λ Red, dsDNA cassette)", True),
     "protein": ("The protein interface (the Protein view and 3D structures)", True),
     "mapping": ("Mapping reads (bwa / minimap2, through WSL on Windows, bash on Linux and macOS)", True),
 }

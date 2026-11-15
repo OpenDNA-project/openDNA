@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QStackedWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget,
 )
 
+import recombineering as R
 import runner
 from assembly import (
     FRAG_COLORS, GG_ENZYMES, JOINT_COLOR, RESTRICTION, TAIL_COLOR, Frag, analyse, auto_primers, cut_fragment, digest_pieces, end_words,
@@ -87,6 +88,7 @@ class AssemblyMap(QWidget):
     def __init__(self):
         super().__init__()
         self.slots, self.circular, self.cards, self.hints, self.fchecks = [], False, [], [], {}
+        self.titles = None   # recombineering: what the boxes are called instead of "Fragment n"
         self.current, self.dragging, self.tracks = -1, False, []
         self.boxes, self.card_rects = [], []   # card_rects: where each junction (its pill) is
         self.loop = None                       # the return arrow of a circular assembly: (leave x, y, right x, top y, left x)
@@ -310,7 +312,7 @@ class AssemblyMap(QWidget):
             p.drawRoundedRect(box, 6, 6)
             p.setPen(text)
             p.setFont(self.font())
-            p.drawText(box.adjusted(4, 8, -4, -34), Qt.AlignCenter, f"Fragment {i + 1}")
+            p.drawText(box.adjusted(4, 8, -4, -34), Qt.AlignCenter, self.titles[i] if self.titles else f"Fragment {i + 1}")
             p.setFont(self.small)
             p.setPen(self._faint())
             hint = self.hints[i] if i < len(self.hints) and self.hints[i] else self.EMPTY_HINT
@@ -621,7 +623,7 @@ class JunctionDialog(QDialog):
 # ---- the panel ---------------------------------------------------------------------------------------------
 
 
-METHOD_WIP = [None, "golden_gate", "sidewinder", None]   # per method of the list: its feature in wip.FEATURES, if unfinished
+METHOD_WIP = [None, "golden_gate", "sidewinder", None, "recombineering"]   # per method of the list: its feature in wip.FEATURES, if unfinished
 
 
 class AssemblyPanel(QWidget):
@@ -635,7 +637,7 @@ class AssemblyPanel(QWidget):
         self.design, self.error, self.dialogs = None, "", []
         self.product_view, self.product_shown = None, False   # the preview of the product, in the sequence stack
         self.method = QComboBox()
-        self.method.addItems(["Gibson / HiFi", "Golden Gate", "Sidewinder", "Restriction / ligation"])
+        self.method.addItems(["Gibson / HiFi", "Golden Gate", "Sidewinder", "Restriction / ligation", "Recombineering"])
         # The unfinished methods carry the "WIP" tag: in the list, and beside the box while one is chosen (wip.FEATURES).
         self.method.setItemDelegate(wip.Delegate(lambda index: METHOD_WIP[index.row()], self.method))
         self.method_wip = wip.Badge(None)
@@ -658,6 +660,7 @@ class AssemblyPanel(QWidget):
         self.max_ov = QSpinBox(minimum=15, maximum=80, value=40, suffix=" bp")
         self.ov_tm = QDoubleSpinBox(minimum=40, maximum=75, value=52, suffix=" °C")
         self.anneal_tm = QDoubleSpinBox(minimum=45, maximum=72, value=60, suffix=" °C")
+        self.homology = [QSpinBox(minimum=35, maximum=100, value=R.HOMOLOGY, suffix=" nt") for _ in range(2)]   # recombineering: left, right
         self.report_button = QPushButton("Full report…", clicked=self.show_report, toolTip="Every junction, check and oligo in detail")
         self.options = []   # (label, widget, methods it belongs to) shown only for those methods
         grid = QGridLayout()
@@ -665,7 +668,8 @@ class AssemblyPanel(QWidget):
         # (label, widget, methods, column): the options of different methods share columns, only one of them is shown at a time
         for label, w, only, col in (("Method", method_box, None, 0), ("Fragments", self.count, None, 1), ("Enzyme", self.enzyme, (1,), 2),
                                     ("Overlap", self.min_ov, (0,), 3), ("to", self.max_ov, (0,), 4), ("Overlap Tm ≥", self.ov_tm, (0,), 5),
-                                    ("Annealing Tm", self.anneal_tm, (0, 1, 2), 6)):
+                                    ("Annealing Tm", self.anneal_tm, (0, 1, 2, 4), 6),
+                                    ("Left homology", self.homology[0], (4,), 3), ("Right homology", self.homology[1], (4,), 4)):
             lab = QLabel(label)
             grid.addWidget(lab, 0, col)
             grid.addWidget(w, 1, col)
@@ -791,7 +795,7 @@ class AssemblyPanel(QWidget):
         # The shortest overlap never exceeds the longest: moving one pushes the other along.
         self.min_ov.valueChanged.connect(lambda v: self.max_ov.setValue(max(v, self.max_ov.value())))
         self.max_ov.valueChanged.connect(lambda v: self.min_ov.setValue(min(v, self.min_ov.value())))
-        for w in (self.min_ov, self.max_ov, self.ov_tm, self.anneal_tm):
+        for w in (self.min_ov, self.max_ov, self.ov_tm, self.anneal_tm, *self.homology):
             w.valueChanged.connect(self.analyse)
         self._method_changed()
 
@@ -807,20 +811,26 @@ class AssemblyPanel(QWidget):
         return self.strip.current
 
     def is_circular(self):
-        return self.circular.isChecked() and self.method.currentIndex() != 2
+        m = self.method.currentIndex()
+        return m == 4 or self.circular.isChecked() and m != 2   # recombineering edits a circular genome
 
     def _method_changed(self):
         m = self.method.currentIndex()
+        if m == 4 and len(self.slots) != 2:
+            self.count.setValue(2)      # the genome and the cassette
+        self.count.setEnabled(m != 4)
+        self.strip.titles = ["Genome", "Cassette"] if m == 4 else None
         for lab, w, only in self.options:
             lab.setVisible(only is None or m in only)
             w.setVisible(only is None or m in only)
-        self.circular.setEnabled(m != 2)
+        self.circular.setEnabled(m not in (2, 4))
         for w in self.site_widgets:
             w.setVisible(m == 3)
         self.buttons["homology"].setToolTip(
             "Design new primers that carry what the method needs at each junction (an overlap tail for Gibson, a site + "
             "spacer + overhang for Golden Gate)" if m < 2 else "Sidewinder oligos are designed for you" if m == 2 else
-            "Restriction / ligation uses the sites the fragments already have: there is nothing to design")
+            "Restriction / ligation uses the sites the fragments already have: there is nothing to design" if m == 3 else
+            "Give the cassette primers whose 5' tails are the genome's homologies on each side of the region to replace")
         self.analyse()
 
     def _count_changed(self, n):
@@ -924,7 +934,11 @@ class AssemblyPanel(QWidget):
         editor.primers_changed.connect(self._on_primers_changed)
         self.strip.current = i
         self._show_source(i)
-        if doc.length <= WHOLE_FILE_MAX:
+        if self.method.currentIndex() == 4 and i == 0:
+            self.slots[i] = None
+            self.analyse()
+            self.chosen.setText(f"{label} is the genome: select the region to replace (nothing selected inserts at the cursor), then press Use.")
+        elif doc.length <= WHOLE_FILE_MAX:
             self._use(i, 0, doc.length)
             self.chosen.setText(f"Fragment {i + 1} uses the whole file ({doc.length:,} bp). Select a stretch, or click two primers, "
                                 "below and press Use to change that.")
@@ -1005,7 +1019,7 @@ class AssemblyPanel(QWidget):
                 w.setEnabled(True)
         src = self.sources[i] if 0 <= i < len(self.sources) else None
         f = self.slots[i] if 0 <= i < len(self.slots) else None
-        self.which.setText(f"<b>Fragment {i + 1}</b>" + (f" · {src.label} · {src.doc.length:,} bp" if src else " · choose a source"))
+        self.which.setText(f"<b>{self.strip.titles[i] if self.strip.titles else f'Fragment {i + 1}'}</b>" + (f" · {src.label} · {src.doc.length:,} bp" if src else " · choose a source"))
         self.use.setEnabled(src is not None)
         if f is not None and f.enzymes:
             for box, name in zip((self.site_a, self.site_b), f.enzymes):
@@ -1112,6 +1126,12 @@ class AssemblyPanel(QWidget):
             self._use(i, fw.start, end, (fw.label, fw.sequence, fw.end - fw.start), (rv.label, rv.sequence, rv.end - rv.start))
         else:
             a, b = src.editor.start, src.editor.end
+            if self.method.currentIndex() == 4 and i == 0:   # the genome slot holds what is kept: from the region's end round to its start
+                if not src.doc.circular:
+                    self.chosen.setText("Recombineering needs a circular genome.")
+                    return
+                self._use(i, b, a + L)
+                return
             if b <= a:
                 self.chosen.setText("Select a stretch first (drag over the bases, or click a feature).")
                 return
@@ -1288,7 +1308,7 @@ class AssemblyPanel(QWidget):
                 bad = [c for c, level, _ in d.checks if level == "bad"]
                 text, color = (f"✗ {plural(missing, 'junction')} {'does' if missing == 1 else 'do'} not fit" if missing else "✗ A check failed") + \
                     (": press \"Design primers\" to give the ends what the method needs, or change the fragments."
-                     if missing and self.method.currentIndex() < 2 else
+                     if missing and self.method.currentIndex() in (0, 1, 4) else
                      ": change the fragments or the enzymes." if missing and self.method.currentIndex() == 3 else f" ({', '.join(bad[:3])})."), "bad"
             # What is not about one junction or one fragment (the circle, leftover sites...); the rest is on the cards and boxes.
             notes = "<br>".join(f"<span style='color:{LEVEL_COLORS[lv]}'>{MARKS[lv][0]} <b>{escape(n)}</b>: {escape(t)}</span>"
@@ -1300,7 +1320,7 @@ class AssemblyPanel(QWidget):
     def buttons_update(self):
         filled = [f for f in self.slots if f]
         m = self.method.currentIndex()
-        self.buttons["homology"].setEnabled(m < 2 and len(filled) == len(self.slots))
+        self.buttons["homology"].setEnabled(m in (0, 1, 4) and len(filled) == len(self.slots))
         self.buttons["perform"].setEnabled(bool(self.design and self.design.ok))
         self.buttons["save"].setEnabled(bool(filled))
         self.buttons["primers"].setEnabled(bool(self.design and self.design.rows))
@@ -1308,8 +1328,10 @@ class AssemblyPanel(QWidget):
 
     # -- actions
     def add_homology(self):
-        if None in self.slots or self.method.currentIndex() > 1:
+        if None in self.slots or self.method.currentIndex() in (2, 3):
             return
+        if self.method.currentIndex() == 4:
+            return self._design_recombineering()
         p = self.params()
         n = auto_primers(self.slots, p["method"], p["circular"], p["enzyme"], self.min_ov.value(), self.max_ov.value(), p["min_tm"], p["tm"])
         self.analyse()
@@ -1317,9 +1339,35 @@ class AssemblyPanel(QWidget):
                             "each fragment's sequence as temporary primers: hover one for its details; Save primers to database keeps them.")
         self._show_source(self.current)
 
+    def _region(self):
+        """(genome Document, start, end) of the region the cassette replaces: the genome slot holds what is kept, from the region's
+        end round to its start."""
+        f = self.slots[0]
+        return f.src, f.end - f.src.length, f.start
+
+    def _design_recombineering(self):
+        genome, a, b = self._region()
+        g, cassette = genome.sequence(0, None).upper(), self.slots[1]
+        try:
+            rows = R.primer_rows(R._arm(g, a - self.homology[0].value(), a, True), R._arm(g, b, b + self.homology[1].value(), True),
+                                 cassette.core_seq, self.anneal_tm.value())
+        except ValueError as e:
+            self.chosen.setText(str(e))
+            return
+        if rows:
+            cassette.fwd, cassette.rev = [(name, seq, n) for name, seq, n, _ in rows]
+            cassette.rebuild()
+        self.analyse()
+        self.chosen.setText("Primers designed for the cassette: the genome's homologies are their 5′ tails, drawn in teal on the cassette's sequence.")
+        self._show_source(self.current)
+
     def perform(self):
         d = self.design
-        if d and d.ok:
+        if d and d.ok and self.method.currentIndex() == 4:   # on the genome itself, so its origin and features stay where they were
+            genome, a, b = self._region()
+            core = self.slots[1].core
+            self.win.open_product(R.apply(genome, a, b, self.slots[1].core_seq, [(f.kind, f.location, f.qualifiers) for f in core.copy_features(0, core.length)]))
+        elif d and d.ok:
             self.win.open_product(simulate(self.slots, d))
 
     def show_report(self):
