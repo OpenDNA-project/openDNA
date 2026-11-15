@@ -5,6 +5,7 @@ into the session. `$REF` is the document as FASTA (rewritten before each command
 See docs/adr/0001-terminal-runs-every-external-tool.md.
 """
 import html
+from functools import partial
 import os
 import re
 import shlex
@@ -20,8 +21,9 @@ from PySide6.QtWidgets import (
 )
 
 import msa
+import multigb
 import runner
-from add_record import source_records
+from add_record import document_records, files_records
 from editor import mono_font
 from msa_view import MsaView
 from primer_db import data_dir
@@ -29,33 +31,15 @@ from uikit import run_busy
 
 HISTORY_KEY, HISTORY_MAX = "terminal/history", 500
 CUSTOM = "Custom"
-READS = {"reads1": "Reads", "reads2": "Mate reads (optional)", "long": "Long reads"}
+READS = {k: runner.INPUT_NAMES[k] + (" (optional)" if k == "reads2" else "") for k in ("reads1", "reads2", "long")}
 PATH_RE = re.compile(r"(/mnt/[a-z]/[^\s'\"]+|[A-Za-z]:\\[^\s'\"]+)")
-
-
-def records(ed):
-    """[(name, bases)] of every record of the document, the open one as it is on screen (edits not saved yet)."""
-    name = ed.fasta_record or ed.doc.name or "sequence"
-    if len(ed.fasta_records) < 2 or not ed.path or not Path(ed.path).exists():
-        return [(name, ed.doc.sequence())]
-    return [(r.name, ed.doc.sequence() if r.name == name else r.load().sequence()) for r in source_records(ed.path)]
-
-
-def file_records(paths):
-    return [(r.name, r.load().sequence()) for path in paths for r in source_records(path)]
 
 
 def write_fasta(path, seqs):
     """FASTA with names safe for the tools (and unique: two records of one name are told apart by a number)."""
-    names, taken = [], set()
+    names = []
     for name, _ in seqs:
-        base = new = runner.safe_name(name)
-        n = 1
-        while new in taken:
-            n += 1
-            new = f"{base}_{n}"
-        taken.add(new)
-        names.append(new)
+        names.append(multigb.record_name(runner.safe_name(name), names))
     Path(path).write_text(msa.to_fasta(names, [s for _, s in seqs]), encoding="utf-8")
 
 
@@ -153,7 +137,6 @@ class PipelineForm(QWidget):
     def __init__(self, terminal, key, pipeline):
         super().__init__()
         self.terminal, self.key, self.pipeline = terminal, key, pipeline
-        self.shown = pipeline["inputs"]
         form = QFormLayout(self)
         self.preset = QComboBox()
         self.preset.addItems(list(pipeline.get("presets", {})))
@@ -298,10 +281,17 @@ class PipelineForm(QWidget):
         return runner.default_output(self.pipeline, ed.fasta_record or ed.doc.name, first, ed.path)
 
 
+def _stop_quietly(process):
+    process.blockSignals(True)
+    process.kill()
+    process.waitForFinished(1000)
+
+
 class Terminal(QWidget):
     def __init__(self, window):
         super().__init__()
         self.window, self.pid, self.busy, self.run, self.buffer, self.closing = window, None, False, None, "", False
+        self.ref_key = None   # what $REF was last written from (see send)
         self.scratch = Path(tempfile.mkdtemp(prefix="opendna_terminal_"))
         self.diagram = PipelineDiagram()
         self.list = QListWidget()
@@ -347,6 +337,9 @@ class Terminal(QWidget):
         self.process.readyReadStandardOutput.connect(self._read)
         self.process.finished.connect(self._ended)
         self.process.errorOccurred.connect(self._error)
+        # The pane can be closed, switched to another view or rebuilt (Reset Tabs): stop the shell with it, quietly
+        # (its `finished` would otherwise reach _ended on a deleted widget and start a new shell).
+        self.destroyed.connect(partial(_stop_quietly, self.process))
         self.list.setFixedHeight(self.list.sizeHintForRow(0) * self.list.count() + 2 * self.list.frameWidth() + 4)
         self.list.setCurrentRow(0)
         self.start()
@@ -358,9 +351,10 @@ class Terminal(QWidget):
         ed = self.window.editor
         folder = Path(ed.path).parent if ed is not None and ed.path and Path(ed.path).parent.exists() else Path.home()
         try:
-            self.process.write(runner.session_setup(folder).encode())
+            runner.shell_path(folder)
         except ValueError:   # a folder WSL cannot reach (a network share): start in the home folder
-            self.process.write(runner.session_setup(Path.home()).encode())
+            folder = Path.home()
+        self.process.write(runner.session_setup(folder).encode())
         self._say(f"bash session{' in WSL' if runner.use_wsl() else ''}. Pick a pipeline on the left, or type a command.")
 
     def _error(self, error):
@@ -381,12 +375,19 @@ class Terminal(QWidget):
     def send(self, command, echo=None):
         if self.busy:
             return False
+        if self.process.state() == QProcess.NotRunning:   # bash never started (no WSL): nothing would ever answer
+            self._say("The shell is not running." + (" Is a WSL distribution installed? wsl --install" if runner.use_wsl() else ""))
+            self.run = None
+            return False
         ed = self.window.editor
         exports = ""
         if ed is not None:
             ref = self.scratch / f"{runner.safe_name(ed.fasta_record or ed.doc.name)}.fa"
+            key = (id(ed), ed.version, ed.fasta_record, str(ed.path))   # rewritten only once the document changed
             try:
-                write_fasta(ref, records(ed))
+                if key != self.ref_key or not ref.exists():
+                    write_fasta(ref, document_records(ed))
+                    self.ref_key = key
                 exports = f"export REF={shlex.quote(runner.shell_path(ref))}"
                 if ed.path and Path(ed.path).exists():
                     exports += f" DOC={shlex.quote(runner.shell_path(ed.path))}"
@@ -409,17 +410,22 @@ class Terminal(QWidget):
         self.buffer += bytes(self.process.readAllStandardOutput()).decode("utf-8", "replace")
         # shortcut: output shows line by line (a progress bar drawn with \r waits for its newline)
         *lines, self.buffer = self.buffer.split("\n")
+        plain = []   # output lines between markers, shown in one go (one append and one log write per chunk)
         for line in lines:
             line = line.rstrip("\r")
+            if not line.startswith(("__PID__ ", "__DONE__ ", "__OPEN__ ", "__OPENMSA__ ")):
+                plain.append(line)
+                continue
+            self._append(plain)
+            plain = []
             if line.startswith("__PID__ "):
                 self.pid, self.keep = line.split()[1:3]
             elif line.startswith("__DONE__ "):
                 self._finish(int(line.split()[1]))
-            elif line.startswith(("__OPEN__ ", "__OPENMSA__ ")):
+            else:
                 tag, path = line.split(" ", 1)
                 self.open_file(path, msa=tag == "__OPENMSA__")
-            else:
-                self._append(line)
+        self._append(plain)
 
     def _finish(self, code):
         if not self.busy:
@@ -428,15 +434,15 @@ class Terminal(QWidget):
         self.line.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.line.setFocus()
-        run, self.run = self.run, None
+        run = self.run
         if run is None:
             return
-        for line in runner.summary(run.folder):
-            self._append(line, bold=True)
-        for path in runner.reports(run.folder):
-            self._append(f"Report: {path}")
+        # still the current run while these are written, so they also go into its log.txt
+        self._append(runner.summary(run.folder), bold=True)
+        self._append([f"Report: {path}" for path in runner.reports(run.folder)])
         self._append("Done." if code == 0 else f"Failed (exit code {code}): see the log above, or {run.folder / 'log.txt'}",
                      bold=True)
+        self.run = None
 
     def stop(self):
         if self.busy and self.pid:
@@ -449,19 +455,26 @@ class Terminal(QWidget):
         self.process.waitForFinished(2000)
 
     # ---- output --------------------------------------------------------------------------------------------------------------------
-    def _append(self, text, bold=False):
+    def _append(self, lines, bold=False):
+        """Show output (a line, or a list of lines), paths made clickable, and add it to the run's log."""
+        lines = [lines] if isinstance(lines, str) else lines
+        if not lines:
+            return
         if self.run is not None:
             with open(self.run.folder / "log.txt", "a", encoding="utf-8") as fh:
-                fh.write(text + "\n")
-        parts = []
-        for i, piece in enumerate(PATH_RE.split(text)):
-            if i % 2:
-                href = QUrl.fromLocalFile(runner.windows_path(piece)).toString()
-                parts.append(f'<a href="{html.escape(href)}">{html.escape(piece)}</a>')
-            else:
-                parts.append(html.escape(piece))
-        line = "".join(parts)
-        self.out.append(f'<span style="white-space:pre-wrap">{"<b>" + line + "</b>" if bold else line}</span>')
+                fh.write("\n".join(lines) + "\n")
+        shown = []
+        for text in lines:
+            parts = []
+            for i, piece in enumerate(PATH_RE.split(text)):
+                if i % 2:
+                    href = QUrl.fromLocalFile(runner.windows_path(piece)).toString()
+                    parts.append(f'<a href="{html.escape(href)}">{html.escape(piece)}</a>')
+                else:
+                    parts.append(html.escape(piece))
+            shown.append("".join(parts))
+        body = "<br>".join(shown)
+        self.out.append(f'<span style="white-space:pre-wrap">{"<b>" + body + "</b>" if bold else body}</span>')
 
     def _say(self, text):
         self.out.append(f'<span style="color:gray">{html.escape(text)}</span>')
@@ -553,21 +566,22 @@ class Terminal(QWidget):
             raise ValueError(f"The folder of '{out}' does not exist.")
         form.out.setText(out)
         folder = runner.run_folder(out)
-        files, target = dict(reads, out=out), None
+        files, target, to_write = dict(reads, out=out), None, []
         if "reference" in form.shown:
             target = form.reference.currentData()
-            seqs = (records(self.window.editor) if target is None else records(target.editor) if not isinstance(target, str)
-                    else file_records([target]))
+            seqs = (document_records(self.window.editor) if target is None else document_records(target.editor)
+                    if not isinstance(target, str) else files_records([target]))
             files["ref"] = str(folder / "ref.fa")
+            to_write.append((files["ref"], seqs))
         if "sequences" in form.shown:
             extra = [p.strip() for p in form.extra.text().split(";") if p.strip()]
-            seqs = (records(self.window.editor) if form.own.isChecked() else []) + file_records(extra)
+            seqs = (document_records(self.window.editor) if form.own.isChecked() else []) + files_records(extra)
             if len(seqs) < 2:
                 raise ValueError("Pick at least two sequences to align.")
             files["seqs"] = str(folder / "sequences.fa")
+            to_write.append((files["seqs"], seqs))
         folder.mkdir(parents=True, exist_ok=True)
-        for key in ("ref", "seqs"):
-            if key in files:
-                run_busy(self, "Writing the sequences…", lambda: write_fasta(files[key], seqs))
+        for path, seqs in to_write:
+            run_busy(self, "Writing the sequences…", lambda: write_fasta(path, seqs))
         command, _ = runner.build(form.pipeline, form.values(), files, form.threads.value(), folder)
         return command, folder, target

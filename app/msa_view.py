@@ -9,7 +9,6 @@ Clustal Omega are the Multiple alignment pipeline of the Terminal tab, whose res
 A click on a column puts the open sequence's cursor at that column's position and shows, for every sequence, the position it has
 there; dragging selects the columns' bases in the open sequence. Selecting in the other views marks the columns in this one.
 """
-from pathlib import Path
 
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
@@ -18,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 import msa
-from add_record import source_records
+from add_record import document_records, files_records, open_name
 from editor import mono_font
 from uikit import run_busy
 
@@ -192,7 +191,7 @@ class MsaView(QWidget):
 
     # ---- gathering the sequences ---------------------------------------------------------------------------------------------------
     def _open_name(self):
-        return self.editor.fasta_record or self.editor.doc.name or "open sequence"
+        return open_name(self.editor)
 
     def gather(self):
         """[(name, bases)] of the sequences chosen in "Sequences", or None when the choice was cancelled."""
@@ -204,24 +203,8 @@ class MsaView(QWidget):
             return out
         if kind == SOURCES[1]:
             paths, _ = QFileDialog.getOpenFileNames(self, "Sequence files to align", "", "Sequences (*.gb *.gbk *.gbff *.fa *.fasta *.fna *.dna);;All files (*)")
-            return None if not paths else self._from_files(paths)
-        if not ed.path or not Path(ed.path).exists():
-            return [(self._open_name(), ed.doc.sequence())]
-        out = self._from_files([ed.path])
-        # the open record may hold edits not saved yet: align what is on screen
-        return [(n, ed.doc.sequence() if n == self._open_name() else s) for n, s in out]
-
-    def _from_files(self, paths):
-        out, taken = [], set()
-        for path in paths:
-            for rec in source_records(path):
-                name = rec.name
-                while name in taken:   # two files with a record of the same name: told apart by the file
-                    name = f"{rec.name} ({Path(path).stem})"
-                    rec = type(rec)(name=name, load=rec.load)
-                taken.add(name)
-                out.append((name, rec.load().sequence()))
-        return out
+            return None if not paths else files_records(paths)
+        return document_records(ed)   # the open record as on screen, edits not saved yet included
 
     def _auto(self):
         """Align the records of a small multi-record file at once, so the view opens showing something."""

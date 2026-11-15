@@ -21,6 +21,32 @@ import theme
 from uikit import plural, right_aligned
 
 
+def files_records(paths):
+    """[(name, bases)] of every record of the files; a name two files share is told apart by the file ("name (stem)")."""
+    out, taken = [], set()
+    for path in paths:
+        for rec in source_records(path):
+            name = rec.name
+            while name in taken:
+                name = f"{rec.name} ({Path(path).stem})"
+            taken.add(name)
+            out.append((name, rec.load().sequence()))
+    return out
+
+
+def open_name(editor):
+    return editor.fasta_record or editor.doc.name or "open sequence"
+
+
+def document_records(editor):
+    """[(name, bases)] of every record of the open document's file, the open one as it is on screen (edits not saved
+    yet); just the open sequence while it has no file."""
+    name = open_name(editor)
+    if not editor.path or not Path(editor.path).exists():
+        return [(name, editor.doc.sequence())]
+    return [(n, editor.doc.sequence() if n == name else s) for n, s in files_records([editor.path])]
+
+
 def source_records(path):
     """The sequences of the file `path` that can be added: [SimpleNamespace(name, length, load)] in file order, `load()` giving
     the Document of that one sequence (a big file is not read whole: only the records chosen are loaded, one at a time)."""

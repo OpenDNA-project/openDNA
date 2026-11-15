@@ -303,8 +303,16 @@
      "expected": "[(17,snp,A,G,1,2), (35,ins,'',TT,1,1), (55,del,AAA,'',1,1)]; empty with min_depth 3"
     },
     {
-     "input": "three reads soft-clipped by 12 bases at 700; uncovered stretches between reads",
-     "expected": "clip at 700 (3 reads); gaps 25 (5 bp), 40 (10), 63 (637), 708 (192); none at the sequence ends"
+     "input": "three reads soft-clipped by 12 bases at 700, a fourth hard+soft clipped there; uncovered stretches between reads",
+     "expected": "one break at 700 counting 4 reads (the hard+soft end once); gaps 25 (5 bp), 40 (10), 63 (637), 708 (192), 908 (77)"
+    },
+    {
+     "input": "three reads clipped 12 bases at 995, 5 bases from the end (crossing the origin)",
+     "expected": "no break; no gap at the end"
+    },
+    {
+     "input": "the same scan with min_mapq 61 (every read below it)",
+     "expected": "the same gaps: gaps are where no read is, not where none passes the filters"
     }
    ],
    "oracle": "hand-computed",

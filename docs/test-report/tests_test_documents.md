@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.54 s · [line 61](../../tests/test_documents.py#L61) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.55 s · [line 61](../../tests/test_documents.py#L61) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -29,7 +29,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.34 s · [line 144](../../tests/test_documents.py#L144) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.37 s · [line 144](../../tests/test_documents.py#L144) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -50,7 +50,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 18.04 s · [line 206](../../tests/test_documents.py#L206) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 18.38 s · [line 206](../../tests/test_documents.py#L206) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -69,7 +69,7 @@ Runs app/selftest.run_random_edits for 500 random edits per run, 3 seeds, linear
 
 ## `test_edited_base_ranges_follow_edits_undo_redo_and_saves`
 
-**Result:** ✅ passed in 0.01 s · [line 216](../../tests/test_documents.py#L216) · **Area:** Edited-base highlighting · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 216](../../tests/test_documents.py#L216) · **Area:** Edited-base highlighting · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the highlight showing which bases changed since the last save could point at the wrong bases after further edits, undo or rotation, misleading the user about what they changed.
 

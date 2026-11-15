@@ -189,7 +189,7 @@ impl Bam {
     /// Base counts per position of [start, end) (see `Counts`). Bases below `min_baseq`
     /// and reads below `min_mapq` are not counted.
     pub fn pileup(&self, seq: &str, start: u64, end: u64, min_baseq: u8, min_mapq: u8) -> io::Result<Vec<Counts>> {
-        let (counts, _, _) = self.pile(&mut self.reader.lock().unwrap(), seq, start, end, min_baseq, min_mapq, false)?;
+        let (counts, _, _, _) = self.pile(&mut self.reader.lock().unwrap(), seq, start, end, min_baseq, min_mapq, false)?;
         Ok(counts)
     }
 
@@ -207,12 +207,13 @@ impl Bam {
         // Clipped reads within CLIP_GROUP bp are one junction (both sides of a breakpoint, a target-site duplication):
         // (position with the most clips, its clips, all clips, deepest depth, last position seen).
         let mut group: Option<(u64, u32, u32, u32, u64)> = None;
+        // Kept apart from `out` until the end: a junction pushed there would split a gap still being extended.
         let mut junctions: Vec<Variant> = Vec::new();
         // Reads crossing a junction split their evidence between its two sides: half the variant share is enough.
-        let flush = |g: Option<(u64, u32, u32, u32, u64)>, junctions: &mut Vec<Variant>| {
+        let flush = |g: Option<(u64, u32, u32, u32, u64)>, out: &mut Vec<Variant>| {
             if let Some((pos, _, n, depth, _)) = g {
                 if n >= 3 && n as f32 >= 0.5 * min_fraction * depth.max(n) as f32 {
-                    junctions.push(Variant { pos, kind: "clip", reference: String::new(), alt: String::new(), count: n, depth: depth.max(n) });
+                    out.push(Variant { pos, kind: "clip", reference: String::new(), alt: String::new(), count: n, depth: depth.max(n) });
                 }
             }
         };
@@ -220,12 +221,12 @@ impl Bam {
         let mut start = 0;
         while start < len {
             let end = (start + WINDOW).min(len);
-            let (counts, inserted, clipped) = self.pile(&mut reader, seq, start, end, min_baseq, min_mapq, true)?;
+            let (counts, inserted, clipped, covered) = self.pile(&mut reader, seq, start, end, min_baseq, min_mapq, true)?;
             for (i, c) in counts.iter().enumerate() {
                 let pos = start + i as u64;
                 let depth: u32 = c[..6].iter().sum();
                 let want = reference[pos as usize].to_ascii_uppercase();
-                if depth == 0 {
+                if !covered[i] {   // no read at all (not merely none passing the quality filters)
                     // shortcut: a gap keeps every reference base it spans (a whole uncovered contig is one long string)
                     match out.last_mut() {
                         Some(v) if v.kind == "gap" && v.pos + v.reference.len() as u64 == pos => v.reference.push(want as char),
@@ -236,7 +237,8 @@ impl Bam {
                 if clips > 0 {
                     group = match group {
                         Some((best, most, n, d, last)) if pos - last <= CLIP_GROUP => {
-                            Some(if clips > most { (pos, clips, n + clips, d.max(depth), pos) } else { (best, most, n + clips, d.max(depth), pos) })
+                            let (best, most) = if clips > most { (pos, clips) } else { (best, most) };
+                            Some((best, most, n + clips, d.max(depth), pos))
                         }
                         g => {
                             flush(g, &mut junctions);
@@ -269,7 +271,8 @@ impl Bam {
         }
         flush(group, &mut junctions);
         // Near the ends of the sequence, clipped reads are reads running past it (over the origin of a circular
-        // plasmid), and a gap there is not between covered stretches.
+        // plasmid; telling them by clip length fails: a whole-plasmid read ending at a break carries the rest of the
+        // plasmid as its clip), and a gap there is not between covered stretches.
         junctions.retain(|v| v.pos >= CLIP_GROUP && v.pos + CLIP_GROUP < len);
         out.retain(|v| v.kind != "gap" || (v.pos > 0 && v.pos + (v.reference.len() as u64) < len));
         out.extend(junctions);
@@ -279,16 +282,32 @@ impl Bam {
 
     /// Pileup of [start, end) with the given reader; with `with_ins`, also the inserted
     /// bases seen before each position ({position: {bases: reads}}) and how many reads are
-    /// clipped (soft or hard, at least MIN_CLIP bases) at each position ({position: reads}).
+    /// clipped (soft or hard, at least MIN_CLIP bases) at each position ({position: reads}), and
+    /// which positions any read spans, whatever its base or mapping quality (for gaps).
     #[allow(clippy::type_complexity)]
-    fn pile(&self, reader: &mut Reader, seq: &str, start: u64, end: u64, min_baseq: u8, min_mapq: u8, with_ins: bool) -> io::Result<(Vec<Counts>, HashMap<u64, HashMap<Vec<u8>, u32>>, HashMap<u64, u32>)> {
+    fn pile(&self, reader: &mut Reader, seq: &str, start: u64, end: u64, min_baseq: u8, min_mapq: u8, with_ins: bool) -> io::Result<(Vec<Counts>, HashMap<u64, HashMap<Vec<u8>, u32>>, HashMap<u64, u32>, Vec<bool>)> {
         let len = self.length(seq).ok_or_else(|| unknown(seq))?;
         let end = end.min(len);
         let mut counts = vec![[0u32; 7]; end.saturating_sub(start) as usize];
         let mut inserted: HashMap<u64, HashMap<Vec<u8>, u32>> = HashMap::new();
         let mut clipped: HashMap<u64, u32> = HashMap::new();
+        let mut covered = vec![false; if with_ins { counts.len() } else { 0 }];
         let inside = |p: u64| p >= start && p < end;
         self.for_each_record(reader, seq, start, end, |record, rstart| {
+            if with_ins {
+                let mut r = rstart;
+                for op in record.cigar().iter() {
+                    let op = op?;
+                    if matches!(op.kind(), Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch | Kind::Deletion) {
+                        for pos in r.max(start)..(r + op.len() as u64).min(end) {
+                            covered[(pos - start) as usize] = true;
+                        }
+                    }
+                    if matches!(op.kind(), Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch | Kind::Deletion | Kind::Skip) {
+                        r += op.len() as u64;
+                    }
+                }
+            }
             if record.mapping_quality().map_or(255, |m| m.get()) < min_mapq {
                 return Ok(true);
             }
@@ -296,6 +315,7 @@ impl Bam {
             let quals = record.quality_scores();
             let quals = quals.as_bytes();
             let (mut r, mut q) = (rstart, 0usize);
+            let mut clip_counted_at = None;
             for op in record.cigar().iter() {
                 let op = op?;
                 let n = op.len();
@@ -332,8 +352,9 @@ impl Bam {
                     }
                     Kind::Skip => r += n as u64,
                     Kind::SoftClip | Kind::HardClip => {
-                        if with_ins && n >= MIN_CLIP && inside(r) {
+                        if with_ins && n >= MIN_CLIP && inside(r) && clip_counted_at != Some(r) {
                             *clipped.entry(r).or_default() += 1;   // r: where the aligned part starts (or ended)
+                            clip_counted_at = Some(r);
                         }
                         if op.kind() == Kind::SoftClip {
                             q += n;
@@ -344,7 +365,7 @@ impl Bam {
             }
             Ok(true)
         })?;
-        Ok((counts, inserted, clipped))
+        Ok((counts, inserted, clipped, covered))
     }
 
     /// True once the block totals of `seq` are computed (wide coverage is then instant).
@@ -570,7 +591,13 @@ mod tests {
             (700, "CCCCCCCCCCCCAAAAAAAA", vec![op(Kind::SoftClip, 12), op(Kind::Match, 8)], false),
             (700, "CCCCCCCCCCCCAAAAAAAA", vec![op(Kind::SoftClip, 12), op(Kind::Match, 8)], true),
             (700, "CCCCCCCCCCCCAAAAAAAA", vec![op(Kind::SoftClip, 12), op(Kind::Match, 8)], false),
+            // a fourth whose end is hard- and soft-clipped: one read, one clip
+            (700, "CCCCCCCCCCCCAAAAAAAA", vec![op(Kind::HardClip, 5), op(Kind::SoftClip, 12), op(Kind::Match, 8)], false),
             (900, "CCAAAAAAAA", vec![op(Kind::SoftClip, 2), op(Kind::Match, 8)], false),
+            // three reads clipped 5 bases from the end (running over the origin of a circular plasmid): no junction
+            (985, "AAAAAAAAAACCCCCCCCCCCC", vec![op(Kind::Match, 10), op(Kind::SoftClip, 12)], false),
+            (985, "AAAAAAAAAACCCCCCCCCCCC", vec![op(Kind::Match, 10), op(Kind::SoftClip, 12)], false),
+            (985, "AAAAAAAAAACCCCCCCCCCCC", vec![op(Kind::Match, 10), op(Kind::SoftClip, 12)], false),
         ]);
         let bam = Bam::open(&path).unwrap();
         assert!(path.with_added_extension("bai").exists(), "index written next to the BAM");
@@ -579,7 +606,7 @@ mod tests {
         bam.write_sam(&sam_path).unwrap();
         let sam_text = std::fs::read_to_string(&sam_path).unwrap();
         assert!(sam_text.contains("@SQ	SN:ref	LN:1000"));
-        assert_eq!(sam_text.lines().filter(|l| !l.starts_with('@')).count(), 8);
+        assert_eq!(sam_text.lines().filter(|l| !l.starts_with('@')).count(), 12);
         assert!(sam_text.contains("r2	0	ref	31	60	5M2I5M"));
         assert_eq!(bam.sequences(), vec![("ref".to_string(), 1000)]);
 
@@ -609,12 +636,12 @@ mod tests {
         let (r, _) = bam.reads("ref", 0, 100, &gap_ref, 100).unwrap();
         assert_eq!((r[3].start, r[3].end), (50, 63));
         assert!(r[3].mismatches.is_empty(), "{:?}", r[3].mismatches);
-        // Block coverage (bins wide enough): 10+10+10+10 aligned bases in block 0, 3x8 + 8 in the second bin
-        // (the clipped reads at 700 and the read at 900).
+        // Block coverage (bins wide enough): 10+10+10+10 aligned bases in block 0, 4x8 + 8 + 3x10 in the second bin
+        // (the clipped reads at 700, the read at 900 and the three at 985).
         assert!(!bam.has_depth("ref"));
         let wide = bam.coverage("ref", 0, 1024, 2).unwrap();
         assert!(bam.has_depth("ref"));
-        assert_eq!(wide, vec![40.0 / 512.0, 32.0 / 512.0]);
+        assert_eq!(wide, vec![40.0 / 512.0, 70.0 / 512.0]);
         assert!(bam.reads("chrX", 0, 10, b"", 10).is_err());
 
         // Pairing info: these test reads are unpaired.
@@ -634,7 +661,11 @@ mod tests {
         assert_eq!(brief, vec![(17, "snp", "A", "G", 1, 2), (35, "ins", "", "TT", 1, 1), (55, "del", "AAA", "", 1, 1)]);
         // The 12-base clips at 700 are a junction; stretches no read covers between reads are gaps (not those at the ends).
         let big: Vec<_> = found.iter().filter(|v| !small(v.kind)).map(|v| (v.pos, v.kind, v.reference.len(), v.count)).collect();
-        assert_eq!(big, vec![(25, "gap", 5, 0), (40, "gap", 10, 0), (63, "gap", 637, 0), (700, "clip", 0, 3), (708, "gap", 192, 0)]);
+        assert_eq!(big, vec![(25, "gap", 5, 0), (40, "gap", 10, 0), (63, "gap", 637, 0), (700, "clip", 0, 4), (708, "gap", 192, 0), (908, "gap", 77, 0)]);
+        // Gaps are where no read is, whatever the quality filters: none extra when every read is below min_mapq.
+        let filtered = bam.variants("ref", &vec![b'A'; 1000], 1, 0.5, 0, 61).unwrap();
+        let gaps = |vs: &[Variant]| vs.iter().filter(|v| v.kind == "gap").map(|v| (v.pos, v.reference.len())).collect::<Vec<_>>();
+        assert_eq!(gaps(&filtered), gaps(&found));
         // depth < 3: no small variants (the clip has its 3 reads, gaps need none)
         assert!(!bam.variants("ref", &vec![b'A'; 1000], 3, 0.5, 0, 0).unwrap().iter().any(|v| small(v.kind)));
     }

@@ -16,6 +16,7 @@ Each track can be expanded, condensed (thin lanes, no labels) or hidden (click i
 hide/show, right-click it for the menu), resized by dragging the thin line under it (taller
 = more lanes of reads), and bar tracks (coverage, dense annotations) drawn on a log scale.
 """
+import bisect
 import math
 import re
 from html import escape
@@ -51,6 +52,7 @@ FLAG_COLOR = "#d32f2f"
 # Variants track: a deletion mid-grey (dark grey vanished on the dark theme), reads breaking at one spot deep
 # orange, a stretch no read covers hatched in the flag red.
 DELETION_COLOR, JUNCTION_COLOR = "#8a8a8a", "#ff6d00"
+KIND_COLORS = {"del": DELETION_COLOR, "clip": JUNCTION_COLOR, "gap": FLAG_COLOR, "ins": INSERTION_COLOR}   # a SNP: its base
 BIG_INSERTION = 10   # bp: an insertion this long is drawn wider in a read, outlined, with its length
 GAP, HIDDEN_H = 6, 12        # px between tracks; height of a hidden track (its name only)
 HITS_HEAD = 14               # px above the Local Align rows: the track's name (click: hide / show)
@@ -296,7 +298,8 @@ class GenomeCanvas(QWidget):
         menu.addAction("Reset Height", lambda: self.set_style(name, height=None)).setEnabled(st.height is not None)
         if kind == "variants":
             a = next((a for a in self.editor.alignments if a.name + " variants" == name), None)
-            consensus = [v for v in (a.variants or []) if v.level == "consensus"] if a else []
+            # changes the reads spell out (not the breaks and no-read stretches, which are flagged but not changes)
+            consensus = [v for v in (a.variants or []) if v.level == "consensus" and v.kind in ("snp", "del", "ins")] if a else []
             menu.addSeparator()
             menu.addAction(f"Apply All Consensus Changes to Sequence ({len(consensus)})",
                            lambda: apply_variants(self.editor, a, consensus)).setEnabled(bool(consensus))
@@ -715,12 +718,11 @@ class GenomeCanvas(QWidget):
         boxes = [(self.x(v.pos), self.x(v.pos + max(1, len(v.ref))), v) for v in seen]
         packed = list(pack(boxes, self.lanes(a.name + " variants", h)))
         left, right = self.left, self.left + self.width_px()
-        starts = {}   # lane -> left edges of its boxes, for the room a label beside a box has
+        starts = {}   # lane -> left edges of its boxes (ascending: pack sorts by x), for the room a label beside a box has
         for lane, x0, _, _ in packed:
             starts.setdefault(lane, []).append(x0)
         for lane, x0, x1, v in packed:
-            color = QColor(BASE_COLORS.get(v.alt[:1], "#757575") if v.kind == "snp" else DELETION_COLOR if v.kind == "del" else
-                           JUNCTION_COLOR if v.kind == "clip" else FLAG_COLOR if v.kind == "gap" else INSERTION_COLOR)
+            color = QColor(BASE_COLORS.get(v.alt[:1], "#757575") if v.kind == "snp" else KIND_COLORS[v.kind])
             if v.level != "consensus":
                 color.setAlpha(110)
             r = QRectF(max(left, x0 - 1), top + lane * lh, max(3.0, min(right, x1) - max(left, x0) + 1), lh - 2)
@@ -737,7 +739,8 @@ class GenomeCanvas(QWidget):
                 p.setPen(text_color_on(color))
                 p.drawText(r, Qt.AlignCenter, label)
             else:   # beside the box, when nothing else in its lane is there
-                room = min([x for x in starts[lane] if x > r.right()] + [right]) - r.right() - 6
+                after = bisect.bisect_right(starts[lane], r.right())
+                room = (starts[lane][after] if after < len(starts[lane]) else right) - r.right() - 6
                 if room > width:
                     p.setPen(self.palette().text().color())
                     p.drawText(QRectF(r.right() + 3, r.top(), width + 2, r.height()), Qt.AlignVCenter | Qt.AlignLeft, label)
@@ -802,6 +805,7 @@ class GenomeCanvas(QWidget):
         unmapped_mate = QPen(QColor(MATE_UNMAPPED_COLOR), 1)
         insertion = QColor(INSERTION_COLOR)
         big_ins_pen = QPen(self.palette().text().color(), 1)
+        fm, right = p.fontMetrics(), self.left + self.width_px()
         x0 = self.left - vs * cw  # x of position p = x0 + p * cw (self.x inlined: called per mismatch)
         mark_w = max(1.0, cw)
         self.read_kinds = {}  # category -> count drawn (for the info line and tests)
@@ -838,11 +842,12 @@ class GenomeCanvas(QWidget):
                 if vs <= pos < ve:
                     x = x0 + pos * cw
                     if size >= BIG_INSERTION:   # a large insertion (a transposon, a cassette) must not look like a 1-bp one
-                        p.fillRect(QRectF(x - 3, y - 1, 6, h + 2), insertion)
                         p.setPen(big_ins_pen)
+                        p.setBrush(insertion)
                         p.drawRect(QRectF(x - 3, y - 1, 6, h + 2))
+                        p.setBrush(Qt.NoBrush)
                         label = f"+{size:,}"
-                        if h >= 10 and x + 6 + p.fontMetrics().horizontalAdvance(label) < self.left + self.width_px():
+                        if h >= 10 and x + 6 + fm.horizontalAdvance(label) < right:
                             p.drawText(QPointF(x + 5, y + h - 1), label)
                         last = int(x)
                     elif int(x) != last:

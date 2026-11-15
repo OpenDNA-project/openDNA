@@ -18,6 +18,7 @@ from PySide6.QtCore import QObject, QThreadPool, Signal
 
 import tool_settings
 from tool_settings import Param
+from variants import change_text
 
 TOOL = "Alignments"
 COLOR_MODES = ["Pair orientation & insert size", "Strand", "None"]
@@ -123,10 +124,9 @@ def describe(pos, kind, ref, alt, count, depth):
         return f"{pos + 1:,} {ref}>{alt}  {pct}"
     if kind == "del":
         return f"{pos + 1:,} deletion of {len(ref)} bp ({ref if len(ref) <= 12 else ref[:12] + '…'})  {pct}"
-    if kind == "clip":
-        return f"{pos + 1:,} {count} of {depth} reads break here: they stop matching the sequence (likely the edge of an insertion, an inversion or a rearrangement)"
-    if kind == "gap":
-        return f"{pos + 1:,}–{pos + len(ref):,} no reads over {len(ref):,} bp (deletion longer than the reads, or not covered)"
+    if kind in ("clip", "gap"):
+        where = f"{pos + 1:,}–{pos + len(ref):,}" if kind == "gap" else f"{pos + 1:,}"
+        return f"{where} " + change_text(SimpleNamespace(kind=kind, ref=ref, count=count))
     return f"{pos + 1:,} insertion of {alt or '?'}  {pct}"
 
 

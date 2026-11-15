@@ -16,15 +16,20 @@ import tomllib
 from datetime import datetime
 from pathlib import Path
 
+import msa
+from multigb import GENBANK_EXT
+from sourcefiles import FASTA_EXT as _FASTA, OPEN_FILTER
+
 RECIPES = Path(__file__).with_name("tools.toml")
 ENV = "opendna-tools"
 # Where the tools env usually is (Miniforge, Miniconda, Mambaforge); searched before PATH.
-TOOL_DIRS = [f"$HOME/{base}/envs/{ENV}/bin" for base in ("miniforge3", "miniconda3", "mambaforge")]
+CONDA_BASES = ("miniforge3", "miniconda3", "mambaforge")
+TOOL_DIRS = [f"$HOME/{base}/envs/{ENV}/bin" for base in CONDA_BASES]
 FASTQ_FILTER = "Reads (*.fastq *.fq *.fastq.gz *.fq.gz *.fasta *.fa *.fa.gz);;All files (*)"
-SEQ_FILTER = "Sequences (*.gb *.gbk *.gbff *.fa *.fasta *.fna *.dna);;All files (*)"
 TRACK_EXT = (".bam", ".vcf", ".vcf.gz", ".gff", ".gff3", ".gtf", ".bed")
-SEQ_EXT = (".fa", ".fasta", ".fna", ".fas", ".gb", ".gbk", ".gbff", ".dna")
-FASTA_EXT = (".fa", ".fasta", ".fna", ".fas")
+SEQ_FILTER = OPEN_FILTER   # the sequence files openDNA opens (reference, files to align)
+FASTA_EXT = tuple(_FASTA)
+SEQ_EXT = FASTA_EXT + tuple(GENBANK_EXT) + (".dna",)
 MSA_SNIFF_LIMIT = 50_000_000   # bytes: a bigger FASTA is not read to look for an alignment
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
@@ -100,14 +105,21 @@ def diagram(pipeline, options, inputs):
             nodes.append(("skipped" if opts[key]["choices"][options[key]].strip() == "true" else "step",
                           f"{opts[key]['label']}: {options[key]}"))
             continue
-        for key in used:
-            if step.lstrip().startswith(f"{{{key}}}"):   # {aligner} | samtools sort …: the choice, then the rest
-                nodes.append(("step", f"{opts[key]['label']}: {options[key]}"))
-        rest = PLACEHOLDER.sub(" ", step)
-        extra = ", ".join(f"{opts[k]['label']}: {options[k]}" for k in used if not step.lstrip().startswith(f"{{{k}}}"))
-        for m in re.finditer(r"(?:^|[;|&(])\s*(" +"|".join(map(re.escape, pipeline.get("needs", []))) + r")(?: ([a-z]\w*))?", rest):
-            nodes.append(("step", " ".join(filter(None, m.groups())) + (f" ({extra})" if extra else "")))
+        lead = [k for k in used if step.lstrip().startswith(f"{{{k}}}")]   # {aligner} | samtools sort …: the choice first
+        nodes += [("step", f"{opts[k]['label']}: {options[k]}") for k in lead]
+        extra = ", ".join(f"{opts[k]['label']}: {options[k]}" for k in used if k not in lead)
+        for tool, sub in tools_in(PLACEHOLDER.sub(" ", step), pipeline.get("needs", [])):
+            nodes.append(("step", " ".join(filter(None, (tool, sub))) + (f" ({extra})" if extra else "")))
     return nodes
+
+
+def tools_in(text, tools):
+    """[(tool, subcommand or None)] for each of `tools` that starts a command in the bash `text` (not a word inside
+    one: `quast -o quast` is one quast). Used for the tools a run checks first and for the diagram's boxes."""
+    if not tools:
+        return []
+    names = "|".join(map(re.escape, tools))
+    return re.findall(rf"(?:^|[;|&(]|\bthen\b|\bdo\b|\belse\b)\s*({names})\b(?: ([a-z]\w*))?", text)
 
 
 def build(pipeline, options, files, threads, folder):
@@ -117,11 +129,11 @@ def build(pipeline, options, files, threads, folder):
     values["threads"] = int(threads)
     for key, opt in pipeline.get("options", {}).items():
         value = options[key]
-        values[key] = opt["choices"][value] if "choices" in opt else int(value) if isinstance(opt["default"], int) else value
+        values[key] = opt["choices"][value] if "choices" in opt else value
     # two passes: a choice's text holds placeholders of its own ({threads}, {min_qual}…)
     steps = [fill(fill(step, values), values) for step in pipeline["steps"]]
     body = " && ".join(steps)
-    used = [t for t in pipeline.get("needs", []) if re.search(rf"(^|[\s;|&(]){re.escape(t)}\s", body)]
+    used = sorted({tool for tool, _ in tools_in(body, pipeline.get("needs", []))}, key=pipeline.get("needs", []).index)
     need = f"need {' '.join(used)} && " if used else ""
     return f"( {need}cd {shlex.quote(shell_path(folder))} && {body} )", used
 
@@ -131,7 +143,8 @@ def install(tools):
     Miniforge into ~/miniforge3 first when no conda is found."""
     names = " ".join(shlex.quote(t) for t in tools)
     miniforge = "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh"
-    return ('( c=; for x in "$HOME"/miniforge3/bin/conda "$HOME"/miniconda3/bin/conda "$HOME"/mambaforge/bin/conda; do '
+    bases = " ".join(f'"$HOME"/{b}/bin/conda' for b in CONDA_BASES)
+    return (f'( c=; for x in {bases}; do '
             '[ -x "$x" ] && { c=$x; break; }; done; '
             'if [ -z "$c" ]; then echo "No conda found: installing Miniforge into ~/miniforge3"; '
             f'curl -fsSL -o /tmp/miniforge.sh "{miniforge}" && bash /tmp/miniforge.sh -b -p "$HOME/miniforge3" '
@@ -188,14 +201,7 @@ def open_kind(path, msa=False):
 
 def is_alignment(fasta_text):
     """An aligned FASTA: at least two records, all of one length, with gaps."""
-    names, rows = [], []
-    for line in fasta_text.splitlines():
-        if line.startswith(">"):
-            names.append(line)
-            rows.append([])
-        elif rows:
-            rows[-1].append(line.strip())
-    rows = ["".join(r) for r in rows]
+    _, rows = msa.parse_aligned_fasta(fasta_text)
     return len(rows) >= 2 and len(set(map(len, rows))) == 1 and any("-" in r for r in rows)
 
 
