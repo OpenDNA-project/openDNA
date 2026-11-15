@@ -15,9 +15,9 @@ REPO_URL = f"https://github.com/{REPO}"
 RELEASES_URL = f"{REPO_URL}/releases"
 ISSUES_URL = f"{REPO_URL}/issues"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
-# The program looks for newer versions and offers to install them only when this is True. The repository is private for now (a private
-# repository's releases cannot be read without a login), so it stays False until the repository is made public: then switch it on.
-UPDATES_ENABLED = False
+# The program looks for newer versions and offers to install them only when this is True. On since 0.7.0, when the repository became
+# public (a private repository's releases cannot be read without a login).
+UPDATES_ENABLED = True
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
     "0.7.0": ["New Terminal (pick it under Tools in any pane): a bash session with pipelines to align reads, assemble with Unicycler and run MAFFT or Clustal Omega, each with presets, a QC summary and a diagram of its steps.",

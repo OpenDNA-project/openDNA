@@ -140,8 +140,8 @@ GitHub release holding both files. It never publishes: you do that by hand.
    writes a default text). Download the exe from the draft, check `Get-FileHash openDNA.exe` against the `.sha256` file, and run it on
    a PC that has no Python.
 7. **Publish** by pressing *Publish release* on the draft page, or `gh release edit v0.1.1 --draft=false --latest`. Only now does the
-   release become public and the "latest" one that the in-app update check reads (once `UPDATES_ENABLED` is switched on in
-   `app/project.py`, which must wait for the repository to be public).
+   release become public and the "latest" one that the in-app update check reads (`UPDATES_ENABLED` in
+   `app/project.py`, on since 0.7.0 now that the repository is public).
 
 To try the pipeline without a tag: Actions > release > *Run workflow* (from any branch). It builds the same files and creates a draft
 named after the version in the code, with no tag until published. Delete the draft afterwards (`gh release delete v0.1.1`).
@@ -201,7 +201,7 @@ the environment variable `OPENDNA_BUILD=folder` selects the folder layout, and `
 
 | | What it is | Qt replaceable | Updates itself |
 |---|---|---|---|
-| `openDNA.exe` | one file, about 40 MB | only by rebuilding from the public source | yes, once `UPDATES_ENABLED` is on |
+| `openDNA.exe` | one file, about 40 MB | only by rebuilding from the public source | yes |
 | `openDNA-folder.zip` | the exe plus an `_internal` folder, about 40 MB zipped | yes: `_internal\PySide6` and `_internal\shiboken6` hold plain files that can be swapped (steps in the `README.txt` inside the zip) | no: `updater.is_folder_build()` makes it say "download the new zip", because swapping one exe would leave the user's Qt files out of step with it |
 
 The zip also holds `README.txt` (how to swap Qt), `LICENSE` and `THIRD_PARTY_NOTICES.md` next to the exe. `release.yml` attaches the zip
