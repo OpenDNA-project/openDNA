@@ -8,6 +8,7 @@ from opendna_core import find_motif, find_primers
 from assembly import anneal_len, snapshot
 from editor import reverse_complement as rc
 
+MAX_HOMOLOGY = 50_000   # longest homology the panel offers
 HOMOLOGY = 50      # nt of homology on each side of the cassette
 MAX_MISMATCHES = 5  # check mode: mismatches tolerated in an arm, so non-specific sites show up
 
@@ -41,12 +42,12 @@ def _arm(seq, i, j, circular):
     return seq[i:j]
 
 
-def primer_rows(left, right, c, tm=60.0):
+def primer_rows(left, right, c, tm=60.0, stem="Rec"):
     """The two primers that amplify cassette `c` (bases, in the orientation it goes in) with the homologies as 5' tails."""
     if not c:
         return []
     nf, nr = anneal_len(c, tm), anneal_len(rc(c), tm)
-    return [("Rec-F", left + c[:nf], nf, "recombineering"), ("Rec-R", rc(right) + rc(c)[:nr], nr, "recombineering")]
+    return [(f"{stem}-F", left + c[:nf], nf, "recombineering"), (f"{stem}-R", rc(right) + rc(c)[:nr], nr, "recombineering")]
 
 
 def design(genome, cassette, start, end, left=HOMOLOGY, right=HOMOLOGY, flip=False, tm=60.0):

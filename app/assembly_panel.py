@@ -31,7 +31,7 @@ import recombineering as R
 import runner
 from assembly import (
     FRAG_COLORS, GG_ENZYMES, JOINT_COLOR, RESTRICTION, TAIL_COLOR, Frag, analyse, auto_primers, cut_fragment, digest_pieces, end_words,
-    joint_line, joints_html, junction_cards, junction_html, piece_verdict, junction_summary, junction_window, oligo_checks, piece_doc, simulate, snapshot,
+    joint_line, joints_html, junction_cards, junction_html, piece_verdict, junction_summary, junction_window, oligo_checks, piece_doc, simulate, snapshot, transfer_primers,
 )
 from editor import Editor, feature_color, primer_sequence, reverse_complement as rc
 from primer_db import db
@@ -662,7 +662,7 @@ class AssemblyPanel(QWidget):
         self.max_ov = QSpinBox(minimum=15, maximum=80, value=40, suffix=" bp")
         self.ov_tm = QDoubleSpinBox(minimum=40, maximum=75, value=52, suffix=" °C")
         self.anneal_tm = QDoubleSpinBox(minimum=45, maximum=72, value=60, suffix=" °C")
-        self.homology = [QSpinBox(minimum=35, maximum=100, value=R.HOMOLOGY, suffix=" nt") for _ in range(2)]   # recombineering: left, right
+        self.homology = [QSpinBox(minimum=35, maximum=R.MAX_HOMOLOGY, value=R.HOMOLOGY, suffix=" bp", minimumWidth=110) for _ in range(2)]   # recombineering: left, right
         self.report_button = QPushButton("Full report…", clicked=self.show_report, toolTip="Every junction, check and oligo in detail")
         self.options = []   # (label, widget, methods it belongs to) shown only for those methods
         grid = QGridLayout()
@@ -824,6 +824,7 @@ class AssemblyPanel(QWidget):
         for lab, w, only in self.options:
             lab.setVisible(only is None or m in only)
             w.setVisible(only is None or m in only)
+        self.buttons["perform"].setText("Perform Edition" if m == 4 else "Perform assembly")
         for lab, w, _ in self.options[:2]:   # recombineering has one method and two boxes, always: nothing to choose
             lab.setVisible(m != 4)
             w.setVisible(m != 4)
@@ -1002,7 +1003,7 @@ class AssemblyPanel(QWidget):
         if not self._product_ready():
             return
         self._drop_product()
-        doc = simulate(self.slots, self.design, preview=True, tails=False)   # (the tails are for the junction inspector)
+        doc = self._edited(True) if self.method.currentIndex() == 4 else simulate(self.slots, self.design, preview=True, tails=False)   # (the tails are for the junction inspector)
         self.product_view = ReadOnlyView(Editor(doc, "Assembly product"))
         self.seqstack.addWidget(self.product_view)
         self.seqstack.setCurrentWidget(self.product_view)
@@ -1260,7 +1261,8 @@ class AssemblyPanel(QWidget):
     # -- analysis
     def params(self):
         return dict(method=self.method.currentIndex(), circular=self.is_circular(), enzyme=self.enzyme.currentText(),
-                    min_ov=self.min_ov.value(), min_tm=self.ov_tm.value(), tm=self.anneal_tm.value())
+                    min_ov=self.min_ov.value(), min_tm=self.ov_tm.value(), tm=self.anneal_tm.value(),
+                    max_ov=R.MAX_HOMOLOGY if self.method.currentIndex() == 4 else 100)
 
     def analyse(self):
         """Check the junctions of the fragments as they are now and show everything that follows from it."""
@@ -1279,7 +1281,7 @@ class AssemblyPanel(QWidget):
             if self.design is not None:
                 cards, fchecks = junction_cards(self.design), self.design.fchecks
         ready = self._product_ready()
-        self.strip.refresh(self.slots, self.is_circular(), cards, self.current if self.current >= 0 else 0, hints, fchecks)
+        self.strip.refresh(self.slots, self.is_circular() and self.method.currentIndex() != 4, cards, self.current if self.current >= 0 else 0, hints, fchecks)
         self._refresh_tile(ready)
         self._status(empty)
         self._refresh_primers()
@@ -1308,7 +1310,7 @@ class AssemblyPanel(QWidget):
             product = d.product()
             if d.ok:
                 text, color = (f"✓ Every junction checks out: {len(product):,} bp {'circular' if d.circular else 'linear'} product"
-                               + (f", {len(d.rows)} oligos" if d.rows else "") + ". Perform assembly is ready."), "ok"
+                               + (f", {len(d.rows)} oligos" if d.rows else "") + f". {self.buttons['perform'].text()} is ready."), "ok"
             else:
                 bad = [c for c, level, _ in d.checks if level == "bad"]
                 text, color = (f"✗ {plural(missing, 'junction')} {'does' if missing == 1 else 'do'} not fit" if missing else "✗ A check failed") + \
@@ -1355,7 +1357,7 @@ class AssemblyPanel(QWidget):
         g, cassette = genome.sequence(0, None).upper(), self.slots[1]
         try:
             rows = R.primer_rows(R._arm(g, a - self.homology[0].value(), a, True), R._arm(g, b, b + self.homology[1].value(), True),
-                                 cassette.core_seq, self.anneal_tm.value())
+                                 cassette.core_seq, self.anneal_tm.value(), f"Rec {a + 1}-{b}")
         except ValueError as e:
             self.chosen.setText(str(e))
             return
@@ -1366,12 +1368,26 @@ class AssemblyPanel(QWidget):
         self.chosen.setText("Primers designed for the cassette: the genome's homologies are their 5′ tails, drawn in teal on the cassette's sequence.")
         self._show_source(self.current)
 
+    def _edited(self, preview):
+        """The genome with the cassette in place of the region, on the genome itself so its origin and features stay where they were
+        (the first base is still the genome's first base). `preview`: the cassette is drawn as a feature; otherwise the cassette's
+        primers are added to it."""
+        genome, a, b = self._region()
+        cassette = self.slots[1]
+        doc = R.apply(genome, a, b, cassette.core_seq, [(f.kind, f.location, f.qualifiers) for f in cassette.core.copy_features(0, cassette.core.length)])
+        if preview and cassette.core.length:
+            doc.set_feature(None, "misc_feature", f"{a + 1}..{a + cassette.core.length}",
+                            [("label", "cassette"), ("ApEinfo_fwdcolor", FRAG_COLORS[1])])
+        elif cassette.core.length:
+            transfer_primers(doc, [cassette])
+        return doc
+
     def perform(self):
         d = self.design
-        if d and d.ok and self.method.currentIndex() == 4:   # on the genome itself, so its origin and features stay where they were
-            genome, a, b = self._region()
-            core = self.slots[1].core
-            self.win.open_product(R.apply(genome, a, b, self.slots[1].core_seq, [(f.kind, f.location, f.qualifiers) for f in core.copy_features(0, core.length)]))
+        if d and d.ok and self.method.currentIndex() == 4:
+            if d.rows:   # the primers designed for the cassette are kept: in the database, and on the new genome
+                self.save_primers()
+            self.win.open_product(self._edited(False))
         elif d and d.ok:
             self.win.open_product(simulate(self.slots, d))
 

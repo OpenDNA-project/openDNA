@@ -725,7 +725,7 @@ def tail_intervals(d, frags):
         pos += end - start
 
 
-def analyse_gibson(frags, circular, min_ov=20, min_tm=52.0):
+def analyse_gibson(frags, circular, min_ov=20, min_tm=52.0, max_ov=100):
     """Gibson / HiFi: neighbours fit when the end of one is the start of the next (>= MIN_EXISTING bp)."""
     d = Design(frags, circular)
     d.vectors = [False] * len(frags)
@@ -734,8 +734,13 @@ def analyse_gibson(frags, circular, min_ov=20, min_tm=52.0):
     for j in range(n if circular else n - 1):
         a, b = j, (j + 1) % n
         sa, sb = seqs[a], seqs[b]
-        top = len(sa) // 2 if a == b else min(100, len(sa) - 1, len(sb) - 1)   # not the whole fragment
-        ex = next((k for k in range(top, MIN_EXISTING - 1, -1) if sa[-k:] == sb[:k]), 0)
+        top = len(sa) // 2 if a == b else min(max_ov, len(sa) - 1, len(sb) - 1)   # not the whole fragment
+        ex, i = 0, sa.find(sb[:MIN_EXISTING], len(sa) - top)   # the longest k <= top with sa ending in sb[:k]: the earliest place sb's start occurs
+        while i != -1 and i < len(sa) - MIN_EXISTING + 1:
+            if sa[i:] == sb[:len(sa) - i]:
+                ex = len(sa) - i
+                break
+            i = sa.find(sb[:MIN_EXISTING], i + 1)
         if ex:
             if b == 0:
                 trim[a] = ex     # closing the circle: drop the duplicate from the last fragment
@@ -773,18 +778,21 @@ def analyse_gibson(frags, circular, min_ov=20, min_tm=52.0):
         if jt.kind == "none":
             d.check(f"Homology ({label})", "bad", d.problems[j], junction=j, short="ends fit")
             continue
-        ov, t = jt.seq, melting_temp(jt.seq)
+        ov = jt.seq
+        long = len(ov) > 100   # only a recombineering homology: its Tm and hairpin mean nothing at that length, and cost a lot to compute
+        t = None if long else melting_temp(ov)
         gc = 100 * sum(c in "GC" for c in ov) / len(ov)
         hits = occurrences(product, ov, circular)
         d.check(f"Ends fit ({label})", "ok", f"the end of {jt.left} is the start of {jt.right} over {len(ov)} bp", junction=j, short="ends fit")
         d.check(f"Homology ({label})", "ok" if len(ov) >= min_ov else "warn", f"{len(ov)} bp: {ov}"
                 + ("" if len(ov) >= min_ov else f" (shorter than {min_ov} bp: lower efficiency)"), junction=j, short="length")
-        d.check(f"Homology Tm ({label})", band(t, min_tm, 80, 4) if t else "warn", f"{t:.1f} °C" if t else "?", junction=j, short="Tm")
+        d.check(f"Homology Tm ({label})", "info" if long else band(t, min_tm, 80, 4) if t else "warn", f"{t:.1f} °C" if t else "?", junction=j, short="Tm")
         d.check(f"Homology GC ({label})", band(gc, 35, 65, 10), f"{gc:.0f} %", junction=j, short="GC")
         d.check(f"Homology unique ({label})", "ok" if hits == 1 else "bad",
                 "occurs once in the product" if hits == 1 else f"occurs {hits} times in the product (wrong joins)",
                 junction=j, short="unique")
-        d.check(f"Homology hairpin ({label})", hairpin_level(structure(ov)), f"ΔG {min(structure(ov)['hairpin'], 0):.1f}",
+        hp = None if long else structure(ov)
+        d.check(f"Homology hairpin ({label})", "info" if long else hairpin_level(hp), "not computed" if long else f"ΔG {min(hp['hairpin'], 0):.1f}",
                 junction=j, short="hairpin")
         clash = [f"{d.joints[k].left} → {d.joints[k].right}" for k, other in ovs if k != j and shared_kmer(ov, other)]
         d.check(f"Homology distinct ({label})", "warn" if clash else "ok",
@@ -1163,7 +1171,7 @@ def junction_cards(d):
     return cards
 
 
-def analyse(frags, method, circular, enzyme="BsaI", min_ov=20, min_tm=52.0, tm=60.0, enzymes=("EcoRI", "BamHI")):
+def analyse(frags, method, circular, enzyme="BsaI", min_ov=20, min_tm=52.0, tm=60.0, enzymes=("EcoRI", "BamHI"), max_ov=100):
     """Check `frags` as they are (0 Gibson, 1 Golden Gate, 2 Sidewinder, 3 restriction / ligation with the two `enzymes`). Raises
     ValueError for a setup that cannot be analysed at all (e.g. a destination vector without two sites)."""
     if method == 2:
@@ -1175,7 +1183,7 @@ def analyse(frags, method, circular, enzyme="BsaI", min_ov=20, min_tm=52.0, tm=6
     elif method == 3:
         d = analyse_restriction(frags, circular, enzymes)
     else:
-        d = analyse_golden_gate(frags, circular, enzyme) if method == 1 else analyse_gibson(frags, circular, min_ov, min_tm)
+        d = analyse_golden_gate(frags, circular, enzyme) if method == 1 else analyse_gibson(frags, circular, min_ov, min_tm, max_ov)
     # One verdict per junction: the worst of its checks (an end that does not fit is always red).
     d.jlevels = ["bad" if jt.kind == "none" else {"info": "ok"}.get(worst(d.jchecks.get(j, [])), worst(d.jchecks.get(j, [])))
                  for j, jt in enumerate(d.joints)]
