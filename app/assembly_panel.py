@@ -1370,15 +1370,14 @@ class AssemblyPanel(QWidget):
 
     def _edited(self, preview):
         """The genome with the cassette in place of the region, on the genome itself so its origin and features stay where they were
-        (the first base is still the genome's first base). `preview`: the cassette is drawn as a feature; otherwise the cassette's
-        primers are added to it."""
+        (the first base is still the genome's first base). `preview`: the cassette is also drawn as a feature. The cassette's primers are on it either way."""
         genome, a, b = self._region()
         cassette = self.slots[1]
         doc = R.apply(genome, a, b, cassette.core_seq, [(f.kind, f.location, f.qualifiers) for f in cassette.core.copy_features(0, cassette.core.length)])
-        if preview and cassette.core.length:
-            doc.set_feature(None, "misc_feature", f"{a + 1}..{a + cassette.core.length}",
-                            [("label", "cassette"), ("ApEinfo_fwdcolor", FRAG_COLORS[1])])
-        elif cassette.core.length:
+        if cassette.core.length:
+            if preview:
+                doc.set_feature(None, "misc_feature", f"{a + 1}..{a + cassette.core.length}",
+                                [("label", "cassette"), ("ApEinfo_fwdcolor", FRAG_COLORS[1])])
             transfer_primers(doc, [cassette])
         return doc
 
