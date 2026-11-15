@@ -29,7 +29,7 @@ With a fake E-utilities endpoint, checks search results and request parameters, 
 
 ## `test_structure_sources_cache_and_auto_order`
 
-**Result:** ✅ passed in 0.12 s · [line 208](../../tests/test_online.py#L208) · **Area:** 3D structure: sources and cache · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.11 s · [line 208](../../tests/test_online.py#L208) · **Area:** 3D structure: sources and cache · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the protein 3D view could pick the wrong source, accept invalid input, ignore its cache, hide why every source failed, or break the user's own local folding command.
 
@@ -54,7 +54,7 @@ With a fake network, checks each structure source (AlphaFold DB, PDB, ESMFold) a
 
 ## `test_structure_page_script_safety_and_alphafold_reply_not_followed`
 
-**Result:** ✅ passed in 0.07 s · [line 264](../../tests/test_online.py#L264) · **Area:** 3D structure: viewer page safety · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 264](../../tests/test_online.py#L264) · **Area:** 3D structure: viewer page safety · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it a crafted protein name, PDB file or AlphaFold reply could inject script into the 3D viewer page or make the app fetch a local or foreign file.
 

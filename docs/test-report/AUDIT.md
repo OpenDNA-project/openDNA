@@ -8,15 +8,15 @@ Built by `scripts/test_report.py` on 2026-11-14 from `tests.json` and the last r
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 95 | 95 | 0 | 69 | 26 | 0 | 0 | 73 |
+| Python | 97 | 97 | 0 | 70 | 27 | 0 | 0 | 74 |
 | Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 160 | 160 | 0 | 111 | 48 | 1 | 0 | 117 |
+| **All** | 162 | 162 | 0 | 112 | 49 | 1 | 0 | 118 |
 
 ## Weak or unreviewed tests
 
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 160 tests)
+## Gaps and proposed tests (3 of 162 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -256,6 +256,13 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
 | `test_every_selftest_check_passes` | Without it the Help > Troubleshooting > Self-Test checks could start failing in a release without anyone noticing before a user runs them. | property/invariant | adequate | sound | The real checks live in app/selftest.py; this test's strength is theirs and cannot be judged from the test file.<br>Overlap: tests/test_documents.py::test_random_edits_keep_bases_and_features_then_undo_redo_exactly runs the same selftest.run_random_edits machinery with 500 edits; this test re-runs the short in-app versions. Still worth keeping as the guard that the in-app self-test itself passes. |
+
+### `tests/test_terminal.py` (2 tests)
+
+| Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
+|---|---|---|---|---|---|
+| `test_pipelines_build_valid_bash` | A pipeline could type broken or wrong bash into the Terminal (an unfilled option, an unquoted path with a space, a tool it does not check), so a run fails or maps with the wrong settings. | property/invariant | adequate | not checked | Syntax only: no pipeline is run against real tools (they are not installed in CI). |
+| `test_open_paths_and_summary` | A result could open in the wrong place (an alignment as a document, a BAM in the browser), a WSL path could not be turned back into a Windows one, or the QC summary could misreport reads kept or % mapped. | hand-computed | strong | not checked |  |
 
 ### `tests/test_updater.py` (5 tests)
 

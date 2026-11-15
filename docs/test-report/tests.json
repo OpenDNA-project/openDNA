@@ -301,6 +301,18 @@
     {
      "input": "variants(all-A ref, min_depth 1, min_frac 0.5); min_depth 3",
      "expected": "[(17,snp,A,G,1,2), (35,ins,'',TT,1,1), (55,del,AAA,'',1,1)]; empty with min_depth 3"
+    },
+    {
+     "input": "three reads soft-clipped by 12 bases at 700, a fourth hard+soft clipped there; uncovered stretches between reads",
+     "expected": "one break at 700 counting 4 reads (the hard+soft end once); gaps 25 (5 bp), 40 (10), 63 (637), 708 (192), 908 (77)"
+    },
+    {
+     "input": "three reads clipped 12 bases at 995, 5 bases from the end (crossing the origin)",
+     "expected": "no break; no gap at the end"
+    },
+    {
+     "input": "the same scan with min_mapq 61 (every read below it)",
+     "expected": "the same gaps: gaps are where no read is, not where none passes the filters"
     }
    ],
    "oracle": "hand-computed",
@@ -4078,6 +4090,10 @@
     {
      "input": "annotate_variants with a SNP and a deletion, then undo",
      "expected": "returns 2, features at '6' and '9..12' covering the reference bases, sequence untouched, one undo removes both; an empty list returns 0"
+    },
+    {
+     "input": "reads breaking at one spot (clip, 12 of 30 reads at 10) and a gap (8..11, AAGG)",
+     "expected": "never applied; annotated at 10 and 9..12 with no /replace; short labels C>T, −4 bp, +CCC, +768 bp, 12 reads break here, no reads, 4 bp"
     }
    ],
    "oracle": "in-test reference model",
@@ -6939,6 +6955,70 @@
     "Mismatch tolerance and the two-hit warning are tested on one planted case each; no test of an arm that matches on the wrong strand only."
    ],
    "role": "A cassette could land on the wrong bases, a region across the origin could scramble the genome, or a non-specific homology could go unreported, so the user would build the wrong strain."
+  },
+  {
+   "id": "tests/test_terminal.py::test_pipelines_build_valid_bash",
+   "area": "Terminal and pipelines",
+   "role": "A pipeline could type broken or wrong bash into the Terminal (an unfilled option, an unquoted path with a space, a tool it does not check), so a run fails or maps with the wrong settings.",
+   "purpose": "Every preset of every pipeline in tools.toml builds a command with no placeholder left that bash accepts; the Illumina preset checks only the tools it calls, fills nested placeholders, quotes paths and leaves bash's own ${...} alone; the session setup, a wrapped line and Stop's command are valid bash. The flow chart the Terminal draws comes from tools.toml alone (runner.diagram).",
+   "cases": [
+    {
+     "input": "align, preset Illumina paired-end, 6 threads, reads 'my reads_R1.fq'",
+     "expected": "starts '( need fastp bwa samtools && cd ', has '-w 6 -q 20 -l 50' and 'bwa mem -t 6', the reads path quoted, '${R2:+-I \"$R2\"}' kept"
+    },
+    {
+     "input": "align preset Nanopore",
+     "expected": "cleanup filtlong, min_len 50 (default), inputs reads1 + reference"
+    },
+    {
+     "input": "every pipeline x preset",
+     "expected": "no {name} left; bash -n accepts it"
+    },
+    {
+     "input": "session_setup + wrap(\"echo 'it''s' | wc -c\") + stop_children(42, 43) + install(['mafft'])",
+     "expected": "bash -n accepts it"
+    },
+    {
+     "input": "default_output(align, 'pUC 19', 'my reads_R1.fq')",
+     "expected": "'pUC_19_my reads.bam' beside the reads"
+    },
+    {
+     "input": "diagram(align, Nanopore with cleanup none); diagram(assemble, Hybrid)",
+     "expected": "Reads, Reference, skipped 'Read cleanup: none', 'Aligner: minimap2_ont', samtools sort/index/flagstat, 'Open in openDNA'; assemble steps cleanup, unicycler (mode), quast once"
+    }
+   ],
+   "oracle": "property/invariant",
+   "strength": "adequate",
+   "issues": [
+    "Syntax only: no pipeline is run against real tools (they are not installed in CI)."
+   ]
+  },
+  {
+   "id": "tests/test_terminal.py::test_open_paths_and_summary",
+   "area": "Terminal and pipelines",
+   "role": "A result could open in the wrong place (an alignment as a document, a BAM in the browser), a WSL path could not be turned back into a Windows one, or the QC summary could misreport reads kept or % mapped.",
+   "purpose": "WSL path conversion both ways, open_kind for each kind of file (alignment detected from its content), and the QC summary read from fastp.json, flagstat.txt and quast/report.tsv.",
+   "cases": [
+    {
+     "input": "shell_path('D:\\data\\x.fq'), windows_path('/mnt/d/data/x.fq') with WSL",
+     "expected": "/mnt/d/data/x.fq, D:\\data\\x.fq; a \\\\wsl$ path unchanged"
+    },
+    {
+     "input": "x.bam, v.vcf.gz, aligned a.fa, plain p.fa, r.gb, fastp.html",
+     "expected": "track, track, msa, document, document, browser; --msa forces msa"
+    },
+    {
+     "input": "fastp 1000 -> 920 reads, Q30 0.941; flagstat 987 mapped (98.70%); QUAST 3 contigs, 4641652 bp, N50 4600000",
+     "expected": "'fastp: 1,000 reads in, 920 kept (92%), Q30 94%', 'samtools flagstat: 987 reads mapped (98.70%)', 'QUAST: 3 contigs, 4,641,652 bp, N50 4,600,000 bp'"
+    },
+    {
+     "input": "quast/report.html and quast/icarus_viewers/contig_size_viewer.html",
+     "expected": "only report.html listed as a report"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": []
   }
  ],
  "removed": [

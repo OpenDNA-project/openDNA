@@ -17,7 +17,7 @@ doc.save_genbank("pFG051_edited.gb")      # .dna files are read-only
 
 Features marked with an orange **WIP** tag (in a menu, beside a view's name, in a list or a window) are not finished: they work,
 but check their results, and they may still change. Today: Golden Gate and Sidewinder assembly, the protein interface (the Protein
-view and 3D structures) and mapping reads (Map Reads, through WSL on Windows).
+view and 3D structures) and the Terminal's pipelines (mapping, assembly, MAFFT / Clustal Omega, through WSL on Windows).
 
 The primer database is `primers.tsv` in the app data folder (`%APPDATA%\openDNA\` on
 Windows; set `OPENDNA_DATA_DIR` to use another folder). Export/import it from Primers → Primer Database.
@@ -119,7 +119,7 @@ over 100 million are not fetched (use NCBI Datasets).
 Selection…): opens the designer in its own window over the main one, already run on the selection; the selected pair is drawn in the sequence view as **temporary primers** (teal, "pair1_F" /
 "pair1_R": they are not in the primer database and have no menu yet) so you see where each one binds, and each row you click shows its pair.
 *Save pair to database…* names them and makes them regular primers; closing the tab forgets the unsaved ones.
-**Multiple Alignment view** (pick *MSA* in any pane's view picker): compares several sequences at once, such as clones against their reference, homologues of a gene or one part across constructs. Each sequence is a row under its name, the columns are coloured by conservation (green: every sequence agrees, yellow-green: at least 75 %, orange: at least half; gaps count against), and a *Consensus* row closes the table (a gap where most sequences have one). Beside each name is its percentage identity to the reference (the first sequence) or to the consensus, chosen with *Identity to*: the columns where both hold the same base over the columns where either holds one, so a gap counts as a difference. *Sequences* chooses what is aligned: the records of the open file (a multi-record file of a few kb in all is aligned as soon as the view opens, e.g. `demo/msa_demo.fasta`), files you pick, or the open sequence plus the bases selected in it. *Method* is the built-in aligner (progressive, pure Python, up to 20 kb a sequence: works with nothing installed) or MAFFT / Clustal Omega when they are installed in the same tools environment as Map Reads (a run window shows progress and has Cancel). Click a column to put the cursor of the open sequence there; the status line gives the position every sequence has in that column. Drag to select columns (their bases are selected in the open sequence); selecting in another view marks its columns here.
+**Multiple Alignment view** (pick *MSA* in any pane's view picker): compares several sequences at once, such as clones against their reference, homologues of a gene or one part across constructs. Each sequence is a row under its name, the columns are coloured by conservation (green: every sequence agrees, yellow-green: at least 75 %, orange: at least half; gaps count against), and a *Consensus* row closes the table (a gap where most sequences have one). Beside each name is its percentage identity to the reference (the first sequence) or to the consensus, chosen with *Identity to*: the columns where both hold the same base over the columns where either holds one, so a gap counts as a difference. *Sequences* chooses what is aligned: the records of the open file (a multi-record file of a few kb in all is aligned as soon as the view opens, e.g. `demo/msa_demo.fasta`), files you pick, or the open sequence plus the bases selected in it. *Align* uses the built-in aligner (progressive, pure Python, up to 20 kb a sequence: works with nothing installed); for MAFFT or Clustal Omega use the *Multiple alignment* pipeline of the Terminal, whose result opens here. Click a column to put the cursor of the open sequence there; the status line gives the position every sequence has in that column. Drag to select columns (their bases are selected in the open sequence); selecting in another view marks its columns here.
 **Protein view** (pick *Protein* in any pane's view picker): click a CDS, or select a stretch of DNA, and the view shows its amino acids in
 groups of ten, as many to a row as the pane is wide (each row numbered on the left, the end of each group numbered above it), with the length, mass (kDa), isoelectric point and charge at pH 7 (up to the first stop codon; estimates for the free chain),
 and the features inside the CDS (click one to select it). For a stretch of DNA, choose the reading frame (+1 to −3) beside the title. Select
@@ -423,15 +423,28 @@ the kind of termination: *intrinsic* (a hairpin + T tract was found in the termi
 at a polyA signal. Units added to the document are mRNA features with a program-specific `/OpenDNA_tu` qualifier (like
 the Cas9 guides' `/OpenDNA_cas9`): other programs see an ordinary mRNA; GFF3 and the NCBI table leave the qualifier out. It is a check of the design, not of expression levels: terminators leak,
 and predicted elements are motifs only. Tools → Settings tunes each tool. In the Alignment view, each BAM has a
-*variants* track under its coverage: every position where the reads disagree with the sequence (solid: most reads; faded: a minority).
+*variants* track under its coverage: every position where the reads disagree with the sequence (solid: most reads; faded: a minority, its share written beside it), each labelled (`C>A`, `−3 bp`, `+A`). Two marks point at larger changes the reads cannot spell out: an orange *N reads break here* where 3 or more reads stop matching the sequence for their last 10+ bases (likely the edge of an insertion, an inversion or a rearrangement; reads crossing the origin of a circular plasmid are not counted), and a hatched red *no reads* stretch between covered ones (a deletion longer than the reads). In the reads, an insertion of 10 bp or more is a wide outlined bar.
 Right-click a variant to *Change the Sequence to Match* or *Annotate This Variant* (a `variation` feature); right-click the track for both on
 all consensus changes at once.
 
-Tools → Map Reads to This Sequence runs bwa mem or minimap2 (recipes in `app/tools.toml`) and opens
-the resulting BAM. `python tests/fake_reads.py [plasmid] [folder]` simulates ONT and Element reads of
-a plasmid with typical cloning errors (mutations, indels, inversion, duplication, mixed populations) and
-maps them the same way; `truth.tsv` lists what was planted. On Windows they run in WSL: Tools → Install Mapping Tools creates the conda env
-`opendna-tools` (bwa, samtools, minimap2 from bioconda) inside WSL's conda.
+**Terminal** (pick *Terminal* under *Tools* in any pane's view picker; Import → Alignments → Map Reads opens it on *Align reads*): pipelines on the left and a
+bash session on the right (in WSL on Windows), one per Terminal pane. Everything external openDNA runs goes through it, so
+you see, and can copy or change, every command. In the session `$REF` is this document as FASTA (all its records, as on
+screen, rewritten before each command), `$DOC` its file, and `open <file>` brings a result back: a BAM, VCF, GFF or BED
+becomes a track of the genome view, an aligned FASTA fills the Multiple Alignment view (`open --msa` forces it), a
+FASTA or GenBank file opens as a new document, and anything else (an HTML report) opens in your browser. Up / Down
+recall earlier commands; Stop ends the running command and every program it started; *+ file* inserts a quoted path.
+The pipelines (`app/tools.toml`, one entry each, no code) are forms with a *Preset* for the common cases and the
+options under *Advanced*:
+- *Align reads*: cleanup (fastp for short reads, filtlong for long ones), bwa mem or minimap2, then a sorted, indexed
+  BAM opened on the document mapped against (this one, another open one, or a FASTA / GenBank file).
+- *Assemble (Unicycler)*: Illumina, Nanopore or hybrid; the same cleanup, Unicycler, QUAST; the contigs open as a new document.
+- *Multiple alignment*: MAFFT (auto or L-INS-i) or Clustal Omega on this document's records and any files you add.
+Each run leaves `<output>_run/` beside its output with the inputs, `command.txt`, `log.txt` and the tools' reports, and
+ends with a short QC summary (reads kept, % mapped, N50) and clickable links to those reports. *Install tools* creates
+or extends the conda environment `opendna-tools` (bioconda) inside WSL's conda. `python tests/fake_reads.py [plasmid]
+[folder]` simulates ONT and Element reads of a plasmid with typical cloning errors (mutations, indels, inversion,
+duplication, mixed populations) and maps them with the Align reads pipeline; `truth.tsv` lists what was planted.
 
 Unsaved work is autosaved every minute to `<file>.autosave.gb` next to the file; reopening the
 file after a crash offers to recover it. The copy is deleted on save or a clean close.

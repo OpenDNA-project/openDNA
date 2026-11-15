@@ -25,7 +25,7 @@ FEATURES = {
     "sidewinder": ("Sidewinder assembly", True),
     "recombineering": ("Recombineering (λ Red, dsDNA cassette)", True),
     "protein": ("The protein interface (the Protein view and 3D structures)", True),
-    "mapping": ("Mapping reads (bwa / minimap2, through WSL on Windows, bash on Linux and macOS)", True),
+    "mapping": ("The Terminal and its pipelines (mapping, assembly, multiple alignment; through WSL on Windows, bash on Linux and macOS)", True),
 }
 # Views of a pane's picker (workspace.VIEWS) that are a feature above: view name -> key.
 VIEWS = {"Protein": "protein"}

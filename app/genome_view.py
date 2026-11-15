@@ -16,6 +16,7 @@ Each track can be expanded, condensed (thin lanes, no labels) or hidden (click i
 hide/show, right-click it for the menu), resized by dragging the thin line under it (taller
 = more lanes of reads), and bar tracks (coverage, dense annotations) drawn on a log scale.
 """
+import bisect
 import math
 import re
 from html import escape
@@ -35,7 +36,7 @@ from perf import Laps, timed
 from alignments import (COLORS, INVERTED_COLOR, LABELS, MATE_UNMAPPED_COLOR, TOOL as ALIGNMENTS, classify, flag_level, insert_limits,
                         relay as scan_relay, setting, start_scan)
 from editor import arrow, text_color_on
-from variants import annotate_variants, apply_variants, can_apply, change_text
+from variants import annotate_variants, apply_variants, can_apply, change_text, short_text
 from sequence_view import TEMP_COLOR, primer_color
 
 LEFT = 74         # px for track names, at least (longer names widen the column: see GenomeCanvas.left)
@@ -48,6 +49,11 @@ READ_LANES = 20     # rows of reads at the default height (drag the track taller
 READ_COLORS = COLORS         # by category, see alignments.classify
 INSERTION_COLOR = "#7b1fa2"
 FLAG_COLOR = "#d32f2f"
+# Variants track: a deletion mid-grey (dark grey vanished on the dark theme), reads breaking at one spot deep
+# orange, a stretch no read covers hatched in the flag red.
+DELETION_COLOR, JUNCTION_COLOR = "#8a8a8a", "#ff6d00"
+KIND_COLORS = {"del": DELETION_COLOR, "clip": JUNCTION_COLOR, "gap": FLAG_COLOR, "ins": INSERTION_COLOR}   # a SNP: its base
+BIG_INSERTION = 10   # bp: an insertion this long is drawn wider in a read, outlined, with its length
 GAP, HIDDEN_H = 6, 12        # px between tracks; height of a hidden track (its name only)
 HITS_HEAD = 14               # px above the Local Align rows: the track's name (click: hide / show)
 # kind -> (lanes, lane px expanded, lane px condensed, lanes condensed); 0 lanes = a bar plot
@@ -292,7 +298,8 @@ class GenomeCanvas(QWidget):
         menu.addAction("Reset Height", lambda: self.set_style(name, height=None)).setEnabled(st.height is not None)
         if kind == "variants":
             a = next((a for a in self.editor.alignments if a.name + " variants" == name), None)
-            consensus = [v for v in (a.variants or []) if v.level == "consensus"] if a else []
+            # changes the reads spell out (not the breaks and no-read stretches, which are flagged but not changes)
+            consensus = [v for v in (a.variants or []) if v.level == "consensus" and v.kind in ("snp", "del", "ins")] if a else []
             menu.addSeparator()
             menu.addAction(f"Apply All Consensus Changes to Sequence ({len(consensus)})",
                            lambda: apply_variants(self.editor, a, consensus)).setEnabled(bool(consensus))
@@ -692,8 +699,10 @@ class GenomeCanvas(QWidget):
 
     def _variants(self, p, a, row, dim, fm):
         """Every position where the reads differ (variant scan): solid = consensus change, faded = minority variant.
-        SNPs in the colour of the sample's base, deletions dark grey, insertions purple. Right-click one to apply or
-        annotate it."""
+        SNPs in the colour of the sample's base, deletions grey, insertions purple, spots where reads break (stop
+        matching the sequence) orange, stretches no read covers hatched red. Each is labelled ("C>A", "−3 bp", "+A", "12 reads break here") inside
+        its box, or beside it when the box is too narrow, with the share of reads for a minority variant.
+        Right-click one to apply or annotate it."""
         top, h = row
         if a.variants is None:
             start_scan(a, self.editor)
@@ -707,19 +716,34 @@ class GenomeCanvas(QWidget):
             return
         lh = self.lane_h(a.name + " variants")
         boxes = [(self.x(v.pos), self.x(v.pos + max(1, len(v.ref))), v) for v in seen]
-        for lane, x0, x1, v in pack(boxes, self.lanes(a.name + " variants", h)):
-            color = QColor(BASE_COLORS.get(v.alt[:1], "#757575") if v.kind == "snp" else
-                           "#424242" if v.kind == "del" else INSERTION_COLOR)
+        packed = list(pack(boxes, self.lanes(a.name + " variants", h)))
+        left, right = self.left, self.left + self.width_px()
+        starts = {}   # lane -> left edges of its boxes (ascending: pack sorts by x), for the room a label beside a box has
+        for lane, x0, _, _ in packed:
+            starts.setdefault(lane, []).append(x0)
+        for lane, x0, x1, v in packed:
+            color = QColor(BASE_COLORS.get(v.alt[:1], "#757575") if v.kind == "snp" else KIND_COLORS[v.kind])
             if v.level != "consensus":
                 color.setAlpha(110)
-            left = self.left
-            r = QRectF(max(left, x0 - 1), top + lane * lh, max(3.0, min(left + self.width_px(), x1) - max(left, x0) + 1), lh - 2)
-            p.fillRect(r, color)
+            r = QRectF(max(left, x0 - 1), top + lane * lh, max(3.0, min(right, x1) - max(left, x0) + 1), lh - 2)
+            p.fillRect(r, QBrush(color, Qt.BDiagPattern) if v.kind == "gap" else color)
+            if v.kind == "gap":
+                p.setPen(color)
+                p.drawRect(r)
             self.hits.append((r, ("variant", a, v)))
-            label = change_text(v)
-            if lh >= 11 * self.scale() and r.width() > fm.horizontalAdvance(label) + 6:
+            label = short_text(v) + ("" if v.level == "consensus" else f" {100 * v.count / max(1, v.depth):.0f}%")
+            if lh < 11 * self.scale():
+                continue
+            width = fm.horizontalAdvance(label)
+            if v.kind != "gap" and r.width() > width + 6:
                 p.setPen(text_color_on(color))
                 p.drawText(r, Qt.AlignCenter, label)
+            else:   # beside the box, when nothing else in its lane is there
+                after = bisect.bisect_right(starts[lane], r.right())
+                room = (starts[lane][after] if after < len(starts[lane]) else right) - r.right() - 6
+                if room > width:
+                    p.setPen(self.palette().text().color())
+                    p.drawText(QRectF(r.right() + 3, r.top(), width + 2, r.height()), Qt.AlignVCenter | Qt.AlignLeft, label)
 
     def _start_depth(self, a):
         if a.depth_pending:
@@ -780,6 +804,8 @@ class GenomeCanvas(QWidget):
         base_colors = {b: QColor(c) for b, c in BASE_COLORS.items()}
         unmapped_mate = QPen(QColor(MATE_UNMAPPED_COLOR), 1)
         insertion = QColor(INSERTION_COLOR)
+        big_ins_pen = QPen(self.palette().text().color(), 1)
+        fm, right = p.fontMetrics(), self.left + self.width_px()
         x0 = self.left - vs * cw  # x of position p = x0 + p * cw (self.x inlined: called per mismatch)
         mark_w = max(1.0, cw)
         self.read_kinds = {}  # category -> count drawn (for the info line and tests)
@@ -812,10 +838,19 @@ class GenomeCanvas(QWidget):
                         last = int(x)
                         p.fillRect(QRectF(x, y, mark_w, h), base_colors.get(b, dim))
             last = None
-            for pos, _ in ins:
+            for pos, size in ins:
                 if vs <= pos < ve:
                     x = x0 + pos * cw
-                    if int(x) != last:
+                    if size >= BIG_INSERTION:   # a large insertion (a transposon, a cassette) must not look like a 1-bp one
+                        p.setPen(big_ins_pen)
+                        p.setBrush(insertion)
+                        p.drawRect(QRectF(x - 3, y - 1, 6, h + 2))
+                        p.setBrush(Qt.NoBrush)
+                        label = f"+{size:,}"
+                        if h >= 10 and x + 6 + fm.horizontalAdvance(label) < right:
+                            p.drawText(QPointF(x + 5, y + h - 1), label)
+                        last = int(x)
+                    elif int(x) != last:
                         last = int(x)
                         p.fillRect(QRectF(x - 1, y - 1, 2, h + 2), insertion)
             info = f"{name}  {s + 1:,}–{e:,} ({'+' if strand > 0 else '−'})  MAPQ {mapq}"
@@ -1082,6 +1117,7 @@ def legend_html():
         "Inside reads",
         *[swatch(c, f"mismatch: {b}") for b, c in BASE_COLORS.items()],
         swatch(INSERTION_COLOR, "insertion (thin bar)"),
+        swatch(INSERTION_COLOR, "large insertion (10 bp or more): wide outlined bar, its length beside it"),
         mark("—", "#757575", "deletion (gap with a line)"),
     ) + section(
         "Coverage",
@@ -1092,8 +1128,10 @@ def legend_html():
     ) + section(
         "Variants track (under each BAM's coverage)",
         *[swatch(c, f"substitution to {b}") for b, c in BASE_COLORS.items()],
-        swatch("#424242", "deletion"), swatch(INSERTION_COLOR, "insertion"),
-        swatch("#bdbdbd", "faded: a minority of the reads (solid: consensus change)"),
+        swatch(DELETION_COLOR, "deletion"), swatch(INSERTION_COLOR, "insertion"),
+        swatch(JUNCTION_COLOR, "N reads break here: they stop matching the sequence at this spot (likely the edge of an insertion, an inversion or a rearrangement)"),
+        swatch(FLAG_COLOR, "hatched: no reads over a stretch between covered ones (a deletion longer than the reads)"),
+        swatch("#bdbdbd", "faded: a minority of the reads, its share written beside it (solid: consensus change)"),
         mark("☰", "#757575", "right-click a variant: change the sequence to match, or annotate it"),
     ) + section(
         "Other tracks",

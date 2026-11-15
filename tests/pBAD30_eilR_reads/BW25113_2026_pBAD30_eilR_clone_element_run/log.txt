@@ -1,0 +1,104 @@
+$ ( need fastp bwa samtools && cd /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element_run && R1=/mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/pBAD30_eilR_clone_element_R1.fastq; R2=/mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/pBAD30_eilR_clone_element_R2.fastq && fastp -w 15 -q 20 -l 50 -i "$R1" ${R2:+-I "$R2"} -o clean_1.fq.gz ${R2:+-O clean_2.fq.gz} -j fastp.json -h fastp.html && R1=clean_1.fq.gz && R2=${R2:+clean_2.fq.gz} && bwa index /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element_run/ref.fa && bwa mem -t 15 /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element_run/ref.fa "$R1" ${R2:+"$R2"} | samtools sort -@ 15 -o /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element.bam - && samtools index /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element.bam && samtools flagstat /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element.bam | tee flagstat.txt && open /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element.bam )
+Read1 before filtering:
+total reads: 593
+total bases: 88950
+Q20 bases: 88950(100%)
+Q30 bases: 88787(99.8168%)
+Q40 bases: 88787(99.8168%)
+
+Read2 before filtering:
+total reads: 593
+total bases: 88950
+Q20 bases: 88950(100%)
+Q30 bases: 88773(99.801%)
+Q40 bases: 88773(99.801%)
+
+Read1 after filtering:
+total reads: 592
+total bases: 88733
+Q20 bases: 88733(100%)
+Q30 bases: 88570(99.8163%)
+Q40 bases: 88570(99.8163%)
+
+Read2 after filtering:
+total reads: 592
+total bases: 88733
+Q20 bases: 88733(100%)
+Q30 bases: 88557(99.8017%)
+Q40 bases: 88557(99.8017%)
+
+Filtering result:
+reads passed filter: 1184
+reads failed due to low quality: 0
+reads failed due to too many N: 0
+reads failed due to too short: 2
+reads failed due to adapter dimer: 0
+reads with adapter trimmed: 4
+bases trimmed due to adapters: 340
+
+Duplication rate: 0%
+
+Insert size peak (evaluated by paired-end reads): 150
+
+JSON report: fastp.json
+HTML report: fastp.html
+
+fastp -w 15 -q 20 -l 50 -i /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/pBAD30_eilR_clone_element_R1.fastq -I /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/pBAD30_eilR_clone_element_R2.fastq -o clean_1.fq.gz -O clean_2.fq.gz -j fastp.json -h fastp.html 
+fastp v1.4.0, time used: 1 seconds
+[bwa_index] Pack FASTA... 0.00 sec
+[bwa_index] Construct BWT for the packed sequence...
+[bwa_index] 0.00 seconds elapse.
+[bwa_index] Update BWT... 0.00 sec
+[bwa_index] Pack forward-only FASTA... 0.00 sec
+[bwa_index] Construct SA from BWT and Occ... 0.00 sec
+[main] Version: 0.7.19-r1273
+[main] CMD: bwa index /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element_run/ref.fa
+[main] Real time: 0.056 sec; CPU: 0.006 sec
+[M::bwa_idx_load_from_disk] read 0 ALT contigs
+[M::process] read 1184 sequences (177466 bp)...
+[M::mem_pestat] # candidate unique pairs for (FF, FR, RF, RR): (25, 513, 24, 20)
+[M::mem_pestat] analyzing insert size distribution for orientation FF...
+[M::mem_pestat] (25, 50, 75) percentile: (200, 273, 363)
+[M::mem_pestat] low and high boundaries for computing mean and std.dev: (1, 689)
+[M::mem_pestat] mean and std.dev: (278.92, 104.48)
+[M::mem_pestat] low and high boundaries for proper pairs: (1, 852)
+[M::mem_pestat] analyzing insert size distribution for orientation FR...
+[M::mem_pestat] (25, 50, 75) percentile: (308, 345, 376)
+[M::mem_pestat] low and high boundaries for computing mean and std.dev: (172, 512)
+[M::mem_pestat] mean and std.dev: (341.99, 55.99)
+[M::mem_pestat] low and high boundaries for proper pairs: (104, 580)
+[M::mem_pestat] analyzing insert size distribution for orientation RF...
+[M::mem_pestat] (25, 50, 75) percentile: (5562, 5576, 5603)
+[M::mem_pestat] low and high boundaries for computing mean and std.dev: (5480, 5685)
+[M::mem_pestat] mean and std.dev: (5578.87, 27.50)
+[M::mem_pestat] low and high boundaries for proper pairs: (5439, 5726)
+[M::mem_pestat] analyzing insert size distribution for orientation RR...
+[M::mem_pestat] (25, 50, 75) percentile: (136, 194, 278)
+[M::mem_pestat] low and high boundaries for computing mean and std.dev: (1, 562)
+[M::mem_pestat] mean and std.dev: (198.20, 84.94)
+[M::mem_pestat] low and high boundaries for proper pairs: (1, 704)
+[M::mem_pestat] skip orientation FF
+[M::mem_pestat] skip orientation RF
+[M::mem_pestat] skip orientation RR
+[M::mem_process_seqs] Processed 1184 reads in 0.041 CPU sec, 0.005 real sec
+[main] Version: 0.7.19-r1273
+[main] CMD: bwa mem -t 15 /mnt/d/GitHub_Projects/openDNA/tests/pBAD30_eilR_reads/BW25113_2026_pBAD30_eilR_clone_element_run/ref.fa clean_1.fq.gz clean_2.fq.gz
+[main] Real time: 0.018 sec; CPU: 0.045 sec
+[bam_sort_core] merging from 0 files and 15 in-memory blocks...
+1274 + 0 in total (QC-passed reads + QC-failed reads)
+1184 + 0 primary
+0 + 0 secondary
+90 + 0 supplementary
+0 + 0 duplicates
+0 + 0 primary duplicates
+1260 + 0 mapped (98.90% : N/A)
+1170 + 0 primary mapped (98.82% : N/A)
+1184 + 0 paired in sequencing
+592 + 0 read1
+592 + 0 read2
+1026 + 0 properly paired (86.66% : N/A)
+1164 + 0 with itself and mate mapped
+6 + 0 singletons (0.51% : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+

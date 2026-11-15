@@ -18,6 +18,7 @@ from PySide6.QtCore import QObject, QThreadPool, Signal
 
 import tool_settings
 from tool_settings import Param
+from variants import change_text
 
 TOOL = "Alignments"
 COLOR_MODES = ["Pair orientation & insert size", "Strand", "None"]
@@ -123,6 +124,9 @@ def describe(pos, kind, ref, alt, count, depth):
         return f"{pos + 1:,} {ref}>{alt}  {pct}"
     if kind == "del":
         return f"{pos + 1:,} deletion of {len(ref)} bp ({ref if len(ref) <= 12 else ref[:12] + '…'})  {pct}"
+    if kind in ("clip", "gap"):
+        where = f"{pos + 1:,}–{pos + len(ref):,}" if kind == "gap" else f"{pos + 1:,}"
+        return f"{where} " + change_text(SimpleNamespace(kind=kind, ref=ref, count=count))
     return f"{pos + 1:,} insertion of {alt or '?'}  {pct}"
 
 
@@ -145,7 +149,9 @@ def start_scan(entry, editor):
         except OSError as e:
             found, entry.error = [], str(e)
         result = [SimpleNamespace(pos=pos, kind=kind, ref=ref, alt=alt, count=n, depth=d,
-                                  level=flag_level(n, d, (min_depth, variant_pct, consensus_pct)) or "variant",
+                                  # breaks and gaps are already filtered by the scan: always flagged
+                                  level="consensus" if kind in ("clip", "gap") else
+                                  flag_level(n, d, (min_depth, variant_pct, consensus_pct)) or "variant",
                                   text=describe(pos, kind, ref, alt, n, d))
                   for pos, kind, ref, alt, n, d in found]
         if token == entry.scan_token:

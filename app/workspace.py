@@ -29,6 +29,7 @@ from feature_table import FeatureTable
 from genome_view import GenomeView
 from map_view import MapView
 from msa_view import MsaView
+from terminal import Terminal
 from local_align import LocalAlignDialog
 from primer_panel import PrimerPanel
 from protein import ProteinView
@@ -47,6 +48,7 @@ VIEWS = {
     "Primers": lambda w: PrimerPanel(w.editor),
     "Protein": lambda w: ProteinView(w.editor),
     "MSA": lambda w: MsaView(w.editor),
+    "Terminal": lambda w: Terminal(w),
     "PCR": lambda w: PcrDialog(w, w.editor).embed(w.open_pcr_product),
     "Spacer Finder": lambda w: Cas9Dialog(w, w.editor).embed(),
     "Local Align": lambda w: LocalAlignDialog(w, w.editor).embed(),
@@ -579,4 +581,4 @@ class Workspace(QTabWidget):
 
 
 NAME_OF = {SequenceView: "Sequence", MapView: "Map", GenomeView: "Alignment", FeatureTable: "Features",
-           PrimerPanel: "Primers", ProteinView: "Protein", MsaView: "MSA"}
+           PrimerPanel: "Primers", ProteinView: "Protein", MsaView: "MSA", Terminal: "Terminal"}

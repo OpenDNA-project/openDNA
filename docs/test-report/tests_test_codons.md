@@ -4,7 +4,7 @@
 
 ## `test_recoding_preserves_the_protein_and_obeys_the_constraints`
 
-**Result:** ✅ passed in 0.10 s · [line 79](../../tests/test_codons.py#L79) · **Area:** Codon recoding · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.11 s · [line 79](../../tests/test_codons.py#L79) · **Area:** Codon recoding · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, recoding a CDS could silently change the protein the user is cloning, or leave a forbidden restriction site, a bad GC window or a hidden RBS in the synthesised gene.
 
@@ -60,7 +60,7 @@ Checks that comparing a CDS under two genetic codes reports the gained and lost 
 
 ## `test_usage_tables_their_files_and_what_they_say_about_a_gene`
 
-**Result:** ✅ passed in 0.21 s · [line 201](../../tests/test_codons.py#L201) · **Area:** Codon usage tables and genetic codes · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.18 s · [line 201](../../tests/test_codons.py#L201) · **Area:** Codon usage tables and genetic codes · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a user's imported or self-made codon table or genetic code could be lost, mis-parsed, or silently saved nowhere, and the adaptation index and checkup notes computed from it could be wrong.
 

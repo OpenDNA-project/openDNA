@@ -3,29 +3,25 @@ constructs). One row per sequence under its name, the columns coloured by how co
 name the percentage identity of that sequence to the reference (or to the consensus).
 
 Which sequences: the records of the open file (a multi-record GenBank / FASTA file, read as in add_record.py), files you pick, or
-the open sequence plus the bases selected in it. How they are aligned: MAFFT or Clustal Omega when installed (the recipes of
-tools.toml, run by runner.py with progress and Cancel), else the built-in progressive aligner of msa.py.
+the open sequence plus the bases selected in it. They are aligned by the built-in progressive aligner of msa.py; MAFFT and
+Clustal Omega are the Multiple alignment pipeline of the Terminal tab, whose result `open` shows here (set_alignment).
 
 A click on a column puts the open sequence's cursor at that column's position and shows, for every sequence, the position it has
 there; dragging selects the columns' bases in the open sequence. Selecting in the other views marks the columns in this one.
 """
-import tempfile
-from pathlib import Path
 
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QAbstractScrollArea, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QAbstractScrollArea, QComboBox, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
 import msa
-import runner
-from add_record import source_records
+from add_record import document_records, files_records, open_name
 from editor import mono_font
 from uikit import run_busy
 
 SOURCES = ["Records of this file", "Files…", "Open sequence + selection"]
-BUILT_IN = "Built-in (progressive)"
 AUTO_LIMIT = 30_000   # bp in all: a file of records this small is aligned when the view opens, a bigger one waits for Align
 NAME_MAX = 220        # px: widest name column
 IDENTITY_W = 64       # px: the identity column
@@ -170,12 +166,6 @@ class MsaView(QWidget):
         self.source = QComboBox()
         self.source.addItems(SOURCES)
         self.source.setToolTip("Which sequences to align")
-        self.method = QComboBox()
-        self.method.addItem(BUILT_IN, None)
-        for key, recipe in runner.recipes().items():
-            if recipe.get("kind") == "msa":
-                self.method.addItem(recipe.get("label", key), key)
-        self.method.setToolTip("MAFFT and Clustal Omega must be installed (see Map Reads, the same tools environment)")
         self.reference = QComboBox()
         self.reference.setToolTip("Identity is measured against this sequence, or against the consensus")
         self.reference.activated.connect(self._reference_changed)
@@ -184,10 +174,10 @@ class MsaView(QWidget):
         self.canvas.clicked.connect(self._column_clicked)
         self.canvas.dragged.connect(self._columns_dragged)
         top = QHBoxLayout()
-        for label, widget in (("Sequences", self.source), ("Method", self.method)):
-            top.addWidget(QLabel(label))
-            top.addWidget(widget)
-        top.addWidget(QPushButton("Align", clicked=self.align_now))
+        top.addWidget(QLabel("Sequences"))
+        top.addWidget(self.source)
+        top.addWidget(QPushButton("Align", clicked=self.align_now,
+                                  toolTip="Built-in progressive aligner. For MAFFT or Clustal Omega: Tools > Terminal in a pane's picker, then Multiple alignment"))
         top.addWidget(QLabel("Identity to"))
         top.addWidget(self.reference)
         top.addStretch()
@@ -201,7 +191,7 @@ class MsaView(QWidget):
 
     # ---- gathering the sequences ---------------------------------------------------------------------------------------------------
     def _open_name(self):
-        return self.editor.fasta_record or self.editor.doc.name or "open sequence"
+        return open_name(self.editor)
 
     def gather(self):
         """[(name, bases)] of the sequences chosen in "Sequences", or None when the choice was cancelled."""
@@ -213,24 +203,8 @@ class MsaView(QWidget):
             return out
         if kind == SOURCES[1]:
             paths, _ = QFileDialog.getOpenFileNames(self, "Sequence files to align", "", "Sequences (*.gb *.gbk *.gbff *.fa *.fasta *.fna *.dna);;All files (*)")
-            return None if not paths else self._from_files(paths)
-        if not ed.path or not Path(ed.path).exists():
-            return [(self._open_name(), ed.doc.sequence())]
-        out = self._from_files([ed.path])
-        # the open record may hold edits not saved yet: align what is on screen
-        return [(n, ed.doc.sequence() if n == self._open_name() else s) for n, s in out]
-
-    def _from_files(self, paths):
-        out, taken = [], set()
-        for path in paths:
-            for rec in source_records(path):
-                name = rec.name
-                while name in taken:   # two files with a record of the same name: told apart by the file
-                    name = f"{rec.name} ({Path(path).stem})"
-                    rec = type(rec)(name=name, load=rec.load)
-                taken.add(name)
-                out.append((name, rec.load().sequence()))
-        return out
+            return None if not paths else files_records(paths)
+        return document_records(ed)   # the open record as on screen, edits not saved yet included
 
     def _auto(self):
         """Align the records of a small multi-record file at once, so the view opens showing something."""
@@ -241,7 +215,7 @@ class MsaView(QWidget):
         except (OSError, ValueError):
             return
         if seqs and len(seqs) > 1 and sum(len(s) for _, s in seqs) <= AUTO_LIMIT:
-            self._align(seqs, None)
+            self._align(seqs)
 
     # ---- aligning ------------------------------------------------------------------------------------------------------------------
     def align_now(self):
@@ -252,42 +226,20 @@ class MsaView(QWidget):
             return
         if seqs is None:
             return
-        self._align(seqs, self.method.currentData())
+        self._align(seqs)
 
-    def _align(self, seqs, tool):
+    def _align(self, seqs):
         names, bases = [n for n, _ in seqs], [s for _, s in seqs]
         if len(seqs) < 2:
             self._say("Pick at least two sequences to align.")
             return
         try:
-            if tool is None:
-                alignment = run_busy(self, "Aligning…", lambda: msa.align(names, bases))
-            else:
-                alignment = self._run_tool(tool, names, bases)
-                if alignment is None:
-                    return
+            alignment = run_busy(self, "Aligning…", lambda: msa.align(names, bases))
         except ValueError as e:
             QMessageBox.warning(self, "Multiple alignment", str(e))
             return
         self.sources = seqs
         self.set_alignment(alignment)
-
-    def _run_tool(self, key, names, bases):
-        """The Alignment MAFFT / Clustal Omega gives for the sequences (None if the run failed or was cancelled; its log says why).
-        Sequences go in under n0, n1… so that no name can confuse the tool; the names are put back from the order."""
-        recipe = runner.recipes()[key]
-        folder = Path(tempfile.mkdtemp(prefix="opendna_msa_"))
-        files = {"ref": str(folder / "sequences.fa"), "out": str(folder / "aligned")}
-        (folder / "sequences.fa").write_text(msa.to_fasta([f"n{i}" for i in range(len(names))], bases), encoding="utf-8")
-        run = runner.RunDialog(self, f"Aligning with {recipe.get('label', key)}", runner.steps_for(recipe, files, 4), folder)
-        if run.exec() != QDialog.Accepted or not run.ok:
-            self._say(f"{recipe.get('label', key)} did not finish: see its log (Cancel, install it, or pick the built-in aligner).")
-            return None
-        got, rows = msa.parse_aligned_fasta(Path(recipe["result"].format(**files)).read_text(encoding="utf-8"))
-        by_id = dict(zip(got, rows))   # Clustal Omega may reorder: back to the order given
-        if sorted(by_id) != sorted(f"n{i}" for i in range(len(names))):
-            raise ValueError("The aligner's output does not hold the sequences that were sent.")
-        return msa.Alignment(names, [by_id[f"n{i}"] for i in range(len(names))])
 
     def set_alignment(self, alignment):
         self.alignment = alignment
