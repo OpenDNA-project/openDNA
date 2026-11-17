@@ -6,8 +6,7 @@ name: release
 #   macOS    openDNA.app for Apple Silicon and for Intel Macs (macOS 14+): a .dmg to install from, and a .zip the program updates itself with
 #   Linux    x86-64, glibc 2.35+: an AppImage (installed, updates itself) and the folder openDNA as a portable .tar.gz
 # renames them to the released name (project.EXE_NAME + the version: oDNA_beta_0_7_0-setup.exe, oDNA_beta_0_7_0-folder.zip,
-# oDNA_beta_0_7_0-macos-arm64.zip / .dmg (and x86_64), oDNA_beta_0_7_0-linux-x86_64.AppImage / .tar.gz), each with its .sha256, and attaches
-# them to a DRAFT GitHub release. It never publishes: you read the draft, then press "Publish release" yourself (docs/PUBLISHING.md,
+# oDNA_beta_0_7_0-macos-arm64.zip / .dmg (and x86_64), oDNA_beta_0_7_0-linux-x86_64.AppImage / .tar.gz), with one SHA256SUMS for all of them, and attaches them to a DRAFT GitHub release. It never publishes: you read the draft, then press "Publish release" yourself (docs/PUBLISHING.md,
 # section 7). app/updater.py:release_asset names the file each system updates itself with: change both together.
 #
 #   git tag v0.1.0 && git push origin v0.1.0        # the normal way
@@ -290,7 +289,7 @@ jobs:
           cat > release-notes.md <<NOTES
           openDNA $VERSION. Early software: keep copies of your files.
 
-          **Downloads.** Each file has its own \`.sha256\` to check the download against.
+          **Downloads.** \`SHA256SUMS\` lists the checksum of every file (\`sha256sum -c --ignore-missing SHA256SUMS\`).
           - **Windows** (10 or 11, 64-bit): \`$setup\`, the installer (no administrator rights needed): it installs openDNA for you, and openDNA then updates itself. \`$zip\` is the same program as a portable folder, for people who want to replace the Qt libraries (see README.txt inside); it does not update itself.
           - **macOS** (macOS 14 Sonoma or later): \`$mac\` for Apple Silicon (M1 and later), \`$intel\` for Intel Macs. Open it and drag openDNA to Applications; openDNA then updates itself.
           - **Linux** (x86-64, glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+; a desktop with OpenGL): \`$appimage\`. Make it executable (\`chmod +x\`) and run it; it updates itself. It needs FUSE 2 (\`libfuse2\`, not installed by default on Ubuntu 24.04+); without it run it with \`--appimage-extract-and-run\`. \`$linux\` is the portable folder (\`tar -xzf $linux\`, then run \`openDNA/openDNA\`, see README.txt inside); it does not update itself.
@@ -308,7 +307,9 @@ jobs:
           fi
           files=()
           mac_zip="$EXE_NAME-macos-arm64.zip"; intel_zip="$EXE_NAME-macos-x86_64.zip"   # what the program updates itself with
-          for f in "$setup" "$zip" "$mac" "$intel" "$mac_zip" "$intel_zip" "$linux" "$appimage"; do files+=("release/$f" "release/$f.sha256"); done
+          # the per-file checksums the build jobs wrote become one file, SHA256SUMS (what the program's updater reads)
+          for f in "$setup" "$zip" "$mac" "$intel" "$mac_zip" "$intel_zip" "$linux" "$appimage"; do files+=("release/$f"); cat "release/$f.sha256"; done > release/SHA256SUMS
+          files+=(release/SHA256SUMS); cat release/SHA256SUMS
           gh release create "$tag" "${files[@]}" --draft --title "openDNA $VERSION" --notes-file release-notes.md "${target[@]}" ||
             { echo "gh release create failed (does a release for $tag already exist?)"; exit 1; }
           echo "Draft release $tag created: review it under Releases, then publish it yourself." >> "$GITHUB_STEP_SUMMARY"

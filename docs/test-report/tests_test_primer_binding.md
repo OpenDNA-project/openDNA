@@ -21,7 +21,7 @@ Compares find_primers with a Python re-implementation of the documented rules on
 
 ## `test_binding_mismatches_seed_tails_and_extension`
 
-**Result:** ✅ passed in 0.04 s · [line 234](../../tests/test_primer_binding.py#L234) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 234](../../tests/test_primer_binding.py#L234) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, specific binding rules (where a mismatch is allowed, how far the annealed part extends, how tails are handled) could change and primers would be shown binding where they do not, or not where they do.
 

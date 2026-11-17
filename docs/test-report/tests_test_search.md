@@ -4,7 +4,7 @@
 
 ## `test_sequence_search_engine`
 
-**Result:** ✅ passed in 0.04 s · [line 60](../../tests/test_search.py#L60) · **Area:** Sequence search (Find) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.05 s · [line 60](../../tests/test_search.py#L60) · **Area:** Sequence search (Find) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the Find box could miss DNA matches on the other strand or with IUPAC/mismatches, fail across the origin, ignore its options for names, primers, enzymes and translations, or search outside the selection.
 

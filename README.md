@@ -22,7 +22,7 @@ edit. You can design primers, Cas9 guides and assemblies on your own computer, a
 Older systems, Windows on ARM, or anything else: [run from source](CONTRIBUTING.md#run-from-source) (Python 3.11+ and Rust).
 The Terminal's pipelines (optional: read mapping, assembly, MAFFT / Clustal Omega) run bioconda tools, on Windows through WSL (*Install tools* in each pipeline).
 
-Every download has a `.sha256` file beside it on the [releases page](https://github.com/OpenDNA-project/openDNA/releases).
+Each release has a `SHA256SUMS` file listing the checksum of every download, on the [releases page](https://github.com/OpenDNA-project/openDNA/releases).
 
 > **This is a beta (0.5), so keep copies of your files.** The programs are not signed, which is why your system will warn you the
 > first time. Check the SHA-256 against the release notes, then click *More info* → *Run anyway* on Windows, or right-click openDNA

@@ -4,7 +4,7 @@
 
 ## `test_real_files_round_trip_and_agree_with_biopython`
 
-**Result:** ✅ passed in 1.96 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.09 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a real plasmid or genome could silently drop or alter features, qualifiers or bases, or write a file other tools read differently.
 
@@ -35,7 +35,7 @@ Loads every real and demo file (the two plasmids, the .dna file, the demo_*.gb f
 
 ## `test_unusual_records_round_trip`
 
-**Result:** ✅ passed in 0.25 s · [line 214](../../tests/test_roundtrip.py#L214) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.18 s · [line 214](../../tests/test_roundtrip.py#L214) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, unusual but legal locations (joins, fuzzy ends, order(), across the origin, between sites), tiny or empty sequences, or lower-case bases could be corrupted on save without anyone noticing.
 
@@ -65,7 +65,7 @@ Saves made-up records that hit the edges of the GenBank format, reloads them wit
 
 ## `test_qualifier_text_survives_and_is_written_as_documented`
 
-**Result:** ✅ passed in 0.46 s · [line 340](../../tests/test_roundtrip.py#L340) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.27 s · [line 340](../../tests/test_roundtrip.py#L340) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, notes with quotes, unicode or long text could be mangled, wrapped badly or gain spaces when saved, so other tools (or a reload) would show different annotation text.
 
@@ -82,7 +82,7 @@ Writes a feature with awkward qualifier values and checks the reload equals the 
 
 ## `test_primers_survive_save`
 
-**Result:** ✅ passed in 0.04 s · [line 410](../../tests/test_roundtrip.py#L410) · **Area:** Primers in saved files · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 410](../../tests/test_roundtrip.py#L410) · **Area:** Primers in saved files · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, primers attached to a plasmid (from a .dna file or imported from the database) could vanish or lose their full sequence when the file is saved as GenBank.
 
@@ -102,7 +102,7 @@ Checks primer_bind features passed to save_genbank are written with name and ful
 
 ## `test_fasta_files_are_read_like_biopython`
 
-**Result:** ✅ passed in 0.09 s · [line 453](../../tests/test_roundtrip.py#L453) · **Area:** FASTA reading · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 453](../../tests/test_roundtrip.py#L453) · **Area:** FASTA reading · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a multi-sequence FASTA (genomes, Windows line endings, BOM, lower case) could return wrong bases at line breaks or include stray characters, corrupting what the user sees and edits.
 
@@ -119,7 +119,7 @@ Checks the indexed FASTA reader against Biopython for record list, full fetches,
 
 ## `test_fasta_writing_is_the_string_edit_of_the_file`
 
-**Result:** ✅ passed in 0.06 s · [line 505](../../tests/test_roundtrip.py#L505) · **Area:** FASTA writing · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 505](../../tests/test_roundtrip.py#L505) · **Area:** FASTA writing · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, saving an edited chromosome back into a multi-FASTA could damage the other records, lose CRLF or a BOM, leave a stale index, or write the wrong edited bases.
 

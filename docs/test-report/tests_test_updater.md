@@ -16,7 +16,7 @@ Checks version parsing and numeric comparison, then feeds updater.check fake Git
 | 2 | parse_version('v0.10.0'), ' V2.1 ', '1.2.3-rc1', '1.2.3+build' | (0,10,0), (2,1), None, None |
 | 3 | release_asset('v0.7.0', 'win32' / 'linux' / 'darwin' with machine arm64 and x86_64); a Linux copy checking a release that only has the Windows installer | oDNA_beta_0_7_0-setup.exe / -linux-x86_64.AppImage / -macos-arm64.zip and -macos-x86_64.zip; no update for the Linux copy |
 | 4 | the names release_asset gives for win32, darwin (arm64) and linux, against the text of .github/workflows/release.yml | -setup.exe, -macos-arm64.zip and -linux-x86_64.AppImage; each suffix (its stem and its extension) appears in release.yml |
-| 5 | check('0.1.0') with a v0.2.0 release carrying exe + .sha256 + other.zip | Update with version 0.2.0, tag v0.2.0, notes 'Fixes things.', exact asset, sha256 and page URLs; check_for_update returns the same object |
+| 5 | check('0.1.0') with a v0.2.0 release carrying exe + SHA256SUMS + other.zip | Update with version 0.2.0, tag v0.2.0, notes 'Fixes things.', exact asset, sha256 and page URLs; check_for_update returns the same object |
 | 6 | check() with no version given, release tag = current project version | No update; exactly one request, to LATEST_RELEASE_API |
 | 7 | check_for_update('0.1.0') with module-level fetch monkeypatched | Version 0.2.0 (default fetch is used) |
 | 8 | Releases tagged v0.1.0 (same), v0.0.9 (older), v0.3.0 draft, v0.3.0 prerelease, v0.3.0-beta1 | No update; only the -beta1 tag produces a 'not understood' error |
@@ -94,7 +94,7 @@ On fake files in temp folders, checks that _swap (the step install_update ends w
 
 ## `test_install_refuses_or_rolls_back_leaving_the_old_program`
 
-**Result:** ✅ passed in 0.01 s · [line 449](../../tests/test_updater.py#L449) · **Area:** Updater: refusal and rollback · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 449](../../tests/test_updater.py#L449) · **Area:** Updater: refusal and rollback · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it a failed update (no write access, antivirus lock, broken new program, a portable copy, a copy that is not installed) could leave the user with no working program, or a portable copy could replace itself.
 
@@ -114,7 +114,7 @@ Checks that install refuses when run from source or from a portable copy (not se
 
 ## `test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip`
 
-**Result:** ✅ passed in 0.14 s · [line 548](../../tests/test_updater.py#L548) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.13 s · [line 548](../../tests/test_updater.py#L548) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the app could check for updates when the user turned it off, check on every start, stop checking after the clock goes back, or forget a version the user chose to skip.
 
