@@ -1,4 +1,4 @@
-"""The Multiple Alignment view: several sequences compared at once (clones against their reference, homologues of a gene, a part across
+"""The Multiple alignment tab of Local Align: several sequences compared at once (clones against their reference, homologues of a gene, a part across
 constructs). One row per sequence under its name, the columns coloured by how conserved they are, a consensus row, and beside each
 name the percentage identity of that sequence to the reference (or to the consensus).
 
@@ -160,7 +160,7 @@ class MsaCanvas(QAbstractScrollArea):
 
 
 class MsaView(QWidget):
-    def __init__(self, editor):
+    def __init__(self, editor, auto=True):
         super().__init__()
         self.editor, self.alignment, self.sources, self.own = editor, None, [], False
         self.source = QComboBox()
@@ -187,7 +187,8 @@ class MsaView(QWidget):
         box.addWidget(self.status)
         editor.selection_changed.connect(self._selection_changed)
         self._say("Choose the sequences and press Align.")
-        self._auto()
+        if auto:
+            self.auto()
 
     # ---- gathering the sequences ---------------------------------------------------------------------------------------------------
     def _open_name(self):
@@ -206,8 +207,10 @@ class MsaView(QWidget):
             return None if not paths else files_records(paths)
         return document_records(ed)   # the open record as on screen, edits not saved yet included
 
-    def _auto(self):
-        """Align the records of a small multi-record file at once, so the view opens showing something."""
+    def auto(self):
+        """Align the records of a small multi-record file at once, so the view opens showing something (not over an alignment shown)."""
+        if self.alignment is not None:
+            return
         try:
             if len(self.editor.fasta_records) < 2:
                 return

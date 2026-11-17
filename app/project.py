@@ -4,10 +4,10 @@ Change a value here, not in the places that show it. VERSION must equal the vers
 (tests/test_project.py checks it).
 """
 NAME = "openDNA"
-# The file name of the released program (openDNA.exe is renamed to this in the release, and the folder zip is EXE_NAME-folder.zip).
+# The file name of the released program (openDNA.exe is renamed to this in the release, and the installer is EXE_NAME-setup.exe).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.7.3"
+VERSION = "0.7.5"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,9 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = True
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.7.5": ["Hover Assembly in a pane's picker (or Tools) to choose the method and open the panel on it directly.",
+              "The MSA view is now the Multiple alignment tab of Local Align.",
+              "Releases no longer carry the portable folder zip and tar.gz: the installer and the AppImage keep Qt as plain files."],
     "0.7.3": ["New KLD method in the Assembly panel: edit a plasmid in place and get the primers for point mutations, insertions and deletions, with the changes listed and ticked, the result shown with its annotations and primers, and Save as new file.",
               "Removed bases leave a small inverted ^ above the gap until the file is saved.",
               "Right-click on selected bases is grouped and has Translate (opens the Protein view); right-click on a CDS has Copy Translation. The search box is wider."],

@@ -12,7 +12,7 @@ who answers for it. They are not registered trademarks (yet); this page is how t
 ## What you can do without asking
 
 - **Talk about the project** by its name: in a paper, a course, a review, a tutorial, a comparison.
-- **Share unmodified copies** of an official release (the exe or the folder zip, as published) under their own name.
+- **Share unmodified copies** of an official release (the installer, dmg or AppImage, as published) under their own name.
 - **Say what your work is built on**: "based on openDNA", "a fork of openDNA", "compatible with openDNA
   project files (.odp)", written in a way that does not suggest it is the official project or endorsed by it.
 - **Make a fork**, under the AGPL-3.0 like the original, with a name and an icon of its own (see below).

@@ -398,7 +398,9 @@ class MainWindow(QMainWindow):
 
         tools = self.menuBar().addMenu("T&ools")
         action(tools, "S&pacer Finder (Cas9 / Cas12a)…", None, lambda: Cas9Dialog(self, self.editor).exec())
-        tools.addAction(QAction("&Assembly", self, triggered=self.show_assembly))  # needs no open file
+        assembly = tools.addMenu("&Assembly")   # needs no open file; hovering lists the methods
+        for m in AssemblyPanel.METHODS:
+            assembly.addAction(QAction(m, self, triggered=lambda _=False, m=m: self.show_assembly(m)))
         tools.addAction(QAction("&Recombineering", self, triggered=self.show_recombineering))
         action(tools, "&Local Align…", "Ctrl+Shift+B", lambda: LocalAlignDialog(self, self.editor).exec())
         action(tools, "Align &Clipboard…", None, lambda: LocalAlignDialog.align_clipboard(self, self.editor))
@@ -1117,7 +1119,7 @@ class MainWindow(QMainWindow):
             "<b>GNU Affero General Public License</b> version 3 (see the LICENSE file).<br><br>"
             "It comes with <b>NO WARRANTY</b>, to the extent permitted by law. Always keep a copy of your original files.<br><br>"
             f"Built with Qt {qVersion()} (PySide6 {pyside_version}), under the LGPL-3.0; see THIRD_PARTY_NOTICES.md. "
-            "The folder version of the download lets you replace Qt.")
+            "The installed folder keeps Qt as plain files, so you can replace it.")
 
     def update_hooks(self):
         """What the updater needs from the window: how to quit, and a chance to refuse while there are unsaved changes."""
@@ -1150,9 +1152,11 @@ class MainWindow(QMainWindow):
         """[(file name, Document)] of every file open in a window of this program (for the Assembly panel)."""
         return [(w.editor.path.name, w.editor.doc) for w in self.open_windows()]
 
-    def show_assembly(self):
-        """Tools > Assembly: the Assembly panel as a tab."""
+    def show_assembly(self, method=None):
+        """Tools > Assembly: the Assembly panel as a tab, on the method named `method` (one of AssemblyPanel.METHODS) when given."""
         self.assembly = self.show_tool_tab("Assembly", lambda: AssemblyPanel(self))
+        if method:
+            self.assembly.method.setCurrentIndex(AssemblyPanel.METHODS.index(method))
 
     def show_recombineering(self):
         """Tools > Recombineering: a genome and a cassette, as a tab."""

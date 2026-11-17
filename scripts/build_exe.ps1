@@ -1,8 +1,7 @@
 <#
 Builds the Windows program from packaging\openDNA.spec as a folder (dist\openDNA-folder, where the Qt files can be replaced: see
-docs/PUBLISHING.md, "Qt (LGPL)"), smoke-tests it, packs it two ways and smoke-tests the installer:
-  dist\openDNA-setup.exe     the installer (packaging\openDNA.iss, Inno Setup): the main download, and what updates itself
-  dist\openDNA-folder.zip    the same program as a portable folder; it does not update itself
+docs/PUBLISHING.md, "Qt (LGPL)"), smoke-tests it, packs it as the installer and smoke-tests that:
+  dist\openDNA-setup.exe     the installer (packaging\openDNA.iss, Inno Setup): the download, and what updates itself
 
   pip install -r requirements-dev.txt
   maturin develop -m core/Cargo.toml --release
@@ -51,7 +50,7 @@ if (-not $NoInstaller) {
 
 Step "Building dist\openDNA-folder (PyInstaller, about 1-2 minutes)"
 if (Test-Path dist\openDNA-folder) { Remove-Item dist\openDNA-folder -Recurse -Force }
-foreach ($f in "dist\openDNA-folder.zip", "dist\openDNA-setup.exe") { if (Test-Path $f) { Remove-Item $f -Force } }
+if (Test-Path dist\openDNA-setup.exe) { Remove-Item dist\openDNA-setup.exe -Force }
 $env:OPENDNA_BUILD = "folder"
 # Warnings only; the full log is build\pyinstaller\openDNA\warn-openDNA.txt.
 try { Run-Python -m PyInstaller --noconfirm --clean --log-level WARN --workpath build\pyinstaller --distpath dist packaging\openDNA.spec }
@@ -88,12 +87,4 @@ if ($iscc) {
     }
 }
 
-# Zipped last, after the smoke test: running the program writes nothing into the folder, but a zip must be of what was tested.
-# Python's zipfile writes the forward-slash paths every unzip tool expects (Compress-Archive of Windows PowerShell 5.1 does not).
-Step "Zipping dist\openDNA-folder.zip"
-Run-Python -c "import shutil; shutil.make_archive('dist/openDNA-folder', 'zip', 'dist', 'openDNA-folder')"
-$zip = Get-Item dist\openDNA-folder.zip
-"{0}  {1:N1} MB" -f $zip.FullName, ($zip.Length / 1MB)
-foreach ($f in $zip, $setup) {
-    if ($f) { "SHA-256 $((Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower())  $($f.Name)" }
-}
+if ($setup) { "SHA-256 $((Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower())  $($setup.Name)" }
