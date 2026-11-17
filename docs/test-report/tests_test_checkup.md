@@ -21,7 +21,7 @@ Checks the verdict given to each CDS in a bacterial context: an annotated promot
 
 ## `test_eukaryotic_hosts_and_unit_ends`
 
-**Result:** ✅ passed in 0.02 s · [line 139](../../tests/test_checkup.py#L139) · **Area:** Plasmid checkup (eukaryotes) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 139](../../tests/test_checkup.py#L139) · **Area:** Plasmid checkup (eukaryotes) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a mammalian expression construct could be judged by bacterial rules - no Kozak check, a polyA or a Pol III promoter ignored - and a shuttle vector would not get a per-host verdict.
 

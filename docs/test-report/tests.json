@@ -6120,6 +6120,10 @@
      "expected": "(101, 200); (None, None); (3700, 50); each round-trips to the same (start, end)"
     },
     {
+     "input": "grouped('') / '7' / '1234567' / '0042', and '1,234..2,500' (the boxes' own text) through parse_range on 3780 bp",
+     "expected": "'' / '7' / '1,234,567' / '42'; (1233, 2500)"
+    },
+    {
      "input": "parse_range '101..200' on a 3780 bp circle",
      "expected": "(100, 200)"
     },

@@ -14,7 +14,7 @@ from PySide6 import __version__ as pyside_version
 from PySide6.QtCore import QEvent, Qt, QTimer, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialogButtonBox, QDockWidget, QFileDialog, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
+    QApplication, QCheckBox, QComboBox, QDialogButtonBox, QDockWidget, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QDialog, QSizePolicy, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -524,15 +524,29 @@ class MainWindow(QMainWindow):
         row2 = QHBoxLayout(self.row2)
         row2.setContentsMargins(0, 0, 0, 0)
         row2.setSpacing(6)
+        def labelled(text, *widgets):
+            """A label then its widgets, in one box (so they show and hide together)."""
+            box = QWidget()
+            lay = QHBoxLayout(box)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(4)
+            for w in (QLabel(text), *widgets):
+                lay.addWidget(w)
+            return box
+
+        def line():
+            return QFrame(frameShape=QFrame.VLine, frameShadow=QFrame.Sunken)
+
         # The genetic code in use, a click away (hidden by Tools > Settings > General > Genetic code).
         self.code_switch = CodeSwitch(self)
         self.code_switch.manage.connect(lambda: codon_dialog.CodonDialog(self).exec())
-        row2.addWidget(self.code_switch)
+        self.code_group = labelled("Genetic code:", self.code_switch, line())
+        row2.addWidget(self.code_group)
         self._show_code_switch()
         tool_settings.notifier.changed.connect(lambda tool: tool == genetic_code.TOOL and self._show_code_switch())
         self.reference_picker = ReferencePicker(self)
         self.reference_picker.changed.connect(lambda: self.editor is not None and self.primer_options_changed())
-        row2.addWidget(self.reference_picker)
+        row2.addWidget(labelled("Background genome:", self.reference_picker, line()))
         # The side panel folds away to the window's edge; these buttons (or Ctrl+Shift+F, Ctrl+H) open it.
         filters = self.display_dock.toggleViewAction()
         filters.setIconText("Filters")
@@ -554,8 +568,10 @@ class MainWindow(QMainWindow):
         self.picker = QComboBox(minimumContentsLength=16)
         self.picker.setToolTip("Sequence (chromosome) of this FASTA file")
         self.picker.activated.connect(lambda i: self.switch_sequence(self.picker.itemText(i)))
-        row2.addWidget(self.picker)
-        self.picker.hide()
+        self.picker_box = labelled("Sequence:", self.picker)
+        self.picker_box.layout().insertWidget(0, line())   # (shown with the list only: no line left dangling)
+        row2.addWidget(self.picker_box)
+        self.picker_box.hide()
         for a in self.doc_actions:
             a.setEnabled(False)
 
@@ -970,7 +986,7 @@ class MainWindow(QMainWindow):
         self.picker.clear()
         self.picker.addItems([n for n, _ in lengths])
         self.picker.setCurrentText(ed.fasta_record)
-        self.picker.setVisible(len(lengths) > 1)
+        self.picker_box.setVisible(len(lengths) > 1)
         ed.match_elsewhere()
         ed.display_changed.emit()
 
@@ -1082,7 +1098,7 @@ class MainWindow(QMainWindow):
         self.picker.addItems(list(sequences))
         if record:
             self.picker.setCurrentText(record)
-        self.picker.setVisible(len(sequences) > 1)
+        self.picker_box.setVisible(len(sequences) > 1)
         self.autosaved_version = ed.version
         ed.match_elsewhere()   # a multi-record file: where the primers bind on the other records
         ed.changed.connect(self._update_title)
@@ -1227,7 +1243,7 @@ class MainWindow(QMainWindow):
             self.setCentralWidget(QLabel("Open a GenBank or .dna file (Ctrl+O)", alignment=Qt.AlignCenter))
 
     def _show_code_switch(self):
-        self.code_switch.setVisible(code_switch_shown())
+        self.code_group.setVisible(code_switch_shown())
 
     def primer_options(self):
         self.open_settings("Primers")
@@ -1405,7 +1421,7 @@ class MainWindow(QMainWindow):
         if self.editor.fasta_record:  # now a GenBank document
             self.record_docs.clear()
             self.editor.fasta_record, self.editor.multi_genbank, self.editor.fasta_records = None, False, []
-            self.picker.setVisible(False)
+            self.picker_box.setVisible(False)
             self.editor.display_changed.emit()
         self.statusBar().showMessage(f"Saved {path}{note}" + (f" · {refreshed}" if refreshed else ""), 8000 if note or refreshed else 3000)
         return True
@@ -1632,6 +1648,8 @@ class MainWindow(QMainWindow):
 
     def _show_range(self):
         """The From / To boxes follow the selection (not while their own typing is what changed it)."""
+        if self.editor is not None:
+            self.range_box.length = self.editor.length
         if self.editor is not None and not self._typing_range:
             self.range_box.show_range(*selection_range(self.editor.start, self.editor.end, self.editor.length))
 

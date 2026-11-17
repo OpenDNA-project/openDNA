@@ -4,7 +4,7 @@
 
 ## `test_real_files_round_trip_and_agree_with_biopython`
 
-**Result:** ✅ passed in 2.02 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.00 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a real plasmid or genome could silently drop or alter features, qualifiers or bases, or write a file other tools read differently.
 
@@ -65,7 +65,7 @@ Saves made-up records that hit the edges of the GenBank format, reloads them wit
 
 ## `test_qualifier_text_survives_and_is_written_as_documented`
 
-**Result:** ✅ passed in 0.12 s · [line 340](../../tests/test_roundtrip.py#L340) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.15 s · [line 340](../../tests/test_roundtrip.py#L340) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, notes with quotes, unicode or long text could be mangled, wrapped badly or gain spaces when saved, so other tools (or a reload) would show different annotation text.
 

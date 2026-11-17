@@ -14,6 +14,7 @@ import pytest
 import validate
 from editor import clean_pasted_protein
 from main import parse_range, selection_range
+from range_boxes import grouped
 from primer_db import db, primer_problem
 from primer_panel import import_primers, parse_primer_list
 
@@ -35,6 +36,8 @@ def test_typed_or_imported_text_is_parsed_or_refused_with_a_reason(tmp_path):
     # the From / To boxes show the selection so that typing it back gives the same selection
     assert selection_range(100, 200, 3780) == (101, 200) and selection_range(5, 5, 3780) == (None, None)
     assert selection_range(3699, 3830, 3780) == (3700, 50), "through the origin: the last base is below the first"
+    assert grouped("") == "" and grouped("7") == "7" and grouped("1234567") == "1,234,567" and grouped("0042") == "42"
+    assert parse_range(f"{grouped('1234')}..{grouped('2500')}", 3780, True) == (1233, 2500), "the boxes' own commas are read back"
     for start, end in ((0, 3780), (0, 1), (100, 200), (3779, 3780), (3699, 3830)):
         first, last = selection_range(start, end, 3780)
         assert parse_range(f"{first}..{last}", 3780, True) == (start, end)
