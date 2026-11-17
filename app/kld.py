@@ -6,6 +6,7 @@ right (new bases first, then bases that anneal), the reverse primer starts just 
 substitute ride on the 5' ends (split between both primers when long). `design` is pure logic; the panel is at the end.
 """
 from difflib import SequenceMatcher
+from pathlib import Path
 from html import escape
 from types import SimpleNamespace
 
@@ -142,9 +143,9 @@ class KldPage(QWidget):
         self.panel, self.win = panel, panel.win
         self._editor_class, self._view_class = FragmentEditor, ReadOnlyView
         self.editor = self.left = self.right = self.right_editor = None
-        self.found, self.old, self.manual, self.result = [], "", {}, None
+        self.found, self.old, self.manual, self.result, self.product_doc = [], "", {}, None, None
         self.tm = QDoubleSpinBox(minimum=45, maximum=72, value=60, suffix=" °C")
-        self.group = QSpinBox(minimum=1, maximum=200, value=30, suffix=" bp")
+        self.group = QSpinBox(minimum=1, maximum=MAX_INSERT, value=30, suffix=" bp")
         self.warn = QSpinBox(minimum=1, maximum=MAX_INSERT, value=120, suffix=" bp")
         self.group.setToolTip("Changes closer than this are ticked together and made by the same primer pair.")
         self.warn.setToolTip(f"More new bases than this get an orange warning (primers may be hard or expensive to order); "
@@ -161,6 +162,9 @@ class KldPage(QWidget):
             top.addWidget(w)
         top.addStretch()
         top.addWidget(QPushButton("Copy primers", clicked=self.copy_primers))
+        self.save = QPushButton("Save as new file…", clicked=self.save_file,
+                                toolTip="Write the sequence after the ticked changes, with its annotations and the two primers, to a new GenBank file")
+        top.addWidget(self.save)
         self.changes = QListWidget()
         self.changes.itemChanged.connect(self._ticked)
         self.changes.itemClicked.connect(self._show_change)
@@ -230,7 +234,8 @@ class KldPage(QWidget):
 
     def _say(self, text, error=True):
         """Nothing to show on the right: say why (in the changes' place too)."""
-        self.right_editor = None
+        self.right_editor = self.product_doc = None
+        self.save.setEnabled(False)
         note = QLabel(text, wordWrap=True, alignment=Qt.AlignCenter)
         self._show_right(note)
         self.info.setHtml(f"<p style='color:{'#c62828' if error else 'gray'}'>{escape(text)}</p>")
@@ -277,6 +282,47 @@ class KldPage(QWidget):
             self.editor.select(s + shift, min(max(s + shift + len(t), s + shift + 1), self.editor.length))
             self.left.ensure_visible(s + shift)
 
+    def _product(self, r):
+        """The sequence after the ticked changes as a Document: the open sequence with its annotations (they follow the edits), the
+        unticked changes put back, and the two primers added where they bind."""
+        from assembly import snapshot, transfer_primers
+        doc = snapshot(self.editor.doc, self.editor.doc.name)
+        shift = 0
+        spots = []   # (start, end, old text) of every change in the current sequence
+        for s, e, t in self.found:
+            spots.append((s + shift, s + shift + len(t), self.old[s:e], (s, e, t)))
+            shift += len(t) - (e - s)
+        for cs, ce, was, c in reversed(spots):   # last first: the places before it do not move
+            if not self.manual.get(c, c in self._ticked_keys()):
+                doc.replace(cs, ce, was)
+        if doc.sequence().upper() != r.product:   # (never expected: the plain sequence still shows the primers)
+            from opendna_core import Document
+            doc = Document.new_sequence(self.editor.doc.name, r.product, True)
+        transfer_primers(doc, [SimpleNamespace(fwd=(n, s) if n.endswith("F") else None, rev=(n, s) if n.endswith("R") else None)
+                               for n, s, _ in r.rows])
+        return doc
+
+    def _ticked_keys(self):
+        return {self.changes.item(i).data(Qt.UserRole) for i in range(self.changes.count())
+                if self.changes.item(i).checkState() == Qt.Checked}
+
+    def save_file(self):
+        """Save as new file…: the product (annotations and primers included) as a GenBank file, next to the open one."""
+        if self.product_doc is None:
+            return
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        ed = self.editor
+        folder = ed.path.parent if not ed.untitled else Path.cwd()
+        path, _ = QFileDialog.getSaveFileName(self, "Save the sequence after KLD", str(folder / f"{ed.doc.name}_KLD.gb"),
+                                              "GenBank (*.gb *.gbk)")
+        if path:
+            try:
+                self.product_doc.write_genbank(path, None)
+            except OSError as e:
+                QMessageBox.critical(self, "Save Failed", f"{path}\n\n{e}")
+            else:
+                self.win.statusBar().showMessage(f"Saved {path}", 5000)
+
     def _design(self):
         chosen = [self.changes.item(i).data(Qt.UserRole) for i in range(self.changes.count())
                   if self.changes.item(i).checkState() == Qt.Checked]
@@ -288,10 +334,9 @@ class KldPage(QWidget):
             return self._say(str(e))
         a, b, text = r.change
         keep = self.right.verticalScrollBar().value() if isinstance(self.right, self._view_class) else 0
-        from opendna_core import Document
-        doc = Document.new_sequence("After KLD", r.product, True)
+        self.product_doc = doc = self._product(r)
+        self.save.setEnabled(True)
         self.right_editor = ed = self._editor_class(doc, "After KLD")
-        ed.set_extra([(n, s) for n, s, _ in r.rows])
         view = self._view_class(ed)
         self._show_right(view)
         if text:
