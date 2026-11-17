@@ -139,15 +139,17 @@ class FileStrip(QTabBar):
         return QSize(1, super().minimumSizeHint().height())
 
     def sync(self):
-        """The tabs the host's FileSet says, the shown one current."""
+        """The tabs the host's FileSet says, the shown one current. The tabs are only rebuilt when the files changed: a click on a
+        tab comes here from this very bar's currentChanged, which must not tear the tabs down under the mouse."""
         host = self.page.host
+        pages = host.files.pages
         self.blockSignals(True)
-        while self.count():
-            self.removeTab(0)
-        for p in host.files.pages:
-            i = self.addTab(p.tab_title())
-            self.setTabToolTip(i, str(p.file_path() or p.tab_title()))
-        self.setCurrentIndex(host.files.pages.index(host.files.current))
+        if [self.tabText(i) for i in range(self.count())] != [p.tab_title() for p in pages]:
+            while self.count():
+                self.removeTab(0)
+            for p in pages:
+                self.setTabToolTip(self.addTab(p.tab_title()), str(p.file_path() or p.tab_title()))
+        self.setCurrentIndex(pages.index(host.files.current))
         self.blockSignals(False)
 
     def retitle(self):
