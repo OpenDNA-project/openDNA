@@ -365,6 +365,7 @@ class MainWindow(QMainWindow):
 
         feature = self.menuBar().addMenu("Fea&ture")
         action(feature, "&New Feature from Selection…", "Ctrl+T", lambda: edit_feature(self, self.editor))
+        action(None, "Edit Feature", "Ctrl+E", self.edit_current_feature)   # (also on the right-click menu of a feature)
         feature.addSeparator()
         action(feature, "&Group as Gene…", "Ctrl+Shift+E", self.group_as_gene)
         feature.addSeparator()
@@ -1630,6 +1631,12 @@ class MainWindow(QMainWindow):
             return False
         ed.linearize(base - 1)
         return True
+
+    def edit_current_feature(self):
+        if self.editor.current_feature is None:
+            self.statusBar().showMessage("Click a feature first.", 3000)
+        else:
+            edit_feature(self, self.editor, self.editor.current_feature)
 
     def set_origin_to_selection(self):
         """Edit → Set Origin to Selection Start: the first selected base (else the cursor) becomes base 1."""

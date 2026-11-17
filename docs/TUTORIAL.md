@@ -45,7 +45,7 @@ feature table show the same thing. Click a feature to select it, or drag across 
 ## 3. Add a feature
 
 Select a range, then *Feature → New Feature from Selection…* (Ctrl+T), choose a type, give it a label. It is an
-undo step like any edit. *Feature → Edit Feature…* (Ctrl+E) changes it later.
+undo step like any edit. Click the feature and press Ctrl+E (or right-click it, *Edit feature*) to change it later.
 
 ## 4. A plasmid: break the circle
 
@@ -61,7 +61,7 @@ Open `demo/demo_vector.gb` (File → Open). It is circular, so the sequence view
 
 - *Primers → New Primer…* (Ctrl+Shift+P): type or paste a sequence; binding sites on both strands appear, with
   mismatches, Tm, hairpin and self-dimer checks.
-- *Primers → Design Primers for Selection…*: select a stretch first.
+- Select a stretch, right-click, *Design Primers for This Sequence…*: the PCR tab opens with pairs designed for it.
 - Primers you keep go in the database (*Databases → Primer Database…*, Ctrl+Shift+D, a tab of the window), a `primers.tsv` file you can export.
 
 ## 6. The Assembly panel
