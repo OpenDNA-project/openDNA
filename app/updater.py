@@ -5,11 +5,11 @@ The installed copy is what updates (see installed_copy()); the portable builds o
   Linux    the AppImage of the release replaces the running AppImage file.
 The steps, each usable without Qt (the dialog at the end only wires them together):
   check()            ask GitHub for the latest release (never raises: the answer says what went wrong).
-  download_update()  fetch the release file, verify its SHA-256 against its .sha256, refuse otherwise.
+  download_update()  fetch the release file, verify its SHA-256 against its line of SHA256SUMS, refuse otherwise.
   install_update()   Windows: start the installer. Elsewhere: rename the running copy to .old, move the new one in, relaunch.
   cleanup_old()      at the next start-up, delete what an update left behind.
 
-What the checksum does and does not give (be honest with the user about it): the .sha256 file comes from the same release as the
+What the checksum does and does not give (be honest with the user about it): the SHA256SUMS file comes from the same release as the
 download, so it catches a corrupted or truncated download and a bad mirror or proxy, but NOT a release an attacker has taken over (they
 would replace both files). Only code signing (Authenticode, Apple's notarization) fixes that, and the builds are not signed yet. What is
 enforced here: HTTPS only, and only GitHub hosts (every redirect hop is checked too); nothing is ever executed except the file whose
@@ -46,7 +46,7 @@ import tool_settings
 from primer_db import data_dir
 
 def release_asset(tag, system=None):
-    """The file this system installs, in the release of `tag` (what release.yml publishes); its checksum adds .sha256.
+    """The file this system installs, in the release of `tag` (what release.yml publishes); its checksum is a line of CHECKSUMS.
     Windows oDNA_beta_0_7_0-setup.exe, macOS oDNA_beta_0_7_0-macos-arm64.zip (or x86_64), Linux oDNA_beta_0_7_0-linux-x86_64.AppImage."""
     base = f"{project.EXE_NAME}_{str(tag).lstrip('vV').replace('.', '_')}"
     system = system or sys.platform
@@ -73,6 +73,7 @@ tool_settings.register(TOOL, [
 RETRIES = 5                        # antivirus scanners often hold a freshly written file for a second or two
 RETRY_DELAY = 0.6                  # seconds (tests set it to 0)
 CHUNK = 256 * 1024
+CHECKSUMS = "SHA256SUMS"             # the release's one checksum file: "<hex>  <file name>" per line, what `sha256sum -c` reads
 PREFIX = ".openDNA-update-"         # what we name our downloads and staging folders: the start-up cleanup removes only names that start so
 
 
@@ -213,20 +214,20 @@ def check(current_version=None, fetch=None):
         return Check(latest=tag, page_url=page)
     assets = {a.get("name"): a.get("browser_download_url") for a in data.get("assets") or [] if isinstance(a, dict)}
     asset_name = release_asset(tag)
-    missing = [n for n in (asset_name, asset_name + ".sha256") if not assets.get(n)]
+    missing = [n for n in (asset_name, CHECKSUMS) if not assets.get(n)]
     if missing:
         return Check(error=f"Version {tag.lstrip('vV')} exists but its release has no {' / '.join(missing)}, so it cannot be installed "
                            "automatically.", latest=tag, page_url=page)
     try:
-        check_url(assets[asset_name]), check_url(assets[asset_name + ".sha256"])
+        check_url(assets[asset_name]), check_url(assets[CHECKSUMS])
         # The download and its checksum must come from this project's own releases, not just from any github.com address.
-        for name in (asset_name, asset_name + ".sha256"):
+        for name in (asset_name, CHECKSUMS):
             if not urlparse(assets[name]).path.startswith(f"/{project.REPO}/releases/download/"):
                 raise UpdateError(f"Refused: {assets[name]} is not in the releases of {project.REPO}.")
     except UpdateError as e:
         return Check(error=str(e), latest=tag, page_url=page)
     notes = data.get("body") if isinstance(data.get("body"), str) else ""
-    update = Update(".".join(map(str, version)), tag, assets[asset_name], assets[asset_name + ".sha256"], notes[:20000], page)
+    update = Update(".".join(map(str, version)), tag, assets[asset_name], assets[CHECKSUMS], notes[:20000], page)
     return Check(update=update, latest=tag, page_url=page)
 
 
@@ -238,7 +239,7 @@ def check_for_update(current_version=None, fetch=None):
 # ---- downloading ---------------------------------------------------------------------------------------------------------------------
 
 def parse_checksum(text, filename):
-    """The 64-hex digest for `filename` from a .sha256 file (bytes or str), or None. Accepts "<hex>  name", "<hex> *name" and a bare
+    """The 64-hex digest for `filename` from a checksum file (bytes or str), or None. Accepts "<hex>  name", "<hex> *name" and a bare
     "<hex>". PowerShell's `>` writes UTF-16, so a byte order mark is honoured."""
     if isinstance(text, bytes):
         text = text.decode("utf-16" if text[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig", errors="replace")

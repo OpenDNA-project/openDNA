@@ -125,7 +125,7 @@ there; it does not click through the features (the pytest suite does that, on th
 A release is one tag. Pushing a tag `v*` starts `.github/workflows/release.yml`: it checks the tag against `VERSION`, then builds on
 three machines. Windows runs the Rust and Python tests and the script above (installer and portable folder, both smoke-tested); macOS
 (Apple Silicon and Intel) and Linux run `scripts/build_unix.sh`, which smoke-tests what it builds. Each file gets a `.sha256`
-(`<hex>  <file name>`, the format `sha256sum -c` and the in-app updater read) and all go into a **draft** GitHub release:
+while building; the release job joins them into one `SHA256SUMS` (`<hex>  <file name>` per line, the format `sha256sum -c` and the in-app updater read) and all go into a **draft** GitHub release:
 
 | System | Files | What the program updates itself with |
 |---|---|---|
@@ -149,8 +149,8 @@ replace themselves: they say where to download the new version. The release neve
    ```
 
 5. **Watch the run** (Actions > release, about 10 to 15 minutes). When it is green, a draft appears under Releases.
-6. **Review the draft.** Every file in the table above is attached with its `.sha256`, the notes say what changed (edit them; the
-   workflow only writes a default text). Download the setup file from the draft, check `Get-FileHash` against its `.sha256` file, and
+6. **Review the draft.** Every file in the table above is attached, with one `SHA256SUMS`, the notes say what changed (edit them; the
+   workflow only writes a default text). Download the setup file from the draft, check `Get-FileHash` against its line of `SHA256SUMS`, and
    install it on a PC that has no Python. To test the update itself, install the previous release first, then publish this one.
 7. **Publish** by pressing *Publish release* on the draft page, or `gh release edit v0.1.1 --draft=false --latest`. Only now does the
    release become public and the "latest" one that the in-app update check reads (`UPDATES_ENABLED` in
@@ -220,8 +220,8 @@ therefore no longer contain a one-file exe: both downloads are the one-folder la
 On macOS the `.app` and on Linux the AppImage and the tar.gz are folder builds too.
 
 The zip also holds `README.txt` (how to swap Qt), `LICENSE` and `THIRD_PARTY_NOTICES.md` next to the exe. `release.yml` attaches the zip
-and its `.sha256` to the draft release; the smoke test runs on both layouts and, for the folder, checks that `Qt6Core.dll` is a plain file.
+to the draft release (its checksum goes into `SHA256SUMS`); the smoke test runs on both layouts and, for the folder, checks that `Qt6Core.dll` is a plain file.
 Help > About names the Qt and PySide6 versions in use. Tested once by hand (version 0.1.0, built with Qt 6.12.0): unzipped the zip, followed the
 `README.txt` steps with the PySide6-Essentials and shiboken6 6.10.1 wheels, and the program started and passed `smoke_exe.ps1` with Qt 6.10.1 loaded.
 Redo that after a PyInstaller or PySide6 upgrade; the smoke test only proves that the Qt DLL is a plain file, not that a swap still works.
-The updater only looks for the file its system installs (table in section 8) and its `.sha256` in a release; the other files are ignored by it.
+The updater only looks for the file its system installs (table in section 8) and `SHA256SUMS` in a release; the other files are ignored by it.

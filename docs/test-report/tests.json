@@ -5226,7 +5226,7 @@
      "expected": "-setup.exe, -macos-arm64.zip and -linux-x86_64.AppImage; each suffix (its stem and its extension) appears in release.yml"
     },
     {
-     "input": "check('0.1.0') with a v0.2.0 release carrying exe + .sha256 + other.zip",
+     "input": "check('0.1.0') with a v0.2.0 release carrying exe + SHA256SUMS + other.zip",
      "expected": "Update with version 0.2.0, tag v0.2.0, notes 'Fixes things.', exact asset, sha256 and page URLs; check_for_update returns the same object"
     },
     {

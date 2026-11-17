@@ -109,22 +109,20 @@ def install_style(app):
 
 
 _linked = False
-_system_highlight = None
+SELECTION = "#0078d4"   # Windows' default blue, fixed: the system accent can be a dark grey that hides the brackets
 
 
 def selection_color():
-    """What the sequence, map and genome views draw their selection, its brackets and the search marks with: the colour that
-    was theirs before the interface took the blue highlight (the palette's own is for the bars, lists and text fields)."""
-    return QColor(_system_highlight) if _system_highlight is not None else QColor(QGuiApplication.palette().color(QPalette.ColorRole.Highlight))
+    """What the sequence, map and genome views draw their selection, its brackets and the search marks with (the palette's own
+    highlight is for the bars, lists and text fields)."""
+    return QColor(SELECTION)
 
 
 def apply_highlight():
     """Put the one highlight colour of ROLES into the application palette: what selects (rows of lists and tables, the selected
     text), and what the style draws in its accent (ticked boxes, the bar beside the current row), which would otherwise be the
     system's accent colour (a yellow with white text on it, for one). Menus and every widget read the palette: set here only."""
-    QGuiApplication.setPalette(QPalette())   # back to the system's palette for this scheme: its highlight is kept for the views
-    global _system_highlight
-    _system_highlight = QColor(QGuiApplication.palette().color(QPalette.ColorRole.Highlight))
+    QGuiApplication.setPalette(QPalette())   # back to the system's palette for this scheme
     p = QPalette(QGuiApplication.palette())
     for role, key in ((QPalette.ColorRole.Highlight, "highlight"), (QPalette.ColorRole.HighlightedText, "highlight_text"),
                       (QPalette.ColorRole.Accent, "accent")):

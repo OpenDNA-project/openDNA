@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the folder zip is EXE_NAME-folder.zip).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,8 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = True
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.7.2": ["The selection, its brackets and the search marks are always blue, instead of following a system accent colour that can be a hard-to-read dark grey.",
+              "Releases carry one SHA256SUMS file instead of a .sha256 beside every download."],
     "0.7.1": ["Windows now installs with a setup program (no administrator rights needed) and updates itself in place; macOS and Linux get a .dmg and an AppImage that update themselves too. Copies of the old single .exe must be replaced once by hand with the new installer."],
     "0.7.0": ["New Terminal (pick it under Tools in any pane): a bash session with pipelines to align reads, assemble with Unicycler and run MAFFT or Clustal Omega, each with presets, a QC summary and a diagram of its steps.",
               "The Alignment view labels every variant and marks where reads break (insertions, inversions, rearrangements) and stretches with no reads."],

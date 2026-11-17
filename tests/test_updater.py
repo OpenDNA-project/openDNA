@@ -33,7 +33,7 @@ def release(tag="v0.2.0", assets=True, **extra):
     """The JSON GitHub gives for releases/latest."""
     data = {"tag_name": tag, "html_url": f"{project.REPO_URL}/releases/tag/{tag}", "body": "Fixes things.", "draft": False, "prerelease": False,
             "assets": [{"name": updater.release_asset(tag), "browser_download_url": f"{BASE}/openDNA.exe"},
-                       {"name": updater.release_asset(tag) + ".sha256", "browser_download_url": f"{BASE}/openDNA.exe.sha256"},
+                       {"name": updater.CHECKSUMS, "browser_download_url": f"{BASE}/openDNA.exe.sha256"},
                        {"name": "other.zip", "browser_download_url": f"{BASE}/other.zip"}] if assets else []}
     data.update(extra)
     return json.dumps(data)
@@ -191,7 +191,7 @@ def test_release_check_offers_only_a_newer_complete_release(monkeypatch):
     only_sum = json.loads(release())
     only_sum["assets"] = only_sum["assets"][1:2]
     for data, missing in ((json.loads(release(assets=False)), updater.release_asset("v0.2.0")),
-                          (only_exe, updater.release_asset("v0.2.0") + ".sha256"), (only_sum, updater.release_asset("v0.2.0"))):
+                          (only_exe, updater.CHECKSUMS), (only_sum, updater.release_asset("v0.2.0"))):
         result = updater.check("0.1.0", Fake(json.dumps(data)))
         assert result.update is None and missing in result.error and result.page_url, missing
 
