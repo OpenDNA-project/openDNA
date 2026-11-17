@@ -88,8 +88,8 @@ class SearchBar(QWidget):
 
         self.box = _Box(placeholderText="Find sequence or name…", clearButtonEnabled=True)   # (the rest: tooltip)
         self.box.setMaxLength(MAX_QUERY)
-        self.box.setMinimumWidth(190)
-        self.box.setMaximumWidth(280)
+        self.box.setMinimumWidth(475)   # 2.5 × the former 190 / 280
+        self.box.setMaximumWidth(700)
         self.box.setToolTip("DNA (both strands, IUPAC codes), a protein motif, or the name of a feature, primer or enzyme.\n"
                             "Enter: next hit · Shift+Enter: previous · Esc: clear the highlights. What is looked for: Options.")
         # Inside the box (see _Counter): its own fixed width, so its text going from "" to "12 hits · 3 / 24…" while typing

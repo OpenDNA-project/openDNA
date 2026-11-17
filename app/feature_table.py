@@ -356,10 +356,33 @@ def feature_actions(menu, parent, editor, index):
     menu.addAction("Show on Sequence" if hidden else "Hide", lambda: editor.set_features_hidden([feature_key(f)], not hidden)).setToolTip(
         "Stop drawing this feature in the views (it stays in the file); Show in the feature table or the display filter brings it back")
     if f.kind == "CDS":
+        menu.addAction("Copy Translation", lambda: copy_translation(editor, f))
         a = menu.addAction("Show Translation", lambda: editor.toggle_translation(index))
         a.setCheckable(True)
         a.setChecked(editor.translated(f))
         a.setEnabled(editor.show_cds_translation)  # all off in the display panel
+
+
+def copy_translation(editor, f):
+    """The protein of CDS `f` (without its stop) on the clipboard."""
+    from exports import protein_of  # here: exports imports the views
+    protein = protein_of(editor, f)
+    QGuiApplication.clipboard().setText(protein)
+    editor.error.emit(f"Translation of {f.label or 'CDS'} copied ({len(protein)} aa).")   # status bar
+
+
+def show_translation(parent, editor):
+    """Translate the selected bases (frame +1, the genetic code of Tools > Settings) in a window with a Copy button."""
+    from exports import translate  # here: exports imports the views
+    protein = translate(editor.selected_sequence())
+    box = QMessageBox(QMessageBox.NoIcon, "Translation", f"{len(protein)} aa (frame +1)", parent=parent)
+    box.setInformativeText(protein)
+    box.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    copy = box.addButton("Copy", QMessageBox.ActionRole)
+    box.addButton(QMessageBox.Close)
+    box.exec()
+    if box.clickedButton() is copy:
+        QGuiApplication.clipboard().setText(protein)
 
 
 def features_actions(menu, parent, editor, indices):
@@ -523,6 +546,7 @@ def selection_menu(parent, editor, global_pos):
     menu.addAction("Add Feature…", lambda: edit_feature(window, editor))
     menu.addAction("Add Gene…", lambda: group_as_gene(window, editor, features_inside(editor)))
     menu.addSeparator()
+    menu.addAction("Translate…", lambda: show_translation(window, editor))
     from sequence_view import add_edit_actions
     add_edit_actions(menu, editor, getattr(parent, "editable", True))   # Cut / Copy / Paste / Select All, as on empty space
     menu.addAction("Copy Reverse Complement\t" + QKeySequence("Ctrl+Shift+C").toString(QKeySequence.NativeText),
