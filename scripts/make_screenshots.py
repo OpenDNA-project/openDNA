@@ -38,11 +38,15 @@ def settle(seconds=0.6):
         time.sleep(0.02)
 
 
-def window(path, layout=None):
+def window(path, layout=None, tool=None):
+    """`tool`: a view that gets a view tab of its own, shown full size (the first tab keeps `layout`, or the defaults)."""
     win = M.new_window()
     win.window().resize(*SIZE)
     assert win.load(str(path)), path
-    if layout is not None:
+    if tool is not None:
+        tabs = [{"layout": layout if layout is not None else M.DEFAULT_LAYOUT[0]["layout"]}, {"layout": pane(tool)}]
+        win._build_workspace(tabs, current=1)
+    elif layout is not None:
         win._build_workspace([{"layout": layout}])
     settle()
     return win
@@ -65,8 +69,7 @@ def editor():
 
 def multi_genome():
     """Vibrio cholerae: two chromosomes in one GenBank file; the Map lists them, a click switches."""
-    win = window(DEMO / "vibrio_cholerae_N16961.gb",
-                 split("h", [6000, 4000], pane("Map"), split("v", [5000, 5000], pane("Sequence"), pane("Features"))))
+    win = window(DEMO / "vibrio_cholerae_N16961.gb", tool="Map")
     save(win, "multi_genome")
 
 
@@ -89,9 +92,8 @@ def gibson():
 
 
 def primers():
-    """The Primers pane and the PCR pane on pBAD30, with the plasmid's own Verif pBAD30_F / _R primers."""
-    win = window(DEMO / "pBAD30_eilR.gb",
-                 split("h", [4800, 5200], pane("Sequence"), split("v", [5200, 4800], pane("Primers"), pane("PCR"))))
+    """The PCR tab on pBAD30, full size, with the plasmid's own Verif pBAD30_F / _R primers."""
+    win = window(DEMO / "pBAD30_eilR.gb", tool="PCR")
     pcr = [p.view for p in win.workspace.panes() if p.view_name == "PCR"][0]
     fwd = next(i for i, s in enumerate(pcr.fwd_sites) if "Verif" in s.label)
     rev = next(i for i, s in enumerate(pcr.rev_sites) if "Verif" in s.label)
@@ -102,9 +104,8 @@ def primers():
 
 
 def cas9():
-    """The Spacer Finder on pFG051: every SpCas9 guide with its cut, score and other matching sites, one added to the sequence."""
-    win = window(DEMO / "pFG051_Chlor.gb",
-                 split("v", [4500, 5500], pane("Sequence"), pane("Spacer Finder")))
+    """The Spacer Finder on pFG051: every SpCas9 guide with its cut, score and other matching sites."""
+    win = window(DEMO / "pFG051_Chlor.gb", tool="Spacer Finder")
     gene = next(f for f in win.editor.features if "Transposase" in (f.label or ""))
     start, end = min(a for a, _ in gene.spans), max(b for _, b in gene.spans)
     finder = [p.view for p in win.workspace.panes() if p.view_name == "Spacer Finder"][0]
@@ -127,8 +128,7 @@ def local_align():
     plasmid = Document(str(DEMO / "pBAD30_eilR.gb"))
     araC = next(f for f in plasmid.features() if f.label == "araC")
     query = "".join(plasmid.sequence(a, b) for a, b in araC.spans)
-    win = window(DEMO / "BW25113_2026.gb",
-                 split("v", [1800, 4200, 4000], pane("Sequence"), pane("Alignment"), pane("Local Align")))
+    win = window(DEMO / "BW25113_2026.gb", tool="Local Align")
     dialog = [p.view for p in win.workspace.panes() if p.view_name == "Local Align"][0]
     dialog.query.setPlainText(f">araC (pBAD30_eilR)\n{query}")
     dialog.run()
@@ -137,30 +137,29 @@ def local_align():
 
 
 def reads_bam():
-    """A BAM of simulated Illumina reads of pFG051, mapped with the program's own recipe (bwa in WSL): made once, kept in
-    the scratch folder. Needs bwa and samtools, as Tools > Map Reads does."""
+    """A fake BAM of pFG051 written like the unit tests write theirs (no bwa, no WSL): 150-bp reads at about 60x, 40 % of them
+    from a clone that lacks 120 bases near 1,900, and a base changed in a third of the reads at one position."""
     import random
     sys.path.insert(0, str(ROOT / "tests"))
-    import fake_reads as F
+    import test_core_formats as T
     import runner
-    folder = Path(os.environ["OPENDNA_DATA_DIR"]) / "reads"
-    bam = folder / "clone.bam"
-    if bam.exists():
-        return bam
-    folder.mkdir(parents=True, exist_ok=True)
+    bam = Path(os.environ["OPENDNA_DATA_DIR"]) / "clone.bam"
     from opendna_core import Document
     doc = Document(str(DEMO / "pFG051_Chlor.gb"))
-    ref, rng = doc.sequence().upper(), random.Random(55)
-    fasta = folder / "ref.fa"
-    fasta.write_text(f">{runner.safe_name(doc.name)}\n{ref}\n")
-    clone = F.clones(ref, rng)["cloneB_mixed_population"]        # a mixed colony: some reads carry the change, some do not
-    haplotypes = [(share, F.apply(ref, events)) for share, events in clone]
-    r1, r2 = folder / "R1.fastq", folder / "R2.fastq"
-    with open(r1, "w") as f1, open(r2, "w") as f2:
-        for n, (a, b, qa, qb) in enumerate(F.element(haplotypes, len(ref), rng)):
-            f1.write(f"@r{n}/1\n{a}\n+\n{qa}\n")
-            f2.write(f"@r{n}/2\n{b}\n+\n{qb}\n")
-    F.map_reads("bwa_mem", fasta, r1, r2, folder / "clone")
+    ref, rng, n = doc.sequence().upper(), random.Random(55), doc.length
+    gap0, gap1, snp, reads = 1850, 1970, 700, []
+    for i in range(n * 60 // 150):
+        pos, left = rng.randrange(0, n - 150), 150
+        deleted = rng.random() < 0.4
+        if deleted and gap0 <= pos < gap1:
+            pos = gap1
+        if deleted and pos < gap0 < pos + left:      # the read runs into the missing stretch: M, D, M
+            ops = [(gap0 - pos, "M"), (gap1 - gap0, "D"), (left - (gap0 - pos), "M")]
+        else:
+            ops = [(left, "M")]
+        subs = {snp: "A" if ref[snp] != "A" else "G"} if rng.random() < 0.33 else {}
+        reads.append(T.build_read(f"r{i}", pos, ops, ref, subs=subs, qual=[35] * 150, flag=16 * rng.randrange(2)))
+    T.write_bam(bam, [(runner.safe_name(doc.name), n)], reads)
     return bam
 
 
