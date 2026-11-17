@@ -4,11 +4,11 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.56 s · [line 61](../../tests/test_documents.py#L61) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.66 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
-Forces GenBank and FASTA saves to fail in several ways and checks the original file, the modified flag and the directory are untouched with no temp files left, and that a later save works. Also checks the Windows-retry rename helper and that autosave writes beside the file without counting as a save.
+Forces GenBank and FASTA saves to fail in several ways and checks the original file, the modified flag and the directory are untouched with no temp files left, and that a later save works. Also checks the Windows-retry rename helper and that autosave writes its copy in the data folder, never beside the file and never as a save; that a copy an older version left beside the file is adopted; and that the start-up sweep deletes only old copies of files that are gone.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -20,7 +20,9 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 | 6 | Editor: paste GATTACA, save to missing folder | OSError; editor path still ed.gb; still modified; real save then gives 'GATTACA'+'ACGT'*10 |
 | 7 | fileio.replace while another handle holds the target (closed after 0.5 s) | target becomes 'new', tmp gone; on Windows it waited >= 0.4 s |
 | 8 | fileio.replace onto a folder | OSError in under 2 s (no pointless retry) |
-| 9 | autosave_path('plasmid.dna') and ('genome.fa','chr2'); write_genbank to autosave path after an edit | names 'plasmid.dna.autosave.gb' and 'genome.fa.chr2.autosave.gb'; user's file unchanged, doc still modified; autosave file holds the edited sequence |
+| 9 | autosave_path for plasmid.dna in two folders, and genome.fa record chr2; write_genbank to the autosave path after an edit | copies in the autosave folder named plasmid.dna-<hash>..., different for the two folders; genome.fa.chr2-<hash>...; nothing beside the files; user's file unchanged, doc still modified; the copy holds the edit |
+| 10 | an old plasmid.dna.autosave.gb beside the file, adopt_old; then an older one again | moved into the data folder with its .src note; the second (older) one is deleted and the first kept |
+| 11 | sweep with: old copy of a missing file, old copy of an existing file, new copy of a missing file | only the first (and its .src) is deleted |
 
 **Review notes:**
 
@@ -29,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.85 s · [line 144](../../tests/test_documents.py#L144) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.32 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -50,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 17.90 s · [line 206](../../tests/test_documents.py#L206) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 17.98 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -69,7 +71,7 @@ Runs app/selftest.run_random_edits for 500 random edits per run, 3 seeds, linear
 
 ## `test_edited_base_ranges_follow_edits_undo_redo_and_saves`
 
-**Result:** ✅ passed in 0.02 s · [line 216](../../tests/test_documents.py#L216) · **Area:** Edited-base highlighting · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 251](../../tests/test_documents.py#L251) · **Area:** Edited-base highlighting · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the highlight showing which bases changed since the last save could point at the wrong bases after further edits, undo or rotation, misleading the user about what they changed.
 
@@ -98,7 +100,7 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.07 s · [line 340](../../tests/test_documents.py#L340) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 375](../../tests/test_documents.py#L375) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
@@ -124,7 +126,7 @@ Checks the names of annotation steps, that primer database add/rename/edit/delet
 
 ## `test_copy_reverse_complement_keeps_annotations_flipped`
 
-**Result:** ✅ passed in 0.01 s · [line 461](../../tests/test_documents.py#L461) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 496](../../tests/test_documents.py#L496) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin.
 
@@ -151,7 +153,7 @@ Copies a selection as reverse complement and pastes it into another document, ch
 
 ## `test_text_exports_and_the_project_file`
 
-**Result:** ✅ passed in 0.03 s · [line 524](../../tests/test_documents.py#L524) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 559](../../tests/test_documents.py#L559) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.
 
@@ -183,7 +185,7 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 
 ## `test_gene_groups_and_display_switches`
 
-**Result:** ✅ passed in 0.01 s · [line 623](../../tests/test_documents.py#L623) · **Area:** Feature display / gene groups · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 658](../../tests/test_documents.py#L658) · **Area:** Feature display / gene groups · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, gene + CDS pairs might not group by locus_tag, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 

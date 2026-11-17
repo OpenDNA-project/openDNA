@@ -6,15 +6,16 @@ Run:  python app/main.py [file.gb | file.dna | genome.fa]
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 from PySide6 import __version__ as pyside_version
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, qVersion
+from PySide6.QtCore import QEvent, Qt, QTimer, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialogButtonBox, QDockWidget, QFileDialog, QFormLayout, QInputDialog, QLabel,
-    QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QDialog, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QDialogButtonBox, QDockWidget, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel,
+    QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QDialog, QSizePolicy, QToolButton, QVBoxLayout, QWidget,
 )
 
 from opendna_core import Bam, Document, Fasta, Track
@@ -28,7 +29,7 @@ from feature_dialog import edit_feature
 from feature_table import FeatureTable, delete_feature, features_inside, group_as_gene, reverse_primer_dialog
 from map_view import MapView
 from editor import primer_sequence
-from primer_db import copy_old_data, data_dir, db
+from primer_db import copy_old_data, db
 from perf import PerfWindow
 from primer_panel import PrimerDialog, PrimerPanel, annealed, melting_temp
 from assembly_panel import AssemblyPanel, RecombineeringPanel
@@ -50,6 +51,10 @@ from primer_panel import export_for_ordering, import_primers
 from primer_design import design_for_selection
 from structure_dialog import StructureDialog
 from search_bar import SearchBar
+from range_boxes import RangeBoxes
+from file_tabs import last_host
+import single_instance
+from file_tabs import FileHost, FileStrip, all_pages, find_open, mode, open_in_tabs, set_open_in_tabs, window_settings
 from genome_view import GenomeView
 import feedback
 import file_assoc
@@ -78,6 +83,8 @@ import fileio
 import shutil
 from file_history import FileHistory
 import add_record
+import autosave
+from autosave import autosave_path
 from add_record import AddRecordsDialog
 import multigb
 from uikit import plural, run_busy
@@ -93,13 +100,6 @@ ANNOTATION_FILTER = "Annotation tracks (*.gff *.gff3 *.gtf *.bed);;All files (*)
 VCF_FILTER = "Variants (*.vcf *.vcf.gz);;All files (*)"
 BAM_FILTER = "Aligned reads (*.bam);;All files (*)"
 AUTOSAVE_MS = 60_000
-
-
-def autosave_path(path, record=None):
-    """Recovery copy next to the file: plasmid.dna -> plasmid.dna.autosave.gb
-    (FASTA: one per sequence, genome.fa.chr2.autosave.gb)."""
-    path = Path(path)
-    return path.with_name(path.name + (f".{record}" if record else "") + ".autosave.gb")
 
 
 def is_fasta(path):
@@ -144,6 +144,14 @@ def parse_range(text, length, circular):
     return a - 1, b
 
 
+def selection_range(start, end, length):
+    """What the From / To boxes show for the selection [start, end): (first base, last base), 1-based and included; a selection
+    through the origin of a circular sequence (end > length) has a last base below the first. (None, None): nothing selected."""
+    if end <= start:
+        return None, None
+    return start + 1, end - length if end > length else end
+
+
 def other_records_note(editor, picker_count):
     """' (only chr3: the other 23 sequences of genome.fa are not included)' when a one-sequence copy leaves records behind."""
     if editor.fasta_record and picker_count > 1:
@@ -153,8 +161,14 @@ def other_records_note(editor, picker_count):
 
 
 class MainWindow(QMainWindow):
+    """One file's page: everything of one open file, in a window (a FileHost) of its own or shared with other pages. Nothing here
+    is shared with another page."""
+    is_file_page = True   # (file_tabs.page_of finds the page a widget is in by this)
+
     def __init__(self):
         super().__init__()
+        self._typing_range = False
+        self.host = None   # the FileHost this page is in (set by FileHost.add_page)
         self.editor = None
         self.workspace = None
         self.file_history = FileHistory()   # the order of the edits across the records of a multi-record file
@@ -189,38 +203,23 @@ class MainWindow(QMainWindow):
             menu.setToolTipsVisible(True)
         self.setAcceptDrops(True)
         self._update_title()
-        self._restore_window()
+        self._restore_view_switches()
         self.autosave_timer = QTimer(self, interval=AUTOSAVE_MS, timeout=self.autosave)
         self.autosave_timer.start()
 
-    # ---- what the window remembers between sessions: its size and place, the View switches. Not the tabs (a file always opens
-    # with the standard ones, unless it is a project), not which side panel was open, and no side panel width (fixed).
+    # ---- what the program remembers between sessions: the window's size and place (file_tabs.FileHost), the View switches. Not the
+    # tabs (a file always opens with the standard ones, unless it is a project), not which side panel was open, and no side panel
+    # width (fixed).
     VIEW_SWITCHES = ("enzymes_action", "translation_action", "complement_action", "collapse_action", "cds_only_action")
 
-    @staticmethod
-    def _window_settings():
-        return QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat)
-
-    def _restore_window(self):
-        s = self._window_settings()
-        geometry = s.value("geometry")
-        if geometry is None or not self.restoreGeometry(geometry):
-            # first start: most of the screen, centred (a fixed 1400 x 850 was taller than a 1366 x 768 laptop screen)
-            screen = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
-            w, h = min(1400, int(screen.width() * 0.85)), min(850, int(screen.height() * 0.85))
-            self.resize(w, h)
-            self.move(screen.center().x() - w // 2, screen.center().y() - h // 2)
+    def _restore_view_switches(self):
+        s = window_settings()
         for name in self.VIEW_SWITCHES:
             a = getattr(self, name)
             saved = s.value(f"view/{name}")
             if saved is not None:
                 a.setChecked(str(saved).lower() == "true")
-            a.toggled.connect(lambda on, name=name: self._window_settings().setValue(f"view/{name}", on))
-
-    def _save_window(self):
-        s = self._window_settings()
-        s.setValue("geometry", self.saveGeometry())   # size, place and maximised (restoreGeometry keeps it on a screen)
-        s.remove("panel_width")   # (the side panels were once as wide as dragged: they all have one fixed width now)
+            a.toggled.connect(lambda on, name=name: window_settings().setValue(f"view/{name}", on))
 
     @staticmethod
     def _fix_to_the_right(dock):
@@ -274,7 +273,11 @@ class MainWindow(QMainWindow):
         file.addSeparator()
         self.remove_tracks_action = action(file, "Remove &Tracks…", None, self.remove_tracks)
         file.addSeparator()
-        file.addAction(QAction("&Close Window", self, shortcut=QKeySequence.Close, triggered=self.close))
+        # Files in tabs: Ctrl+W closes the tab and Ctrl+Shift+W the window; else Ctrl+W closes the window (see file_mode_changed)
+        self.close_tab_action = QAction("Close &Tab", self, triggered=lambda: self.host.close_page(self))
+        file.addAction(self.close_tab_action)
+        self.close_window_action = QAction("&Close Window", self, triggered=lambda: self.window().close())   # (the window is the host: closing the page alone would only hide it)
+        file.addAction(self.close_window_action)
         file.addAction(QAction("&Quit", self, shortcut=QKeySequence.Quit, triggered=QApplication.closeAllWindows))   # every window, each asking about its own unsaved changes
 
         # Import: by what the file holds. Tracks and reads need an open sequence (greyed until then).
@@ -444,7 +447,22 @@ class MainWindow(QMainWindow):
             themes.addAction(a)
             theme_menu.addAction(a)
             self.theme_actions[key] = a
-        action(view, "Re&set Tabs", None, self.reset_layout)
+        action(view, "Reset &View Tabs", None, self.reset_layout)
+        view.addSeparator()
+        # One choice for the program: a file opens as a tab of the window, or in a window of its own.
+        self.tabs_action = QAction("Open Files in &Tabs", self, checkable=True, checked=open_in_tabs(), triggered=set_open_in_tabs)
+        self.tabs_action.setToolTip("Open each file as a tab of this window. Off: each file opens in a window of its own.")
+        view.addAction(self.tabs_action)
+        mode.changed.connect(lambda: self.tabs_action.setChecked(open_in_tabs()))
+        # Between the file tabs: Ctrl+Tab / Ctrl+Shift+Tab and Ctrl+1..9 (only while there are two or more, so with one file Ctrl+Tab
+        # still goes to the view tabs as before).
+        self.file_tab_keys = []
+        moves = [("Ctrl+Tab", lambda: self.host.cycle(1)), ("Ctrl+Shift+Tab", lambda: self.host.cycle(-1))]
+        moves += [(f"Ctrl+{n}", lambda _=False, n=n: self.host.jump(n)) for n in range(1, 10)]
+        for key, move in moves:
+            a = QAction(self, shortcut=key, triggered=move)
+            self.addAction(a)
+            self.file_tab_keys.append(a)
 
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(QAction("&Keyboard Shortcuts…", self, shortcut="F1",
@@ -483,57 +501,79 @@ class MainWindow(QMainWindow):
         self.circular_action.setToolTip("Circular sequence (unpress to make it linear at a chosen base)")
         toolbar.addAction(self.circular_action)
         toolbar.addSeparator()
+        # The file tabs take the room that is left, which keeps the search box at the right; with files in windows of their own
+        # the strip is hidden and the room stays (the search box does not move).
+        self.file_strip = FileStrip(self)
+        strip_area = QWidget()
+        QHBoxLayout(strip_area).addWidget(self.file_strip)
+        strip_area.layout().setContentsMargins(6, 0, 6, 0)
+        strip_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        toolbar.addWidget(strip_area)
+        self.file_strip.hide()
         toolbar.addWidget(self.search_bar)
         self.doc_actions.append(self.search_bar)
         # One box selects a stretch: "101..200" (1-based, both included; on a circular sequence "3700..50" runs through the
         # origin), or one number for the cursor after that base. It takes the room two number boxes and a button took.
-        self.range_box = QLineEdit(placeholderText="Select 101..200", clearButtonEnabled=True, maxLength=40)
-        self.range_box.setFixedWidth(self.range_box.fontMetrics().horizontalAdvance("100,000..100,100") + 30)   # (longer: scrolls)
-        self.range_box.setToolTip("Select a stretch of bases: 101..200 (also 101-200 or 101 to 200), both ends included.\n"
-                                  "On a circular sequence, 3700..50 selects through the origin. One number puts the cursor after "
-                                  "that base. Enter selects.")
-        self.range_box.returnPressed.connect(self.select_range)
-        pipe = toolbar.addSeparator  # tools apart
-        pipe()
+        self.range_box = RangeBoxes()
+        self.range_box.edited.connect(self._range_edited)
+        self.range_box.submitted.connect(self.select_range)
+        toolbar.addWidget(self.range_box)
+        self.doc_actions.append(self.range_box)
+        # Everything else is in the second row, at the right end of the view tabs (the Workspace's corner, left of the quick
+        # filters): the genetic code in use, the background genome the primers (and spacers) are checked against, the side panels
+        # (Filters, History: flat one-colour icons, icons.py) and, for a multi-sequence FASTA, which sequence is open.
+        self.row2 = QWidget()
+        row2 = QHBoxLayout(self.row2)
+        row2.setContentsMargins(0, 0, 0, 0)
+        row2.setSpacing(6)
+        def labelled(text, *widgets):
+            """A label then its widgets, in one box (so they show and hide together)."""
+            box = QWidget()
+            lay = QHBoxLayout(box)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(4)
+            for w in (QLabel(text), *widgets):
+                lay.addWidget(w)
+            return box
+
+        def line():
+            return QFrame(frameShape=QFrame.VLine, frameShadow=QFrame.Sunken)
+
         # The genetic code in use, a click away (hidden by Tools > Settings > General > Genetic code).
         self.code_switch = CodeSwitch(self)
         self.code_switch.manage.connect(lambda: codon_dialog.CodonDialog(self).exec())
-        self.code_switch_actions = [toolbar.addWidget(self.code_switch), pipe()]
+        self.code_group = labelled("Genetic code:", self.code_switch, line())
+        row2.addWidget(self.code_group)
         self._show_code_switch()
         tool_settings.notifier.changed.connect(lambda tool: tool == genetic_code.TOOL and self._show_code_switch())
-        toolbar.addWidget(self.range_box)
-        self.doc_actions.append(self.range_box)
-        pipe()
-        # The background genome the primers (and spacers) are checked against: the last ones used, and "Add genome file…".
         self.reference_picker = ReferencePicker(self)
         self.reference_picker.changed.connect(lambda: self.editor is not None and self.primer_options_changed())
-        toolbar.addWidget(self.reference_picker)
-        pipe()
-        # The side panel folds away to the window's edge; this button (or Ctrl+Shift+F) opens it.
-        # Flat one-colour icons (icons.py): a funnel for the display filter, an hourglass for the history.
+        row2.addWidget(labelled("Background genome:", self.reference_picker, line()))
+        # The side panel folds away to the window's edge; these buttons (or Ctrl+Shift+F, Ctrl+H) open it.
         filters = self.display_dock.toggleViewAction()
         filters.setIconText("Filters")
         filters.setToolTip("Display filter: what the views show (Ctrl+Shift+F)")
-        toolbar.addAction(filters)   # (the two side panels side by side, one group)
         history = self.history_dock.toggleViewAction()
         history.setText("&History (Side Panel)")
         history.setIconText("History")
         history.setToolTip("History of the changes (Ctrl+H)")
         history.setShortcut("Ctrl+H")
-        toolbar.addAction(history)
         view.addAction(history)
+        for panel in (filters, history):   # (the two side panels side by side, one group)
+            button = QToolButton(autoRaise=True)
+            button.setDefaultAction(panel)
+            row2.addWidget(button)
         # (Light / Dark / System is View > Theme: chosen once, it does not need room in the toolbar)
         self.panel_actions = (filters, history)
         self._paint_panel_icons()
-        self.picker_separator = pipe()   # shown with the picker only (no line left dangling at the end of the toolbar)
         # Multi-sequence FASTA: which sequence is open.
         self.picker = QComboBox(minimumContentsLength=16)
         self.picker.setToolTip("Sequence (chromosome) of this FASTA file")
         self.picker.activated.connect(lambda i: self.switch_sequence(self.picker.itemText(i)))
-        self.picker_action = toolbar.addWidget(self.picker)
-        self.picker_action.visibleChanged.connect(lambda: self.picker_separator.setVisible(self.picker_action.isVisible()))
-        self.picker_action.setVisible(False)
-        self.picker_separator.setVisible(False)
+        self.picker_box = labelled("Sequence:", self.picker)
+        self.picker_box.layout().insertWidget(0, line())   # (shown with the list only: no line left dangling)
+        row2.addWidget(self.picker_box)
+        self.picker_box.hide()
         for a in self.doc_actions:
             a.setEnabled(False)
 
@@ -581,12 +621,17 @@ class MainWindow(QMainWindow):
         return self.open_untitled(doc, Path(runner.safe_name(doc.name) + ".gb"))
 
     def open_untitled(self, doc, path):
-        """Show a document made elsewhere (a new sequence, an NCBI record): in this window if it is empty, else in a new one, so
-        nothing open is touched. Save asks where to write it."""
+        """Show a document made elsewhere (a new sequence, an NCBI record): in this window if it is empty, else in a new tab or
+        window, so nothing open is touched. Save asks where to write it."""
         if self.editor is None:
             self.show_document(doc, path, untitled=True)
             return self
-        return open_window(doc, path, untitled=True)
+        return self._open_new(doc, path)
+
+    def _open_new(self, doc, path):
+        page = self.new_page()
+        page.show_document(doc, path, untitled=True)
+        return page
 
     def import_ncbi(self, database=None):
         dialog = NcbiDialog(self)
@@ -670,17 +715,24 @@ class MainWindow(QMainWindow):
             for path in paths:
                 self.open_path(path)
 
+    def new_page(self):
+        """An empty page for another file: a tab of this window when files open in tabs, else a window of its own."""
+        return self.host.new_page() if self.host is not None and open_in_tabs() else new_window()
+
     def open_path(self, path):
-        """Open a file in this window if it is empty, else in a new one. The window, or None if it could not be read."""
+        """Open a file in this window if it is empty, else as a new tab (or in a new window, see View > Open Files in Tabs). A
+        file that is already open (tabs) is shown instead of opened twice. The page, or None if it could not be read."""
+        if open_in_tabs() and (found := find_open(path)) is not None:
+            found.host.select(found)
+            found.window().raise_()
+            found.window().activateWindow()
+            return found
         if self.editor is None:
             return self if self.load(path) else None
-        win = MainWindow()
-        WINDOWS.append(win)
-        win.show()
-        if win.load(path):
-            return win
-        win.close()
-        WINDOWS.remove(win)
+        page = self.new_page()
+        if page.load(path):
+            return page
+        page.host.close_page(page, ask=False) if page.host.files.pages[1:] else page.window().close()   # (it was the only page of a new window)
         return None
 
     def import_protein(self):
@@ -729,7 +781,7 @@ class MainWindow(QMainWindow):
     def choose_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Sequence", "", OPEN_FILTER)
         if path:
-            self.load(path)
+            self.open_path(path) if open_in_tabs() else self.load(path)
 
     def load(self, path, record=None, reread=False):
         """Open a GenBank/.dna file, or one sequence (`record`, default the first) of
@@ -743,7 +795,7 @@ class MainWindow(QMainWindow):
         if same_file and record == old.fasta_record:
             return True
         if not same_file:
-            if not self._confirm_discard():
+            if not self.confirm_discard():
                 return False
             self.record_docs.clear()
             self.file_history.reset()
@@ -768,6 +820,7 @@ class MainWindow(QMainWindow):
                 record = record if record in names else names[0]
             else:
                 record = None
+            autosave.adopt_old(path, record)   # (a copy an earlier version wrote beside the file)
             recovery = autosave_path(path, record)
             recovered = False
             if cached is None and recovery.exists() and recovery.stat().st_mtime > Path(path).stat().st_mtime and \
@@ -780,7 +833,7 @@ class MainWindow(QMainWindow):
             elif cached is not None:
                 doc = cached
             else:
-                recovery.unlink(missing_ok=True)  # declined or stale
+                autosave.drop(recovery)  # declined or stale
                 label = f"Loading {record or Path(path).name}…"
                 if project:
                     doc, meta = run_busy(self, label, lambda: exports.open_project(path))
@@ -886,7 +939,8 @@ class MainWindow(QMainWindow):
     def _ask_recover(self, path, recovery):
         """Recover the autosaved changes? Buttons that say what happens: declining deletes the recovery copy for good."""
         box = QMessageBox(QMessageBox.Question, "Recover Unsaved Changes",
-                          f"{Path(path).name} has unsaved changes from an earlier session (autosaved {recovery.name}).", parent=self)
+                          f"{Path(path).name} has unsaved changes from an earlier session (autosaved "
+                          f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(recovery.stat().st_mtime))}).", parent=self)
         box.setInformativeText("Discarding deletes the recovery copy; the file itself is not changed either way.")
         recover = box.addButton("&Recover Changes", QMessageBox.AcceptRole)
         box.addButton("&Discard Changes", QMessageBox.DestructiveRole)
@@ -934,7 +988,7 @@ class MainWindow(QMainWindow):
         self.picker.clear()
         self.picker.addItems([n for n, _ in lengths])
         self.picker.setCurrentText(ed.fasta_record)
-        self.picker_action.setVisible(len(lengths) > 1)
+        self.picker_box.setVisible(len(lengths) > 1)
         ed.match_elsewhere()
         ed.display_changed.emit()
 
@@ -978,7 +1032,7 @@ class MainWindow(QMainWindow):
             return False
         self.record_docs.pop(name, None)
         self.file_history.forget(name)
-        autosave_path(ed.path, name).unlink(missing_ok=True)
+        autosave.drop_all(ed.path, name)
         lengths = dict(ed.fasta_records)
         self._set_record_list([(n, lengths[n]) for n in keep])
         self._update_undo_actions()
@@ -1046,7 +1100,7 @@ class MainWindow(QMainWindow):
         self.picker.addItems(list(sequences))
         if record:
             self.picker.setCurrentText(record)
-        self.picker_action.setVisible(len(sequences) > 1)
+        self.picker_box.setVisible(len(sequences) > 1)
         self.autosaved_version = ed.version
         ed.match_elsewhere()   # a multi-record file: where the primers bind on the other records
         ed.changed.connect(self._update_title)
@@ -1055,6 +1109,7 @@ class MainWindow(QMainWindow):
             ed.changed.connect(lambda: ed is self.editor and self._observe_history())
             self._observe_history()
         ed.selection_changed.connect(self._update_status)
+        ed.selection_changed.connect(self._show_range)
         ed.error.connect(lambda msg: self.statusBar().showMessage(msg, 5000))
         ed.edit_feature_requested.connect(lambda i: edit_feature(self, ed, i))
         ed.edit_primer_requested.connect(lambda name: PrimerDialog(self, ed, name).exec())
@@ -1067,7 +1122,7 @@ class MainWindow(QMainWindow):
         self.search_bar.attach(ed)
         self.display_dock.setWidget(DisplayPanel(ed))
         self.history_dock.setWidget(HistoryPanel(ed))
-        self.range_box.clear()
+        self._show_range()
 
         # Always the standard tabs (see workspace.DEFAULT); only a project carries its own layout.
         self._build_workspace(layout or DEFAULT_LAYOUT, current)
@@ -1104,7 +1159,7 @@ class MainWindow(QMainWindow):
     def open_product(self, doc):
         """Open an assembled sequence in a new unsaved window."""
         folder = self.editor.path.parent if self.editor else Path.cwd()
-        return open_window(doc, folder / f"{doc.name}.gb", untitled=True)
+        return self._open_new(doc, folder / f"{doc.name}.gb")
 
     def about(self):
         """Help > About: the notices the AGPL asks an interactive program to show (copyright, no warranty, the licence)."""
@@ -1127,13 +1182,12 @@ class MainWindow(QMainWindow):
 
     def confirm_all_saved(self):
         """False if the user cancels while any open window has unsaved changes (each one asks)."""
-        return all(w._confirm_discard() for w in [self] + list(WINDOWS) if w.editor is not None and w.editor.doc.modified)
+        return all(w.confirm_discard() for w in self.open_windows() if w.editor.doc.modified)
 
     def close_for_update(self):
         """The new version is in place and started: close this window and the others without asking again."""
-        for w in [self] + list(WINDOWS):
-            if w.editor is not None:
-                w.editor.doc.modified = False
+        for w in self.open_windows():
+            w.editor.doc.modified = False
         QApplication.quit()
 
     def open_pcr_product(self, dialog):
@@ -1142,11 +1196,11 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError) as e:
             QMessageBox.warning(self, "PCR product", str(e))
             return None
-        return open_window(doc, self.editor.path.with_name(f"{doc.name}.gb"), untitled=True)
+        return self._open_new(doc, self.editor.path.with_name(f"{doc.name}.gb"))
 
     def open_windows(self):
-        """Every window of this program with a file open, this one first."""
-        return [w for w in [self] + [w for w in WINDOWS if w is not self] if w.editor is not None]
+        """Every file page of this program with a file open (in any window), this one first."""
+        return [w for w in sorted(all_pages(), key=lambda w: w is not self) if w.editor is not None]
 
     def open_documents(self):
         """[(file name, Document)] of every file open in a window of this program (for the Assembly panel)."""
@@ -1191,8 +1245,7 @@ class MainWindow(QMainWindow):
             self.setCentralWidget(QLabel("Open a GenBank or .dna file (Ctrl+O)", alignment=Qt.AlignCenter))
 
     def _show_code_switch(self):
-        for action in self.code_switch_actions:   # the button and the line after it
-            action.setVisible(code_switch_shown())
+        self.code_group.setVisible(code_switch_shown())
 
     def primer_options(self):
         self.open_settings("Primers")
@@ -1211,6 +1264,7 @@ class MainWindow(QMainWindow):
         self.editor.selection_changed.emit()  # status bar Tm
 
     def _build_workspace(self, layout=None, current=0):
+        self.row2.setParent(None)   # (the old workspace is deleted, its corner with it: the new one takes row2 in)
         # The tool tabs that are open (Assembly, the databases) move to the new workspace, as they were.
         tools, shown = [], None
         for host in (self.workspace, self.tool_host):
@@ -1235,7 +1289,7 @@ class MainWindow(QMainWindow):
         self.genome_action.setChecked(bool(self.workspace.views(GenomeView)))
 
     def reset_layout(self):
-        """View → Reset Tabs: the default tabs, same document, undo history kept."""
+        """View → Reset View Tabs: the default tabs, same document, undo history kept."""
         self._build_workspace(DEFAULT_LAYOUT)
 
     def _collect_primers(self):
@@ -1369,7 +1423,7 @@ class MainWindow(QMainWindow):
         if self.editor.fasta_record:  # now a GenBank document
             self.record_docs.clear()
             self.editor.fasta_record, self.editor.multi_genbank, self.editor.fasta_records = None, False, []
-            self.picker_action.setVisible(False)
+            self.picker_box.setVisible(False)
             self.editor.display_changed.emit()
         self.statusBar().showMessage(f"Saved {path}{note}" + (f" · {refreshed}" if refreshed else ""), 8000 if note or refreshed else 3000)
         return True
@@ -1419,10 +1473,9 @@ class MainWindow(QMainWindow):
     def set_theme(self, key):
         """View > Theme or the sun button: every window of the program follows (theme.apply repaints all the views)."""
         theme.apply(key)
-        for w in QApplication.topLevelWidgets():   # the other windows' menus and sun buttons show the new choice too
-            if isinstance(w, MainWindow):
-                w.theme_actions[key].setChecked(True)
-                w._paint_panel_icons()
+        for w in all_pages():   # the other windows' menus and sun buttons show the new choice too
+            w.theme_actions[key].setChecked(True)
+            w._paint_panel_icons()
 
     def changeEvent(self, event):
         # A theme switch changes the palette: the one-colour icons follow (black on light, white on dark).
@@ -1595,6 +1648,30 @@ class MainWindow(QMainWindow):
         self.complement_action.setChecked(ed.show_complement)
         self.cds_only_action.setChecked(ed.cds_only)
 
+    def _show_range(self):
+        """The From / To boxes follow the selection (not while their own typing is what changed it)."""
+        if self.editor is not None:
+            self.range_box.length = self.editor.length
+        if self.editor is not None and not self._typing_range:
+            self.range_box.show_range(*selection_range(self.editor.start, self.editor.end, self.editor.length))
+
+    def _range_edited(self):
+        """Typing in From / To changes the selection as it goes; text that is not yet a stretch (half typed, out of range) is left
+        alone, without a message."""
+        ed = self.editor
+        if ed is None:
+            return
+        try:
+            start, end = parse_range(self.range_box.text(), ed.length, ed.circular)
+        except ValueError:
+            return
+        self._typing_range = True
+        try:
+            ed.select(start, end)
+            ed.reveal.emit(ed.start)
+        finally:
+            self._typing_range = False
+
     def select_range(self, text=None):
         """The toolbar's range box (or `text`): select that stretch, or put the cursor after one base. A typing mistake is said
         in the status bar and the box keeps the text, to correct."""
@@ -1738,20 +1815,67 @@ class MainWindow(QMainWindow):
         except OSError as e:
             self.statusBar().showMessage(f"Autosave failed: {e}", 5000)
             return
+        autosave.remember_source(target, ed.path)
         if self.autosave_file not in (None, target):
             self._drop_autosave()  # file was renamed by Save As
         self.autosave_file, self.autosaved_version = target, ed.version
 
     def _drop_autosave(self):
         if self.autosave_file is not None:
-            self.autosave_file.unlink(missing_ok=True)
+            autosave.drop(self.autosave_file)
             self.autosave_file = None
 
-    def _confirm_discard(self):
+    def tab_title(self):
+        """Its file tab: the file name, with a dot before it while there are unsaved changes."""
+        if self.editor is None:
+            return "Empty"
+        return ("● " if self.has_unsaved() else "") + self.editor.path.name
+
+    def focus_view(self):
+        if self.editor is not None:
+            self.sequence_view.setFocus()
+
+    def file_mode_changed(self):
+        """The number of files in the window, or open_in_tabs(), changed: which close keys and tab keys work."""
+        several = self.host is not None and len(self.host.files.pages) > 1
+        tabs = open_in_tabs() or several
+        self.close_tab_action.setVisible(tabs)
+        self.close_tab_action.setShortcut(QKeySequence("Ctrl+W") if tabs else QKeySequence())
+        self.close_window_action.setShortcut(QKeySequence("Ctrl+Shift+W") if tabs else QKeySequence.Close)
+        for a in self.file_tab_keys:
+            a.setEnabled(several)
+
+    def move_to_new_window(self):
+        """The file of this tab in a window of its own: saved first if it has changes or no file yet (the new window reads the
+        file), then this tab closes."""
+        ed = self.editor
+        if ed is None:
+            return
+        if self.has_unsaved() or self.file_path() is None:
+            if QMessageBox.question(self, "Move to New Window", f"{ed.path.name} must be saved first: the new window opens the "
+                                    "saved file.", QMessageBox.Save | QMessageBox.Cancel) != QMessageBox.Save or not self.save():
+                return
+        path, record = self.file_path(), ed.fasta_record
+        if path is None:
+            return
+        win = new_window()
+        if not win.load(str(path), record):
+            win.window().close()
+            return
+        self.host.close_page(self, ask=False)
+
+    def file_path(self):
+        """The file this page shows, None while it has none (nothing open, or not saved yet)."""
+        return None if self.editor is None or self.editor.untitled else self.editor.path
+
+    def has_unsaved(self):
+        return self.editor is not None and (self.editor.doc.modified or any(d.modified for d in self.record_docs.values()))
+
+    def confirm_discard(self):
         """True if it is OK to drop the current document (saved, or user agreed)."""
-        away = [n for n, d in self.record_docs.items() if d.modified]   # other records of the file, edited earlier
-        if self.editor is None or not (self.editor.doc.modified or away):
+        if not self.has_unsaved():
             return True
+        away = [n for n, d in self.record_docs.items() if d.modified]   # other records of the file, edited earlier
         answer = QMessageBox.question(
             self, "Unsaved changes", f"Save changes to {self.editor.path.name}?"
             + (f"\n\nAlso edited: {', '.join(away)}." if away else ""),
@@ -1760,15 +1884,11 @@ class MainWindow(QMainWindow):
             return self.save()
         return answer == QMessageBox.Discard
 
-    def closeEvent(self, event):
-        if self._confirm_discard():
-            self._drop_autosave()
-            self._save_window()
-            for terminal in self.workspace.views(Terminal) if self.workspace is not None else []:
-                terminal.close_session()
-            event.accept()
-        else:
-            event.ignore()
+    def shut_down(self):
+        """The window is closing (confirm_discard said yes): the recovery copy goes, the terminals end."""
+        self._drop_autosave()
+        for terminal in self.workspace.views(Terminal) if self.workspace is not None else []:
+            terminal.close_session()
 
     # ---- editing commands ----------------------------------------------------------
     def _update_undo_actions(self):
@@ -1879,18 +1999,30 @@ class MainWindow(QMainWindow):
             self.status.setText(f"{where}  ·  {ed.length:,} bp")
 
 
-WINDOWS = []  # extra windows (PCR products...): kept referenced so they stay open
-
-
-def open_window(doc, path, untitled=False):
-    win = MainWindow()
-    WINDOWS.append(win)
-    win.show()
-    win.show_document(doc, path, untitled)
-    return win
+def new_window():
+    """A window (a FileHost) with one empty page, shown. Returns the page."""
+    host = FileHost(MainWindow)
+    page = host.new_page()
+    host.show()
+    return page
 
 
 WELCOME_FLAG = "--welcome"
+
+
+def open_handed_over(files):
+    """Files another launch of the program handed to this running one: opened as View > Open Files in Tabs says (tabs of the window
+    last used, or a window each), and that window shown in front."""
+    host = last_host()
+    target = host.files.current if host is not None else new_window()
+    shown = target
+    for path in files:
+        shown = target.open_path(path) or shown
+    window = shown.window()
+    window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
+    window.show()
+    window.raise_()
+    window.activateWindow()
 
 
 def start_up_questions(win, force_welcome=False):
@@ -1956,16 +2088,21 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())
     app.setApplicationName(project.NAME)   # the data folder is then %APPDATA%\openDNA whether run from source or as the exe
-    copy_old_data()   # settings and primers kept under the old name come along, before anything reads the data folder
+    copy_old_data()   # settings and primers kept under the old name come along, before anything reads (or makes) the data folder
+    # Already running: this launch only hands its files over (full paths: they are relative to where it was started) and ends.
+    files = [os.path.abspath(a) for a in sys.argv[1:] if a != WELCOME_FLAG]
+    if single_instance.send_to_running(files):
+        sys.exit(0)
+    listener = single_instance.Listener()
     feedback.setup_logging()
+    QTimer.singleShot(3000, autosave.sweep)   # recovery copies of files that are gone (see autosave.py), once the window is up
     theme.apply(theme.saved(), remember=False)
-    win = MainWindow()
-    win.show()
+    win = new_window()
     # Options: --welcome opens the start page even if it was shown today or turned off. Anything else is a file to open.
-    files = [a for a in sys.argv[1:] if a != WELCOME_FLAG]
+    listener.files.connect(open_handed_over)
     QTimer.singleShot(0, lambda: start_up_questions(win, force_welcome=WELCOME_FLAG in sys.argv[1:]))
-    if files:
-        win.load(files[0])
+    for path in files:   # the first into the empty window, the others as the tabs / windows setting says
+        win.open_path(path)
     if os.environ.get("OPENDNA_SMOKE_REPORT"):   # the smoke test of a build (scripts/smoke_unix.py) reads what the program shows
         QTimer.singleShot(1500, lambda: write_smoke_report(win, os.environ["OPENDNA_SMOKE_REPORT"]))
     code = app.exec()

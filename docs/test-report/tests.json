@@ -4483,7 +4483,7 @@
    "id": "tests/test_documents.py::test_saving_never_damages_the_original",
    "area": "Safe saving",
    "role": "Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.",
-   "purpose": "Forces GenBank and FASTA saves to fail in several ways and checks the original file, the modified flag and the directory are untouched with no temp files left, and that a later save works. Also checks the Windows-retry rename helper and that autosave writes beside the file without counting as a save.",
+   "purpose": "Forces GenBank and FASTA saves to fail in several ways and checks the original file, the modified flag and the directory are untouched with no temp files left, and that a later save works. Also checks the Windows-retry rename helper and that autosave writes its copy in the data folder, never beside the file and never as a save; that a copy an older version left beside the file is adopted; and that the start-up sweep deletes only old copies of files that are gone.",
    "cases": [
     {
      "input": "save_genbank with primer site 1..99999 on a 407 bp doc",
@@ -4518,8 +4518,16 @@
      "expected": "OSError in under 2 s (no pointless retry)"
     },
     {
-     "input": "autosave_path('plasmid.dna') and ('genome.fa','chr2'); write_genbank to autosave path after an edit",
-     "expected": "names 'plasmid.dna.autosave.gb' and 'genome.fa.chr2.autosave.gb'; user's file unchanged, doc still modified; autosave file holds the edited sequence"
+     "input": "autosave_path for plasmid.dna in two folders, and genome.fa record chr2; write_genbank to the autosave path after an edit",
+     "expected": "copies in the autosave folder named plasmid.dna-<hash>..., different for the two folders; genome.fa.chr2-<hash>...; nothing beside the files; user's file unchanged, doc still modified; the copy holds the edit"
+    },
+    {
+     "input": "an old plasmid.dna.autosave.gb beside the file, adopt_old; then an older one again",
+     "expected": "moved into the data folder with its .src note; the second (older) one is deleted and the first kept"
+    },
+    {
+     "input": "sweep with: old copy of a missing file, old copy of an existing file, new copy of a missing file",
+     "expected": "only the first (and its .src) is deleted"
     }
    ],
    "oracle": "property/invariant",
@@ -6108,6 +6116,14 @@
    "purpose": "Checks the range box parser on common notations and refusals, cleaning of pasted protein text, the name and API-key validators, single-primer problems, a deliberately bad TSV primer list and a FASTA list (each refused line numbered with its reason), a binary file, and that the primer database itself refuses invalid add / add_many / update.",
    "cases": [
     {
+     "input": "selection_range for 100..200, a cursor, 3699..3830 on 3780 bp, and the whole sequence, typed back through parse_range as 'first..last'",
+     "expected": "(101, 200); (None, None); (3700, 50); each round-trips to the same (start, end)"
+    },
+    {
+     "input": "grouped('') / '7' / '1234567' / '0042', and '1,234..2,500' (the boxes' own text) through parse_range on 3780 bp",
+     "expected": "'' / '7' / '1,234,567' / '42'; (1233, 2500)"
+    },
+    {
      "input": "parse_range '101..200' on a 3780 bp circle",
      "expected": "(100, 200)"
     },
@@ -7113,6 +7129,77 @@
    "issues": [
     "The primers are checked against the edit by rebuilding it, not against a hand-computed primer sequence; annealing choice (length for the Tm) is not pinned.",
     "Primer quality warnings (GC, hairpin) are not asserted."
+   ]
+  },
+  {
+   "id": "tests/test_file_tabs.py::test_file_set_keeps_order_dedupes_and_picks_the_next_page_on_close",
+   "area": "File tabs",
+   "role": "Without it, opening a file twice could give two editors on one file, closing a file tab could leave a closed file shown or nothing shown, and a window could close without asking about a file with unsaved changes.",
+   "purpose": "The bookkeeping of the files of one window (FileSet), with stand-in pages: tab order and dragging, stepping through the tabs, the shown page, finding a file by path whatever its spelling, which pages are unsaved, and which page is shown after a close.",
+   "cases": [
+    {
+     "input": "add a.gb, b.gb (unsaved), c.gb, one untitled unsaved page",
+     "expected": "the untitled one is shown; unsaved() = [b, untitled]"
+    },
+    {
+     "input": "find b.gb; a missing file; sub/../a.gb; C.GB in capitals",
+     "expected": "b's page; None; a's page; c's page on Windows only (case-insensitive paths there)"
+    },
+    {
+     "input": "drag a.gb to the third place; step(+1) and step(-1) from the shown last page",
+     "expected": "order b, c, a, untitled; next wraps round to b; previous is a"
+    },
+    {
+     "input": "close the shown last page",
+     "expected": "the page to its left is shown"
+    },
+    {
+     "input": "close the shown page b; then close a (not shown); then close c",
+     "expected": "c shown; c still shown; None and no pages"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Uses stand-in pages, not real windows: that the host really shows the page FileSet says is shown is only checked by hand (no UI tests)."
+   ]
+  },
+  {
+   "id": "tests/test_file_tabs.py::test_two_open_files_share_no_editor_state",
+   "area": "File tabs",
+   "role": "Without it, an edit or cursor move in one open file could silently land in another open file.",
+   "purpose": "Two Editors on two documents: typing into one changes only that one (its length, version and cursor), the other keeps its bases, version and cursor.",
+   "cases": [
+    {
+     "input": "Editor one (ACGT x50) and Editor two (TTTT x50); cursor at 0 in one, type_bases('GGGG')",
+     "expected": "one: 204 bp, version up, cursor 4; two: 200 bp, same version, cursor 0, still TTTT x50"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Covers the Editor objects only; the widgets of a page (search box, range box, docks) are separate objects per page by construction and are not exercised here (no UI tests)."
+   ]
+  },
+  {
+   "id": "tests/test_file_tabs.py::test_a_second_launch_hands_its_files_to_the_running_program",
+   "area": "File tabs",
+   "role": "Without it, double-clicking a file while openDNA is open would start a second copy of the program instead of opening the file in the one running, or the file names could be lost or garbled on the way.",
+   "purpose": "The hand-over between launches: with nothing running the launch is told so (and goes on to start); with a listener running, a second process sends three paths (spaces, accents) and gets the answer, and the listener receives them whole and in order.",
+   "cases": [
+    {
+     "input": "send_to_running with no listener",
+     "expected": "False"
+    },
+    {
+     "input": "a listener here; a second process sends ['<tmp>/a.gb', '<tmp>/b c.gb', 'ünï.gb']",
+     "expected": "the sender exits 0 (it got the answer); the listener's files signal gave exactly that list"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Does not open the files in a window (that is main.open_handed_over, checked by hand: no UI tests), and not a launch while the running program is busy or hung."
    ]
   }
  ],

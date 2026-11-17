@@ -8,6 +8,14 @@ from PySide6.QtWidgets import (
 )
 
 PANELS = {
+    "File tabs": [
+        ("Ctrl+Tab / Ctrl+Shift+Tab", "Next / previous file tab (with two or more files open)"),
+        ("Ctrl+1 … Ctrl+9", "Go to that file tab (9: the last one)"),
+        ("Ctrl+W", "Close the file tab (Ctrl+Shift+W closes the window); with files in windows of their own, Ctrl+W closes the window"),
+        ("Drag a tab", "Change the order of the files"),
+        ("Right-click a tab", "Close, Close Others, Copy Path, Reveal in Folder, Move to New Window"),
+        ("View > Open Files in Tabs", "Each file opens as a tab of the window (off: in a window of its own)"),
+    ],
     "Sequence view": [
         ("Click / drag", "Place the cursor / select bases"),
         ("Shift+click", "Extend the selection"),

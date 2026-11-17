@@ -122,9 +122,10 @@ def tools_in(text, tools):
     return re.findall(rf"(?:^|[;|&(]|\bthen\b|\bdo\b|\belse\b)\s*({names})\b(?: ([a-z]\w*))?", text)
 
 
-def build(pipeline, options, files, threads, folder):
+def build(pipeline, options, files, threads, folder, marks=False):
     """(bash command, tools it uses) for a run: steps joined with &&, run in `folder` in a subshell
-    (so the session's own directory and variables stay as they were). `files`: {placeholder: path or ""}."""
+    (so the session's own directory and variables stay as they were). `files`: {placeholder: path or ""}.
+    `marks`: print "__STEP__ i" after step i, which the Terminal turns into the diagram's progress."""
     values = {key: shlex.quote(shell_path(v)) if v else "''" for key, v in files.items()}
     values["threads"] = int(threads)
     for key, opt in pipeline.get("options", {}).items():
@@ -132,7 +133,7 @@ def build(pipeline, options, files, threads, folder):
         values[key] = opt["choices"][value] if "choices" in opt else value
     # two passes: a choice's text holds placeholders of its own ({threads}, {min_qual}…)
     steps = [fill(fill(step, values), values) for step in pipeline["steps"]]
-    body = " && ".join(steps)
+    body = " && ".join(f"{s} && echo '__STEP__ {i + 1} {len(steps)}'" if marks else s for i, s in enumerate(steps))
     used = sorted({tool for tool, _ in tools_in(body, pipeline.get("needs", []))}, key=pipeline.get("needs", []).index)
     need = f"need {' '.join(used)} && " if used else ""
     return f"( {need}cd {shlex.quote(shell_path(folder))} && {body} )", used

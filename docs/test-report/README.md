@@ -13,11 +13,11 @@ them well. **[AUDIT.md](AUDIT.md) lists every test on one page with why it matte
 - **Input / Expected output**: the concrete cases, in the order the test runs them. Many tests are *topical*: one test function holds several sections, each a row.
 - **Review notes**: what the reviewer found could be stronger. **Fixed by the audit**: what was changed.
 
-## Totals (163 tests: 98 Python, 65 Rust)
+## Totals (166 tests: 101 Python, 65 Rust)
 
-Last run: ✅ 163 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
+Last run: ✅ 166 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
 
-Review: 🟡 adequate: 50 · 🟢 strong: 112 · 🔴 weak: 1
+Review: 🟡 adequate: 53 · 🟢 strong: 112 · 🔴 weak: 1
 
 ## Test files
 
@@ -33,6 +33,7 @@ Review: 🟡 adequate: 50 · 🟢 strong: 112 · 🔴 weak: 1
 | [`tests/test_enzymes_and_guides.py`](tests_test_enzymes_and_guides.md) | 5 | 5 | 0 | 0 | 0 | 🟢 strong 5 |
 | [`tests/test_feedback.py`](tests_test_feedback.md) | 3 | 3 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 2 |
 | [`tests/test_file_assoc.py`](tests_test_file_assoc.md) | 3 | 3 | 0 | 0 | 0 | 🟢 strong 3 |
+| [`tests/test_file_tabs.py`](tests_test_file_tabs.md) | 3 | 3 | 0 | 0 | 0 | 🟡 adequate 3 |
 | [`tests/test_genes_and_history.py`](tests_test_genes_and_history.md) | 2 | 2 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 1 |
 | [`tests/test_genetic_code.py`](tests_test_genetic_code.md) | 2 | 2 | 0 | 0 | 0 | 🟢 strong 2 |
 | [`tests/test_input_parsing.py`](tests_test_input_parsing.md) | 1 | 1 | 0 | 0 | 0 | 🟢 strong 1 |

@@ -4,7 +4,7 @@
 
 ## `test_release_check_offers_only_a_newer_complete_release`
 
-**Result:** ✅ passed in 0.01 s · [line 125](../../tests/test_updater.py#L125) · **Area:** Updater: which release is offered · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 125](../../tests/test_updater.py#L125) · **Area:** Updater: which release is offered · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the app could offer users an older, draft, prerelease or incomplete release, one without the file their system installs, or one whose files are hosted off the project's GitHub repository, as an update.
 
@@ -114,7 +114,7 @@ Checks that install refuses when run from source or from a portable copy (not se
 
 ## `test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip`
 
-**Result:** ✅ passed in 0.13 s · [line 548](../../tests/test_updater.py#L548) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.16 s · [line 548](../../tests/test_updater.py#L548) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the app could check for updates when the user turned it off, check on every start, stop checking after the clock goes back, or forget a version the user chose to skip.
 

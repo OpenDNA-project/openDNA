@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the installer is EXE_NAME-setup.exe).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.7.5"
+VERSION = "0.8.0"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,10 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = True
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.8.0": ["Several files in one window: each file opens as a file tab in the top row, and keeps its own view tabs, side panels, search and undo history. View > Open Files in Tabs goes back to one window per file.",
+              "The range box is two boxes, From and To, that follow the selection: type in them, or turn the mouse wheel over a number (Shift: by 10, Ctrl: by 100), and the selection changes at once.",
+              "Double-clicking a file while openDNA is open sends it to that copy (a new tab). The genetic code and the background genome are labelled in the second row.",
+              "Autosave recovery copies are kept in the program's data folder instead of next to your files."],
     "0.7.5": ["Hover Assembly in a pane's picker (or Tools) to choose the method and open the panel on it directly.",
               "The MSA view is now the Multiple alignment tab of Local Align.",
               "Releases no longer carry the portable folder zip and tar.gz: the installer and the AppImage keep Qt as plain files."],

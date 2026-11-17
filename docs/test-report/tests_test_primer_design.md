@@ -28,7 +28,7 @@ Checks that the documented default limits are exactly what the settings declare 
 
 ## `test_where_a_primer_comes_from_decides_how_it_is_kept`
 
-**Result:** ✅ passed in 0.03 s · [line 160](../../tests/test_primer_design.py#L160) · **Area:** Primer sources and storage · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 160](../../tests/test_primer_design.py#L160) · **Area:** Primer sources and storage · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a primer from the shared database could be confused with one stored in the file, be drawn in the wrong colour or hidden by the wrong filter, or an imported primer could fail to be saved or to undo cleanly.
 
@@ -69,7 +69,7 @@ Checks that on a circular 3000 bp sequence the designer returns pairs for a targ
 
 ## `test_the_files_written_for_ordering`
 
-**Result:** ✅ passed in 0.04 s · [line 241](../../tests/test_primer_design.py#L241) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 241](../../tests/test_primer_design.py#L241) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the plate file sent to a synthesis company could put oligos in the wrong wells, overflow past well 96, drop the scale or purification, or corrupt names and sequences - a real-money error.
 

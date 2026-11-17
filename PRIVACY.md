@@ -61,8 +61,12 @@ folder, like the other `.ini` files. **Only if you answer Yes** to the file-asso
 `HKEY_CURRENT_USER\Software\Classes` and `HKEY_CURRENT_USER\Software\RegisteredApplications`, the entries that make "openDNA" appear in Windows' "Open with"
 list and in Settings > Default apps (no administrator rights; Windows still lets only you choose the default program).
 
-**Next to your own files.** While you edit, a recovery copy is written every minute beside the file as `<file>.autosave.gb`; it is deleted when you save or close
-normally (for a `.dna` file it sits beside it, and the `.dna` file itself is never written). *Map Reads* writes a `<output>_run\` folder
+**Recovery copies.** While you edit, a recovery copy is written every minute in openDNA's data folder (`autosave/`), as `<file>-<8 hex digits>.autosave.gb` with a small `.src` note of which file it is for; it is deleted when you save or close
+normally. A copy whose file no longer exists is deleted after 30 days. (A `.dna` file itself is never written.)
+
+**One copy at a time.** When openDNA is already running, a second start (a double-click on a file) passes the file names to it over a local socket (a named pipe on Windows, a socket file on macOS and Linux, open to your user account only), then ends. It never uses the network.
+
+**Next to your own files.** *Map Reads* writes a `<output>_run\` folder
 beside the output you chose (the reference, the exact commands and a log). A *Local command* uses a temporary folder named `opendna_fold_...` in your
 temp folder and removes it afterwards.
 
@@ -89,7 +93,7 @@ Close openDNA first. In the **uninstall** sense there is nothing else: no servic
 
   The file-association entries also sit under `HKCU:\Software\Classes\Applications\oDNA_beta.exe` and, one value each, in `...\Classes\<.gb, .dna, ...>\OpenWithProgids`; the
   complete list is at the top of `app/file_assoc.py`. They are harmless if left (they only name the program in the "Open with" list).
-- **Recovery copies** (`*.autosave.gb`) and `*_run` folders: delete them where they are, next to your files.
+- **Recovery copies**: the `autosave/` folder of the data folder (older versions wrote `*.autosave.gb` next to your files: delete those where they are). `*_run` folders: delete them where they are, next to your files.
 - The program itself is a single file with no installer: delete `oDNA_beta.exe` (and a leftover `oDNA_beta.exe.old` beside it after an update).
 
 ## Your files

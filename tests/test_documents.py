@@ -27,7 +27,8 @@ import selftest
 from editor import Editor, reverse_complement
 from file_history import FileHistory
 from history_panel import group
-from main import autosave_path
+import autosave
+from autosave import autosave_path
 from primer_db import add_primer, add_primers, db, remove_primers, update_primer
 from sample_files import DNA_FILE as PLASMID_DNA, PLASMID as PLASMID_GB
 
@@ -129,14 +130,48 @@ def test_saving_never_damages_the_original(tmp_path):
         fileio.replace(tmp, folder)
     assert time.time() - start < 2
 
-    # --- the autosave copy: beside the file (one per FASTA sequence), never the original, not a save
-    assert autosave_path(tmp_path / "plasmid.dna").name == "plasmid.dna.autosave.gb"
-    assert autosave_path(tmp_path / "genome.fa", "chr2").name == "genome.fa.chr2.autosave.gb"
+    # --- the autosave copy: in the data folder (one per FASTA sequence, one per full path), never the original, not a save
+    plasmid, other = tmp_path / "plasmid.dna", tmp_path / "sub" / "plasmid.dna"
+    other.parent.mkdir()
+    one, two = autosave_path(plasmid), autosave_path(other)
+    assert one.parent == autosave.folder() and one.name.startswith("plasmid.dna-") and one.name.endswith(".autosave.gb")
+    assert one != two, "the same file name in another folder has a copy of its own"
+    assert autosave_path(tmp_path / "genome.fa", "chr2").name.startswith("genome.fa.chr2-")
+    assert not list(tmp_path.glob("*.autosave.gb")), "nothing is written beside the user's files"
     saved = out.read_bytes()
     doc.insert(0, "CCC")
     doc.write_genbank(str(autosave_path(out)))                          # what autosave writes
     assert out.read_bytes() == saved and doc.modified, "the user's file is only written by Save"
     assert Document(autosave_path(out)).sequence() == doc.sequence()
+
+    # --- a copy an earlier version wrote beside the file moves into the data folder; the newer of two is kept
+    beside = autosave.old_path(plasmid)
+    beside.write_bytes(b"old copy")
+    autosave.adopt_old(plasmid)
+    assert not beside.exists() and one.read_bytes() == b"old copy" and one.with_suffix(".src").read_text() == str(plasmid)
+    beside.write_bytes(b"older than the one in the data folder")
+    os.utime(beside, (1, 1))
+    autosave.adopt_old(plasmid)
+    assert not beside.exists() and one.read_bytes() == b"old copy"
+    # --- the start-up sweep: only a copy that is old AND whose file is gone
+    autosave.drop(one)
+    plasmid.write_bytes(b"a file that exists")
+    gone = tmp_path / "gone.gb"
+    copies = {}
+    for name, source in (("gone", gone), ("here", plasmid)):
+        copies[name] = autosave_path(source)
+        copies[name].write_bytes(b"x")
+        autosave.remember_source(copies[name], source)
+    for c in copies.values():
+        os.utime(c, (1, 1))                                             # 1970
+    fresh = autosave_path(tmp_path / "fresh_gone.gb")
+    fresh.write_bytes(b"x")
+    autosave.remember_source(fresh, tmp_path / "fresh_gone.gb")         # its file is gone but it is new
+    autosave.sweep()
+    assert not copies["gone"].exists() and not copies["gone"].with_suffix(".src").exists()
+    assert copies["here"].exists() and fresh.exists(), "a copy of a file that is still there, or a recent one, is kept"
+    autosave.drop_all(plasmid)
+    assert not copies["here"].exists()
 
 
 # ---- corrupt and truncated files -------------------------------------------------------------------------------------------

@@ -29,6 +29,7 @@ from uikit import ask, fit_columns, plural
 from annotation import add_parts, feature_part
 from parts_library import source_of
 from editor import arrow, feature_key, reverse_complement
+from file_tabs import page_of
 from primer_db import db, remove_primers
 
 COLUMNS = ["Name", "Type", "Location", "Length", "Strand"]
@@ -524,7 +525,7 @@ def selection_menu(parent, editor, global_pos):
     from primer_design import design_for_selection
     from primer_panel import PrimerDialog
     from sequence_view import add_edit_actions
-    window = parent.window()
+    window = page_of(parent) or parent.window()
     menu = QMenu(parent)
     menu.addSection(f"{editor.end - editor.start:,} bp selected")
     add_edit_actions(menu, editor, getattr(parent, "editable", True))   # Cut / Copy / Paste / Select All, as on empty space
