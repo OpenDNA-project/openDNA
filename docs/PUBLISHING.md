@@ -15,7 +15,7 @@ A checklist for taking the project further. **Done so far:** the code is in a pr
   them to tick that they agree). A signed agreement (for example through CLA Assistant) would be firmer than a checkbox.
   (4) The dependencies are compatible: PySide6 is LGPL, `gb-io` is MIT (its `LICENSE` is in `core/vendor/gb-io`), PyO3 is
   MIT/Apache-2.0, 3Dmol.js is BSD-3-Clause. The PyInstaller build bundles Qt (LGPL), which asks that users can
-  replace the Qt libraries: releases also carry a one-folder zip for that (see "Qt (LGPL)" below). (5) If the work was done
+  replace the Qt libraries: the installed folder keeps Qt as plain files for that (see "Qt (LGPL)" below). (5) If the work was done
   as a student or an employee, check the institution's intellectual-property policy. This is a pointer, not legal advice.
 - **Public or private first?** Creating it private, checking the page, then flipping it public costs nothing.
 - **The Sponsors startup page.** `app/sponsors.json` has three empty "Your ad here" slots shown on startup (labelled as sponsored,
@@ -88,8 +88,7 @@ Private-repo minutes are limited (Windows counts double); the cargo cache keeps 
 ## 7. Building the Windows installer
 
 One command builds the program as a folder, tests it, wraps it in the installer `dist\openDNA-setup.exe` (Inno Setup, per user, no
-administrator rights), tests that (installs it into a temporary folder, starts it, uninstalls it) and zips the folder for the portable
-download. Install Inno Setup 6 first (`winget install JRSoftware.InnoSetup`); no Python is needed on the PC that runs the result:
+administrator rights), and tests that (installs it into a temporary folder, starts it, uninstalls it). Install Inno Setup 6 first (`winget install JRSoftware.InnoSetup`); no Python is needed on the PC that runs the result:
 
 ```powershell
 pip install -r requirements-dev.txt
@@ -107,7 +106,7 @@ What is where:
 |---|---|
 | `packaging/openDNA.spec` | The PyInstaller recipe. Lists every data file the app reads (`parts.tsv`, `tools.toml`, `sponsors.json`, `vendor/3Dmol-min.js` and its licence, `LICENSE`, and `THIRD_PARTY_NOTICES.md` when present). Name, version, author and copyright of the Windows file properties come from `app/project.py`. No UPX packing (antivirus programs dislike it). |
 | `packaging/openDNA.ico`, `packaging/make_icon.py` | The icon (an open plasmid ring with a promoter and a terminator, on a light tile, 16 to 256 px) and the script that draws it with Qt. The same script writes the window icons and wordmarks in `app/logo/` and the SVGs in `docs/images/`. Re-run `python packaging/make_icon.py` only to change the picture. |
-| `scripts/build_exe.ps1` | Checks the setup, runs PyInstaller on the spec (folder layout), runs the smoke test, builds the installer, runs the installer smoke test, zips the folder, prints sizes and SHA-256. |
+| `scripts/build_exe.ps1` | Checks the setup, runs PyInstaller on the spec (folder layout), runs the smoke test, builds the installer, runs the installer smoke test, prints sizes and SHA-256. |
 | `packaging/openDNA.iss` | The Inno Setup script: per-user install in `%LOCALAPPDATA%\Programs\openDNA`, Start Menu entry, file types registered at install (`openDNA.exe --register-file-types`) and removed at uninstall. The updater runs it silently with `/RELAUNCH=1`, which starts the new version at the end. `unins000.exe` beside the exe is how a running copy knows it was installed (`updater.installed_copy`). User data is in `%APPDATA%\openDNA` and is never touched. |
 | `scripts/smoke_installer.ps1` | Installs `dist\openDNA-setup.exe` silently into a temporary folder, checks the uninstaller and the file-type registration, runs `smoke_exe.ps1` on the installed exe, uninstalls, checks that the exe and the registration are gone. |
 | `scripts/smoke_exe.ps1` | Starts the exe on a PATH that has only Windows on it (no Python, conda or Rust), with `demo/demo_vector.gb` on the command line. Passes when the window shows the file's name, the process is still alive 5 seconds later, no error dialog is showing, every bundled data file is inside the unpacked bundle, `opendna_core` is in it, and no DLL was loaded from Python, conda, Rust or MSYS. |
@@ -123,17 +122,17 @@ there; it does not click through the features (the pytest suite does that, on th
 ## 8. Releases
 
 A release is one tag. Pushing a tag `v*` starts `.github/workflows/release.yml`: it checks the tag against `VERSION`, then builds on
-three machines. Windows runs the Rust and Python tests and the script above (installer and portable folder, both smoke-tested); macOS
+three machines. Windows runs the Rust and Python tests and the script above (the installer, smoke-tested); macOS
 (Apple Silicon and Intel) and Linux run `scripts/build_unix.sh`, which smoke-tests what it builds. Each file gets a `.sha256`
 while building; the release job joins them into one `SHA256SUMS` (`<hex>  <file name>` per line, the format `sha256sum -c` and the in-app updater read) and all go into a **draft** GitHub release:
 
 | System | Files | What the program updates itself with |
 |---|---|---|
-| Windows | `oDNA_beta_X_Y_Z-setup.exe`, `-folder.zip` (portable) | the setup file, run silently |
+| Windows | `oDNA_beta_X_Y_Z-setup.exe` | the setup file, run silently |
 | macOS | `-macos-arm64.dmg` / `-macos-x86_64.dmg` (first install), `-macos-<arch>.zip` | the zip: the `.app` is replaced in place |
-| Linux | `-linux-x86_64.AppImage`, `-linux-x86_64.tar.gz` (portable) | the AppImage: the file named by `$APPIMAGE` is replaced |
+| Linux | `-linux-x86_64.AppImage` | the AppImage: the file named by `$APPIMAGE` is replaced |
 
-`updater.release_asset` and `release.yml` must agree on these names. Portable copies (zip, tar.gz) and copies run from source never
+`updater.release_asset` and `release.yml` must agree on these names. Copies run from source never
 replace themselves: they say where to download the new version. The release never publishes by itself: you do that by hand.
 
 1. **Bump the version in three places** to the same value (say 0.1.1): `VERSION` in `app/project.py`, `version` in
@@ -201,7 +200,7 @@ When Defender flags a release:
 
 Uploading to VirusTotal shares the file with the antivirus vendors: do it for a public release, not for a build you keep private.
 
-### Qt (LGPL): the installed folder and the portable zip
+### Qt (LGPL): the installed folder
 
 openDNA's licence is AGPL-3.0, but the Qt libraries inside the exe (PySide6) are LGPL-3.0, and the LGPL asks that a user can
 **replace the Qt libraries with their own build** and still run the program. This is a pointer to that obligation, not legal advice;
@@ -209,19 +208,16 @@ if the project grows, ask someone qualified. [THIRD_PARTY_NOTICES.md](../THIRD_P
 and how to replace Qt.
 
 A PyInstaller one-file exe packs the Qt DLLs inside the executable, so a user cannot just drop in another DLL. The Windows releases
-therefore no longer contain a one-file exe: both downloads are the one-folder layout (`packaging/openDNA.spec` with
+therefore no longer contain a one-file exe: the installer carries the one-folder layout (`packaging/openDNA.spec` with
 `OPENDNA_BUILD=folder`, which `scripts/build_exe.ps1` sets), where `_internal\PySide6` and `_internal\shiboken6` hold plain files:
 
-| | What it is | Qt replaceable | Updates itself |
-|---|---|---|---|
-| `-setup.exe` | installs that folder per user | yes: the installed `_internal` folder (an update puts the release's Qt back) | yes |
-| `-folder.zip` | the same folder, portable | yes (steps in the `README.txt` inside the zip) | no: `updater.installed_copy()` finds no uninstaller beside it, so it says "download the new version" |
+`-setup.exe` installs that folder per user, so Qt stays replaceable: the installed `_internal` folder (an update puts the release's Qt
+back). No portable zip is released: the installer is small, and the LGPL is met by the plain Qt files it installs, by the AppImage on Linux
+(also a folder build) and by the public source.
 
-On macOS the `.app` and on Linux the AppImage and the tar.gz are folder builds too.
-
-The zip also holds `README.txt` (how to swap Qt), `LICENSE` and `THIRD_PARTY_NOTICES.md` next to the exe. `release.yml` attaches the zip
-to the draft release (its checksum goes into `SHA256SUMS`); the smoke test runs on both layouts and, for the folder, checks that `Qt6Core.dll` is a plain file.
-Help > About names the Qt and PySide6 versions in use. Tested once by hand (version 0.1.0, built with Qt 6.12.0): unzipped the zip, followed the
+The installed folder also holds `README.txt` (how to swap Qt), `LICENSE` and `THIRD_PARTY_NOTICES.md` next to the exe. The smoke test
+runs on both layouts and, for the folder, checks that `Qt6Core.dll` is a plain file.
+Help > About names the Qt and PySide6 versions in use. Tested once by hand (version 0.1.0, built with Qt 6.12.0): ran the installed folder, followed the
 `README.txt` steps with the PySide6-Essentials and shiboken6 6.10.1 wheels, and the program started and passed `smoke_exe.ps1` with Qt 6.10.1 loaded.
 Redo that after a PyInstaller or PySide6 upgrade; the smoke test only proves that the Qt DLL is a plain file, not that a swap still works.
 The updater only looks for the file its system installs (table in section 8) and `SHA256SUMS` in a release; the other files are ignored by it.

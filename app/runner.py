@@ -186,7 +186,7 @@ def stop_children(pid, keep):
 
 
 def open_kind(path, msa=False):
-    """What `open` does with a file: "track" (genome view), "msa" (Multiple Alignment view), "document"
+    """What `open` does with a file: "track" (genome view), "msa" (Multiple alignment tab), "document"
     (a new window) or "browser" (the system's default program: HTML reports and anything else)."""
     name = str(path).lower()
     if msa:

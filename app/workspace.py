@@ -22,13 +22,13 @@ from PySide6.QtWidgets import (
 )
 
 from annotation import DetectDialog
+from assembly_panel import AssemblyPanel
 from cas9 import Cas9Dialog
 from checkup import CheckupDialog
 from display_panel import QuickFilters
 from feature_table import FeatureTable
 from genome_view import GenomeView
 from map_view import MapView
-from msa_view import MsaView
 from terminal import Terminal
 from local_align import LocalAlignDialog
 from primer_panel import PrimerPanel
@@ -47,7 +47,6 @@ VIEWS = {
     "Features": lambda w: FeatureTable(w.editor),
     "Primers": lambda w: PrimerPanel(w.editor),
     "Protein": lambda w: ProteinView(w.editor),
-    "MSA": lambda w: MsaView(w.editor),
     "Terminal": lambda w: Terminal(w),
     "PCR": lambda w: PcrDialog(w, w.editor).embed(w.open_pcr_product),
     "Spacer Finder": lambda w: Cas9Dialog(w, w.editor).embed(),
@@ -62,10 +61,21 @@ VIEWS = {
 # The picker lists the views by group, in the order written here (None = a thin dividing line); every view not named here
 # is a tool (listed alphabetically).
 SEPARATOR = None
-GROUPS = [("Views", ["Alignment", "Map", "MSA", "Protein", "Sequence"]),
+GROUPS = [("Views", ["Alignment", "Map", "Protein", "Sequence"]),
           ("Annotations", ["Features", "Primers", SEPARATOR, "Detect Features", "Detect ORFs"])]
 # Tools that are tabs, not panes: choosing one in a picker opens (or shows) its tab and leaves the pane as it was.
-TAB_TOOLS = {"Assembly": lambda window: window.show_assembly(), "Recombineering": lambda window: window.show_recombineering()}
+TAB_TOOLS = {"Assembly": lambda window, sub=None: window.show_assembly(sub),
+             "Recombineering": lambda window, sub=None: window.show_recombineering()}
+# Views whose picker entry opens a side column on hover; a choice there arrives as "view: label" (see open_tool).
+SUBMENUS = {"Assembly": AssemblyPanel.METHODS}
+
+
+def open_tool(window, choice):
+    """Open the tab tool named by a picker choice ("Assembly", or "Assembly: Golden Gate"); False when it is not a tab tool."""
+    name, _, sub = choice.partition(": ")
+    if name in TAB_TOOLS:
+        TAB_TOOLS[name](window, sub or None)
+    return name in TAB_TOOLS
 # Picked in a pane, these tools bring the views they are read beside (added to the tab when it lacks them).
 COMPANIONS = {"Plasmid Checkup": ("Map", "Sequence")}
 TOOLS = "Tools"
@@ -96,7 +106,7 @@ DEFAULT = [
 # Views renamed since layouts were saved (Variants is now a track of the Alignment view).
 # Primer Design is now a window opened from a selection (right-click > Design Primers for This Sequence).
 OLD_NAMES = {"Genome": "Alignment", "Quick Align": "Local Align", "Cas9 Guides": "Spacer Finder", "ORFs": "Detect ORFs",
-             "Variants": "Alignment", "Primer Design": "Primers"}
+             "Variants": "Alignment", "Primer Design": "Primers", "MSA": "Local Align"}
 OLD_TAB_NAMES = {"Edit", "Primers", "Tools"}  # names the old default tabs were saved with: now automatic
 MAX_TAB_NAME = 60
 MAX_NAMED = 3  # views named in an automatic tab name; the others are counted
@@ -109,7 +119,7 @@ class Pane(QWidget):
         super().__init__()
         view = OLD_NAMES.get(view, view)
         self.workspace, self.view_name, self.view = workspace, view if view in VIEWS else "Sequence", None
-        self.picker = ViewPicker(grouped_views)
+        self.picker = ViewPicker(grouped_views, SUBMENUS)
         self.picker.set_current(self.view_name)
         self.picker.chosen.connect(self.set_view)
         header = QHBoxLayout()
@@ -170,8 +180,7 @@ class Pane(QWidget):
         return self.view
 
     def set_view(self, name):
-        if name in TAB_TOOLS:   # a tab of its own: open it, this pane keeps what it shows
-            TAB_TOOLS[name](self.workspace.window)
+        if open_tool(self.workspace.window, name):   # a tab of its own: opened, this pane keeps what it shows
             self.picker.set_current(self.view_name)
             return
         if name == self.view_name and self.view is not None:
@@ -217,7 +226,7 @@ class TabBar(QTabBar):
         self.add.setFont(font)
         # "+" asks what the new tab should hold: this picker is never shown, only its popup (under the "+"). Nothing is
         # opened until a view is chosen, and closing the popup opens nothing.
-        self.picker = ViewPicker(grouped_views)
+        self.picker = ViewPicker(grouped_views, SUBMENUS)
         self.picker.chosen.connect(workspace.new_tab)
         self.add.clicked.connect(lambda: self.picker.open_popup(self.add))
 
@@ -435,9 +444,7 @@ class Workspace(QTabWidget):
 
     def new_tab(self, view):
         """A new tab with just `view` in it (an Assembly choice shows its own tab instead, as in a pane's picker)."""
-        if view in TAB_TOOLS:
-            TAB_TOOLS[view](self.window)
-        else:
+        if not open_tool(self.window, view):
             self.add_tab(None, pane(view), select=True)
 
     def duplicate_tab(self, i):
@@ -581,4 +588,4 @@ class Workspace(QTabWidget):
 
 
 NAME_OF = {SequenceView: "Sequence", MapView: "Map", GenomeView: "Alignment", FeatureTable: "Features",
-           PrimerPanel: "Primers", ProteinView: "Protein", MsaView: "MSA", Terminal: "Terminal"}
+           PrimerPanel: "Primers", ProteinView: "Protein", LocalAlignDialog: "Local Align", Terminal: "Terminal"}

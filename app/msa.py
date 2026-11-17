@@ -1,4 +1,4 @@
-"""Multiple sequence alignment without Qt: the Alignment class the MSA view shows, a built-in progressive aligner for the common small
+"""Multiple sequence alignment without Qt: the Alignment class the Multiple alignment tab shows, a built-in progressive aligner for the common small
 case (2 to a few tens of sequences of a few kb) so the view works on a machine with nothing installed, and a reader for the
 aligned FASTA that MAFFT and Clustal Omega write.
 

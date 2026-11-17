@@ -25,7 +25,7 @@ import multigb
 import runner
 from add_record import document_records, files_records
 from editor import mono_font
-from msa_view import MsaView
+from local_align import LocalAlignDialog
 from primer_db import data_dir
 from uikit import run_busy
 
@@ -514,9 +514,8 @@ class Terminal(QWidget):
 
     def _show_alignment(self, path):
         names, rows = msa.parse_aligned_fasta(Path(path).read_text(encoding="utf-8"))
-        view = self.window.workspace.ensure(MsaView)
-        view.set_alignment(msa.Alignment(names, rows))
-        self._say(f"{len(names)} sequences shown in the Multiple Alignment view.")
+        self.window.workspace.ensure(LocalAlignDialog).show_alignment(msa.Alignment(names, rows))
+        self._say(f"{len(names)} sequences shown in Local Align, Multiple alignment tab.")
 
     # ---- pipelines -----------------------------------------------------------------------------------------------------------------
     def _pipeline_changed(self, row):

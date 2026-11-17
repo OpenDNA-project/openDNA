@@ -53,11 +53,11 @@ the third-party code inside Qt, such as FreeType, HarfBuzz, libpng, zlib and ICU
   their own copies in their `dist-info` folders when installed with pip.
 - Source code of Qt and PySide6 (we do not modify them): Qt https://download.qt.io/official_releases/qt/ ; Qt for Python
   https://code.qt.io/cgit/pyside/pyside-setup.git/ (tag `v6.12.0`) and https://pypi.org/project/PySide6-Essentials/#files (source and wheels).
-- Using a different Qt: the LGPL lets you replace the Qt libraries with your own build of Qt/PySide6 and run openDNA with them. Each release
-  has two Windows downloads. **`openDNA-folder.zip`** is the program as a folder: Qt is plain files in `_internal\PySide6` and
-  `_internal\shiboken6`, and the `README.txt` inside says how to swap them for another PySide6 version. `openDNA.exe` is a PyInstaller *one-file*
-  exe that packs those libraries inside itself, so you cannot swap a file in it; for that one, **rebuild openDNA from its source** (public,
-  AGPL-3.0) against any PySide6 version you like: `pip install PySide6-Essentials==<version>` and follow the build steps in the README.
+- Using a different Qt: the LGPL lets you replace the Qt libraries with your own build of Qt/PySide6 and run openDNA with them. In the installed
+  program (Windows, from `-setup.exe`) and in the Linux AppImage (extract it with `--appimage-extract`), Qt is plain files (Windows: `_internal\PySide6` and `_internal\shiboken6`
+  in the install folder, `%LOCALAPPDATA%\Programs\openDNA`), and the `README.txt` beside them says how to swap them for another PySide6
+  version (an update puts the release's Qt back). You can also **rebuild openDNA from its source** (public, AGPL-3.0) against any
+  PySide6 version you like: `pip install PySide6-Essentials==<version>` and follow the build steps in the README.
   Help > About shows the Qt version in use.
 
 ## Rust crates

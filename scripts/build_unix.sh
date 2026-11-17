@@ -3,8 +3,7 @@
 # of what it makes:
 #   macOS  dist/openDNA.app, zipped as dist/openDNA-macos.zip (what the program downloads to update itself) and put in
 #          dist/openDNA-macos.dmg (drag to Applications: the first install)
-#   Linux  the folder dist/openDNA packed as dist/openDNA-linux.tar.gz (portable) and as dist/openDNA-linux.AppImage (the installed,
-#          self-updating form; needs appimagetool: downloaded to build/ when it is not on PATH)
+#   Linux  the folder dist/openDNA packed as dist/openDNA-linux.AppImage (the installed, self-updating form; needs appimagetool: downloaded to build/ when it is not on PATH)
 # The macOS / Linux counterpart of scripts/build_exe.ps1.
 #
 #   pip install -r requirements-dev.txt   (and Pillow on macOS: PyInstaller makes the .icns icon with it)
@@ -35,7 +34,7 @@ step "Checking the setup ($OS)"
 [ "$OS" = macos ] && { "$PYTHON" -c "import PIL" || { echo "Pillow is needed for the macOS icon: pip install pillow" >&2; exit 1; }; }
 
 step "Building (PyInstaller, about 1-2 minutes)"
-rm -rf dist/openDNA dist/openDNA.app dist/openDNA-macos.zip dist/openDNA-macos.dmg dist/openDNA-linux.tar.gz dist/openDNA-linux.AppImage
+rm -rf dist/openDNA dist/openDNA.app dist/openDNA-macos.zip dist/openDNA-macos.dmg dist/openDNA-linux.AppImage
 "$PYTHON" -m PyInstaller --noconfirm --clean --log-level WARN --workpath build/pyinstaller --distpath dist packaging/openDNA.spec
 
 if [ "$OS" = macos ]; then
@@ -109,9 +108,7 @@ if [ "$OS" = macos ]; then
     rm -rf dist/dmg
     OUTPUTS="$ARCHIVE dist/openDNA-macos.dmg"
 else
-    ARCHIVE=dist/openDNA-linux.tar.gz
-    tar -C dist -czf "$ARCHIVE" openDNA   # keeps the executable bit, which a zip loses
-    OUTPUTS="$ARCHIVE dist/openDNA-linux.AppImage"
+    OUTPUTS=dist/openDNA-linux.AppImage
 fi
 for f in $OUTPUTS; do
     echo "$f  $(du -h "$f" | cut -f1)"

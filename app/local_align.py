@@ -25,7 +25,7 @@ from opendna_core import align
 import msa
 from alignments import INVERTED_COLOR
 from editor import clean_pasted
-from msa_view import MsaCanvas
+from msa_view import MsaCanvas, MsaView
 from repeats import PairRepeats
 from tools import ToolDialog, empty_hint
 from uikit import fit_columns, no_auto_default, plural, right_aligned, run_busy
@@ -196,6 +196,7 @@ class LocalAlignDialog(ToolDialog):
         self.folder = FolderSearchPanel(parent, lambda: self._query(self.query), self.status.setText,
                                         lambda: self.tabs.setCurrentWidget(self.folder_tab), self._busy)
         self.canvas, self.pair = MsaCanvas(), PairRepeats()
+        self.msa = MsaView(editor, auto=False)   # the Multiple alignment tab: aligns a multi-record file when first shown
 
         query_group = QGroupBox("Query")
         query_box = QVBoxLayout(query_group)
@@ -227,8 +228,10 @@ class LocalAlignDialog(ToolDialog):
         self.folder_tab = self._tab([1, "Copy results", self.folder.copy_results], self.folder.table)
         self.tabs = QTabWidget()
         for widget, title in ((hits, "Hits in this sequence"), (self.folder_tab, "Folder results"), (self.canvas, "Alignment"),
-                              (self.pair, "Dot plot")):
+                              (self.pair, "Dot plot"), (self.msa, "Multiple alignment")):
             self.tabs.addTab(widget, title)
+        self.search_tabs, self.pair_tabs = (hits, self.folder_tab), (self.canvas, self.pair)   # (the Multiple alignment tab is always there)
+        self.tabs.currentChanged.connect(lambda i: self.tabs.widget(i) is self.msa and self.msa.auto())
         self._pair_toggled(False)
 
         status = QHBoxLayout()
@@ -287,8 +290,9 @@ class LocalAlignDialog(ToolDialog):
         self.search_group.setTitle("Compare A with B" if on else "Search in")
         for w in (self.scope_this, self.scope_folder):
             w.setVisible(not on)
-        for i, shown in enumerate((not on, not on, on, on)):
-            self.tabs.setTabVisible(i, shown)
+        for group, shown in ((self.search_tabs, not on), (self.pair_tabs, on)):
+            for w in group:
+                self.tabs.setTabVisible(self.tabs.indexOf(w), shown)
         folder = self.scope_folder.isChecked()
         self.folder.setVisible(folder and not on)
         self.tabs.setCurrentIndex(2 if on else 1 if folder else 0)
@@ -336,6 +340,11 @@ class LocalAlignDialog(ToolDialog):
         if dlg.paste_clipboard():
             dlg.run()
         dlg.exec()
+
+    def show_alignment(self, alignment):
+        """An alignment made elsewhere (the Terminal's MAFFT / Clustal Omega), shown in the Multiple alignment tab."""
+        self.msa.set_alignment(alignment)
+        self.tabs.setCurrentWidget(self.msa)
 
     def run_pair(self):
         """Paired mode: A and B aligned with each other, then the dot plot and shared stretches."""

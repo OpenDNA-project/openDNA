@@ -2,7 +2,7 @@
 Each column has a dark heading band and, under it, the views on a lighter background, lined up with the heading. The colours come
 from theme.py (roles "group_*"), so the popup follows the light / dark theme and the same roles can be used for any
 other grouped list."""
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 import theme
@@ -24,13 +24,35 @@ def popup_style():
             f"QFrame#divider {{ background: {c('group_border')}; border: none; margin: 0 {INDENT}px; }}")
 
 
+class _Hover(QObject):
+    """Event filter of the popup's items: the pointer entering one shows its submenu column (if it has one) and hides the others."""
+
+    def __init__(self, popup, side):
+        super().__init__(popup)
+        self.popup, self.side, self.shown = popup, side, None
+
+    def eventFilter(self, item, event):
+        if event.type() == QEvent.Enter and self.side:
+            shown = item.property("view") if item.property("view") in self.side else None
+            if shown != self.shown:
+                self.shown = shown
+                for name, column in self.side.items():
+                    column.setVisible(name == shown)
+                self.popup.adjustSize()
+                over = self.popup.frameGeometry().right() - self.popup.screen().availableGeometry().right()
+                if over > 0:   # the side column ran off the screen: shift the popup left
+                    self.popup.move(self.popup.x() - over, self.popup.y())
+        return False
+
+
 class ViewPicker(QPushButton):
     """Shows the current view's name; a click opens the popup. `groups()` returns [(category, [view names])] when it opens."""
     chosen = Signal(str)
 
-    def __init__(self, groups):
+    def __init__(self, groups, submenus=None):
         super().__init__()
-        self.groups, self.name, self.popup = groups, "", None
+        # `submenus`: {view name: [labels]}: hovering that view shows the labels in a column beside; a label emits "view: label".
+        self.groups, self.name, self.popup, self.submenus = groups, "", None, submenus or {}
         # As wide as the longest view name it can show: picking "Plasmid Checkup" after "Map" no longer widens the button and
         # pushes the options and help buttons beside it along.
         names = [n for _, group in groups() for n in group if n]
@@ -54,16 +76,10 @@ class ViewPicker(QPushButton):
         row = QHBoxLayout(popup)
         row.setContentsMargins(1, 1, 1, 1)
         row.setSpacing(1)
+        side = {}   # view name -> its hidden submenu column, shown while the pointer is on that view
+        hover = _Hover(popup, side)
         for category, names in self.groups():
-            column = QWidget()
-            column.setObjectName("column")
-            column.setAttribute(Qt.WA_StyledBackground, True)
-            box = QVBoxLayout(column)
-            box.setContentsMargins(0, 0, 0, 6)
-            box.setSpacing(0)
-            heading = QLabel(category)
-            heading.setObjectName("heading")
-            box.addWidget(heading)
+            column, box = self._column(category)
             for name in names:
                 if name is None:   # a thin line between two sets of views
                     line = QFrame(frameShape=QFrame.HLine)
@@ -73,12 +89,12 @@ class ViewPicker(QPushButton):
                     box.addWidget(line)
                     box.addSpacing(4)
                     continue
-                item = QPushButton(name)
-                item.setObjectName("item")
-                item.setFlat(True)
-                item.setCursor(Qt.PointingHandCursor)
+                item = self._item(name + ("   ›" if name in self.submenus else ""), name)
                 item.setProperty("current", name == self.name)
-                item.clicked.connect(lambda _checked=False, name=name: self._choose(name))
+                item.setProperty("view", name)
+                item.installEventFilter(hover)
+                if name in self.submenus:
+                    side[name] = self._submenu(name)
                 if name in wip.VIEWS and wip.is_wip(wip.VIEWS[name]):   # an unfinished view: its tag after its name
                     tag = wip.Badge(wip.VIEWS[name], mouse=False)
                     tagged = QHBoxLayout(item)
@@ -90,11 +106,45 @@ class ViewPicker(QPushButton):
                 box.addWidget(item)
             box.addStretch()
             row.addWidget(column)
+        for column in side.values():
+            row.addWidget(column)
         anchor = anchor or self
         popup.move(anchor.mapToGlobal(QPoint(0, anchor.height())))
         popup.show()
         self.popup = popup
         return popup
+
+    @staticmethod
+    def _column(title):
+        """(a popup column, its layout) under a heading."""
+        column = QWidget()
+        column.setObjectName("column")
+        column.setAttribute(Qt.WA_StyledBackground, True)
+        box = QVBoxLayout(column)
+        box.setContentsMargins(0, 0, 0, 6)
+        box.setSpacing(0)
+        heading = QLabel(title)
+        heading.setObjectName("heading")
+        box.addWidget(heading)
+        return column, box
+
+    def _item(self, text, choice):
+        """A flat button of the popup that chooses `choice`."""
+        item = QPushButton(text)
+        item.setObjectName("item")
+        item.setFlat(True)
+        item.setCursor(Qt.PointingHandCursor)
+        item.clicked.connect(lambda _checked=False: self._choose(choice))
+        return item
+
+    def _submenu(self, name):
+        """The hidden column of `name`'s choices."""
+        column, box = self._column(name)
+        for label in self.submenus[name]:
+            box.addWidget(self._item(label, f"{name}: {label}"))
+        box.addStretch()
+        column.hide()
+        return column
 
     def _choose(self, name):
         if self.popup is not None:
