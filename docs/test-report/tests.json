@@ -7057,7 +7057,7 @@
    "id": "tests/test_assembly.py::test_kld_primers_for_unsaved_edits",
    "area": "KLD (point mutations, insertions, deletions)",
    "role": "Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.",
-   "purpose": "KLD turns the unsaved edits of a 400 bp plasmid into a back-to-back primer pair. Each design is read back from the primers alone and must equal the edited plasmid, with the forward primer annealing just right of the change and the reverse just left of it.",
+   "purpose": "KLD turns the chosen changes of a 400 bp plasmid into a back-to-back primer pair. Each design is read back from the primers alone and must equal the plasmid with just those changes, with the forward primer annealing just right of the change and the reverse just left of it.",
    "cases": [
     {
      "input": "one base flipped at 100",
@@ -7084,12 +7084,12 @@
      "expected": "orange warning naming 150 and a tail on the reverse primer; no warning at 200"
     },
     {
-     "input": "200 bp deleted",
-     "expected": "designed, no refusal"
+     "input": "the four changes ticked by hand: first three; first and last; first and third; none",
+     "expected": "auto picks the first three; first+last raises 'span'; first+third applies only those two (the unticked change between them is not applied); none raises 'No change selected'"
     },
     {
      "input": "linear sequence; no change; 501 bp inserted",
-     "expected": "ValueError: circular / No unsaved change / too many"
+     "expected": "ValueError: circular / No change selected / too many"
     },
     {
      "input": "Document edited in place (replace at 100, delete 200..230)",

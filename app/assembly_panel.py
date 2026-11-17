@@ -33,6 +33,7 @@ from assembly import (
     FRAG_COLORS, GG_ENZYMES, JOINT_COLOR, RESTRICTION, TAIL_COLOR, Frag, analyse, auto_primers, cut_fragment, digest_pieces, end_words,
     joint_line, joints_html, junction_cards, junction_html, piece_verdict, junction_summary, junction_window, oligo_checks, piece_doc, simulate, snapshot, transfer_primers,
 )
+from kld import KldPage
 from editor import Editor, feature_color, primer_sequence, reverse_complement as rc
 from primer_db import db
 from primer_panel import MARKS, checks_html, melting_temp, worst
@@ -623,13 +624,15 @@ class JunctionDialog(QDialog):
 # ---- the panel ---------------------------------------------------------------------------------------------
 
 
-METHOD_WIP = [None, "golden_gate", "sidewinder", None, "recombineering"]   # per method of the list: its feature in wip.FEATURES, if unfinished
+METHOD_WIP = [None, "golden_gate", "sidewinder", None, None]   # per method of the list: its feature in wip.FEATURES, if unfinished
 
 
 class AssemblyPanel(QWidget):
     """See the module docstring. `win`: the main window (for the open files and for opening the product)."""
 
-    METHODS = ["Gibson / HiFi", "Golden Gate", "Sidewinder", "Restriction / ligation"]
+    METHODS = ["Gibson / HiFi", "Golden Gate", "Sidewinder", "Restriction / ligation", "KLD"]
+    KLD = True       # the last entry of METHODS is KLD (its own page); in the Recombineering panel it is Recombineering
+    WIP = METHOD_WIP
 
     def __init__(self, win):
         super().__init__()
@@ -641,9 +644,9 @@ class AssemblyPanel(QWidget):
         self.method = QComboBox()
         self.method.addItems(self.METHODS)
         # The unfinished methods carry the "WIP" tag: in the list, and beside the box while one is chosen (wip.FEATURES).
-        self.method.setItemDelegate(wip.Delegate(lambda index: METHOD_WIP[index.row()], self.method))
+        self.method.setItemDelegate(wip.Delegate(lambda index: self.WIP[index.row()], self.method))
         self.method_wip = wip.Badge(None)
-        if any(wip.is_wip(k) for k in METHOD_WIP if k):   # its room kept when hidden: the options on its right stay put
+        if any(wip.is_wip(k) for k in self.WIP if k):   # its room kept when hidden: the options on its right stay put
             keep = self.method_wip.sizePolicy()
             keep.setRetainSizeWhenHidden(True)
             self.method_wip.setSizePolicy(keep)
@@ -653,7 +656,7 @@ class AssemblyPanel(QWidget):
         method_row.setSpacing(wip.GAP)
         method_row.addWidget(self.method)
         method_row.addWidget(self.method_wip)
-        self.method.currentIndexChanged.connect(lambda m: self.method_wip.set_key(METHOD_WIP[m]))
+        self.method.currentIndexChanged.connect(lambda m: self.method_wip.set_key(self.WIP[m]))
         self.count = QSpinBox(minimum=1, maximum=MAX_FRAGMENTS, value=3)
         self.enzyme = QComboBox()
         self.enzyme.addItems(list(GG_ENZYMES))
@@ -789,7 +792,11 @@ class AssemblyPanel(QWidget):
         split.setSizes([360, 600])
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(split)
+        self.pages = QStackedWidget()   # the fragments (every method but KLD), or the KLD page
+        self.pages.addWidget(split)
+        self.kld_page = KldPage(self) if self.KLD else QWidget()
+        self.pages.addWidget(self.kld_page)
+        outer.addWidget(self.pages)
         self.method.currentIndexChanged.connect(self._method_changed)
         self.count.valueChanged.connect(self._count_changed)
         self.enzyme.currentIndexChanged.connect(self.analyse)
@@ -814,21 +821,31 @@ class AssemblyPanel(QWidget):
 
     def is_circular(self):
         m = self.method.currentIndex()
-        return m == 4 or self.circular.isChecked() and m != 2   # recombineering edits a circular genome
+        return self.recombining() or self.circular.isChecked() and m != 2   # recombineering edits a circular genome
+
+    def recombining(self):
+        return not self.KLD and self.method.currentIndex() == 4
+
+    def kld_mode(self):
+        return self.KLD and self.method.currentIndex() == 4
 
     def _method_changed(self):
         m = self.method.currentIndex()
-        if m == 4 and len(self.slots) != 2:
+        self.pages.setCurrentIndex(1 if self.kld_mode() else 0)
+        if self.kld_mode():   # its own page: the fragments below do not apply
+            return
+        rec = self.recombining()
+        if rec and len(self.slots) != 2:
             self.count.setValue(2)      # the genome and the cassette
-        self.strip.titles = ["Genome", "Cassette"] if m == 4 else None
+        self.strip.titles = ["Genome", "Cassette"] if rec else None
         for lab, w, only in self.options:
             lab.setVisible(only is None or m in only)
             w.setVisible(only is None or m in only)
-        self.buttons["perform"].setText("Perform Edition" if m == 4 else "Perform assembly")
+        self.buttons["perform"].setText("Perform Edition" if rec else "Perform assembly")
         for lab, w, _ in self.options[:2]:   # recombineering has one method and two boxes, always: nothing to choose
-            lab.setVisible(m != 4)
-            w.setVisible(m != 4)
-        self.circular.setEnabled(m not in (2, 4))
+            lab.setVisible(not rec)
+            w.setVisible(not rec)
+        self.circular.setEnabled(m != 2 and not rec)
         for w in self.site_widgets:
             w.setVisible(m == 3)
         self.buttons["homology"].setToolTip(
@@ -939,7 +956,7 @@ class AssemblyPanel(QWidget):
         editor.primers_changed.connect(self._on_primers_changed)
         self.strip.current = i
         self._show_source(i)
-        if self.method.currentIndex() == 4 and i == 0:
+        if self.recombining() and i == 0:
             self.slots[i] = None
             self.analyse()
             self.chosen.setText(f"{label} is the genome: select the region to replace (nothing selected inserts at the cursor), then press Use.")
@@ -1003,7 +1020,7 @@ class AssemblyPanel(QWidget):
         if not self._product_ready():
             return
         self._drop_product()
-        doc = self._edited(True) if self.method.currentIndex() == 4 else simulate(self.slots, self.design, preview=True, tails=False)   # (the tails are for the junction inspector)
+        doc = self._edited(True) if self.recombining() else simulate(self.slots, self.design, preview=True, tails=False)   # (the tails are for the junction inspector)
         self.product_view = ReadOnlyView(Editor(doc, "Assembly product"))
         self.seqstack.addWidget(self.product_view)
         self.seqstack.setCurrentWidget(self.product_view)
@@ -1042,7 +1059,7 @@ class AssemblyPanel(QWidget):
             self._fill_primer_lists(src)
             if f is not None:
                 ed = src.editor
-                start, end = (f.end - f.src.length, f.start) if self.method.currentIndex() == 4 and i == 0 else (f.start, f.end)   # the genome box: its region
+                start, end = (f.end - f.src.length, f.start) if self.recombining() and i == 0 else (f.start, f.end)   # the genome box: its region
                 ed.select(start, end)
                 ed.reveal.emit(start)
                 for box, p in ((self.forward, f.fwd), (self.reverse, f.rev)):
@@ -1132,7 +1149,7 @@ class AssemblyPanel(QWidget):
             self._use(i, fw.start, end, (fw.label, fw.sequence, fw.end - fw.start), (rv.label, rv.sequence, rv.end - rv.start))
         else:
             a, b = src.editor.start, src.editor.end
-            if self.method.currentIndex() == 4 and i == 0:   # the genome slot holds what is kept: from the region's end round to its start
+            if self.recombining() and i == 0:   # the genome slot holds what is kept: from the region's end round to its start
                 if not src.doc.circular:
                     self.chosen.setText("Recombineering needs a circular genome.")
                     return
@@ -1262,10 +1279,12 @@ class AssemblyPanel(QWidget):
     def params(self):
         return dict(method=self.method.currentIndex(), circular=self.is_circular(), enzyme=self.enzyme.currentText(),
                     min_ov=self.min_ov.value(), min_tm=self.ov_tm.value(), tm=self.anneal_tm.value(),
-                    max_ov=R.MAX_HOMOLOGY if self.method.currentIndex() == 4 else 100)
+                    max_ov=R.MAX_HOMOLOGY if self.recombining() else 100)
 
     def analyse(self):
         """Check the junctions of the fragments as they are now and show everything that follows from it."""
+        if self.kld_mode():
+            return
         self.design, self.error = None, ""
         empty = [i + 1 for i, f in enumerate(self.slots) if f is None]
         hints = ["" for _ in self.slots]
@@ -1281,7 +1300,7 @@ class AssemblyPanel(QWidget):
             if self.design is not None:
                 cards, fchecks = junction_cards(self.design), self.design.fchecks
         ready = self._product_ready()
-        self.strip.refresh(self.slots, self.is_circular() and self.method.currentIndex() != 4, cards, self.current if self.current >= 0 else 0, hints, fchecks)
+        self.strip.refresh(self.slots, self.is_circular() and not self.recombining(), cards, self.current if self.current >= 0 else 0, hints, fchecks)
         self._refresh_tile(ready)
         self._status(empty)
         self._refresh_primers()
@@ -1315,7 +1334,7 @@ class AssemblyPanel(QWidget):
                 bad = [c for c, level, _ in d.checks if level == "bad"]
                 text, color = (f"✗ {plural(missing, 'junction')} {'does' if missing == 1 else 'do'} not fit" if missing else "✗ A check failed") + \
                     (": press \"Design primers\" to give the ends what the method needs, or change the fragments."
-                     if missing and self.method.currentIndex() in (0, 1, 4) else
+                     if missing and (self.method.currentIndex() in (0, 1) or self.recombining()) else
                      ": change the fragments or the enzymes." if missing and self.method.currentIndex() == 3 else f" ({', '.join(bad[:3])})."), "bad"
             # What is not about one junction or one fragment (the circle, leftover sites...); the rest is on the cards and boxes.
             notes = "<br>".join(f"<span style='color:{LEVEL_COLORS[lv]}'>{MARKS[lv][0]} <b>{escape(n)}</b>: {escape(t)}</span>"
@@ -1327,7 +1346,7 @@ class AssemblyPanel(QWidget):
     def buttons_update(self):
         filled = [f for f in self.slots if f]
         m = self.method.currentIndex()
-        self.buttons["homology"].setEnabled(m in (0, 1, 4) and len(filled) == len(self.slots))
+        self.buttons["homology"].setEnabled((m in (0, 1) or self.recombining()) and len(filled) == len(self.slots))
         self.buttons["perform"].setEnabled(bool(self.design and self.design.ok))
         self.buttons["save"].setEnabled(bool(filled))
         self.buttons["primers"].setEnabled(bool(self.design and self.design.rows))
@@ -1337,7 +1356,7 @@ class AssemblyPanel(QWidget):
     def add_homology(self):
         if None in self.slots or self.method.currentIndex() in (2, 3):
             return
-        if self.method.currentIndex() == 4:
+        if self.recombining():
             return self._design_recombineering()
         p = self.params()
         n = auto_primers(self.slots, p["method"], p["circular"], p["enzyme"], self.min_ov.value(), self.max_ov.value(), p["min_tm"], p["tm"])
@@ -1383,7 +1402,7 @@ class AssemblyPanel(QWidget):
 
     def perform(self):
         d = self.design
-        if d and d.ok and self.method.currentIndex() == 4:
+        if d and d.ok and self.recombining():
             if d.rows:   # the primers designed for the cassette are kept: in the database, and on the new genome
                 self.save_primers()
             self.win.open_product(self._edited(False))
@@ -1444,7 +1463,9 @@ class AssemblyPanel(QWidget):
 
 class RecombineeringPanel(AssemblyPanel):
     """Tools > Recombineering: the assembly panel with its one method, for a genome and a cassette (see docs/specs/recombineering.md)."""
-    METHODS = AssemblyPanel.METHODS + ["Recombineering"]
+    METHODS = AssemblyPanel.METHODS[:4] + ["Recombineering"]
+    KLD = False
+    WIP = [None, "golden_gate", "sidewinder", None, "recombineering"]
 
     def __init__(self, win):
         super().__init__(win)

@@ -1,6 +1,6 @@
 """KLD: the primers that make the unsaved edits of a plasmid (point mutations, insertions, deletions) by inverse PCR + KLD.
 
-Edit the sequence in place as usual; the KLD tab compares it with the sequence as last saved, takes the first change (and the next
+Edit the sequence in place as usual; the KLD method of the Assembly panel compares it with the sequence as last saved, takes the first change (and the next
 ones while they all fit within `group` bp), and gives a back-to-back primer pair: the forward primer starts at the change and runs
 right (new bases first, then bases that anneal), the reverse primer starts just left of it and runs left. Bases to insert or
 substitute ride on the 5' ends (split between both primers when long). `design` is pure logic; the panel is at the end.
@@ -9,8 +9,12 @@ from difflib import SequenceMatcher
 from html import escape
 from types import SimpleNamespace
 
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QPushButton, QSpinBox, QTextBrowser, QVBoxLayout, QWidget
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QColor, QGuiApplication
+from PySide6.QtWidgets import (
+    QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QSpinBox, QSplitter, QTextBrowser,
+    QVBoxLayout, QWidget,
+)
 
 from assembly import TAIL_COLOR, anneal_len, oligo_checks
 from editor import reverse_complement as rc
@@ -41,23 +45,43 @@ def changes(old, new):
     return [(p + i1, p + i2, b[j1:j2]) for tag, i1, i2, j1, j2 in ops if tag != "equal"]
 
 
+def auto(found, group=30):
+    """The changes selected to begin with: the first, then the next ones while all of them fit within `group` bp."""
+    return [c for c in found if c[1] - found[0][0] <= group] if found else []
+
+
 def design(old, new, circular=True, tm=60.0, group=30, warn_insert=120):
-    """The KLD primers that turn `old` (the sequence as saved) into `new` (as edited). Returns SimpleNamespace(rows, notes,
-    product, change, skipped): rows [(name, sequence, annealing length)], notes [(level, text)] ("warn" is the orange one), the
-    sequence the primers make, the change designed (start, end, text) on `old`, and the changes left out. Raises ValueError
-    when it cannot be done."""
-    old, new = old.upper(), new.upper()
+    """`design_selected` for the changes `auto` picks; `.skipped` lists the others."""
+    found = changes(old.upper(), new.upper())
+    chosen = auto(found, group) or found[:1]
+    r = design_selected(old, chosen, circular, tm, group, warn_insert)
+    r.skipped = found[len(chosen):]
+    if r.skipped:
+        r.notes.append(("info", f"{len(r.skipped)} other change{'s' if len(r.skipped) > 1 else ''} not included (more than {group} bp "
+                                "from the first): save, then run KLD again."))
+    return r
+
+
+def design_selected(old, chosen, circular=True, tm=60.0, group=30, warn_insert=120):
+    """The KLD primers that make the `chosen` changes ((start, end, text) on `old`, as `changes` gives them) in `old`, the sequence
+    as saved. Returns SimpleNamespace(rows, notes, product, change, skipped): rows [(name, sequence, annealing length)], notes
+    [(level, text)] ("warn" is the orange one), the sequence the primers make, the stretch replaced (start, end, text) and []. Bases
+    between chosen changes stay as they are in `old`. Raises ValueError when it cannot be done."""
+    old = old.upper()
     if not circular:
         raise ValueError("KLD needs a circular sequence: the product is closed into a plasmid.")
     if len(old) < MIN_LENGTH:
         raise ValueError(f"The sequence is too short for KLD (under {MIN_LENGTH} bp).")
-    found = changes(old, new)
-    if not found:
-        raise ValueError("No unsaved change: edit the sequence first (mutate, insert or delete bases).")
-    taken = [c for c in found if c[1] - found[0][0] <= group] or found[:1]   # the first change, then those near enough
-    skipped = found[len(taken):]
-    a, b = found[0][0], taken[-1][1]
-    text = new[a:len(new) - (len(old) - b)]   # what replaces old[a:b]: bases after b are the same count in both
+    if not chosen:
+        raise ValueError("No change selected: edit the sequence (mutate, insert or delete bases) and tick a change.")
+    chosen = sorted(chosen)
+    a, b = chosen[0][0], max(c[1] for c in chosen)
+    if len(chosen) > 1 and b - a > group:
+        raise ValueError(f"The selected changes span {b - a:,} bp (more than {group}): untick some, or raise \"Group changes within\".")
+    text, at = "", a
+    for s, e, t in chosen:   # the new text of old[a:b]
+        text += old[at:s] + t.upper()
+        at = e
     if len(text) > MAX_INSERT:
         raise ValueError(f"{len(text):,} new bp are too many for primers (the limit is {MAX_INSERT} bp).")
     notes = []
@@ -86,40 +110,87 @@ def design(old, new, circular=True, tm=60.0, group=30, warn_insert=120):
                 notes.append(("warn", f"{name}: {label} {what}"))
         if len(seq) > LONG_PRIMER:
             notes.append(("warn", f"{name} is {len(seq)} nt long."))
-    if skipped:
-        notes.append(("info", f"{len(skipped)} other change{'s' if len(skipped) > 1 else ''} not included (more than {group} bp "
-                              "from the first): save, then run KLD again."))
-    return SimpleNamespace(rows=rows, notes=notes, product=expected, change=(a, b, text), skipped=skipped)
+    return SimpleNamespace(rows=rows, notes=notes, product=expected, change=(a, b, text), skipped=[])
 
 
-# ---- the panel ---------------------------------------------------------------------------------------------
+# ---- the page of the Assembly panel -------------------------------------------------------------------------
 
 
-class KldPanel(QWidget):
-    """Tools > KLD (also an Assembly choice): the primers for the unsaved edits of the open sequence."""
+def describe(old, c, warn):
+    """One change in words, for the list."""
+    s, e, t = c
+    show = lambda x: x if len(x) <= 12 else x[:12] + "…"
+    if s == e:
+        what = f"Insertion at {s + 1:,}: +{len(t):,} bp {show(t)}"
+    elif not t:
+        what = f"Deletion {s + 1:,}–{e:,}: −{e - s:,} bp"
+    elif len(t) == e - s:
+        what = f"Mutation at {s + 1:,}: {show(old[s:e])} → {show(t)}"
+    else:
+        what = f"Replacement {s + 1:,}–{e:,}: {e - s:,} → {len(t):,} bp"
+    return what + (" ⚠" if len(t) > warn else "")
 
-    def __init__(self, win):
+
+class KldPage(QWidget):
+    """The KLD method of the Assembly panel. Left: the open sequence, editable (the edits are the changes). Middle: the changes
+    KLD can make, ticked or not. Right: the sequence after the ticked changes, read only, with the primers drawn on it.
+    Everything follows the edits and the ticks."""
+
+    def __init__(self, panel):
         super().__init__()
-        self.win = win
+        from assembly_panel import FragmentEditor, ReadOnlyView
+        self.panel, self.win = panel, panel.win
+        self._editor_class, self._view_class = FragmentEditor, ReadOnlyView
+        self.editor = self.left = self.right = self.right_editor = None
+        self.found, self.old, self.manual, self.result = [], "", {}, None
         self.tm = QDoubleSpinBox(minimum=45, maximum=72, value=60, suffix=" °C")
         self.group = QSpinBox(minimum=1, maximum=200, value=30, suffix=" bp")
         self.warn = QSpinBox(minimum=1, maximum=MAX_INSERT, value=120, suffix=" bp")
-        self.group.setToolTip("Changes closer than this are made by the same primer pair.")
+        self.group.setToolTip("Changes closer than this are ticked together and made by the same primer pair.")
         self.warn.setToolTip(f"More new bases than this get an orange warning (primers may be hard or expensive to order); "
                              f"over {MAX_INSERT} bp the change is refused.")
+        self.method = QComboBox()   # the same list as the panel's: the way back to the other methods
+        self.method.setModel(panel.method.model())
+        self.method.setCurrentIndex(panel.method.currentIndex())
+        self.method.activated.connect(panel.method.setCurrentIndex)
+        panel.method.currentIndexChanged.connect(self.method.setCurrentIndex)
         top = QHBoxLayout()
-        for label, w in (("Annealing Tm", self.tm), ("Group changes within", self.group), ("Warn for insertions above", self.warn)):
+        for label, w in (("Method", self.method), ("Annealing Tm", self.tm), ("Group changes within", self.group),
+                         ("Warn for insertions above", self.warn)):
             top.addWidget(QLabel(label))
             top.addWidget(w)
-            w.valueChanged.connect(self.refresh)
         top.addStretch()
-        top.addWidget(QPushButton("Refresh", clicked=self.refresh, toolTip="Read the unsaved edits of the open sequence again"))
         top.addWidget(QPushButton("Copy primers", clicked=self.copy_primers))
-        self.page = QTextBrowser()
+        self.changes = QListWidget()
+        self.changes.itemChanged.connect(self._ticked)
+        self.changes.itemClicked.connect(self._show_change)
+        self.info = QTextBrowser()
+        middle = QSplitter(Qt.Vertical)
+        middle.addWidget(self.changes)
+        middle.addWidget(self.info)
+        middle.setSizes([260, 340])
+        self.left_title = QLabel("<b>Current sequence</b> (editable)")
+        self.right_title = QLabel("<b>After KLD</b> (read only), with the primers")
+        cols, boxes = [], []
+        for title in (self.left_title, QLabel("<b>Changes KLD can make</b>"), self.right_title):
+            w, box = QWidget(), QVBoxLayout()
+            box.setContentsMargins(0, 0, 0, 0)
+            box.addWidget(title)
+            w.setLayout(box)
+            cols.append(w)
+            boxes.append(box)
+        self.left_box, self.right_box = boxes[0], boxes[2]
+        boxes[1].addWidget(middle)
+        split = QSplitter(Qt.Horizontal)
+        for w in cols:
+            split.addWidget(w)
+        split.setSizes([450, 260, 450])
         lay = QVBoxLayout(self)
         lay.addLayout(top)
-        lay.addWidget(self.page)
-        self.result = None
+        lay.addWidget(split, 1)
+        self.timer = QTimer(self, singleShot=True, interval=150, timeout=self.refresh)   # edits come fast: one refresh after a pause
+        for w in (self.tm, self.group, self.warn):
+            w.valueChanged.connect(self.refresh)
 
     def showEvent(self, e):
         super().showEvent(e)
@@ -129,24 +200,108 @@ class KldPanel(QWidget):
         if self.result:
             QGuiApplication.clipboard().setText("".join(f"{n}\t{s}\n" for n, s, _ in self.result.rows))
 
+    # -- the left view: the open sequence of the window, so editing it here edits the file
+    def _follow(self, ed):
+        if ed is self.editor:
+            return
+        if self.editor is not None:
+            try:
+                self.editor.changed.disconnect(self.timer.start)
+            except (RuntimeError, TypeError):
+                pass
+        if self.left is not None:
+            self.left.setParent(None)
+            self.left.deleteLater()
+            self.left = None
+        self.editor, self.manual = ed, {}
+        if ed is not None:
+            from sequence_view import SequenceView
+            self.left = SequenceView(ed)
+            self.left_box.addWidget(self.left, 1)
+            ed.changed.connect(self.timer.start)
+
+    def _show_right(self, widget):
+        for old in (self.right, ):
+            if old is not None:
+                old.setParent(None)
+                old.deleteLater()
+        self.right = widget
+        self.right_box.addWidget(widget, 1)
+
+    def _say(self, text, error=True):
+        """Nothing to show on the right: say why (in the changes' place too)."""
+        self.right_editor = None
+        note = QLabel(text, wordWrap=True, alignment=Qt.AlignCenter)
+        self._show_right(note)
+        self.info.setHtml(f"<p style='color:{'#c62828' if error else 'gray'}'>{escape(text)}</p>")
+
+    # -- the changes and the design
     def refresh(self, *_):
         ed = getattr(self.win, "editor", None)
+        self._follow(ed)
         self.result = None
+        self.changes.blockSignals(True)
+        self.changes.clear()
+        self.changes.blockSignals(False)
         if ed is None:
-            self.page.setHtml("<p>Open a sequence, edit it (mutate, insert or delete bases), then come back here.</p>")
-            return
-        old = ed.doc.saved_sequence()
+            self.left_title.setText("<b>Current sequence</b> (editable)")
+            return self._say("Open a sequence, then edit it here (mutate, insert or delete bases).", error=False)
+        self.left_title.setText(f"<b>{escape(ed.doc.name)}</b> (editable)")
+        self.old = ed.doc.saved_sequence()
+        if self.old is None:
+            return self._say("There is no saved sequence to compare with (a new sequence, or one rotated or reverse-complemented "
+                             "since the last save): save it, then edit.")
+        self.found = changes(self.old.upper(), ed.doc.sequence().upper())
+        auto_keys = set(auto(self.found, self.group.value()))
+        self.changes.blockSignals(True)
+        for c in self.found:
+            item = QListWidgetItem(describe(self.old, c, self.warn.value()))
+            item.setData(Qt.UserRole, c)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked if self.manual.get(c, c in auto_keys) else Qt.Unchecked)
+            if len(c[2]) > self.warn.value():
+                item.setForeground(QColor("#ef6c00"))
+            self.changes.addItem(item)
+        self.changes.blockSignals(False)
+        self._design()
+
+    def _ticked(self, item):
+        self.manual[item.data(Qt.UserRole)] = item.checkState() == Qt.Checked
+        self._design()
+
+    def _show_change(self, item):
+        """Click a change: select it on the left (its place in the current sequence)."""
+        s, e, t = item.data(Qt.UserRole)
+        shift = sum(len(x[2]) - (x[1] - x[0]) for x in self.found if x[0] < s)
+        if self.editor is not None and self.editor.length:
+            self.editor.select(s + shift, min(max(s + shift + len(t), s + shift + 1), self.editor.length))
+            self.left.ensure_visible(s + shift)
+
+    def _design(self):
+        chosen = [self.changes.item(i).data(Qt.UserRole) for i in range(self.changes.count())
+                  if self.changes.item(i).checkState() == Qt.Checked]
         try:
-            if old is None:
-                raise ValueError("There is no saved sequence to compare with (a new sequence, or one rotated or "
-                                 "reverse-complemented since the last save): save it, then edit.")
-            self.result = r = design(old, ed.doc.sequence(), ed.circular, self.tm.value(), self.group.value(), self.warn.value())
+            self.result = r = design_selected(self.old, chosen, self.editor.circular, self.tm.value(), self.group.value(),
+                                              self.warn.value())
         except ValueError as e:
-            self.page.setHtml(f"<p style='color:#c62828'>{escape(str(e))}</p>")
-            return
+            self.result = None
+            return self._say(str(e))
         a, b, text = r.change
-        what = "Mutation" if len(text) == b - a else "Insertion" if a == b else "Deletion" if not text else "Replacement"
-        html = [f"<p><b>{what}</b> at {a + 1:,}–{b:,} ({b - a:,} bp → {len(text):,} bp)</p>", "<table cellspacing=6>"]
+        keep = self.right.verticalScrollBar().value() if isinstance(self.right, self._view_class) else 0
+        from opendna_core import Document
+        doc = Document.new_sequence("After KLD", r.product, True)
+        self.right_editor = ed = self._editor_class(doc, "After KLD")
+        ed.set_extra([(n, s) for n, s, _ in r.rows])
+        view = self._view_class(ed)
+        self._show_right(view)
+        if text:
+            ed.select(a, a + len(text))
+        else:
+            ed.set_cursor(a)
+        view.ensure_visible(a)
+        if keep:
+            view.verticalScrollBar().setValue(keep)
+        html = ["<table cellspacing=6>"]
         for name, seq, n in r.rows:
             tail = len(seq) - n
             t = melting_temp(seq[tail:])
@@ -155,4 +310,4 @@ class KldPanel(QWidget):
         html.append("</table>")
         for level, note in r.notes:
             html.append(f"<p style='color:{'#ef6c00' if level == 'warn' else 'gray'}'>{'⚠ ' if level == 'warn' else ''}{escape(note)}</p>")
-        self.page.setHtml("".join(html))
+        self.info.setHtml("".join(html))

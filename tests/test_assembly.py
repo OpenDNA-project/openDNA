@@ -807,10 +807,18 @@ def test_kld_primers_for_unsaved_edits():
     r = check(old[:100] + random_dna(150, 8) + old[100:])                   # over 120 new bp: orange warning, split on both primers
     assert any(level == "warn" and "150" in t for level, t in r.notes) and len(r.rows[1][1]) > r.rows[1][2]
     assert not any(level == "warn" and "150" in t for level, t in check(old[:100] + random_dna(150, 8) + old[100:], warn_insert=200).notes)
+    chosen = kld.changes(old, far)                                          # ticked by hand: the span limit applies, and a change
+    assert len(chosen) == 4 and kld.auto(chosen) == chosen[:3]              # left unticked between two ticked ones is not applied
+    with pytest.raises(ValueError, match="span"):
+        kld.design_selected(old, [chosen[0], chosen[3]])
+    r = kld.design_selected(old, [chosen[0], chosen[2]])
+    assert r.product == old[:100] + flip[old[100]] + old[101:109] + old[109:125] + flip[old[125]] + old[126:]
+    with pytest.raises(ValueError, match="No change selected"):
+        kld.design_selected(old, [])
     check(old[:100] + old[300:])                                            # a long deletion is fine (a deletion carries no bases)
     with pytest.raises(ValueError, match="circular"):
         kld.design(old, old[:100] + "A" + old[100:], circular=False)
-    with pytest.raises(ValueError, match="No unsaved change"):
+    with pytest.raises(ValueError, match="No change selected"):
         kld.design(old, old)
     with pytest.raises(ValueError, match="too many"):
         kld.design(old, old[:100] + random_dna(501, 9) + old[100:])

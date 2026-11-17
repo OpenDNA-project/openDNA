@@ -4,7 +4,7 @@
 
 ## `test_one_record_is_read_and_saved_in_place`
 
-**Result:** ✅ passed in 0.12 s · [line 45](../../tests/test_multi_record.py#L45) · **Area:** Multi-record files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.13 s · [line 45](../../tests/test_multi_record.py#L45) · **Area:** Multi-record files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, editing one chromosome or plasmid inside a multi-record GenBank file could corrupt the other records or leave the file half-written when the save fails.
 

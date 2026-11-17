@@ -212,7 +212,7 @@ A cassette replaces, deletes or inserts at the right bases of a circular genome 
 
 **Why it matters:** Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.
 
-KLD turns the unsaved edits of a 400 bp plasmid into a back-to-back primer pair. Each design is read back from the primers alone and must equal the edited plasmid, with the forward primer annealing just right of the change and the reverse just left of it.
+KLD turns the chosen changes of a 400 bp plasmid into a back-to-back primer pair. Each design is read back from the primers alone and must equal the plasmid with just those changes, with the forward primer annealing just right of the change and the reverse just left of it.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -222,8 +222,8 @@ KLD turns the unsaved edits of a 400 bp plasmid into a back-to-back primer pair.
 | 4 | three mutations at 100, 109, 125 | one change over 100..126, nothing skipped |
 | 5 | the same plus one mutation at 300 | first cluster designed, one change skipped and said so |
 | 6 | 150 bp inserted; again with the warning set to 200 | orange warning naming 150 and a tail on the reverse primer; no warning at 200 |
-| 7 | 200 bp deleted | designed, no refusal |
-| 8 | linear sequence; no change; 501 bp inserted | ValueError: circular / No unsaved change / too many |
+| 7 | the four changes ticked by hand: first three; first and last; first and third; none | auto picks the first three; first+last raises 'span'; first+third applies only those two (the unticked change between them is not applied); none raises 'No change selected' |
+| 8 | linear sequence; no change; 501 bp inserted | ValueError: circular / No change selected / too many |
 | 9 | Document edited in place (replace at 100, delete 200..230) | saved_sequence() is the original; None for a new unsaved sequence |
 
 **Review notes:**

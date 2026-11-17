@@ -4,7 +4,7 @@
 
 ## `test_binding_agrees_with_the_documented_rules_written_in_python`
 
-**Result:** ✅ passed in 0.12 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.13 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer binding sites shown on the map could deviate from the documented seed/extension rules on any of thousands of combinations of mismatches, tails, strands and topologies.
 
