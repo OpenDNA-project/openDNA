@@ -1,4 +1,4 @@
-"""Databases > Database Status (and the Help of each database's tab): one entry per database the program keeps, each showing where its file is, whether it can be
+"""The Help of each database's tab: one entry per database the program keeps, each showing where its file is, whether it can be
 read, how many entries it holds and what is wrong in it (rows with no sequence, letters that are not bases, names used twice).
 
 Every check returns a Status (rows of (label, value, level), level "ok", "warn" or "error"), so the tests read the same
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFormLayout, QLabel, QWidget
 
 from uikit import plural
 import theme
@@ -172,9 +172,6 @@ def primers():
     return st
 
 
-DATABASES = (("&Features Database…", features_library), ("&Primer Database…", primers))
-
-
 def folder_of(st):
     """The folder a database is kept in (None when it has no file at all)."""
     if st.path is None:
@@ -208,22 +205,3 @@ def status_widgets(st):
         form.addRow(name, text)
     body.rows = form   # for the tests
     return head, body
-
-
-def show(parent, check):
-    """A dialog with the rows of `check()` and a button that opens the database's folder."""
-    st = check()
-    dialog = QDialog(parent)
-    dialog.setWindowTitle(st.title)
-    layout = QVBoxLayout(dialog)
-    head, facts = status_widgets(st)
-    layout.addWidget(head)
-    layout.addWidget(facts)
-    buttons = QDialogButtonBox(QDialogButtonBox.Close)
-    buttons.rejected.connect(dialog.reject)
-    if st.path is not None:
-        buttons.addButton(QPushButton("Open Folder", clicked=lambda: open_folder(st)), QDialogButtonBox.ActionRole)
-    layout.addWidget(buttons)
-    dialog.resize(640, dialog.sizeHint().height())
-    dialog.status = st   # for the tests
-    return dialog

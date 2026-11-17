@@ -2,8 +2,8 @@
 Qt (6.8 and later) restyles every widget, the title bar included, when the colour scheme is set, and the
 views that draw themselves read their colours from the palette, so nothing else needs to know."""
 from PySide6.QtCore import QRectF, QSettings, Qt
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPalette
-from PySide6.QtWidgets import QProxyStyle, QStyle, QStyleFactory
+from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPalette
+from PySide6.QtWidgets import QProxyStyle, QStyle, QStyleFactory, QStyleOptionMenuItem
 
 from primer_db import data_dir
 
@@ -73,10 +73,36 @@ class PressedStyle(QProxyStyle):
             option = type(option)(option)
             for role in (QPalette.ButtonText, QPalette.WindowText, QPalette.Text):
                 option.palette.setColor(role, color("primary_text"))
+        icon_in_check_column = (element == QStyle.CE_MenuItem and not option.icon.isNull()
+                                and option.menuItemType in (QStyleOptionMenuItem.Normal, QStyleOptionMenuItem.SubMenu))
+        if icon_in_check_column:   # the icon is drawn below, in the column of the checkmarks; the style draws neither here
+            icon, checked = option.icon, option.checkType != QStyleOptionMenuItem.NotCheckable and option.checked
+            option = QStyleOptionMenuItem(option)
+            option.icon, option.checkType = QIcon(), QStyleOptionMenuItem.NotCheckable
         super().drawControl(element, option, painter, widget)
+        if icon_in_check_column:
+            self._menu_icon(option, painter, icon, checked)
         if element == QStyle.CE_MenuItem:   # the "WIP" tag of an unfinished feature's menu item (wip.mark_action)
             import wip
             wip.menu_pill(option, painter, widget, self)
+
+    CHECK_CENTER = 19   # px from the item's left edge to the middle of the style's checkmark (measured)
+
+    def _menu_icon(self, option, painter, icon, checked):
+        """A menu item's icon in the column of the checkmarks, so icons and checkmarks line up; a checked one has a frame round it."""
+        side = self.pixelMetric(QStyle.PM_SmallIconSize)
+        box = QRectF(0, 0, side, side)
+        box.moveCenter(QRectF(option.rect).center())
+        box.moveLeft(option.rect.left() + self.CHECK_CENTER - side / 2)
+        mode = QIcon.Normal if option.state & QStyle.State_Enabled else QIcon.Disabled
+        if checked:
+            painter.save()
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(color("highlight"))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(box.adjusted(-3, -3, 3, 3), 4, 4)
+            painter.restore()
+        icon.paint(painter, box.toRect(), Qt.AlignCenter, mode, QIcon.On if checked else QIcon.Off)
 
     def sizeFromContents(self, kind, option, size, widget=None):
         size = super().sizeFromContents(kind, option, size, widget)

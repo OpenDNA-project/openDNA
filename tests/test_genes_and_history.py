@@ -191,3 +191,10 @@ def test_history_texts():
     ed.select(n - 5, n + 10)
     ed.backspace()                       # deleting across the origin: from 0-based n - 5, so base n - 4
     assert group(ed.doc.history()[0])[-1][2] == f"Replaced 15 bp across the origin from {n - 4} (deleted)"
+
+    # Set Origin to Selection Start: the circle turns so base 10 (0-based) becomes base 1; nothing happens on a line or at base 1.
+    seq = ed.doc.sequence()
+    assert ed.set_origin(10) and ed.doc.circular and ed.doc.sequence() == seq[10:] + seq[:10] and ed.start == 0
+    assert not ed.set_origin(0)
+    ed.set_circular(False)
+    assert not ed.set_origin(5)

@@ -324,6 +324,7 @@ class Editor(QObject):
     edit_feature_requested = Signal(int)  # a view was double-clicked on this feature
     edit_primer_requested = Signal(str)   # ... or on a primer site (primer name)
     primers_changed = Signal()    # primer binding sites were recomputed
+    primer_clicked = Signal(str)  # a primer site was clicked (or shift-clicked) in a view (its site key)
     elsewhere_changed = Signal()      # the primer sites on the other records of the file were (re)computed
     record_hit_requested = Signal(str, int, int)   # open this record of the file and select these bases
     record_requested = Signal(str)   # the map's chromosome list was clicked: open this sequence of the FASTA file
@@ -667,6 +668,7 @@ class Editor(QObject):
         site = self.site_by_key.get(key)
         if site is None:
             return
+        self.primer_clicked.emit(key)
         other = self.site_by_key.get(self.current_primer) if extend else None
         if other is not None and other.strand != site.strand:
             fwd, rev = (other, site) if other.strand > 0 else (site, other)
@@ -1249,6 +1251,17 @@ class Editor(QObject):
         self.doc.linearize(pos % max(1, self.length))
         self._changed()
         self.set_cursor(0)
+
+    def set_origin(self, pos):
+        """Rotate a circular sequence so base `pos` (0-based) becomes base 1, features along: ONE undo step. False when nothing
+        changed (linear, locked, or `pos` is already the origin)."""
+        pos %= max(1, self.length)
+        if not self.doc.circular or not self.dna_editable() or pos == 0:
+            return False
+        self.doc.rotate(pos)
+        self._changed()
+        self.set_cursor(0)
+        return True
 
     def set_circular(self, circular):
         """Plasmid or linear: changes the map, cut sites and primer sites across the origin."""

@@ -4,7 +4,7 @@
 
 ## `test_real_files_round_trip_and_agree_with_biopython`
 
-**Result:** ✅ passed in 1.93 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.95 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a real plasmid or genome could silently drop or alter features, qualifiers or bases, or write a file other tools read differently.
 
@@ -65,7 +65,7 @@ Saves made-up records that hit the edges of the GenBank format, reloads them wit
 
 ## `test_qualifier_text_survives_and_is_written_as_documented`
 
-**Result:** ✅ passed in 0.13 s · [line 340](../../tests/test_roundtrip.py#L340) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.11 s · [line 340](../../tests/test_roundtrip.py#L340) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, notes with quotes, unicode or long text could be mangled, wrapped badly or gain spaces when saved, so other tools (or a reload) would show different annotation text.
 
@@ -119,7 +119,7 @@ Checks the indexed FASTA reader against Biopython for record list, full fetches,
 
 ## `test_fasta_writing_is_the_string_edit_of_the_file`
 
-**Result:** ✅ passed in 0.03 s · [line 505](../../tests/test_roundtrip.py#L505) · **Area:** FASTA writing · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 505](../../tests/test_roundtrip.py#L505) · **Area:** FASTA writing · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, saving an edited chromosome back into a multi-FASTA could damage the other records, lose CRLF or a BOM, leave a stale index, or write the wrong edited bases.
 

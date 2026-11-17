@@ -3969,31 +3969,27 @@
    "id": "tests/test_primer_design.py::test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle",
    "area": "Primer design on circular DNA",
    "role": "Without it, designing primers for a target at or across a plasmid's origin could return nothing, or primers whose bases are not actually on the template or whose product does not contain the target.",
-   "purpose": "Checks that on a circular 3000 bp sequence the designer returns pairs for a target at base 1, at the last base and across the origin, that each primer's bases really match the template read round the circle, that the template between primer and target stays within 150 bp, that the reported product size is consistent, and that a linear sequence has nothing before base 1.",
+   "purpose": "Checks that on a circular 3000 bp sequence the designer returns pairs for a target at base 1, at the last base and across the origin, with the search window at 0 (the product is exactly the target) and at 40 bp, that each primer's bases really match the template read round the circle, that each primer's 5' end is within the window of the target, that the reported product size is consistent, and that a linear sequence designs from base 1 but not for a target shorter than a primer.",
    "cases": [
     {
-     "input": "circular 3000 bp, target (0,200)",
-     "expected": "non-empty pairs"
-    },
-    {
-     "input": "target (2800,3000) and (2900,3100) (across the origin)",
-     "expected": "non-empty pairs in both cases"
+     "input": "circular 3000 bp, targets (0,200), (2800,3000), (2900,3100) (across the origin), window 0 (no Tm limit) and 40",
+     "expected": "non-empty pairs in every case"
     },
     {
      "input": "each returned pair",
      "expected": "fwd bases equal (seq*2)[start:end]; rev bases equal the reverse complement of (seq*2)[start:end]"
     },
     {
-     "input": "the gap between each primer and the target",
-     "expected": "both (start - fwd.end) mod n and (rev.start - end) mod n are <= 150"
+     "input": "the gap between each primer's 5' end and the target",
+     "expected": "both (start - fwd.start) mod n and (rev.end - end) mod n are <= the window"
     },
     {
      "input": "the reported size",
-     "expected": "size == len(fwd) + before + (end-start) + after + len(rev)"
+     "expected": "size == before + (end-start) + after; with window 0, size == end-start"
     },
     {
-     "input": "the same sequence as a line, targets (0,200) and (500,700)",
-     "expected": "no pairs for the first (nothing upstream of base 1), pairs for the second"
+     "input": "the same sequence as a line, targets (0,200) and (500,700), then (0,10)",
+     "expected": "pairs for the first two; none for a 10 bp target"
     }
    ],
    "oracle": "property/invariant",
@@ -4002,7 +3998,7 @@
     "Only checks that pairs exist and are self-consistent; nothing here checks that the chosen primers are good ones (Tm, specificity), so a designer returning poor pairs would pass."
    ],
    "verdict": "sound",
-   "evidence": "Read only (test + app/primer_design.py). Each claim it makes is pinned: the primers' bases are compared with (seq*2) read at the reported coordinates, so a primer not on the template fails; the modular gaps before and after the target being <= 150 also prove the product contains the whole target, since a primer inside the target makes the modular gap about n; and the reported size must equal the sum of its parts. It claims nothing about primer quality, and indeed does not test it.",
+   "evidence": "Read only (test + app/primer_design.py). Each claim it makes is pinned: the primers' bases are compared with (seq*2) read at the reported coordinates, so a primer not on the template fails; the modular gaps before and after the target being <= 150 also prove the product contains the whole target, since a primer inside the target makes the modular gap about n; and the reported size must equal the sum of its parts. It claims nothing about primer quality, and indeed does not test it. (Updated for the window-0 designer: primers start on the target's ends.)",
    "gaps": [],
    "proposal": ""
   },
@@ -4153,7 +4149,7 @@
    "id": "tests/test_genes_and_history.py::test_history_texts",
    "area": "Edit history wording",
    "role": "Without it, the History panel - the user's only record of what an edit actually did - could describe an edit wrongly or lump several edits into one line, making a mistake impossible to trace back.",
-   "purpose": "Checks the exact text written for each kind of edit (insert, delete, short and long replace, long-sequence truncation with an ellipsis, paste with features, feature added/changed/renamed/deleted, many features, reverse complement), that an undone row keeps its text in the redo list, and the texts for circular operations and edits across the origin.",
+   "purpose": "Checks the exact text written for each kind of edit (insert, delete, short and long replace, long-sequence truncation with an ellipsis, paste with features, feature added/changed/renamed/deleted, many features, reverse complement), that an undone row keeps its text in the redo list, and the texts for circular operations and edits across the origin. Also that Set Origin to Selection Start rotates a circle (and refuses at base 1 or on a line).",
    "cases": [
     {
      "input": "insert GGG at cursor 10 / delete that selection",
@@ -4190,6 +4186,10 @@
     {
      "input": "delete 15 bases across the origin",
      "expected": "text starts 'Replaced 15 bp across the origin from ' and ends ' (deleted)'"
+    },
+    {
+     "input": "set_origin(10) on the circle; set_origin(0); linear sequence set_origin(5)",
+     "expected": "sequence becomes seq[10:]+seq[:10], still circular, cursor at 0 (True); then False; then False"
     }
    ],
    "oracle": "regression value",

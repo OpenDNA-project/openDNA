@@ -4,7 +4,7 @@ import math
 from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel,
+    QAbstractItemView, QComboBox, QDialog, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMenu, QPushButton, QSizePolicy, QSpinBox, QSplitter, QStyle,
     QTabBar, QTableWidget, QTableWidgetItem, QToolButton, QTreeWidget, QVBoxLayout, QWidget,
 )
@@ -120,89 +120,6 @@ def pcr_product(editor, f, r):
         rc = reverse_complement(r.sequence)
         doc.overwrite(doc.length - len(rc), rc)
     return doc
-
-
-class PcrDialog(ToolDialog):
-    def __init__(self, parent, editor):
-        super().__init__(parent)
-        self.editor = editor
-        self.setWindowTitle("PCR Product")
-        self.setMinimumWidth(480)
-        self.fwd, self.rev = QComboBox(), QComboBox()
-        for combo in (self.fwd, self.rev):
-            combo.currentIndexChanged.connect(self._update)
-            combo.setMaximumWidth(400)   # in a wide pane the form stays a form, on the left, not 1400 px of combo box
-        self.info = QLabel(wordWrap=True, maximumWidth=400)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, maximumWidth=400)
-        buttons.button(QDialogButtonBox.Ok).setText("Open product")
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        self.ok = buttons.button(QDialogButtonBox.Ok)
-        self.cancel = buttons.button(QDialogButtonBox.Cancel)
-        form = QFormLayout(self)
-        form.setFormAlignment(Qt.AlignLeft | Qt.AlignTop)
-        form.addRow("Forward primer", self.fwd)
-        form.addRow("Reverse primer", self.rev)
-        form.addRow("Product", self.info)
-        form.addRow("", buttons)
-        self.refresh()
-
-    def embed(self, on_accept=None):
-        self.cancel.hide()   # in a pane there is nothing to cancel: the pane stays
-        return super().embed(on_accept)
-
-    def refresh(self):
-        """(Re)list the primer sites, keeping the chosen pair if it still binds."""
-        before = (self.fwd.currentText(), self.rev.currentText())
-        self.fwd_sites = [s for s in self.editor.primer_sites if s.strand > 0]
-        self.rev_sites = [s for s in self.editor.primer_sites if s.strand < 0]
-        for combo, sites in ((self.fwd, self.fwd_sites), (self.rev, self.rev_sites)):
-            combo.blockSignals(True)
-            combo.clear()
-            for s in sites:
-                mm = f", {plural(s.mismatches, 'mismatch')}" if s.mismatches else ""
-                combo.addItem(f"{s.label}  ({s.start + 1:,}{mm})")
-            combo.blockSignals(False)
-        if before[0] and self.fwd.findText(before[0]) >= 0 and self.rev.findText(before[1]) >= 0:
-            self.fwd.setCurrentText(before[0])
-            self.rev.setCurrentText(before[1])
-        else:
-            self._pick_default()
-        self._update()
-
-    def _pick_default(self):
-        """The pair giving the shortest product (around the selection if there is one)."""
-        best = None
-        for i, f in enumerate(self.fwd_sites):
-            for j, r in enumerate(self.rev_sites):
-                span = product_range(self.editor, f, r)
-                if span and (best is None or span[1] - span[0] < best[0]):
-                    best = (span[1] - span[0], i, j)
-        if best:
-            self.fwd.setCurrentIndex(best[1])
-            self.rev.setCurrentIndex(best[2])
-
-    def pair(self):
-        i, j = self.fwd.currentIndex(), self.rev.currentIndex()
-        if i < 0 or j < 0:
-            return None
-        return self.fwd_sites[i], self.rev_sites[j]
-
-    def _update(self):
-        pair = self.pair()
-        span = product_range(self.editor, *pair) if pair else None
-        if not span:
-            self.info.setText("Needs a forward and a reverse primer site, reverse downstream." if not pair
-                              else "No product: the reverse primer is not downstream.")
-        else:
-            f, r = pair
-            size = span[1] - span[0] + f.tail + r.tail
-            self.info.setText(f"{size:,} bp (template {span[0] + 1:,}–{(span[1] - 1) % self.editor.length + 1:,}"
-                              f" + {f.tail + r.tail} bp of tails)")
-        self.ok.setEnabled(bool(span))
-
-    def product(self):
-        return pcr_product(self.editor, *self.pair())
 
 
 # ---- ORFs -----------------------------------------------------------------------------

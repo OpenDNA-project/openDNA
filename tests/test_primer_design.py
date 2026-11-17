@@ -226,16 +226,20 @@ def test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle(t
     n = len(seq)
     ed = Editor(Document.new_sequence("c", seq, True), tmp_path / "c.gb")
     for start, end in [(0, 200), (n - 200, n), (n - 100, n + 100)]:
-        pairs = design(ed, start, end)
-        assert pairs, (start, end)
-        for p in pairs:
-            f, r = p["fwd"], p["rev"]
-            assert (seq * 2)[f["start"]:f["end"]] == f["seq"] and (seq * 2)[r["start"]:r["end"]] == reverse_complement(r["seq"])
-            before, after = (start - f["end"]) % n, (r["start"] - end) % n   # template between each primer and the target
-            assert before <= 150 and after <= 150
-            assert p["size"] == len(f["seq"]) + before + (end - start) + after + len(r["seq"])
+        for window in (0, 40):
+            pairs = design(ed, start, end, window=window, tm_tolerance=None if window == 0 else 5)   # (no Tm limit on a fixed place)
+            assert pairs, (start, end, window)
+            for p in pairs:
+                f, r = p["fwd"], p["rev"]
+                assert (seq * 2)[f["start"]:f["end"]] == f["seq"] and (seq * 2)[r["start"]:r["end"]] == reverse_complement(r["seq"])
+                before, after = (start - f["start"]) % n, (r["end"] - end) % n   # template between each primer's 5' end and the target
+                assert before <= window and after <= window
+                assert p["size"] == before + (end - start) + after
+                if window == 0:
+                    assert p["size"] == end - start   # the product is exactly the selection
     linear = Editor(Document.new_sequence("l", seq, False), tmp_path / "l.gb")
-    assert design(linear, 0, 200) == [] and design(linear, 500, 700)
+    assert design(linear, 0, 200) and design(linear, 500, 700)
+    assert design(linear, 0, 10) == []   # a target shorter than a primer
 
 
 def test_the_files_written_for_ordering(tmp_path):

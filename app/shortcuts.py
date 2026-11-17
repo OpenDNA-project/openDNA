@@ -94,6 +94,7 @@ def menu_shortcuts(window):
     for top in window.menuBar().actions():
         if top.menu():
             walk(top.menu(), [top.text()])
+    rows += [(a.shortcut().toString(QKeySequence.NativeText), a.text()) for a in window.hidden_actions if not a.shortcut().isEmpty()]
     return rows
 
 

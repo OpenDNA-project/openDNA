@@ -64,11 +64,11 @@ HELP = {
         "Options chooses the genetic code (a CDS with /transl_table keeps its own).",
     ],
     "PCR": [
-        "Shows the product of two primers that bind this sequence.",
-        "Pick a forward and a reverse primer from the lists.",
-        "The product's size is shown at once.",
-        "Open product makes it a new sequence.",
-        "Tip: click one primer, then Shift+click one on the other strand in the Sequence view to select what they amplify.",
+        "Left: the template, editable. Middle: the primers. Right: the product, read only.",
+        "Pick a forward and a reverse primer that bind the template, or select a region on the left and press Design.",
+        "The last choice (a primer in a list, or a designed pair) is the one shown on the right.",
+        "Open Product makes it a new sequence; Save Pair to Primer Database keeps a designed pair.",
+        "Click a primer on the template (then Shift+click one on the other strand) to choose it in the lists.",
     ],
     "Spacer Finder": [
         "Lists Cas9 / Cas12a guides (SpCas9, SaCas9 or Cas12a) with the PAM, on both strands.",

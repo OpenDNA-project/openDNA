@@ -41,7 +41,7 @@ multi-record file lists its records, tick the ones you want and rename them if y
 after the ones it has: a one-record GenBank file becomes a multi-record GenBank file, a FASTA file gets more sequences (bases
 only: FASTA keeps no features). The new records are written into the file at once (the records already in it are copied byte for
 byte, and Undo does not remove the new ones); the sequence that was open keeps its unsaved edits until you save it. An open `.dna`
-file, project or unsaved sequence is first saved as GenBank, and the records are added to that file. The alignment view (View → Alignment View, Ctrl+Shift+G; off until you ask for it, on any sequence) shows
+file, project or unsaved sequence is first saved as GenBank, and the records are added to that file. The alignment view (Ctrl+Shift+G, or a new tab with the Alignment view; off until you ask for it, on any sequence) shows
 tracks loaded with File → Load Track: GFF3/GTF/BED annotations, VCF variants and BAM alignments
 (coverage + reads; the `.bai` is made if missing; several files at once). Click a track's name to hide
 it, right-click it for expanded/condensed/hidden and a log scale, drag the line under it to resize; the
@@ -95,7 +95,7 @@ image uses the colours on screen, so switch to the light theme first for a white
 
 **Edited bases**: bases you typed, pasted, replaced or inserted since the file was opened or last saved are drawn as blue letters with a thin blue underline in the sequence view (in every tab that shows it; there is no background, so they are never mistaken for the yellow search hits, and a hit over an edited base shows both). Deleting leaves nothing to mark. The marks follow later edits, and Undo / Redo keep them right (undoing an insertion removes its mark). Save and Save As clear them; the automatic backup does not. The blue follows the light or dark theme.
 
-**DNA lock** (🔓 DNA / 🔒 DNA button at the start of the toolbar, Edit → Lock DNA, Ctrl+Shift+L): while it is pressed the bases cannot change (typing, paste,
+**DNA lock** (🔓 DNA / 🔒 DNA button at the start of the toolbar, Ctrl+Shift+L): while it is pressed the bases cannot change (typing, paste,
 delete, reverse-complement, making a plasmid linear, applying variants, and Undo/Redo of a base change are refused, with a message in the
 status bar). Features, primers, the display and everything else can still be edited.
 
@@ -333,7 +333,7 @@ strength. *Sources* in the header ticks the sources that Detect Common Features 
 feature to delete it, which is only possible for Local features: a published source is switched off whole. The Primer Database adds
 the **Note** and the day each primer was **Added**; open a primer (its ▸) to see where it binds in the background genome; its header has New, Edit, Delete, Import, Export, Export for Ordering and Options (double-click a
 primer to edit it). **Help** explains the tab and shows where the database is kept, how many entries it holds and what is wrong in it
-(rows with no sequence, letters that are not bases, names used twice), with *Open Folder*; Databases → Database Status shows the same.
+(rows with no sequence, letters that are not bases, names used twice), with *Open Folder* (the Help button of the database's tab shows the same).
 The restriction enzymes are listed in Tools → Restriction Digest, with the Owned box of the enzyme inventory.
 
 **Binding sites of a primer.** In the Primers view, open a primer (its ▸) to see its sites, grouped by where they are: *On this
