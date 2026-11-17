@@ -166,6 +166,11 @@ impl Document {
         self.inner.edited_ranges()
     }
 
+    /// `doc.saved_sequence()`: the bases as of the last save or load (None when they cannot be rebuilt exactly).
+    fn saved_sequence(&self) -> Option<String> {
+        self.inner.saved_sequence().map(|s| String::from_utf8_lossy(&s).into_owned())
+    }
+
     /// `doc.deleted_points()`: the gaps (before base g, 0-based) where bases were removed since the last save or
     /// load; the sequence view draws a small inverted ^ over each. Kept right by edits, undo and redo like `edited_ranges`.
     fn deleted_points(&self) -> Vec<usize> {

@@ -4,7 +4,7 @@
 
 ## `test_recoding_preserves_the_protein_and_obeys_the_constraints`
 
-**Result:** ✅ passed in 0.10 s · [line 79](../../tests/test_codons.py#L79) · **Area:** Codon recoding · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.11 s · [line 79](../../tests/test_codons.py#L79) · **Area:** Codon recoding · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, recoding a CDS could silently change the protein the user is cloning, or leave a forbidden restriction site, a bad GC window or a hidden RBS in the synthesised gene.
 

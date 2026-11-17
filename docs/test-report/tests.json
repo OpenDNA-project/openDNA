@@ -6779,7 +6779,7 @@
     },
     {
      "input": "then delete 10..12; undo x3; redo x2; undo x2 (deleted_points)",
-     "expected": "[0] after the first two (the one inside the typed run is absorbed); [0, 10]; [] ; [0]; run (5,8) again"
+     "expected": "[0] after the first two (the one inside the typed run is absorbed); [0, 10]; [] ; [0]; run (5,8) again; saved_sequence() is the 20 original bases while those edits stand"
     },
     {
      "input": "undo x2; undo x3",
@@ -7052,6 +7052,56 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": []
+  },
+  {
+   "id": "tests/test_assembly.py::test_kld_primers_for_unsaved_edits",
+   "area": "KLD (point mutations, insertions, deletions)",
+   "role": "Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.",
+   "purpose": "KLD turns the unsaved edits of a 400 bp plasmid into a back-to-back primer pair. Each design is read back from the primers alone and must equal the edited plasmid, with the forward primer annealing just right of the change and the reverse just left of it.",
+   "cases": [
+    {
+     "input": "one base flipped at 100",
+     "expected": "change (100,101,that base), no length note"
+    },
+    {
+     "input": "30 bp deleted at 100",
+     "expected": "change (100,130,''), no orange length warning"
+    },
+    {
+     "input": "GGATCC inserted at 100",
+     "expected": "change (100,100,'GGATCC')"
+    },
+    {
+     "input": "three mutations at 100, 109, 125",
+     "expected": "one change over 100..126, nothing skipped"
+    },
+    {
+     "input": "the same plus one mutation at 300",
+     "expected": "first cluster designed, one change skipped and said so"
+    },
+    {
+     "input": "150 bp inserted; again with the warning set to 200",
+     "expected": "orange warning naming 150 and a tail on the reverse primer; no warning at 200"
+    },
+    {
+     "input": "200 bp deleted",
+     "expected": "designed, no refusal"
+    },
+    {
+     "input": "linear sequence; no change; 501 bp inserted",
+     "expected": "ValueError: circular / No unsaved change / too many"
+    },
+    {
+     "input": "Document edited in place (replace at 100, delete 200..230)",
+     "expected": "saved_sequence() is the original; None for a new unsaved sequence"
+    }
+   ],
+   "oracle": "round-trip/self-consistency",
+   "strength": "adequate",
+   "issues": [
+    "The primers are checked against the edit by rebuilding it, not against a hand-computed primer sequence; annealing choice (length for the Tm) is not pinned.",
+    "Primer quality warnings (GC, hairpin) are not asserted."
+   ]
   }
  ],
  "removed": [

@@ -478,6 +478,27 @@ impl Document {
         self.edited.iter().copied().filter(|r| r.0 < r.1).collect()
     }
 
+    /// The bases as they were at the last save or load, rebuilt by undoing the edits made since on a copy; None when
+    /// that cannot be done exactly (no such state to reach, or a rotation, reverse complement or topology change in between).
+    pub fn saved_sequence(&self) -> Option<Vec<u8>> {
+        let mut left = self.real_depth().checked_sub(self.saved_depth?)?;
+        let mut seq = self.record.seq.clone();
+        for edit in self.undo_stack.iter().rev() {
+            if left == 0 {
+                break;
+            }
+            if edit.note == EXTERNAL {
+                continue;
+            }
+            if !matches!(edit.remap, Remap::Local) || edit.topology.is_some() {
+                return None;
+            }
+            seq.splice(edit.pos..edit.pos + edit.inserted.len(), edit.removed.iter().copied());
+            left -= 1;
+        }
+        Some(seq)
+    }
+
     /// The gaps (0-based: before base `g`) where bases were removed since the last save or load, for the ^ marker.
     /// Not listed where typed bases now stand (they are highlighted instead).
     pub fn deleted_points(&self) -> Vec<usize> {
@@ -2528,6 +2549,7 @@ ORIGIN
         assert_eq!(doc.deleted_points(), vec![0], "the deletion at 0 is marked; the one inside the typed run is not");
         doc.replace(10, 12, b"").unwrap();
         assert_eq!(doc.deleted_points(), vec![0, 10]);
+        assert_eq!(doc.saved_sequence().unwrap(), b"ACGTACGTACGTACGTACGT".to_vec(), "the saved bases are rebuilt by undoing the edits");
         assert!(doc.undo() && doc.undo() && doc.undo());
         assert!(doc.deleted_points().is_empty(), "undo takes the markers back");
         assert!(doc.redo() && doc.redo());

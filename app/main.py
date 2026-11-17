@@ -32,6 +32,7 @@ from primer_db import copy_old_data, data_dir, db
 from perf import PerfWindow
 from primer_panel import PrimerDialog, PrimerPanel, annealed, melting_temp
 from assembly_panel import AssemblyPanel, RecombineeringPanel
+from kld import KldPanel
 from citations import CitationsDialog
 from editor import remember_hidden_primers
 from sourcefiles import add_recent, pinned_files, recent_files
@@ -400,6 +401,7 @@ class MainWindow(QMainWindow):
         action(tools, "S&pacer Finder (Cas9 / Cas12a)…", None, lambda: Cas9Dialog(self, self.editor).exec())
         tools.addAction(QAction("&Assembly", self, triggered=self.show_assembly))  # needs no open file
         tools.addAction(QAction("&Recombineering", self, triggered=self.show_recombineering))
+        tools.addAction(QAction("&KLD", self, triggered=self.show_kld))
         action(tools, "&Local Align…", "Ctrl+Shift+B", lambda: LocalAlignDialog(self, self.editor).exec())
         action(tools, "Align &Clipboard…", None, lambda: LocalAlignDialog.align_clipboard(self, self.editor))
         action(tools, "Restriction &Digest…", None, lambda: DigestDialog(self, self.editor).exec())
@@ -1157,6 +1159,10 @@ class MainWindow(QMainWindow):
     def show_recombineering(self):
         """Tools > Recombineering: a genome and a cassette, as a tab."""
         self.recombineering = self.show_tool_tab("Recombineering", lambda: RecombineeringPanel(self))
+
+    def show_kld(self):
+        """Tools > KLD: the primers for the unsaved edits of the open sequence, as a tab."""
+        self.kld = self.show_tool_tab("KLD", lambda: KldPanel(self))
 
     def show_terminal(self, pipeline=None):
         """The Terminal view (bash session and pipelines; any pane's picker → Terminal), added if missing (`pipeline`: the one to show)."""

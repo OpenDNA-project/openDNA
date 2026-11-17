@@ -65,7 +65,8 @@ SEPARATOR = None
 GROUPS = [("Views", ["Alignment", "Map", "MSA", "Protein", "Sequence"]),
           ("Annotations", ["Features", "Primers", SEPARATOR, "Detect Features", "Detect ORFs"])]
 # Tools that are tabs, not panes: choosing one in a picker opens (or shows) its tab and leaves the pane as it was.
-TAB_TOOLS = {"Assembly": lambda window: window.show_assembly(), "Recombineering": lambda window: window.show_recombineering()}
+TAB_TOOLS = {"Assembly": lambda window: window.show_assembly(), "Recombineering": lambda window: window.show_recombineering(),
+             "KLD": lambda window: window.show_kld()}
 # Picked in a pane, these tools bring the views they are read beside (added to the tab when it lacks them).
 COMPANIONS = {"Plasmid Checkup": ("Map", "Sequence")}
 TOOLS = "Tools"

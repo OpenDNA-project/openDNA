@@ -776,3 +776,49 @@ def test_recombineering_design_and_check():
     r = R.check(Document.new_sequence("g2", copy, True), fragment)
     assert r.region == (400, 500) and any("also matches" in c[2] and "701..750" in c[2] for c in r.checks)
     assert R.check(genome, random_dna(200, 15)).region is None
+
+
+def test_kld_primers_for_unsaved_edits():
+    import kld
+    old = random_dna(400, 7)
+    flip = {"A": "C", "C": "G", "G": "T", "T": "A"}
+
+    def check(new, **kw):
+        r = kld.design(old, new, **kw)
+        a, b, text = r.change
+        # the primers alone rebuild the edited plasmid (design raises otherwise), and sit back to back at the change
+        assert r.product == old[:a] + text + old[b:]
+        fwd, rev = r.rows
+        assert fwd[1].upper().endswith(old[b:b + fwd[2]]) and rc(rev[1].upper()).startswith(old[a - rev[2]:a])
+        return r
+
+    r = check(old[:100] + flip[old[100]] + old[101:])                       # one mutation
+    assert r.change == (100, 101, flip[old[100]]) and not any("bp" in t for _, t in r.notes)   # (primer quality notes may come)
+    r = check(old[:100] + old[130:])                                        # a 30 bp deletion: no warning
+    assert r.change == (100, 130, "") and not any(level == "warn" and "bp" in t for level, t in r.notes)
+    r = check(old[:100] + "GGATCC" + old[100:])                             # an insertion
+    assert r.change == (100, 100, "GGATCC")
+    muts = old[:100] + "".join(flip[c] if i in (0, 9, 25) else c for i, c in enumerate(old[100:130])) + old[130:]
+    r = check(muts)                                                         # several mutations in a 30 bp region: one pair
+    assert r.change[:2] == (100, 126) and not r.skipped
+    far = muts[:300] + flip[muts[300]] + muts[301:]                         # one more, 200 bp away: left out, said so
+    r = check(far)
+    assert r.change[:2] == (100, 126) and len(r.skipped) == 1 and any("not included" in t for _, t in r.notes)
+    r = check(old[:100] + random_dna(150, 8) + old[100:])                   # over 120 new bp: orange warning, split on both primers
+    assert any(level == "warn" and "150" in t for level, t in r.notes) and len(r.rows[1][1]) > r.rows[1][2]
+    assert not any(level == "warn" and "150" in t for level, t in check(old[:100] + random_dna(150, 8) + old[100:], warn_insert=200).notes)
+    check(old[:100] + old[300:])                                            # a long deletion is fine (a deletion carries no bases)
+    with pytest.raises(ValueError, match="circular"):
+        kld.design(old, old[:100] + "A" + old[100:], circular=False)
+    with pytest.raises(ValueError, match="No unsaved change"):
+        kld.design(old, old)
+    with pytest.raises(ValueError, match="too many"):
+        kld.design(old, old[:100] + random_dna(501, 9) + old[100:])
+    # the sequence as saved comes back from the document after in-place edits
+    doc = Document.new_sequence("kld", old, True)
+    assert doc.saved_sequence() is None   # a new sequence has no saved state to compare with
+    doc.modified = False
+    assert doc.saved_sequence() == old
+    doc.replace(100, 101, flip[old[100]])
+    doc.delete(200, 230)
+    assert doc.saved_sequence() == old and doc.deleted_points() == [200]

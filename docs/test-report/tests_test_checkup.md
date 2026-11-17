@@ -21,7 +21,7 @@ Checks the verdict given to each CDS in a bacterial context: an annotated promot
 
 ## `test_eukaryotic_hosts_and_unit_ends`
 
-**Result:** ✅ passed in 0.02 s · [line 139](../../tests/test_checkup.py#L139) · **Area:** Plasmid checkup (eukaryotes) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 139](../../tests/test_checkup.py#L139) · **Area:** Plasmid checkup (eukaryotes) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a mammalian expression construct could be judged by bacterial rules - no Kozak check, a polyA or a Pol III promoter ignored - and a shuttle vector would not get a per-host verdict.
 
@@ -40,7 +40,7 @@ Checks that a CMV unit ends at its polyA signal and is judged on Kozak context r
 
 ## `test_how_far_a_unit_runs_and_how_it_ends`
 
-**Result:** ✅ passed in 0.04 s · [line 183](../../tests/test_checkup.py#L183) · **Area:** Transcription units · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 183](../../tests/test_checkup.py#L183) · **Area:** Transcription units · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the drawn transcript could stop at the wrong base, miss that it wraps the origin, claim an exact +1 it cannot know, or describe its ending wrongly, misleading the user about what is actually transcribed.
 

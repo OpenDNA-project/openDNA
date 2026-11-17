@@ -739,11 +739,17 @@ class SequenceView(QAbstractScrollArea):
                 self._draw_letters(p, complement(line), marks, y + self.lh + self.ascent, dim, edited_color)
             for a, b in marks:   # thin blue underline under the edited letter pairs
                 p.fillRect(QRectF(self.left + a * self.cw, y + self.strand_h - 1, (b - a) * self.cw, 1), edited_color)
-            p.setPen(QPen(edited_color, 1.5))
-            for g in deleted:   # a small inverted ^ over the gap where bases were removed (not saved yet)
-                if base0 <= g <= base0 + n and (g < base0 + bpl or base0 + n == ed.length):
-                    x = self.left + (g - base0) * self.cw
-                    p.drawPolyline([QPointF(x - 3, y - 4), QPointF(x, y), QPointF(x + 3, y - 4)])
+            if deleted:   # a small inverted ^ over the gap where bases were removed (not saved yet), smooth and never clipped
+                p.setRenderHint(QPainter.Antialiasing, True)
+                pen = QPen(edited_color, 1.6)
+                pen.setCapStyle(Qt.RoundCap)
+                pen.setJoinStyle(Qt.RoundJoin)
+                p.setPen(pen)
+                for g in deleted:
+                    if base0 <= g <= base0 + n and (g < base0 + bpl or base0 + n == ed.length):
+                        x = self.left + (g - base0) * self.cw
+                        p.drawPolyline([QPointF(x - 3.5, y - 4.5), QPointF(x, y - 0.5), QPointF(x + 3.5, y - 4.5)])
+                p.setRenderHint(QPainter.Antialiasing, False)
             self._draw_cuts(p, base0, n, y)
 
             if ed.show_translation:

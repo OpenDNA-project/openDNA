@@ -79,7 +79,7 @@ Checks that Sidewinder's toeholds are taken from the product itself (scarless), 
 
 ## `test_products_keep_every_orf_on_its_own_bases`
 
-**Result:** ✅ passed in 0.24 s · [line 403](../../tests/test_assembly.py#L403) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.23 s · [line 403](../../tests/test_assembly.py#L403) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an assembled product could annotate a CDS a few bases off, so the user reads a shifted frame and the wrong protein without any error being shown.
 
@@ -126,7 +126,7 @@ Checks that features inside an overlap are annotated once and at the right place
 
 ## `test_restriction_ligation_products`
 
-**Result:** ✅ passed in 0.00 s · [line 584](../../tests/test_assembly.py#L584) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 584](../../tests/test_assembly.py#L584) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the predicted ligation product could be the wrong arc of the vector or have the insert at the wrong place, so the user would clone a construct different from the one shown.
 
@@ -205,3 +205,28 @@ A cassette replaces, deletes or inserts at the right bases of a circular genome 
 **Review notes:**
 
 - Mismatch tolerance and the two-hit warning are tested on one planted case each; no test of an arm that matches on the wrong strand only.
+
+## `test_kld_primers_for_unsaved_edits`
+
+**Result:** ✅ passed in 0.03 s · [line 781](../../tests/test_assembly.py#L781) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+
+**Why it matters:** Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.
+
+KLD turns the unsaved edits of a 400 bp plasmid into a back-to-back primer pair. Each design is read back from the primers alone and must equal the edited plasmid, with the forward primer annealing just right of the change and the reverse just left of it.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | one base flipped at 100 | change (100,101,that base), no length note |
+| 2 | 30 bp deleted at 100 | change (100,130,''), no orange length warning |
+| 3 | GGATCC inserted at 100 | change (100,100,'GGATCC') |
+| 4 | three mutations at 100, 109, 125 | one change over 100..126, nothing skipped |
+| 5 | the same plus one mutation at 300 | first cluster designed, one change skipped and said so |
+| 6 | 150 bp inserted; again with the warning set to 200 | orange warning naming 150 and a tail on the reverse primer; no warning at 200 |
+| 7 | 200 bp deleted | designed, no refusal |
+| 8 | linear sequence; no change; 501 bp inserted | ValueError: circular / No unsaved change / too many |
+| 9 | Document edited in place (replace at 100, delete 200..230) | saved_sequence() is the original; None for a new unsaved sequence |
+
+**Review notes:**
+
+- The primers are checked against the edit by rebuilding it, not against a hand-computed primer sequence; annealing choice (length for the Tm) is not pinned.
+- Primer quality warnings (GC, hairpin) are not asserted.

@@ -8,15 +8,15 @@ Built by `scripts/test_report.py` on 2026-11-17 from `tests.json` and the last r
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 97 | 97 | 0 | 70 | 27 | 0 | 0 | 74 |
+| Python | 98 | 98 | 0 | 70 | 28 | 0 | 0 | 75 |
 | Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 162 | 162 | 0 | 112 | 49 | 1 | 0 | 118 |
+| **All** | 163 | 163 | 0 | 112 | 50 | 1 | 0 | 119 |
 
 ## Weak or unreviewed tests
 
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 162 tests)
+## Gaps and proposed tests (3 of 163 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -43,7 +43,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 ## Every test, by file
 
-### `tests/test_assembly.py` (9 tests)
+### `tests/test_assembly.py` (10 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -56,6 +56,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_restriction_ligation_end_rules_and_warnings` | Without it, the program could pair ends that cannot actually ligate (or refuse ones that can) and stay silent about an insert that can go in backwards or a vector that will re-close on itself. | hand-computed | strong | sound |  |
 | `test_assembly_reports_bad_input_instead_of_failing` | Without it, a zero-length or very short fragment could crash the assembly panel with a traceback instead of showing the user a red check saying what is wrong. | property/invariant | adequate | sound | Mostly asserts 'not ok and some bad check', so a wrong but non-crashing message would pass.<br>The repeated-overhang case overlaps with the ('unique','bad') case in test_golden_gate_products_and_overhang_checks. |
 | `test_recombineering_design_and_check` | A cassette could land on the wrong bases, a region across the origin could scramble the genome, or a non-specific homology could go unreported, so the user would build the wrong strain. | hand-computed | adequate | not checked | Mismatch tolerance and the two-hit warning are tested on one planted case each; no test of an arm that matches on the wrong strand only. |
+| `test_kld_primers_for_unsaved_edits` | Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse. | round-trip/self-consistency | adequate | not checked | The primers are checked against the edit by rebuilding it, not against a hand-computed primer sequence; annealing choice (length for the Tm) is not pinned.<br>Primer quality warnings (GC, hairpin) are not asserted. |
 
 ### `tests/test_checkup.py` (6 tests)
 

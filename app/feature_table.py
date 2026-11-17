@@ -371,20 +371,6 @@ def copy_translation(editor, f):
     editor.error.emit(f"Translation of {f.label or 'CDS'} copied ({len(protein)} aa).")   # status bar
 
 
-def show_translation(parent, editor):
-    """Translate the selected bases (frame +1, the genetic code of Tools > Settings) in a window with a Copy button."""
-    from exports import translate  # here: exports imports the views
-    protein = translate(editor.selected_sequence())
-    box = QMessageBox(QMessageBox.NoIcon, "Translation", f"{len(protein)} aa (frame +1)", parent=parent)
-    box.setInformativeText(protein)
-    box.setTextInteractionFlags(Qt.TextSelectableByMouse)
-    copy = box.addButton("Copy", QMessageBox.ActionRole)
-    box.addButton(QMessageBox.Close)
-    box.exec()
-    if box.clickedButton() is copy:
-        QGuiApplication.clipboard().setText(protein)
-
-
 def features_actions(menu, parent, editor, indices):
     """Delete / Hide / Show (and, for CDSs, their translation on/off) for several features at once."""
     feats = [editor.by_index[i] for i in indices if i in editor.by_index]
@@ -532,25 +518,28 @@ def primer_menu(parent, editor, key, global_pos):
 
 
 def selection_menu(parent, editor, global_pos):
-    """Right-click on selected bases: primers, feature, gene from them; copy."""
+    """Right-click on selected bases, grouped by what they do: clipboard, annotate, primers, then the selection as a protein
+    or a new sequence."""
     from feature_dialog import edit_feature  # here: it imports the tools
     from primer_design import design_for_selection
     from primer_panel import PrimerDialog
+    from sequence_view import add_edit_actions
     window = parent.window()
     menu = QMenu(parent)
     menu.addSection(f"{editor.end - editor.start:,} bp selected")
-    menu.addAction("Add Primer (F)", lambda: PrimerDialog(window, editor).exec())
-    menu.addAction("Add Primer (R)", lambda: reverse_primer_dialog(window, editor).exec())
-    menu.addAction("Design Primers for This Sequence…", lambda: design_for_selection(window, editor))
+    add_edit_actions(menu, editor, getattr(parent, "editable", True))   # Cut / Copy / Paste / Select All, as on empty space
+    menu.addAction("Copy Reverse Complement	" + QKeySequence("Ctrl+Shift+C").toString(QKeySequence.NativeText),
+                   lambda: QGuiApplication.clipboard().setMimeData(editor.copy_reverse_complement_mime()))
     menu.addSeparator()
     menu.addAction("Add Feature…", lambda: edit_feature(window, editor))
     menu.addAction("Add Gene…", lambda: group_as_gene(window, editor, features_inside(editor)))
     menu.addSeparator()
-    menu.addAction("Translate…", lambda: show_translation(window, editor))
-    from sequence_view import add_edit_actions
-    add_edit_actions(menu, editor, getattr(parent, "editable", True))   # Cut / Copy / Paste / Select All, as on empty space
-    menu.addAction("Copy Reverse Complement\t" + QKeySequence("Ctrl+Shift+C").toString(QKeySequence.NativeText),
-                   lambda: QGuiApplication.clipboard().setMimeData(editor.copy_reverse_complement_mime()))
+    menu.addAction("Add Primer (F)", lambda: PrimerDialog(window, editor).exec())
+    menu.addAction("Add Primer (R)", lambda: reverse_primer_dialog(window, editor).exec())
+    menu.addAction("Design Primers for This Sequence…", lambda: design_for_selection(window, editor))
+    menu.addSeparator()
+    if hasattr(window, "workspace"):   # the Protein view follows the selection, in the frame chosen beside it
+        menu.addAction("Translate", lambda: window.workspace.new_tab("Protein"))
     if hasattr(window, "open_untitled"):
         menu.addAction("Isolate as New Sequence", lambda: isolate_selection(window, editor))
     menu.exec(global_pos)
