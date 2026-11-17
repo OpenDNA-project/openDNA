@@ -37,7 +37,7 @@ Checks core.align with planted queries in random templates and exact expected hi
 
 ## `test_align_finds_every_piece_of_a_structural_variant_query`
 
-**Result:** ✅ passed in 0.07 s · [line 303](../../tests/test_core_alignment.py#L303) · **Area:** Local alignment, structural variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 303](../../tests/test_core_alignment.py#L303) · **Area:** Local alignment, structural variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Local Align could merge, drop or misplace pieces of a rearranged construct (insertion, inversion, shuffled or duplicated segments), which is what users rely on to diagnose structural variants.
 

@@ -4,7 +4,7 @@
 
 ## `test_binding_agrees_with_the_documented_rules_written_in_python`
 
-**Result:** ✅ passed in 0.13 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.14 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer binding sites shown on the map could deviate from the documented seed/extension rules on any of thousands of combinations of mismatches, tails, strands and topologies.
 
@@ -73,7 +73,7 @@ Checks site lists for repeated, tandem and palindromic sites, sites across the o
 
 ## `test_binding_matches_the_primer_sites_stored_in_the_real_dna_file`
 
-**Result:** ✅ passed in 0.01 s · [line 583](../../tests/test_primer_binding.py#L583) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 583](../../tests/test_primer_binding.py#L583) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer sites the app computes could disagree with those SnapGene stored in a real lab file, which is the most direct check that users see the same sites as in their other tool.
 
@@ -92,7 +92,7 @@ Opens the sample .dna file with 15 primers and their stored primer_bind features
 
 ## `test_editor_primer_sites_pcr_product_specificity_and_save`
 
-**Result:** ✅ passed in 0.03 s · [line 643](../../tests/test_primer_binding.py#L643) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 643](../../tests/test_primer_binding.py#L643) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites.
 

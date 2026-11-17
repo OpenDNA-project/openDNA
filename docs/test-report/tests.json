@@ -7057,11 +7057,23 @@
    "id": "tests/test_assembly.py::test_kld_primers_for_unsaved_edits",
    "area": "KLD (point mutations, insertions, deletions)",
    "role": "Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.",
-   "purpose": "KLD turns the chosen changes of a 400 bp plasmid into a back-to-back primer pair. Each design is read back from the primers alone and must equal the plasmid with just those changes, with the forward primer annealing just right of the change and the reverse just left of it.",
+   "purpose": "KLD turns the chosen changes of a 400 bp plasmid into a back-to-back primer pair. Each design is read back from the primers alone and must equal the plasmid with just those changes, with the forward primer annealing just right of the change and the reverse just left of it. Changes either side of the sequence origin count as close, measured round the circle.",
    "cases": [
     {
      "input": "one base flipped at 100",
      "expected": "change (100,101,that base), no length note"
+    },
+    {
+     "input": "mutations at 5 and 395 (10 bp apart round the origin)",
+     "expected": "one design: region starts at 395 and wraps to 6, nothing skipped, product equals the edited sequence"
+    },
+    {
+     "input": "mutation at 5 and a 3 bp deletion at 392 (across the origin)",
+     "expected": "designed together, region starts at 392, nothing skipped"
+    },
+    {
+     "input": "mutations at 5 and 330 (75 bp apart both ways); ticked together",
+     "expected": "auto designs the first and skips the other; ticked together raises 'span'"
     },
     {
      "input": "30 bp deleted at 100",

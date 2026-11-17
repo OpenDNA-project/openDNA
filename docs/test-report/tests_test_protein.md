@@ -4,7 +4,7 @@
 
 ## `test_mass_pi_charge_and_numbered_layout`
 
-**Result:** ✅ passed in 0.01 s · [line 16](../../tests/test_protein.py#L16) · **Area:** Protein properties · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 16](../../tests/test_protein.py#L16) · **Area:** Protein properties · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the protein panel could show a wrong molecular weight, pI or charge, or clicking in the numbered protein text could select the wrong residue.
 

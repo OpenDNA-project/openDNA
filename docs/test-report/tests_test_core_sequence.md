@@ -79,7 +79,7 @@ Checks Document.gc_bins on uniform and mixed sequences, compares block-based and
 
 ## `test_orfs_match_a_brute_force_scan`
 
-**Result:** ✅ passed in 0.03 s · [line 299](../../tests/test_core_sequence.py#L299) · **Area:** ORF finder · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 299](../../tests/test_core_sequence.py#L299) · **Area:** ORF finder · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the ORF track could miss open reading frames, report nested duplicates, or place reverse-strand ORFs at wrong coordinates.
 
