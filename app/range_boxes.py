@@ -14,6 +14,7 @@ class _Box(QLineEdit):
     def __init__(self, owner, **kw):
         super().__init__(**kw)
         self.owner = owner
+        self.turned = 0   # wheel movement not yet worth a step
         self.textEdited.connect(self._typed)
 
     def value(self):
@@ -35,7 +36,10 @@ class _Box(QLineEdit):
         self.owner.edited.emit()
 
     def wheelEvent(self, event):
-        steps = event.angleDelta().y() // 120
+        # A notch is 120, but a smooth wheel or a touchpad sends smaller steps: they add up (and // would round the upward ones to 0)
+        self.turned += event.angleDelta().y()
+        steps = int(self.turned / 120)
+        self.turned -= steps * 120
         if steps:
             mods = event.modifiers()
             self.owner.scroll(self, steps * (100 if mods & Qt.ControlModifier else 10 if mods & Qt.ShiftModifier else 1))

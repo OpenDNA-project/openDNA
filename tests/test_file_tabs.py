@@ -2,17 +2,22 @@
 import os
 import sys
 import tempfile
+import json
+import subprocess
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
+APP = Path(__file__).resolve().parent.parent / "app"
+sys.path.insert(0, str(APP))
 
 from opendna_core import Document
 
 from editor import Editor
 from file_tabs import FileSet
+from single_instance import Listener, send_to_running
 
 
 def page(path=None, unsaved=False):
@@ -53,3 +58,26 @@ def test_two_open_files_share_no_editor_state():
     assert one.length == 204 and two.length == 200
     assert (one.start, one.end) == (4, 4) and (two.start, two.end) == (0, 0)
     assert two.doc.sequence() == "TTTT" * 50
+
+
+def test_a_second_launch_hands_its_files_to_the_running_program(tmp_path):
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    assert send_to_running(["x.gb"], timeout=200) is False, "nothing is running: the launch goes on to start the program"
+    listener = Listener()
+    assert listener.listening
+    got = []
+    listener.files.connect(got.append)
+    files = [str(tmp_path / "a.gb"), str(tmp_path / "b c.gb"), "ünï.gb"]
+    # the second launch is a process of its own, as in life (it waits for the answer, which this process's loop gives)
+    code = ("import json, sys; sys.path.insert(0, sys.argv[1]); from PySide6.QtWidgets import QApplication; app = QApplication([]); "
+            "import single_instance; sys.exit(0 if single_instance.send_to_running(json.loads(sys.argv[2]), 2000, 8000) else 1)")
+    sender = subprocess.Popen([sys.executable, "-c", code, str(APP), json.dumps(files)])
+    for _ in range(1000):
+        app.processEvents()
+        if sender.poll() is not None:
+            break
+        time.sleep(0.01)
+    assert sender.wait(10) == 0
+    assert got == [files], "every file arrives, in order, whatever the characters in the names"
+    listener.server.close()

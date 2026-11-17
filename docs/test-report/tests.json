@@ -7180,6 +7180,27 @@
    "issues": [
     "Covers the Editor objects only; the widgets of a page (search box, range box, docks) are separate objects per page by construction and are not exercised here (no UI tests)."
    ]
+  },
+  {
+   "id": "tests/test_file_tabs.py::test_a_second_launch_hands_its_files_to_the_running_program",
+   "area": "File tabs",
+   "role": "Without it, double-clicking a file while openDNA is open would start a second copy of the program instead of opening the file in the one running, or the file names could be lost or garbled on the way.",
+   "purpose": "The hand-over between launches: with nothing running the launch is told so (and goes on to start); with a listener running, a second process sends three paths (spaces, accents) and gets the answer, and the listener receives them whole and in order.",
+   "cases": [
+    {
+     "input": "send_to_running with no listener",
+     "expected": "False"
+    },
+    {
+     "input": "a listener here; a second process sends ['<tmp>/a.gb', '<tmp>/b c.gb', 'ünï.gb']",
+     "expected": "the sender exits 0 (it got the answer); the listener's files signal gave exactly that list"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Does not open the files in a window (that is main.open_handed_over, checked by hand: no UI tests), and not a launch while the running program is busy or hung."
+   ]
   }
  ],
  "removed": [

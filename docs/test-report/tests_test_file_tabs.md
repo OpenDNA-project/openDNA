@@ -4,7 +4,7 @@
 
 ## `test_file_set_keeps_order_dedupes_and_picks_the_next_page_on_close`
 
-**Result:** ✅ passed in 0.00 s · [line 22](../../tests/test_file_tabs.py#L22) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 27](../../tests/test_file_tabs.py#L27) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, opening a file twice could give two editors on one file, closing a file tab could leave a closed file shown or nothing shown, and a window could close without asking about a file with unsaved changes.
 
@@ -24,7 +24,7 @@ The bookkeeping of the files of one window (FileSet), with stand-in pages: tab o
 
 ## `test_two_open_files_share_no_editor_state`
 
-**Result:** ✅ passed in 0.00 s · [line 46](../../tests/test_file_tabs.py#L46) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 51](../../tests/test_file_tabs.py#L51) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, an edit or cursor move in one open file could silently land in another open file.
 
@@ -37,3 +37,20 @@ Two Editors on two documents: typing into one changes only that one (its length,
 **Review notes:**
 
 - Covers the Editor objects only; the widgets of a page (search box, range box, docks) are separate objects per page by construction and are not exercised here (no UI tests).
+
+## `test_a_second_launch_hands_its_files_to_the_running_program`
+
+**Result:** ✅ passed in 0.23 s · [line 63](../../tests/test_file_tabs.py#L63) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** Without it, double-clicking a file while openDNA is open would start a second copy of the program instead of opening the file in the one running, or the file names could be lost or garbled on the way.
+
+The hand-over between launches: with nothing running the launch is told so (and goes on to start); with a listener running, a second process sends three paths (spaces, accents) and gets the answer, and the listener receives them whole and in order.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | send_to_running with no listener | False |
+| 2 | a listener here; a second process sends ['<tmp>/a.gb', '<tmp>/b c.gb', 'ünï.gb'] | the sender exits 0 (it got the answer); the listener's files signal gave exactly that list |
+
+**Review notes:**
+
+- Does not open the files in a window (that is main.open_handed_over, checked by hand: no UI tests), and not a launch while the running program is busy or hung.

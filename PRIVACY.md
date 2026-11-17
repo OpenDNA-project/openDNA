@@ -64,6 +64,8 @@ list and in Settings > Default apps (no administrator rights; Windows still lets
 **Recovery copies.** While you edit, a recovery copy is written every minute in openDNA's data folder (`autosave/`), as `<file>-<8 hex digits>.autosave.gb` with a small `.src` note of which file it is for; it is deleted when you save or close
 normally. A copy whose file no longer exists is deleted after 30 days. (A `.dna` file itself is never written.)
 
+**One copy at a time.** When openDNA is already running, a second start (a double-click on a file) passes the file names to it over a local socket (a named pipe on Windows, a socket file on macOS and Linux, open to your user account only), then ends. It never uses the network.
+
 **Next to your own files.** *Map Reads* writes a `<output>_run\` folder
 beside the output you chose (the reference, the exact commands and a log). A *Local command* uses a temporary folder named `opendna_fold_...` in your
 temp folder and removes it afterwards.

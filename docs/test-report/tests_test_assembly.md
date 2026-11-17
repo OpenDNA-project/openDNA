@@ -54,7 +54,7 @@ Checks a vector-plus-inserts assembly end to end (primer design skips the vector
 
 ## `test_sidewinder_oligos_toeholds_and_barcodes`
 
-**Result:** ✅ passed in 0.05 s · [line 263](../../tests/test_assembly.py#L263) · **Area:** Sidewinder assembly · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 263](../../tests/test_assembly.py#L263) · **Area:** Sidewinder assembly · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the ordered oligos could fail to tile the intended product, repeat a toehold so the assembly joins in the wrong place, or reuse barcodes, and the user would only discover it after paying for synthesis.
 
@@ -126,7 +126,7 @@ Checks that features inside an overlap are annotated once and at the right place
 
 ## `test_restriction_ligation_products`
 
-**Result:** ✅ passed in 0.00 s · [line 584](../../tests/test_assembly.py#L584) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 584](../../tests/test_assembly.py#L584) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the predicted ligation product could be the wrong arc of the vector or have the insert at the wrong place, so the user would clone a construct different from the one shown.
 
@@ -208,7 +208,7 @@ A cassette replaces, deletes or inserts at the right bases of a circular genome 
 
 ## `test_kld_primers_for_unsaved_edits`
 
-**Result:** ✅ passed in 0.05 s · [line 781](../../tests/test_assembly.py#L781) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.06 s · [line 781](../../tests/test_assembly.py#L781) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.
 

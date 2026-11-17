@@ -52,6 +52,8 @@ from primer_design import design_for_selection
 from structure_dialog import StructureDialog
 from search_bar import SearchBar
 from range_boxes import RangeBoxes
+from file_tabs import last_host
+import single_instance
 from file_tabs import FileHost, FileStrip, all_pages, find_open, mode, open_in_tabs, set_open_in_tabs, window_settings
 from genome_view import GenomeView
 import feedback
@@ -2008,6 +2010,21 @@ def new_window():
 WELCOME_FLAG = "--welcome"
 
 
+def open_handed_over(files):
+    """Files another launch of the program handed to this running one: opened as View > Open Files in Tabs says (tabs of the window
+    last used, or a window each), and that window shown in front."""
+    host = last_host()
+    target = host.files.current if host is not None else new_window()
+    shown = target
+    for path in files:
+        shown = target.open_path(path) or shown
+    window = shown.window()
+    window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
+    window.show()
+    window.raise_()
+    window.activateWindow()
+
+
 def start_up_questions(win, force_welcome=False):
     """Over the open window, one after the other (never three dialogs at once): the welcome page (always with force_welcome, the
     --welcome option), then the question about opening sequence files with this program, then (when updates are switched on) the
@@ -2071,16 +2088,21 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())
     app.setApplicationName(project.NAME)   # the data folder is then %APPDATA%\openDNA whether run from source or as the exe
-    copy_old_data()   # settings and primers kept under the old name come along, before anything reads the data folder
+    copy_old_data()   # settings and primers kept under the old name come along, before anything reads (or makes) the data folder
+    # Already running: this launch only hands its files over (full paths: they are relative to where it was started) and ends.
+    files = [os.path.abspath(a) for a in sys.argv[1:] if a != WELCOME_FLAG]
+    if single_instance.send_to_running(files):
+        sys.exit(0)
+    listener = single_instance.Listener()
     feedback.setup_logging()
     autosave.sweep()   # recovery copies of files that are gone (see autosave.py)
     theme.apply(theme.saved(), remember=False)
     win = new_window()
     # Options: --welcome opens the start page even if it was shown today or turned off. Anything else is a file to open.
-    files = [a for a in sys.argv[1:] if a != WELCOME_FLAG]
+    listener.files.connect(open_handed_over)
     QTimer.singleShot(0, lambda: start_up_questions(win, force_welcome=WELCOME_FLAG in sys.argv[1:]))
-    if files:
-        win.load(files[0])
+    for path in files:   # the first into the empty window, the others as the tabs / windows setting says
+        win.open_path(path)
     if os.environ.get("OPENDNA_SMOKE_REPORT"):   # the smoke test of a build (scripts/smoke_unix.py) reads what the program shows
         QTimer.singleShot(1500, lambda: write_smoke_report(win, os.environ["OPENDNA_SMOKE_REPORT"]))
     code = app.exec()

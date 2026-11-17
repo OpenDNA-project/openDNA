@@ -10,7 +10,7 @@ The program-wide choice "open files in tabs, or in windows of their own" is `ope
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QMenu, QSizePolicy, QStackedLayout, QTabBar, QWidget
 
@@ -62,6 +62,14 @@ HOSTS = []   # every open window: keeps them referenced so they stay open
 def all_pages():
     """Every file page of every window."""
     return [p for h in HOSTS for p in h.files.pages]
+
+
+_last = None   # the window that was in front last
+
+
+def last_host():
+    """The window in use last (the newest one if none was ever in front), None with no window."""
+    return _last if _last in HOSTS else HOSTS[-1] if HOSTS else None
 
 
 def find_open(path):
@@ -260,6 +268,12 @@ class FileHost(QWidget):
             w, h = min(1400, int(screen.width() * 0.85)), min(850, int(screen.height() * 0.85))
             self.resize(w, h)
             self.move(screen.center().x() - w // 2, screen.center().y() - h // 2)
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.ActivationChange and self.isActiveWindow():
+            global _last
+            _last = self
+        super().changeEvent(event)
 
     def closeEvent(self, event):
         pages = list(self.files.pages)

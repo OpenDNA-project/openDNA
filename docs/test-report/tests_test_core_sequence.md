@@ -139,7 +139,7 @@ Checks enzymes.find_cuts / site_spans on hand-made sequences (overhang types, Ty
 
 ## `test_find_parts_identity_coding_and_repeated_parts`
 
-**Result:** ✅ passed in 0.01 s · [line 535](../../tests/test_core_sequence.py#L535) · **Area:** Feature detection (find_parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 535](../../tests/test_core_sequence.py#L535) · **Area:** Feature detection (find_parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, automatic annotation of known parts could miss mutated or recoded copies, ignore identity thresholds, or report duplicated/overlapping hits.
 
