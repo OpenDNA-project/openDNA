@@ -46,17 +46,27 @@ def changes(old, new):
     return [(p + i1, p + i2, b[j1:j2]) for tag, i1, i2, j1, j2 in ops if tag != "equal"]
 
 
-def auto(found, group=30):
-    """The changes selected to begin with: the first, then the next ones while all of them fit within `group` bp."""
-    return [c for c in found if c[1] - found[0][0] <= group] if found else []
+def auto(found, group=30, n=None):
+    """The changes selected to begin with: the first, then the next ones while all of them fit within `group` bp. With `n`
+    (the length of a circular sequence), the last changes join too when they are within `group` bp of the first across the origin."""
+    if not found:
+        return []
+    chosen = [found[0]] + [c for c in found[1:] if c[1] - found[0][0] <= group]   # (the first one whatever its size)
+    if n:
+        end = chosen[-1][1]
+        for c in reversed(found[len(chosen):]):
+            if n - c[0] + end > group:
+                break
+            chosen.insert(0, c)
+    return chosen
 
 
 def design(old, new, circular=True, tm=60.0, group=30, warn_insert=120):
     """`design_selected` for the changes `auto` picks; `.skipped` lists the others."""
     found = changes(old.upper(), new.upper())
-    chosen = auto(found, group) or found[:1]
+    chosen = auto(found, group, len(old) if circular else None)
     r = design_selected(old, chosen, circular, tm, group, warn_insert)
-    r.skipped = found[len(chosen):]
+    r.skipped = [c for c in found if c not in chosen]
     if r.skipped:
         r.notes.append(("info", f"{len(r.skipped)} other change{'s' if len(r.skipped) > 1 else ''} not included (more than {group} bp "
                                 "from the first): save, then run KLD again."))
@@ -76,13 +86,27 @@ def design_selected(old, chosen, circular=True, tm=60.0, group=30, warn_insert=1
     if not chosen:
         raise ValueError("No change selected: edit the sequence (mutate, insert or delete bases) and tick a change.")
     chosen = sorted(chosen)
-    a, b = chosen[0][0], max(c[1] for c in chosen)
-    if len(chosen) > 1 and b - a > group:
-        raise ValueError(f"The selected changes span {b - a:,} bp (more than {group}): untick some, or raise \"Group changes within\".")
+    n = len(old)
+    # The chosen changes are close if they are close round the circle: the origin sits in the biggest stretch between them.
+    gaps = [(chosen[i + 1][0] - chosen[i][1], chosen[i][1]) for i in range(len(chosen) - 1)]
+    wrap = chosen[0][0] + n - chosen[-1][1]
+    if len(chosen) > 1 and n - max(max(g for g, _ in gaps), wrap) > group:
+        raise ValueError(f"The selected changes span {n - max(max(g for g, _ in gaps), wrap):,} bp (more than {group}): untick some, "
+                         "or raise \"Group changes within\".")
+    linear = old   # the sequence after the changes, bases as they stand in the file: the origin stays where it is
+    for s_, e_, t_ in reversed(chosen):
+        linear = linear[:s_] + t_.upper() + linear[e_:]
+    spin = 0
+    if gaps and max(g for g, _ in gaps) > wrap:
+        g, at = max(gaps)
+        spin = at + g // 2
+    old = old[spin:] + old[:spin]   # (designed in a frame where the changes do not meet the origin)
+    chosen = sorted(((s_ - spin) % n, (s_ - spin) % n + e_ - s_, t_) for s_, e_, t_ in chosen)
+    a, b = chosen[0][0], chosen[-1][1]
     text, at = "", a
-    for s, e, t in chosen:   # the new text of old[a:b]
-        text += old[at:s] + t.upper()
-        at = e
+    for s_, e_, t_ in chosen:   # the new text of old[a:b]
+        text += old[at:s_] + t_.upper()
+        at = e_
     if len(text) > MAX_INSERT:
         raise ValueError(f"{len(text):,} new bp are too many for primers (the limit is {MAX_INSERT} bp).")
     notes = []
@@ -90,7 +114,6 @@ def design_selected(old, chosen, circular=True, tm=60.0, group=30, warn_insert=1
         notes.append(("warn", f"{len(text):,} new bp (over {warn_insert}): the primers are long and may be hard or expensive to order."))
     if not text:
         notes.append(("info", f"Deletes {b - a:,} bp."))
-    n = len(old)
     wide = old * 3
     right = wide[b:b + 60]
     left = rc(wide[a + n - 60:a + n])   # the bases just left of the change, read away from it
@@ -102,7 +125,7 @@ def design_selected(old, chosen, circular=True, tm=60.0, group=30, warn_insert=1
     if gap < 0:
         raise ValueError("The sequence is too short for these primers.")
     product = rows[0][1].upper() + wide[b + nf:b + nf + gap] + rc(rows[1][1].upper())
-    expected = old[:a] + text + old[b:]
+    expected = linear
     if len(product) != len(expected) or product not in expected + expected:
         raise ValueError("The primers do not rebuild the edited sequence (unexpected: please report it).")
     for name, seq, an in rows:
@@ -111,7 +134,7 @@ def design_selected(old, chosen, circular=True, tm=60.0, group=30, warn_insert=1
                 notes.append(("warn", f"{name}: {label} {what}"))
         if len(seq) > LONG_PRIMER:
             notes.append(("warn", f"{name} is {len(seq)} nt long."))
-    return SimpleNamespace(rows=rows, notes=notes, product=expected, change=(a, b, text), skipped=[])
+    return SimpleNamespace(rows=rows, notes=notes, product=expected, change=((a + spin) % n, b + spin if b + spin <= n else b + spin - n, text), skipped=[])
 
 
 # ---- the page of the Assembly panel -------------------------------------------------------------------------
@@ -257,7 +280,7 @@ class KldPage(QWidget):
             return self._say("There is no saved sequence to compare with (a new sequence, or one rotated or reverse-complemented "
                              "since the last save): save it, then edit.")
         self.found = changes(self.old.upper(), ed.doc.sequence().upper())
-        auto_keys = set(auto(self.found, self.group.value()))
+        auto_keys = set(auto(self.found, self.group.value(), len(self.old) if self.editor.circular else None))
         self.changes.blockSignals(True)
         for c in self.found:
             item = QListWidgetItem(describe(self.old, c, self.warn.value()))
@@ -339,7 +362,7 @@ class KldPage(QWidget):
         self.right_editor = ed = self._editor_class(doc, "After KLD")
         view = self._view_class(ed)
         self._show_right(view)
-        if text:
+        if text and a < b:   # (a region across the origin is not selected as a whole)
             ed.select(a, a + len(text))
         else:
             ed.set_cursor(a)

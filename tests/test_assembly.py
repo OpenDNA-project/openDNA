@@ -787,9 +787,9 @@ def test_kld_primers_for_unsaved_edits():
         r = kld.design(old, new, **kw)
         a, b, text = r.change
         # the primers alone rebuild the edited plasmid (design raises otherwise), and sit back to back at the change
-        assert r.product == old[:a] + text + old[b:]
+        wide = old * 3   # (a change across the origin has its region round the circle: a > b)
         fwd, rev = r.rows
-        assert fwd[1].upper().endswith(old[b:b + fwd[2]]) and rc(rev[1].upper()).startswith(old[a - rev[2]:a])
+        assert fwd[1].upper().endswith(wide[b:b + fwd[2]]) and rc(rev[1].upper()).startswith(wide[a + 400 - rev[2]:a + 400])
         return r
 
     r = check(old[:100] + flip[old[100]] + old[101:])                       # one mutation
@@ -815,6 +815,16 @@ def test_kld_primers_for_unsaved_edits():
     assert r.product == old[:100] + flip[old[100]] + old[101:109] + old[109:125] + flip[old[125]] + old[126:]
     with pytest.raises(ValueError, match="No change selected"):
         kld.design_selected(old, [])
+    # changes either side of the origin count as close: 5 and 395 are 10 bp apart round the circle, 5 and 330 are 75
+    wrapped = old[:5] + flip[old[5]] + old[6:395] + flip[old[395]] + old[396:]
+    r = check(wrapped)
+    assert r.change[0] == 395 and r.change[1] == 6 and not r.skipped and r.product == wrapped
+    r = check(old[:5] + flip[old[5]] + old[6:392] + old[395:])               # a mutation then a 3 bp deletion across the origin
+    assert r.change[0] == 392 and not r.skipped
+    apart = old[:5] + flip[old[5]] + old[6:330] + flip[old[330]] + old[331:]
+    assert len(check(apart).skipped) == 1
+    with pytest.raises(ValueError, match="span"):
+        kld.design_selected(old, kld.changes(old, apart))
     check(old[:100] + old[300:])                                            # a long deletion is fine (a deletion carries no bases)
     with pytest.raises(ValueError, match="circular"):
         kld.design(old, old[:100] + "A" + old[100:], circular=False)

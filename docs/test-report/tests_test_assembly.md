@@ -167,7 +167,7 @@ Checks the end-compatibility rule base by base (same sticky bases, same overhang
 
 ## `test_assembly_reports_bad_input_instead_of_failing`
 
-**Result:** ✅ passed in 0.27 s · [line 708](../../tests/test_assembly.py#L708) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.28 s · [line 708](../../tests/test_assembly.py#L708) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a zero-length or very short fragment could crash the assembly panel with a traceback instead of showing the user a red check saying what is wrong.
 
@@ -208,7 +208,7 @@ A cassette replaces, deletes or inserts at the right bases of a circular genome 
 
 ## `test_kld_primers_for_unsaved_edits`
 
-**Result:** ✅ passed in 0.03 s · [line 781](../../tests/test_assembly.py#L781) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.05 s · [line 781](../../tests/test_assembly.py#L781) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.
 
