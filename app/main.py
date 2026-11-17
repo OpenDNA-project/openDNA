@@ -1940,6 +1940,12 @@ def app_icon():
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] in (["--register-file-types"], ["--unregister-file-types"]):   # run by the installer (packaging/openDNA.iss): no window
+        try:
+            file_assoc.register() if sys.argv[1] == "--register-file-types" else file_assoc.unregister()
+        except (OSError, RuntimeError):
+            sys.exit(1)
+        sys.exit(0)
     if sys.platform == "win32":   # own taskbar button and icon, also when run from source (otherwise it groups under python.exe)
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(project.NAME)

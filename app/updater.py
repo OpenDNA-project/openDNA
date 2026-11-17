@@ -1,26 +1,32 @@
-"""Self-update of the single openDNA.exe: look for a newer GitHub release, download it, check it, swap it in and restart.
-
+"""Self-update of an installed openDNA: look for a newer GitHub release, download it, check it, install it and restart.
+The installed copy is what updates (see installed_copy()); the portable builds only point to the release page.
+  Windows  the installer (oDNA_beta_X-setup.exe) is run silently: it closes openDNA, replaces the files and starts the new one.
+  macOS    the zipped openDNA.app of the release replaces the running .app (the old one is kept as .old until the next start).
+  Linux    the AppImage of the release replaces the running AppImage file.
 The steps, each usable without Qt (the dialog at the end only wires them together):
   check()            ask GitHub for the latest release (never raises: the answer says what went wrong).
-  download_update()  fetch openDNA.exe next to the running exe, verify its SHA-256 against openDNA.exe.sha256, refuse otherwise.
-  install_update()   rename the running exe to openDNA.exe.old (Windows allows that, not an overwrite), move the new one in, relaunch.
-  cleanup_old()      at the next start-up, delete the leftover .old.
+  download_update()  fetch the release file, verify its SHA-256 against its .sha256, refuse otherwise.
+  install_update()   Windows: start the installer. Elsewhere: rename the running copy to .old, move the new one in, relaunch.
+  cleanup_old()      at the next start-up, delete what an update left behind.
 
-What the checksum does and does not give (be honest with the user about it): the .sha256 file comes from the same release as the exe,
-so it catches a corrupted or truncated download and a bad mirror or proxy, but NOT a release an attacker has taken over (they would
-replace both files). Only code signing (Authenticode) fixes that. What is enforced here: HTTPS only, and only GitHub hosts (every
-redirect hop is checked too); nothing is ever executed except the exe whose hash matched.
+What the checksum does and does not give (be honest with the user about it): the .sha256 file comes from the same release as the
+download, so it catches a corrupted or truncated download and a bad mirror or proxy, but NOT a release an attacker has taken over (they
+would replace both files). Only code signing (Authenticode, Apple's notarization) fixes that, and the builds are not signed yet. What is
+enforced here: HTTPS only, and only GitHub hosts (every redirect hop is checked too); nothing is ever executed except the file whose
+hash matched.
 
-Nothing here runs unless the caller asks. The automatic start-up check is also off while project.UPDATES_ENABLED is False (the repository
-is private, so its releases cannot be read yet); the manual "Check for Updates..." says so instead.
+Nothing here runs unless the caller asks. The automatic start-up check is also off while project.UPDATES_ENABLED is False; the manual
+"Check for Updates..." says so instead.
 """
 import gc
 import html
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -39,13 +45,17 @@ import project
 import tool_settings
 from primer_db import data_dir
 
-ASSET_NAME = f"{project.EXE_NAME}.exe"        # the name the download gets in the folder (.part / .new); the release's own name carries the version
-CHECKSUM_NAME = f"{ASSET_NAME}.sha256"
-
-
-def release_asset(tag):
-    """The exe's name in the release of `tag`: oDNA_beta_0_6_1.exe for v0.6.1 (what release.yml publishes); its checksum adds .sha256."""
-    return f"{project.EXE_NAME}_{str(tag).lstrip('vV').replace('.', '_')}.exe"
+def release_asset(tag, system=None):
+    """The file this system installs, in the release of `tag` (what release.yml publishes); its checksum adds .sha256.
+    Windows oDNA_beta_0_7_0-setup.exe, macOS oDNA_beta_0_7_0-macos-arm64.zip (or x86_64), Linux oDNA_beta_0_7_0-linux-x86_64.AppImage."""
+    base = f"{project.EXE_NAME}_{str(tag).lstrip('vV').replace('.', '_')}"
+    system = system or sys.platform
+    if system == "win32":
+        return base + "-setup.exe"
+    if system == "darwin":
+        import platform
+        return f"{base}-macos-{'arm64' if platform.machine() == 'arm64' else 'x86_64'}.zip"
+    return base + "-linux-x86_64.AppImage"
 
 
 # github.com serves the release assets and redirects to the other two (GitHub has used both names for its asset storage).
@@ -60,9 +70,10 @@ tool_settings.register(TOOL, [
     tool_settings.Param("check", "Look for a new version when openDNA starts (once a day)", True,
                         tip="Asks GitHub for the latest release, nothing else is sent. Tools > Check for Updates always works."),
 ])
-RETRIES = 5                        # antivirus scanners often hold a freshly written exe for a second or two
+RETRIES = 5                        # antivirus scanners often hold a freshly written file for a second or two
 RETRY_DELAY = 0.6                  # seconds (tests set it to 0)
 CHUNK = 256 * 1024
+PREFIX = ".openDNA-update-"         # what we name our downloads and staging folders: the start-up cleanup removes only names that start so
 
 
 class UpdateError(Exception):
@@ -73,8 +84,8 @@ class UpdateError(Exception):
 class Update:
     version: str        # "0.2.0" (no "v")
     tag: str            # "v0.2.0" as published
-    asset_url: str      # where openDNA.exe is
-    sha256_url: str     # where openDNA.exe.sha256 is
+    asset_url: str      # where the file to install is
+    sha256_url: str     # where its .sha256 is
     notes: str          # the release description (plain text)
     page_url: str       # the release page, for people who prefer to download by hand
 
@@ -208,7 +219,7 @@ def check(current_version=None, fetch=None):
                            "automatically.", latest=tag, page_url=page)
     try:
         check_url(assets[asset_name]), check_url(assets[asset_name + ".sha256"])
-        # The exe and its checksum must come from this project's own releases, not just from any github.com address.
+        # The download and its checksum must come from this project's own releases, not just from any github.com address.
         for name in (asset_name, asset_name + ".sha256"):
             if not urlparse(assets[name]).path.startswith(f"/{project.REPO}/releases/download/"):
                 raise UpdateError(f"Refused: {assets[name]} is not in the releases of {project.REPO}.")
@@ -226,7 +237,7 @@ def check_for_update(current_version=None, fetch=None):
 
 # ---- downloading ---------------------------------------------------------------------------------------------------------------------
 
-def parse_checksum(text, filename=ASSET_NAME):
+def parse_checksum(text, filename):
     """The 64-hex digest for `filename` from a .sha256 file (bytes or str), or None. Accepts "<hex>  name", "<hex> *name" and a bare
     "<hex>". PowerShell's `>` writes UTF-16, so a byte order mark is honoured."""
     if isinstance(text, bytes):
@@ -248,9 +259,8 @@ def sha256_of(path):
 
 
 def download_update(update, folder, progress=None, fetch=None, cancel=None):
-    """Download the new exe into `folder` (put it next to the running exe: same drive, so the final move is a rename), verify it, and
-    return its path (openDNA.exe.new). UpdateError when the checksum is missing or does not match (the file is deleted), when an
-    address is not allowed, on a network error or when `cancel` (a threading.Event) is set. Meant to run in a worker thread."""
+    """Download the release file into `folder` (see download_folder), verify it, and return its path (PREFIX<name>.new).
+    UpdateError when the checksum is missing or does not match (the file is deleted), when an address is not allowed, on a network error or when `cancel` (a threading.Event) is set. Meant to run in a worker thread."""
     get = _pick(fetch)
     check_url(update.asset_url)
     if not update.sha256_url:
@@ -259,7 +269,8 @@ def download_update(update, folder, progress=None, fetch=None, cancel=None):
     expected = parse_checksum(get(update.sha256_url, timeout=TIMEOUT), Path(urlparse(update.asset_url).path).name)
     if expected is None:
         raise UpdateError(f"The checksum file ({Path(urlparse(update.sha256_url).path).name}) is not in the expected form: not installed.")
-    part, final = Path(folder) / (ASSET_NAME + ".part"), Path(folder) / (ASSET_NAME + ".new")
+    name = Path(urlparse(update.asset_url).path).name
+    part, final = Path(folder) / (PREFIX + name + ".part"), Path(folder) / (PREFIX + name + ".new")
     try:
         try:
             with open(part, "wb") as out:
@@ -287,34 +298,51 @@ def is_frozen():
     return bool(getattr(sys, "frozen", False))
 
 
-def is_folder_build():
-    """True for the one-folder build (openDNA-folder.zip), where the program sits next to its files: PyInstaller's bundle folder is
-    then the exe's folder (version 5) or its `_internal` subfolder (6); a one-file exe unpacks into a temp folder instead."""
-    meipass = getattr(sys, "_MEIPASS", None)
-    if not (is_frozen() and meipass):
-        return False
-    here = Path(sys.executable).resolve().parent
-    return Path(meipass).resolve() in (here, here / "_internal")
+def installed_copy():
+    """What an update replaces, or None when this run is not an installed copy (source, or a portable build that has to be replaced by
+    hand). Windows: the exe, when the installer's uninstaller (unins000.exe) sits beside it. macOS: the running .app. Linux: the
+    AppImage file ($APPIMAGE, set by the AppImage runtime)."""
+    if not is_frozen():
+        return None
+    exe = Path(sys.executable).resolve()
+    if sys.platform == "win32":
+        return exe if exe.with_name("unins000.exe").is_file() else None
+    if sys.platform == "darwin":
+        app = exe.parents[2] if len(exe.parents) > 2 else exe     # X.app/Contents/MacOS/openDNA
+        return app if app.suffix == ".app" else None
+    appimage = os.environ.get("APPIMAGE")
+    return Path(appimage) if appimage and Path(appimage).is_file() else None
 
 
-def install_blocker(current_exe=None):
-    """Why this run cannot replace itself (a sentence), or None. Passing `current_exe` means "act on that file" (tests, and
-    nothing else: the program itself passes nothing and then only a PyInstaller one-file exe qualifies)."""
-    if current_exe is None and not is_frozen():
+def download_folder():
+    """Where an update is downloaded. Windows: a folder of ours (the installer is run from there, not from the program folder it
+    replaces). Elsewhere: next to what it replaces, so the final move is a rename on the same disk."""
+    target = installed_copy()
+    if sys.platform == "win32" or target is None:
+        return data_dir() / "update"
+    return target.parent
+
+
+def install_blocker():
+    """Why this run cannot update itself (a sentence), or None: only an installed copy updates itself."""
+    if not is_frozen():
         return ("openDNA is running from its source code, which cannot replace itself. Update with git, or download "
-                f"the .exe from {project.RELEASES_URL}.")
-    if current_exe is None and sys.platform != "win32":
-        # The release's one-file program is the Windows exe: a Mac or a Linux build must never swap that in for itself.
-        import platform
-        mac = f"{project.EXE_NAME}-macos-{'arm64' if platform.machine() == 'arm64' else 'x86_64'}.zip"
-        what = f"the new openDNA for macOS ({mac})" if sys.platform == "darwin" else \
-            f"the new openDNA for Linux ({project.EXE_NAME}-linux-x86_64.tar.gz)"
-        return f"This version of openDNA does not update itself. Download {what} from {project.RELEASES_URL}."
-    if current_exe is None and is_folder_build():
-        # Swapping one exe would leave the Qt files the user may have put in this folder untouched but mismatched with the new version.
-        return ("This is the folder version of openDNA (the one whose Qt files you can replace), so it does not update itself. "
-                f"Download the new openDNA-folder.zip from {project.RELEASES_URL}.")
+                f"the installer from {project.RELEASES_URL}.")
+    target = installed_copy()
+    if target is None:
+        return ("This copy of openDNA was not set up by the installer (it is a portable build), so it does not update itself. "
+                f"Download the new version from {project.RELEASES_URL}.")
+    if sys.platform != "win32" and not os.access(target.parent, os.W_OK):
+        return f"openDNA cannot replace itself in {target.parent} (no write access). Download the new version from {project.RELEASES_URL}."
     return None
+
+
+def _remove(path):
+    """Delete a file or a folder (an update leaves .app folders on macOS); nothing if it is not there."""
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
 
 
 def _retry(action, what):
@@ -332,63 +360,123 @@ def _retry(action, what):
             time.sleep(RETRY_DELAY)
 
 
-def relaunch(exe):
-    """Start `exe` as a separate program that outlives us. A PyInstaller --onefile exe that starts itself hands its unpack folder to the
-    child through environment variables; that folder disappears when we quit, so they are removed (PYINSTALLER_RESET_ENVIRONMENT is
-    the official switch of PyInstaller 6.9 and later)."""
+def _spawn(args, cwd):
+    """Start a program that outlives us. A PyInstaller program that starts another one hands its bundle folder to the child
+    through environment variables, which would point the child at us (and, for a one-file build, at a folder that disappears when
+    we quit): they are removed (PYINSTALLER_RESET_ENVIRONMENT is the official switch of PyInstaller 6.9 and later)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI") and k != "_MEIPASS2"}
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     flags = getattr(subprocess, "DETACHED_PROCESS", 0x8) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200) if os.name == "nt" else 0
-    subprocess.Popen([str(exe)], env=env, cwd=str(Path(exe).parent), creationflags=flags, close_fds=True)
+    subprocess.Popen(args, env=env, cwd=str(cwd), creationflags=flags, close_fds=True)
 
 
-def install_update(new_exe, current_exe=None, relaunch=None):
-    """Swap the verified `new_exe` in for the running exe and start it. The caller quits right after this returns.
-    UpdateError (with everything put back as it was) when it cannot. `relaunch(path)` is injectable for tests."""
-    blocker = install_blocker(current_exe)
-    if blocker:
-        raise UpdateError(blocker)
+def relaunch(exe):
+    """Start the program at `exe` (a macOS .app is opened as a new instance)."""
+    exe = Path(exe)
+    _spawn(["open", "-n", str(exe)] if exe.suffix == ".app" else [str(exe)], exe.parent)
+
+
+def _run_installer(setup):
+    """Windows: start the downloaded installer without windows. It closes this program, replaces the files and starts the new version
+    (/RELAUNCH=1, see packaging/openDNA.iss). The caller quits right after."""
+    if setup.suffix == ".new":      # Windows only runs a file that ends in .exe
+        _retry(lambda: os.replace(setup, setup.with_suffix("")), "rename the installer")
+        setup = setup.with_suffix("")
+    try:
+        _spawn([str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/RELAUNCH=1"], setup.parent)
+    except OSError as e:
+        raise UpdateError(f"The installer could not be started ({e}). It is kept at {setup}: you can run it by hand.") from None
+
+
+def _unpack_app(archive, current):
+    """macOS: unzip the release's .app next to `current` (ditto keeps the bundle's symlinks) and return it, named <current>.new."""
+    staging = Path(tempfile.mkdtemp(prefix=PREFIX, dir=current.parent))
+    try:
+        result = subprocess.run(["ditto", "-x", "-k", str(archive), str(staging)], capture_output=True, text=True)
+        apps = list(staging.glob("*.app"))
+        if result.returncode or len(apps) != 1:
+            raise UpdateError(f"The downloaded archive could not be unpacked: {result.stderr.strip() or 'no openDNA.app in it'}")
+        new = current.with_name(current.name + ".new")
+        _remove(new)
+        os.replace(apps[0], new)
+        archive.unlink(missing_ok=True)
+        return new
+    except OSError as e:
+        raise UpdateError(f"The downloaded archive could not be unpacked: {e}") from None
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _swap(new, current, relaunch=None):
+    """Put `new` (next to `current`, same disk) in place of `current`, keep the old as .old, start the new one. UpdateError, with
+    everything put back as it was, when it cannot. `relaunch(path)` is injectable for tests."""
     start = relaunch if relaunch is not None else globals()["relaunch"]
-    current = Path(current_exe or sys.executable)
-    new_exe = Path(new_exe)
-    old = current.with_name(current.name + ".old")
-    if not new_exe.is_file() or not current.is_file():
+    if not new.exists() or not current.exists():
         raise UpdateError("The new version or the running program could not be found on disk.")
-    if new_exe.parent != current.parent:
+    if new.parent != current.parent:
         raise UpdateError("The new version must be in the same folder as the program (it is moved by renaming).")
+    old = current.with_name(current.name + ".old")
     if old.exists():     # left by an earlier update that could not clean up: the new .old must be the version we are leaving
-        _retry(lambda: old.unlink(), f"remove the old file {old.name}")
-    # Windows cannot overwrite a running exe but can rename it, even while it runs.
+        _retry(lambda: _remove(old), f"remove the old file {old.name}")
+    # A running program can be renamed (Linux, macOS) though a running exe cannot be overwritten (Windows).
     _retry(lambda: os.replace(current, old), f"rename {current.name}")
     try:
-        _retry(lambda: os.replace(new_exe, current), f"put the new {current.name} in place")
+        _retry(lambda: os.replace(new, current), f"put the new {current.name} in place")
     except UpdateError:
         _retry(lambda: os.replace(old, current), f"put {current.name} back")
         raise
     try:
         start(current)
     except Exception as e:
-        # The new exe will not start: go back to the version that is running, and keep the new file for another try.
-        _retry(lambda: os.replace(current, new_exe), "undo the update")
+        # The new program will not start: go back to the version that is running, and keep the new file for another try.
+        _retry(lambda: os.replace(current, new), "undo the update")
         _retry(lambda: os.replace(old, current), f"put {current.name} back")
         raise UpdateError(f"The new version could not be started ({e}); the old one was kept.") from None
 
 
+def install_update(download, relaunch=None):
+    """Install the verified `download` and start the new version. The caller quits right after this returns. UpdateError (with
+    everything put back as it was) when it cannot. Windows: runs the installer. macOS: unpacks the zip and swaps the .app. Linux:
+    swaps the AppImage."""
+    blocker = install_blocker()
+    if blocker:
+        raise UpdateError(blocker)
+    download = Path(download)
+    if not download.exists():
+        raise UpdateError("The downloaded update could not be found on disk.")
+    if sys.platform == "win32":
+        return _run_installer(download)
+    current = installed_copy()
+    if sys.platform == "darwin":
+        download = _unpack_app(download, current)
+    else:
+        download.chmod(0o755)         # the AppImage must be executable
+    _swap(download, current, relaunch)
+
+
+def _leftovers(current):
+    """What an update leaves behind: <current>.old / .part / .new, and our downloads (named PREFIX*) in the folders they go to."""
+    found = [current.with_name(current.name + s) for s in (".old", ".part", ".new")] if current else []
+    for folder in {download_folder(), *([current.parent] if current else [])}:
+        if folder.is_dir():
+            found += folder.glob(PREFIX + "*")
+    return found
+
+
 def cleanup_old(current_exe=None, wait=0.0):
-    """Delete what an update leaves behind (openDNA.exe.old and any .part / .new). Call at start-up. The old program may still be
-    quitting when the new one starts, so with `wait` seconds it keeps trying. True when nothing is left. Does nothing from source."""
+    """Delete what an update leaves behind. Call at start-up. The old program (or the installer) may still be quitting when the new
+    one starts, so with `wait` seconds it keeps trying. True when nothing is left. Does nothing from source."""
     if current_exe is None and not is_frozen():
         return True
-    current = Path(current_exe or sys.executable)
-    leftovers = [current.with_name(current.name + s) for s in (".old", ".part", ".new")]
+    left = _leftovers(Path(current_exe) if current_exe else installed_copy())
     deadline = time.monotonic() + wait
     while True:
-        for f in leftovers:
+        for f in left[:]:
             try:
-                f.unlink(missing_ok=True)
+                _remove(f)
+                left.remove(f)
             except OSError:
                 pass
-        left = any(f.exists() for f in leftovers)
         if not left or time.monotonic() >= deadline:
             return not left
         time.sleep(0.5)
@@ -581,7 +669,7 @@ class UpdateDialog(QDialog):
                  current_version=None):
         super().__init__(parent)
         self.update, self.cancel = update, threading.Event()
-        self.folder, self._fetch = Path(folder) if folder else Path(sys.executable).parent, fetch
+        self.folder, self._fetch = Path(folder) if folder else download_folder(), fetch
         self._install = install or (lambda path: install_update(path, relaunch=relaunch))
         self._quit, self._confirm = quit or QApplication.quit, confirm
         self.blocker = None if install else install_blocker()
@@ -641,8 +729,10 @@ class UpdateDialog(QDialog):
         self.bar.setRange(0, 0)
         self.bar.show()
         self.status.setText("Downloading…")
-        _Job(lambda progress: download_update(self.update, self.folder, progress, self._fetch, self.cancel), self._downloaded,
-             self._on_progress)
+        def work(progress):
+            self.folder.mkdir(parents=True, exist_ok=True)
+            return download_update(self.update, self.folder, progress, self._fetch, self.cancel)
+        _Job(work, self._downloaded, self._on_progress)
 
     def _on_progress(self, done, total):
         if total:

@@ -7,7 +7,7 @@ Free software (AGPL-3.0). Download it only from https://github.com/OpenDNA-proje
 Why this version exists
 -----------------------
 openDNA uses Qt (through PySide6), which is under the LGPL-3.0. The LGPL lets you run the program with your own build of Qt.
-The single-file openDNA.exe packs Qt inside itself; in this folder version Qt is made of plain files, so you can swap them.
+A single-file exe would pack Qt inside itself; in this folder version (and in the installed program) Qt is made of plain files, so you can swap them.
 
 How to use another Qt (another PySide6 version)
 -----------------------------------------------
@@ -20,6 +20,7 @@ How to use another Qt (another PySide6 version)
 4. Start openDNA.exe. Help > About shows the Qt version in use.
 If it does not start, put the original folders back (or unzip the download again). A version far from the one it was built with may not work.
 
-This folder version does not update itself. Download the new openDNA-folder.zip from the releases page when there is one.
+This folder version does not update itself. Download the new openDNA-folder.zip from the releases page when there is one,
+or the installer (oDNA_beta_<version>-setup.exe), which installs openDNA and then updates itself.
 
 Licences and the source of everything in here: THIRD_PARTY_NOTICES.md and LICENSE (next to this file). Source code: https://github.com/OpenDNA-project/openDNA

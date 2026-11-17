@@ -2,7 +2,7 @@
 
 [← unit-test report](README.md)
 
-Built by `scripts/test_report.py` on 2026-11-14 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
+Built by `scripts/test_report.py` on 2026-11-16 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
 
 ## Totals
 
@@ -268,10 +268,10 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
-| `test_release_check_offers_only_a_newer_complete_release` | Without it the app could offer users an older, draft, prerelease or incomplete release, or one whose files are hosted off the project's GitHub repository, as an update. | hand-computed | strong | sound | Large multi-section test; a failure in an early section hides the later ones.<br>Error texts are checked by substring ('Refused', 'understood', 'failed'), not exact message. |
+| `test_release_check_offers_only_a_newer_complete_release` | Without it the app could offer users an older, draft, prerelease or incomplete release, one without the file their system installs, or one whose files are hosted off the project's GitHub repository, as an update. | hand-computed | strong | sound | Large multi-section test; a failure in an early section hides the later ones.<br>Error texts are checked by substring ('Refused', 'understood', 'failed'), not exact message.<br>The release.yml check is by substring (stem and extension separately), so it catches a renamed suffix but not every possible mismatch. |
 | `test_download_comes_only_from_github_and_is_kept_only_when_it_matches_its_checksum` | Without it the updater could download a program from a look-alike or hijacked host, follow a redirect off GitHub, or install a tampered or partial file. | hand-computed | strong | sound | The real network path is not exercised (correct for a unit test); the redirect check calls the handler method directly rather than going through a real redirect. |
-| `test_install_swaps_relaunches_and_cleans_up` | Without it a successful update could fail to replace the running exe, fail to restart the program, start the new program with a broken PyInstaller environment, or leave .old/.part files behind (or delete the wrong file). | hand-computed | strong | sound |  |
-| `test_install_refuses_or_rolls_back_leaving_the_old_program` | Without it a failed update (no write access, antivirus lock, broken new exe, wrong build type or platform) could leave the user with no working program. | hand-computed | strong | sound |  |
+| `test_install_swaps_relaunches_and_cleans_up` | Without it a successful update could fail to replace the installed program (installer not started, .app or AppImage not swapped), fail to restart it, start it with a broken PyInstaller environment, or leave downloads and .old files behind (or delete the user's own files). | hand-computed | strong | sound |  |
+| `test_install_refuses_or_rolls_back_leaving_the_old_program` | Without it a failed update (no write access, antivirus lock, broken new program, a portable copy, a copy that is not installed) could leave the user with no working program, or a portable copy could replace itself. | hand-computed | strong | sound |  |
 | `test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip` | Without it the app could check for updates when the user turned it off, check on every start, stop checking after the clock goes back, or forget a version the user chose to skip. | hand-computed | adequate | sound | Only checks that a skipped version is stored, not that the automatic check then stays quiet about it (that logic, if in main.py, is untested here). |
 
 ### `tests/test_variants.py` (1 test)

@@ -5206,8 +5206,8 @@
   {
    "id": "tests/test_updater.py::test_release_check_offers_only_a_newer_complete_release",
    "area": "Updater: which release is offered",
-   "role": "Without it the app could offer users an older, draft, prerelease or incomplete release, or one whose files are hosted off the project's GitHub repository, as an update.",
-   "purpose": "Checks version parsing and numeric comparison, then feeds updater.check fake GitHub 'releases/latest' JSON and checks that only a newer, final release with both the exe and its .sha256 on the project's own repo is offered; every other case returns no update with an error text and never raises.",
+   "role": "Without it the app could offer users an older, draft, prerelease or incomplete release, one without the file their system installs, or one whose files are hosted off the project's GitHub repository, as an update.",
+   "purpose": "Checks version parsing and numeric comparison, then feeds updater.check fake GitHub 'releases/latest' JSON and checks that only a newer, final release with both the file this system installs (installer, .app zip or AppImage) and its .sha256 on the project's own repo is offered; every other case returns no update with an error text and never raises.",
    "cases": [
     {
      "input": "is_newer on 15 pairs, e.g. v0.10.0 vs 0.9.0, 1.0 vs 1.0.0, 1.0.0.1 vs 1.0, 0.2.0-beta1 vs 0.1.0, 'latest', '', None, current 'dev'",
@@ -5216,6 +5216,14 @@
     {
      "input": "parse_version('v0.10.0'), ' V2.1 ', '1.2.3-rc1', '1.2.3+build'",
      "expected": "(0,10,0), (2,1), None, None"
+    },
+    {
+     "input": "release_asset('v0.7.0', 'win32' / 'linux' / 'darwin' with machine arm64 and x86_64); a Linux copy checking a release that only has the Windows installer",
+     "expected": "oDNA_beta_0_7_0-setup.exe / -linux-x86_64.AppImage / -macos-arm64.zip and -macos-x86_64.zip; no update for the Linux copy"
+    },
+    {
+     "input": "the names release_asset gives for win32, darwin (arm64) and linux, against the text of .github/workflows/release.yml",
+     "expected": "-setup.exe, -macos-arm64.zip and -linux-x86_64.AppImage; each suffix (its stem and its extension) appears in release.yml"
     },
     {
      "input": "check('0.1.0') with a v0.2.0 release carrying exe + .sha256 + other.zip",
@@ -5266,10 +5274,11 @@
    "strength": "strong",
    "issues": [
     "Large multi-section test; a failure in an early section hides the later ones.",
-    "Error texts are checked by substring ('Refused', 'understood', 'failed'), not exact message."
+    "Error texts are checked by substring ('Refused', 'understood', 'failed'), not exact message.",
+    "The release.yml check is by substring (stem and extension separately), so it catches a renamed suffix but not every possible mismatch."
    ],
    "verdict": "sound",
-   "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, U1_check_sha_host): check() no longer validates the .sha256 asset URL. Test PASSES; scratch verify.py shows the mutated check offering an Update with sha256_url='http://evil.example.com/x.sha256' that the original refuses.",
+   "evidence": "Case added for the per-system installable file (installer change, 16 Nov 2026); not mutation-checked.",
    "gaps": [],
    "proposal": "",
    "fixed": [
@@ -5308,7 +5317,7 @@
     },
     {
      "input": "download_update with matching exe bytes and a progress callback",
-     "expected": "Returns folder/openDNA.exe.new with the exact bytes; no .part left; last progress = (total, total)"
+     "expected": "Returns folder/.openDNA-update-openDNA.exe.new with the exact bytes; no .part left; last progress = (total, total)"
     },
     {
      "input": "Exe bytes + b'tampered'",
@@ -5351,8 +5360,8 @@
   {
    "id": "tests/test_updater.py::test_install_swaps_relaunches_and_cleans_up",
    "area": "Updater: install and cleanup",
-   "role": "Without it a successful update could fail to replace the running exe, fail to restart the program, start the new program with a broken PyInstaller environment, or leave .old/.part files behind (or delete the wrong file).",
-   "purpose": "On fake files in temp folders, checks that install_update swaps new over current keeping the old as .old, replaces a stale .old, uses sys.executable when frozen, that relaunch clears PyInstaller environment variables, and that cleanup_old removes only leftovers, does nothing when run from source, and retries a held file.",
+   "role": "Without it a successful update could fail to replace the installed program (installer not started, .app or AppImage not swapped), fail to restart it, start it with a broken PyInstaller environment, or leave downloads and .old files behind (or delete the user's own files).",
+   "purpose": "On fake files in temp folders, checks that _swap (the step install_update ends with on macOS and Linux) swaps new over current keeping the old as .old (a file, an AppImage named by $APPIMAGE, a macOS .app folder, a zip unpacked with ditto where ditto exists), that on Windows it runs the downloaded installer silently with /RELAUNCH=1 instead of swapping, that relaunch clears PyInstaller environment variables, and that cleanup_old removes only leftovers and downloads, does nothing from source and retries a held file.",
    "cases": [
     {
      "input": "current='OLD', new='NEW', install_update with a recording relaunch",
@@ -5363,8 +5372,24 @@
      "expected": ".old now holds 'OLD'"
     },
     {
-     "input": "frozen=True, platform win32, sys.executable=current, no target given",
+     "input": "frozen, platform linux, $APPIMAGE = current, no target given",
      "expected": "current replaced with 'NEW'"
+    },
+    {
+     "input": "macOS .app folders: openDNA.app 'OLD', openDNA.app.new 'NEW', stale openDNA.app.old; install_update, then cleanup_old(app)",
+     "expected": "app holds 'NEW', .new gone, relaunch called with the app, .old holds 'OLD'; cleanup removes the .old folder and keeps the app"
+    },
+    {
+     "input": "(only where ditto exists, i.e. on a Mac) a zip made with ditto holding an openDNA.app 'ZIPPED', frozen darwin from that .app",
+     "expected": "the app now holds 'ZIPPED' and the downloaded zip is gone"
+    },
+    {
+     "input": "frozen win32 beside unins000.exe, installer downloaded as .openDNA-update-oDNA_beta_0_2_0-setup.exe.new in the data folder (spawn faked)",
+     "expected": "the file is renamed to .exe and started with /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RELAUNCH=1; the installed exe is untouched; relaunch is not used"
+    },
+    {
+     "input": "then an old .openDNA-update-...-setup.exe.part in the data folder, the user's notes.txt and a browser's oDNA_beta_0_9_0-setup.exe.part beside the exe; cleanup_old()",
+     "expected": "True; the data folder is empty (installer and .part removed); notes.txt and the browser download are still there"
     },
     {
      "input": "relaunch() with _MEIPASS2 and _PYI_APPLICATION_HOME_DIR set (Popen faked)",
@@ -5387,35 +5412,35 @@
    "strength": "strong",
    "issues": [],
    "verdict": "sound",
-   "evidence": "Read only. Exact file contents after swap, stale .old replaced, frozen path, child env cleaned and reset flag set, cleanup leaves only the exe, source-run untouched, held file retried (a no-wait cleanup fails the last assertion).",
+   "evidence": "Rewritten for the installer change (16 Nov 2026); not mutation-checked. The ditto case runs on macOS only (CI's macOS job runs the suite for information).",
    "gaps": [],
    "proposal": ""
   },
   {
    "id": "tests/test_updater.py::test_install_refuses_or_rolls_back_leaving_the_old_program",
    "area": "Updater: refusal and rollback",
-   "role": "Without it a failed update (no write access, antivirus lock, broken new exe, wrong build type or platform) could leave the user with no working program.",
-   "purpose": "Checks that install refuses when run from source, on macOS/Linux and in the one-folder Windows build (pointing to the right download), with a missing file or a file in another folder, and that a failing swap or a new exe that does not start rolls back to the old program; a briefly held file is retried until it succeeds.",
+   "role": "Without it a failed update (no write access, antivirus lock, broken new program, a portable copy, a copy that is not installed) could leave the user with no working program, or a portable copy could replace itself.",
+   "purpose": "Checks that install refuses when run from source or from a portable copy (not set up by the installer: pointing to the releases page), that installed_copy recognises an installed copy on each system (Windows: unins000.exe beside the exe; macOS: a .app; Linux: an existing $APPIMAGE) and that a folder it may not write to blocks the update, that a missing file or a file in another folder is refused, and that a failing swap or a new program that does not start rolls back to the old program; a briefly held file is retried until it succeeds.",
    "cases": [
     {
      "input": "Not frozen: install_update(new)",
      "expected": "UpdateError 'source code'; nothing started; new untouched; install_blocker() mentions 'source code', install_blocker(Path('x.exe')) is None"
     },
     {
-     "input": "Frozen on darwin arm64, darwin x86_64, linux x86_64",
-     "expected": "install_blocker says 'does not update itself' and names macos-arm64.zip / macos-x86_64.zip / linux-x86_64.tar.gz"
+     "input": "Frozen, no unins000.exe / $APPIMAGE / .app folder, on win32, darwin and linux; install_update(new)",
+     "expected": "installed_copy() None; install_blocker says 'portable' and names RELEASES_URL; UpdateError 'portable'; files unchanged"
     },
     {
-     "input": "Frozen win32, _MEIPASS in a temp folder (one-file build)",
-     "expected": "Not a folder build; install_blocker() None"
+     "input": "Frozen win32 with unins000.exe beside the exe; darwin with the exe inside openDNA.app/Contents/MacOS; linux with $APPIMAGE = an existing file",
+     "expected": "installed_copy is the exe / the .app folder / the AppImage file; install_blocker None"
     },
     {
-     "input": "Frozen win32, _MEIPASS = exe folder/_internal or exe folder (one-folder layouts)",
-     "expected": "is_folder_build True; blocker names openDNA-folder.zip; install_update raises 'folder version'; files unchanged"
+     "input": "Linux with os.access saying the folder is not writable; $APPIMAGE pointing to a file that is gone",
+     "expected": "blocker says 'no write access'; installed_copy None"
     },
     {
-     "input": "install_update with a non-existent new file / a new file in another folder",
-     "expected": "UpdateError 'could not be found' / 'same folder'; current still 'OLD'"
+     "input": "download_folder() when run from source",
+     "expected": "the data folder's 'update' subfolder"
     },
     {
      "input": "os.replace failing when moving the new file in",
@@ -5438,7 +5463,7 @@
    "strength": "strong",
    "issues": [],
    "verdict": "sound",
-   "evidence": "Read only. Every refusal and rollback asserts exact OLD/NEW contents and absence of .old, retry count == RETRIES, relaunch failure restores; missing-file case would hit a different message if the is_file check went.",
+   "evidence": "Rewritten for the installer change (16 Nov 2026); not mutation-checked.",
    "gaps": [],
    "proposal": ""
   },

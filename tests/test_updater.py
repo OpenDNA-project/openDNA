@@ -4,6 +4,8 @@ import hashlib
 import json
 import os
 import platform
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -135,6 +137,31 @@ def test_release_check_offers_only_a_newer_complete_release(monkeypatch):
     assert updater.parse_version("v0.10.0") == (0, 10, 0) and updater.parse_version(" V2.1 ") == (2, 1)
     assert updater.parse_version("1.2.3-rc1") is None and updater.parse_version("1.2.3+build") is None
 
+    # --- each system installs its own file of the release (macOS by processor); the checksum adds .sha256
+    base = f"{project.EXE_NAME}_0_7_0"
+    assert updater.release_asset("v0.7.0", "win32") == f"{base}-setup.exe"
+    assert updater.release_asset("0.7.0", "linux") == f"{base}-linux-x86_64.AppImage"
+    with monkeypatch.context() as mac:
+        for machine, arch in (("arm64", "arm64"), ("x86_64", "x86_64")):
+            mac.setattr(platform, "machine", lambda m=machine: m)
+            assert updater.release_asset("v0.7.0", "darwin") == f"{base}-macos-{arch}.zip"
+    with monkeypatch.context() as linux:    # a release made for the Windows installer only is no update for a Linux copy
+        linux.setattr(sys, "platform", "linux")
+        windows_only = json.loads(release())
+        windows_only["assets"][0]["name"] = updater.release_asset("v0.2.0", "win32")
+        assert updater.release_asset("v0.2.0") not in [a["name"] for a in windows_only["assets"]]
+        assert updater.check("0.1.0", Fake(json.dumps(windows_only))).update is None
+
+    # --- release.yml names its files the way the updater looks for them (a drift would leave every copy "without an update")
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    with monkeypatch.context() as mac:
+        mac.setattr(platform, "machine", lambda: "arm64")
+        for system, suffix in (("win32", "-setup.exe"), ("darwin", "-macos-${{ matrix.arch }}.zip"), ("linux", "-linux-x86_64.AppImage")):
+            name = updater.release_asset("v0.7.0", system).replace(f"{project.EXE_NAME}_0_7_0", "")
+            stem, extension = suffix.rsplit(".", 1)
+            assert name == suffix.replace("${{ matrix.arch }}", "arm64"), system
+            assert stem in workflow and extension in workflow, (system, suffix)
+
     # --- a newer release gives the update
     result = updater.check("0.1.0", Fake())
     u = result.update
@@ -242,22 +269,23 @@ def test_download_comes_only_from_github_and_is_kept_only_when_it_matches_its_ch
     assert any(h is updater._SafeRedirects or isinstance(h, updater._SafeRedirects) for h in seen), seen
 
     # --- checksum file forms
-    assert updater.parse_checksum(f"{DIGEST}  {updater.ASSET_NAME}\n") == DIGEST
-    assert updater.parse_checksum(f"{DIGEST} *{updater.ASSET_NAME}") == DIGEST
-    assert updater.parse_checksum(DIGEST + "\n") == DIGEST
-    assert updater.parse_checksum(f"{DIGEST.upper()}  {updater.ASSET_NAME}") == DIGEST
-    assert updater.parse_checksum(f"{'a' * 64}  other.zip\n{DIGEST}  {updater.ASSET_NAME}\n") == DIGEST
-    assert updater.parse_checksum((DIGEST + "\r\n").encode("utf-16")) == DIGEST          # PowerShell's > writes UTF-16 with a BOM
-    assert updater.parse_checksum(b"\xef\xbb\xbf" + DIGEST.encode()) == DIGEST
+    NAME = "oDNA_beta_0_2_0-setup.exe"
+    assert updater.parse_checksum(f"{DIGEST}  {NAME}\n", NAME) == DIGEST
+    assert updater.parse_checksum(f"{DIGEST} *{NAME}", NAME) == DIGEST
+    assert updater.parse_checksum(DIGEST + "\n", NAME) == DIGEST
+    assert updater.parse_checksum(f"{DIGEST.upper()}  {NAME}", NAME) == DIGEST
+    assert updater.parse_checksum(f"{'a' * 64}  other.zip\n{DIGEST}  {NAME}\n", NAME) == DIGEST
+    assert updater.parse_checksum((DIGEST + "\r\n").encode("utf-16"), NAME) == DIGEST          # PowerShell's > writes UTF-16 with a BOM
+    assert updater.parse_checksum(b"\xef\xbb\xbf" + DIGEST.encode(), NAME) == DIGEST
     for bad in ("", "hello", "abc  openDNA.exe", f"{DIGEST}  other.zip", DIGEST[:-1], DIGEST + "0"):
-        assert updater.parse_checksum(bad) is None, bad
+        assert updater.parse_checksum(bad, NAME) is None, bad
 
     # --- verifies and returns the new exe
     folder = fresh_dir(tmp_path, "ok")
     seen = []
     path = updater.download_update(update(), folder, progress=lambda d, t: seen.append((d, t)), fetch=Fake())
-    assert path == folder / f"{updater.ASSET_NAME}.new" and path.read_bytes() == EXE_BYTES
-    assert not (folder / f"{updater.ASSET_NAME}.part").exists()
+    assert path == folder / ".openDNA-update-openDNA.exe.new" and path.read_bytes() == EXE_BYTES     # PREFIX + the name in the URL
+    assert not (folder / ".openDNA-update-openDNA.exe.part").exists()
     assert seen[-1] == (len(EXE_BYTES), len(EXE_BYTES))
 
     # --- a checksum mismatch is refused and the file deleted
@@ -313,24 +341,72 @@ def test_install_swaps_relaunches_and_cleans_up(tmp_path, monkeypatch):
     # --- swaps the files and relaunches
     current, new = installed_in(tmp_path / "swap")
     started = []
-    updater.install_update(new, current, relaunch=started.append)
+    updater._swap(new, current, relaunch=started.append)
     assert current.read_bytes() == b"NEW" and (current.parent / "openDNA.exe.old").read_bytes() == b"OLD"
     assert not new.exists() and started == [current]
 
     # --- replaces a stale old file
     current, new = installed_in(tmp_path / "stale")
     (current.parent / "openDNA.exe.old").write_bytes(b"ANCIENT")
-    updater.install_update(new, current, relaunch=lambda p: None)
+    updater._swap(new, current, relaunch=lambda p: None)
     assert (current.parent / "openDNA.exe.old").read_bytes() == b"OLD"
 
-    # --- uses the running exe when frozen
+    # --- an installed Linux copy swaps in over the AppImage named by $APPIMAGE
     current, new = installed_in(tmp_path / "running")
     with monkeypatch.context() as frozen:
         frozen.setattr(sys, "frozen", True, raising=False)
-        frozen.setattr(sys, "platform", "win32")
-        frozen.setattr(sys, "executable", str(current))
+        frozen.setattr(sys, "platform", "linux")
+        frozen.setenv("APPIMAGE", str(current))
         updater.install_update(new, relaunch=lambda p: None)
     assert current.read_bytes() == b"NEW"
+
+    # --- a macOS .app is a folder: swapped as a whole, a stale .old folder replaced
+    app, new_app = tmp_path / "Apps" / "openDNA.app", tmp_path / "Apps" / "openDNA.app.new"
+    for folder, text in ((app, b"OLD"), (new_app, b"NEW"), (app.with_name("openDNA.app.old"), b"ANCIENT")):
+        (folder / "Contents").mkdir(parents=True)
+        (folder / "Contents" / "version").write_bytes(text)
+    started = []
+    updater._swap(new_app, app, relaunch=started.append)
+    assert (app / "Contents" / "version").read_bytes() == b"NEW" and not new_app.exists() and started == [app]
+    assert (app.with_name("openDNA.app.old") / "Contents" / "version").read_bytes() == b"OLD"
+    assert updater.cleanup_old(app) is True and not app.with_name("openDNA.app.old").exists() and app.is_dir()
+    if shutil.which("ditto"):     # unpacking the release's zip needs macOS's ditto (the release's own zip is made with it)
+        (tmp_path / "zipsrc" / "openDNA.app" / "Contents").mkdir(parents=True)
+        (tmp_path / "zipsrc" / "openDNA.app" / "Contents" / "version").write_bytes(b"ZIPPED")
+        archive = app.parent / f"{updater.PREFIX}{project.EXE_NAME}_0_2_0-macos-arm64.zip.new"
+        subprocess.run(["ditto", "-c", "-k", "--keepParent", str(tmp_path / "zipsrc" / "openDNA.app"), str(archive)], check=True)
+        with monkeypatch.context() as mac:
+            mac.setattr(sys, "frozen", True, raising=False)
+            mac.setattr(sys, "platform", "darwin")
+            mac.setattr(sys, "executable", str(app / "Contents" / "MacOS" / "openDNA"))
+            updater.install_update(archive, relaunch=lambda p: None)
+        assert (app / "Contents" / "version").read_bytes() == b"ZIPPED" and not archive.exists()
+
+    # --- Windows runs the installer silently from the data folder (a downloaded .new is renamed to .exe first), and the
+    # download that is left behind is removed at the next start
+    installed = tmp_path / "winapp"
+    installed.mkdir()
+    (installed / "openDNA.exe").write_bytes(b"OLD")
+    (installed / "unins000.exe").write_bytes(b"x")
+    setup = data_dir() / "update" / f"{updater.PREFIX}{project.EXE_NAME}_0_2_0-setup.exe.new"
+    setup.parent.mkdir(exist_ok=True)
+    setup.write_bytes(b"SETUP")
+    spawned = []
+    with monkeypatch.context() as win:
+        win.setattr(sys, "frozen", True, raising=False)
+        win.setattr(sys, "platform", "win32")
+        win.setattr(sys, "executable", str(installed / "openDNA.exe"))
+        win.setattr(updater, "_spawn", lambda args, cwd: spawned.append(args))
+        updater.install_update(setup, relaunch=lambda p: pytest.fail("the installer starts the new version"))
+        run = setup.with_suffix("")
+        assert spawned == [[str(run), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/RELAUNCH=1"]]
+        assert run.read_bytes() == b"SETUP" and not setup.exists() and (installed / "openDNA.exe").read_bytes() == b"OLD"
+        (setup.parent / f"{updater.PREFIX}{project.EXE_NAME}_0_1_0-setup.exe.part").write_bytes(b"half")
+        (installed / "notes.txt").write_bytes(b"mine")
+        (installed / f"{project.EXE_NAME}_0_9_0-setup.exe.part").write_bytes(b"theirs")     # not ours: a browser download
+        assert updater.cleanup_old() is True
+    assert list(setup.parent.iterdir()) == [] and (installed / "notes.txt").exists()
+    assert (installed / f"{project.EXE_NAME}_0_9_0-setup.exe.part").exists()
 
     # --- relaunch hands the child a clean PyInstaller environment
     seen = {}
@@ -380,38 +456,51 @@ def test_install_refuses_or_rolls_back_leaving_the_old_program(tmp_path, monkeyp
     with pytest.raises(UpdateError, match="source code"):
         updater.install_update(new, relaunch=lambda p: pytest.fail("must not start anything"))
     assert new.read_bytes() == b"NEW"
-    assert "source code" in updater.install_blocker() and updater.install_blocker(Path("x.exe")) is None
+    assert "source code" in updater.install_blocker()
 
-    # --- the folder build and other systems do not replace themselves
-    current, new = installed_in(tmp_path / "folderbuild")
+    # --- a portable copy (not set up by the installer) does not replace itself and says where the new version is
+    current, new = installed_in(tmp_path / "portable")
     with monkeypatch.context() as frozen:
         frozen.setattr(sys, "frozen", True, raising=False)
         frozen.setattr(sys, "executable", str(current))
-        frozen.setattr(sys, "_MEIPASS", str(tmp_path / "somewhere" / "_MEI1234"), raising=False)   # one-file: a temp folder
-        for system, machine, download in (("darwin", "arm64", "macos-arm64.zip"), ("darwin", "x86_64", "macos-x86_64.zip"),
-                                          ("linux", "x86_64", "linux-x86_64.tar.gz")):   # never the Windows exe there
+        frozen.delenv("APPIMAGE", raising=False)
+        for system in ("win32", "darwin", "linux"):
             frozen.setattr(sys, "platform", system)
-            frozen.setattr(platform, "machine", lambda m=machine: m)
-            assert "does not update itself" in updater.install_blocker() and download in updater.install_blocker()
-        frozen.setattr(sys, "platform", "win32")   # (the one-file exe that updates itself is the Windows one)
-        assert not updater.is_folder_build() and updater.install_blocker() is None
-        for bundle in (current.parent / "_internal", current.parent):     # PyInstaller 6 and 5 one-folder layouts
-            frozen.setattr(sys, "_MEIPASS", str(bundle), raising=False)
-            assert updater.is_folder_build()
-            assert "openDNA-folder.zip" in updater.install_blocker()
-            with pytest.raises(UpdateError, match="folder version"):
+            assert updater.installed_copy() is None
+            assert "portable" in updater.install_blocker() and project.RELEASES_URL in updater.install_blocker()
+            with pytest.raises(UpdateError, match="portable"):
                 updater.install_update(new, relaunch=lambda p: pytest.fail("must not start anything"))
     assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW"
+
+    # --- an installed copy: Windows has the uninstaller beside the exe, macOS runs from a .app, Linux from an AppImage it can replace
+    with monkeypatch.context() as frozen:
+        frozen.setattr(sys, "frozen", True, raising=False)
+        frozen.setattr(sys, "executable", str(current))
+        frozen.setattr(sys, "platform", "win32")
+        (current.parent / "unins000.exe").write_bytes(b"x")
+        assert updater.installed_copy() == current.resolve() and updater.install_blocker() is None
+        (tmp_path / "Apps").mkdir(exist_ok=True)
+        frozen.setattr(sys, "platform", "darwin")
+        frozen.setattr(sys, "executable", str(tmp_path / "Apps" / "openDNA.app" / "Contents" / "MacOS" / "openDNA"))
+        assert updater.installed_copy() == (tmp_path / "Apps" / "openDNA.app").resolve() and updater.install_blocker() is None
+        frozen.setattr(sys, "platform", "linux")
+        frozen.setenv("APPIMAGE", str(current))
+        assert updater.installed_copy() == current and updater.install_blocker() is None
+        frozen.setattr(updater.os, "access", lambda path, mode: False)     # a folder it may not write to (a root-owned /opt)
+        assert "no write access" in updater.install_blocker()
+        frozen.setenv("APPIMAGE", str(tmp_path / "gone.AppImage"))         # the AppImage no longer exists: not an installed copy
+        assert updater.installed_copy() is None
+    assert updater.download_folder() == data_dir() / "update"   # from source: the data folder
 
     # --- refuses missing files and another folder
     current, new = installed_in(tmp_path / "refuse")
     with pytest.raises(UpdateError, match="could not be found"):
-        updater.install_update(tmp_path / "nothing.exe", current, relaunch=lambda p: None)
+        updater._swap(tmp_path / "nothing.exe", current, relaunch=lambda p: None)
     other = tmp_path / "sub"
     other.mkdir()
     (other / "new.exe").write_bytes(b"NEW")
     with pytest.raises(UpdateError, match="same folder"):
-        updater.install_update(other / "new.exe", current, relaunch=lambda p: None)
+        updater._swap(other / "new.exe", current, relaunch=lambda p: None)
     assert current.read_bytes() == b"OLD"
 
     # --- the new file cannot be moved in: rolled back
@@ -419,7 +508,7 @@ def test_install_refuses_or_rolls_back_leaving_the_old_program(tmp_path, monkeyp
     with monkeypatch.context() as patch:
         fail_replace(patch, lambda s, d: s == new)
         with pytest.raises(UpdateError, match="administrator"):
-            updater.install_update(new, current, relaunch=lambda p: pytest.fail("must not start"))
+            updater._swap(new, current, relaunch=lambda p: pytest.fail("must not start"))
     assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW" and not (current.parent / "openDNA.exe.old").exists()
 
     # --- a folder that cannot be written: retried, then points to the releases page
@@ -427,7 +516,7 @@ def test_install_refuses_or_rolls_back_leaving_the_old_program(tmp_path, monkeyp
     with monkeypatch.context() as patch:
         calls = fail_replace(patch, lambda s, d: s == current)
         with pytest.raises(UpdateError) as e:
-            updater.install_update(new, current, relaunch=lambda p: None)
+            updater._swap(new, current, relaunch=lambda p: None)
     assert project.RELEASES_URL in str(e.value) and "administrator" in str(e.value)
     assert len(calls) == updater.RETRIES
     assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW"
@@ -443,7 +532,7 @@ def test_install_refuses_or_rolls_back_leaving_the_old_program(tmp_path, monkeyp
         return False
     with monkeypatch.context() as patch:
         fail_replace(patch, when)
-        updater.install_update(new, current, relaunch=lambda p: None)
+        updater._swap(new, current, relaunch=lambda p: None)
     assert len(refused) == 2 and current.read_bytes() == b"NEW"
 
     # --- the new program does not start: rolled back
@@ -452,7 +541,7 @@ def test_install_refuses_or_rolls_back_leaving_the_old_program(tmp_path, monkeyp
     def broken(path):
         raise OSError("not a valid Win32 application")
     with pytest.raises(UpdateError, match="old one was kept"):
-        updater.install_update(new, current, relaunch=broken)
+        updater._swap(new, current, relaunch=broken)
     assert current.read_bytes() == b"OLD" and new.read_bytes() == b"NEW" and not (current.parent / "openDNA.exe.old").exists()
 
 
