@@ -92,7 +92,7 @@ def gibson():
 
 
 def primers():
-    """The Primers pane and the PCR pane on pBAD30, with the plasmid's own Verif pBAD30_F / _R primers."""
+    """The PCR tab on pBAD30, full size, with the plasmid's own Verif pBAD30_F / _R primers."""
     win = window(DEMO / "pBAD30_eilR.gb", tool="PCR")
     pcr = [p.view for p in win.workspace.panes() if p.view_name == "PCR"][0]
     fwd = next(i for i, s in enumerate(pcr.fwd_sites) if "Verif" in s.label)
@@ -104,7 +104,7 @@ def primers():
 
 
 def cas9():
-    """The Spacer Finder on pFG051: every SpCas9 guide with its cut, score and other matching sites, one added to the sequence."""
+    """The Spacer Finder on pFG051: every SpCas9 guide with its cut, score and other matching sites."""
     win = window(DEMO / "pFG051_Chlor.gb", tool="Spacer Finder")
     gene = next(f for f in win.editor.features if "Transposase" in (f.label or ""))
     start, end = min(a for a, _ in gene.spans), max(b for _, b in gene.spans)
@@ -149,18 +149,14 @@ def reads_bam():
     ref, rng, n = doc.sequence().upper(), random.Random(55), doc.length
     gap0, gap1, snp, reads = 1850, 1970, 700, []
     for i in range(n * 60 // 150):
-        pos, ops, left = rng.randrange(0, n - 150), [], 150
+        pos, left = rng.randrange(0, n - 150), 150
         deleted = rng.random() < 0.4
         if deleted and gap0 <= pos < gap1:
             pos = gap1
-        r = pos
-        while left:
-            if deleted and r < gap0 < r + left:      # the read runs into the missing stretch: M, D, M
-                ops += [(gap0 - r, "M"), (gap1 - gap0, "D")]
-                left, r = left - (gap0 - r), gap1
-            else:
-                ops.append((left, "M"))
-                left = 0
+        if deleted and pos < gap0 < pos + left:      # the read runs into the missing stretch: M, D, M
+            ops = [(gap0 - pos, "M"), (gap1 - gap0, "D"), (left - (gap0 - pos), "M")]
+        else:
+            ops = [(left, "M")]
         subs = {snp: "A" if ref[snp] != "A" else "G"} if rng.random() < 0.33 else {}
         reads.append(T.build_read(f"r{i}", pos, ops, ref, subs=subs, qual=[35] * 150, flag=16 * rng.randrange(2)))
     T.write_bam(bam, [(runner.safe_name(doc.name), n)], reads)
