@@ -93,16 +93,22 @@ class _Mode(QObject):
 
 
 mode = _Mode()   # told when open_in_tabs() changes, so every window shows the choice
+_in_tabs = None   # open_in_tabs(), read from the ini file once
 
 
 def open_in_tabs():
     """View > Open Files in Tabs: a file opens as a tab of the window (else in a window of its own). The same for every
     window, kept between sessions; on unless switched off."""
-    return str(window_settings().value("open_in_tabs", "true")).lower() == "true"
+    global _in_tabs
+    if _in_tabs is None:
+        _in_tabs = str(window_settings().value("open_in_tabs", "true")).lower() == "true"
+    return _in_tabs
 
 
 def set_open_in_tabs(on):
-    window_settings().setValue("open_in_tabs", bool(on))
+    global _in_tabs
+    _in_tabs = bool(on)
+    window_settings().setValue("open_in_tabs", _in_tabs)
     mode.changed.emit()
 
 
@@ -143,6 +149,12 @@ class FileStrip(QTabBar):
             self.setTabToolTip(i, str(p.file_path() or p.tab_title()))
         self.setCurrentIndex(host.files.pages.index(host.files.current))
         self.blockSignals(False)
+
+    def retitle(self):
+        """A file's name or "unsaved" mark changed: only the text of the tabs, not the tabs (an edit does this at typing speed)."""
+        for i, p in enumerate(self.page.host.files.pages):
+            if self.tabText(i) != p.tab_title():
+                self.setTabText(i, p.tab_title())
 
     def contextMenuEvent(self, event):
         i = self.tabAt(event.pos())
@@ -201,7 +213,8 @@ class FileHost(QWidget):
     def _retitled(self, page):
         if page is self.files.current:
             self.setWindowTitle(page.windowTitle())
-        self.sync()   # (the tab's name and its "unsaved" mark follow the title)
+        for p in self.files.pages:   # (the tab's name and its "unsaved" mark follow the title)
+            p.file_strip.retitle()
 
     def sync(self):
         """Every page's strip shows the same tabs; the strips show when files are in tabs (or more than one is open)."""
@@ -236,9 +249,7 @@ class FileHost(QWidget):
         if page.editor is None and len(self.files.pages) == 1:
             self.close()
             return True
-        if ask and page.has_unsaved():
-            self.select(page)   # (so the question is asked over the file it is about)
-        if ask and not page.confirm_discard():
+        if ask and not self._confirm(page):
             return False
         page.shut_down()
         was_shown = page is self.files.current
@@ -253,6 +264,12 @@ class FileHost(QWidget):
         else:
             self.sync()
         return True
+
+    def _confirm(self, page):
+        """False if the user cancels closing `page`: an unsaved file is shown first, so the question is asked over it."""
+        if page.has_unsaved():
+            self.select(page)
+        return page.confirm_discard()
 
     def close_others(self, page):
         for p in list(self.files.pages):
@@ -277,12 +294,9 @@ class FileHost(QWidget):
 
     def closeEvent(self, event):
         pages = list(self.files.pages)
-        for p in pages:   # each unsaved file asks, shown first; one Cancel keeps the window and every file
-            if p.has_unsaved():
-                self.select(p)
-            if not p.confirm_discard():
-                event.ignore()
-                return
+        if not all(self._confirm(p) for p in pages):   # each unsaved file asks; one Cancel keeps the window and every file
+            event.ignore()
+            return
         for p in pages:
             p.shut_down()
         s = window_settings()

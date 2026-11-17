@@ -29,6 +29,7 @@ from uikit import ask, fit_columns, plural
 from annotation import add_parts, feature_part
 from parts_library import source_of
 from editor import arrow, feature_key, reverse_complement
+from file_tabs import page_of
 from primer_db import db, remove_primers
 
 COLUMNS = ["Name", "Type", "Location", "Length", "Strand"]
@@ -521,7 +522,6 @@ def selection_menu(parent, editor, global_pos):
     """Right-click on selected bases, grouped by what they do: clipboard, annotate, primers, then the selection as a protein
     or a new sequence."""
     from feature_dialog import edit_feature  # here: it imports the tools
-    from file_tabs import page_of
     from primer_design import design_for_selection
     from primer_panel import PrimerDialog
     from sequence_view import add_edit_actions

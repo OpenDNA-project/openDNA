@@ -320,8 +320,7 @@ class Workspace(QTabWidget):
             row = QHBoxLayout(corner)
             row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(6)
-            if getattr(window, "row2", None) is not None:
-                row.addWidget(window.row2)
+            row.addWidget(window.row2)
             row.addWidget(self.quick_filters)
             self.setCornerWidget(corner, Qt.TopRightCorner)
             self.currentChanged.connect(self._quick_filters_for)

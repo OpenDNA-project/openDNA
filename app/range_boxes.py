@@ -6,8 +6,8 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QWidg
 
 
 def grouped(digits):
-    """'1234567' -> '1,234,567' ('' stays '')."""
-    return f"{int(digits):,}" if digits else ""
+    """'1234567' (or 1234567) -> '1,234,567' ('' stays '')."""
+    return f"{int(digits):,}" if str(digits) else ""
 
 
 class _Box(QLineEdit):
@@ -23,16 +23,10 @@ class _Box(QLineEdit):
 
     def _typed(self, text):
         """Only digits, grouped as they are typed, the cursor staying after the same digit."""
-        left = sum(c.isdigit() for c in text[:self.cursorPosition()])
-        shown = grouped("".join(c for c in text if c.isdigit()))
-        pos, seen = 0, 0
-        for i, c in enumerate(shown if left else ""):   # just after the `left`-th digit
-            seen += c.isdigit()
-            if seen == left:
-                pos = i + 1
-                break
-        self.setText(shown)
-        self.setCursorPosition(pos)
+        digits = "".join(c for c in text if c.isdigit())
+        left = sum(c.isdigit() for c in text[:self.cursorPosition()])   # digits before the cursor stay before it
+        self.setText(grouped(digits))
+        self.setCursorPosition(len(grouped(digits[:left])))
         self.owner.edited.emit()
 
     def wheelEvent(self, event):
@@ -88,7 +82,4 @@ class RangeBoxes(QWidget):
     def show_range(self, first, last):
         """Show the selection (numbers, or None for a cursor with nothing selected)."""
         for box, n in ((self.first, first), (self.last, last)):
-            box.setText("" if n is None else f"{n:,}")
-
-    def clear(self):
-        self.show_range(None, None)
+            box.setText("" if n is None else grouped(n))

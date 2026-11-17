@@ -1200,7 +1200,7 @@ class MainWindow(QMainWindow):
 
     def open_windows(self):
         """Every file page of this program with a file open (in any window), this one first."""
-        return [w for w in [self] + [w for w in all_pages() if w is not self] if w.editor is not None]
+        return [w for w in sorted(all_pages(), key=lambda w: w is not self) if w.editor is not None]
 
     def open_documents(self):
         """[(file name, Document)] of every file open in a window of this program (for the Assembly panel)."""
@@ -2095,7 +2095,7 @@ if __name__ == "__main__":
         sys.exit(0)
     listener = single_instance.Listener()
     feedback.setup_logging()
-    autosave.sweep()   # recovery copies of files that are gone (see autosave.py)
+    QTimer.singleShot(3000, autosave.sweep)   # recovery copies of files that are gone (see autosave.py), once the window is up
     theme.apply(theme.saved(), remember=False)
     win = new_window()
     # Options: --welcome opens the start page even if it was shown today or turned off. Anything else is a file to open.

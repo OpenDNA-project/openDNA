@@ -22,6 +22,7 @@ from opendna_core import dimer, hairpin, tm, tm_range
 
 import tool_settings
 from editor import dna_field, reverse_complement
+from file_tabs import page_of
 from value_filter import SortItem
 from tool_settings import Param, SettingsDialog
 from reference import Reference, as_reference
@@ -1240,7 +1241,6 @@ class PrimerPanel(QWidget):
     def open_database(self):
         """Databases → Primer Database, as a tab of this window."""
         import db_tabs
-        from file_tabs import page_of
         db_tabs.open_tab(page_of(self), "primers")
 
     def edit_options(self):

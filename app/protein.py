@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from editor import HIDDEN_KINDS, mono_font
+from file_tabs import page_of
 import genetic_code
 import structure
 import tool_settings
@@ -344,7 +345,6 @@ class ProteinView(QWidget):
     def show_structure(self):
         """The 3D structure window for the protein shown (it stays open while you go on selecting)."""
         chain = until_stop("".join(aa for _, aa, _, _ in self.src["cods"]))
-        from file_tabs import page_of
         dialog = StructureDialog(page_of(self) or self.window(), self.src["name"], chain, self.src["accession"], self.src["links"])
         dialog.found.connect(self._got_structure)
         self.dialogs = [d for d in self.dialogs if d.isVisible()] + [dialog]
