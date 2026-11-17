@@ -537,7 +537,7 @@ def selection_menu(parent, editor, global_pos):
     menu.addSeparator()
     menu.addAction("Add Primer (F)", lambda: PrimerDialog(window, editor).exec())
     menu.addAction("Add Primer (R)", lambda: reverse_primer_dialog(window, editor).exec())
-    menu.addAction("Design Primers for This Sequence…", lambda: window.workspace.new_tab("PCR"))   # the PCR tab designs for the selection
+    menu.addAction("Design Primers for This Sequence…", lambda: (setattr(window, "design_on_open", True), window.workspace.new_tab("PCR")))   # the new PCR tab designs for the selection
     menu.addSeparator()
     if hasattr(window, "workspace"):   # the Protein view follows the selection, in the frame chosen beside it
         menu.addAction("Translate", lambda: window.workspace.new_tab("Protein"))

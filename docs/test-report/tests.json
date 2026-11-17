@@ -3972,7 +3972,7 @@
    "purpose": "Checks that on a circular 3000 bp sequence the designer returns pairs for a target at base 1, at the last base and across the origin, with the search window at 0 (the product is exactly the target) and at 40 bp, that each primer's bases really match the template read round the circle, that each primer's 5' end is within the window of the target, that the reported product size is consistent, and that a linear sequence designs from base 1 but not for a target shorter than a primer.",
    "cases": [
     {
-     "input": "circular 3000 bp, targets (0,200), (2800,3000), (2900,3100) (across the origin), window 0 and 40",
+     "input": "circular 3000 bp, targets (0,200), (2800,3000), (2900,3100) (across the origin), window 0 (no Tm limit) and 40",
      "expected": "non-empty pairs in every case"
     },
     {

@@ -227,7 +227,7 @@ def test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle(t
     ed = Editor(Document.new_sequence("c", seq, True), tmp_path / "c.gb")
     for start, end in [(0, 200), (n - 200, n), (n - 100, n + 100)]:
         for window in (0, 40):
-            pairs = design(ed, start, end, window=window)
+            pairs = design(ed, start, end, window=window, tm_tolerance=None if window == 0 else 5)   # (no Tm limit on a fixed place)
             assert pairs, (start, end, window)
             for p in pairs:
                 f, r = p["fwd"], p["rev"]

@@ -4,7 +4,7 @@
 
 ## `test_file_set_keeps_order_dedupes_and_picks_the_next_page_on_close`
 
-**Result:** ✅ passed in 0.00 s · [line 27](../../tests/test_file_tabs.py#L27) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 27](../../tests/test_file_tabs.py#L27) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, opening a file twice could give two editors on one file, closing a file tab could leave a closed file shown or nothing shown, and a window could close without asking about a file with unsaved changes.
 

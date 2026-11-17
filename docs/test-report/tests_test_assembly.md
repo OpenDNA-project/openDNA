@@ -54,7 +54,7 @@ Checks a vector-plus-inserts assembly end to end (primer design skips the vector
 
 ## `test_sidewinder_oligos_toeholds_and_barcodes`
 
-**Result:** ✅ passed in 0.06 s · [line 263](../../tests/test_assembly.py#L263) · **Area:** Sidewinder assembly · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 263](../../tests/test_assembly.py#L263) · **Area:** Sidewinder assembly · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the ordered oligos could fail to tile the intended product, repeat a toehold so the assembly joins in the wrong place, or reuse barcodes, and the user would only discover it after paying for synthesis.
 
@@ -167,7 +167,7 @@ Checks the end-compatibility rule base by base (same sticky bases, same overhang
 
 ## `test_assembly_reports_bad_input_instead_of_failing`
 
-**Result:** ✅ passed in 0.27 s · [line 708](../../tests/test_assembly.py#L708) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.26 s · [line 708](../../tests/test_assembly.py#L708) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a zero-length or very short fragment could crash the assembly panel with a traceback instead of showing the user a red check saying what is wrong.
 

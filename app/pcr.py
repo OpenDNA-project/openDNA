@@ -29,6 +29,7 @@ class PcrPage(ToolDialog):
         super().__init__(parent)
         from sequence_view import SequenceView
         self.editor, self.pairs, self.product_doc = editor, [], None
+        self.version = None   # the editor's version the product on the right was made from
         self.temp = None   # the designed pair clicked in the table: {"fwd", "rev" (sites), "checks", "row"}
         self.fwd_sites = self.rev_sites = []
         self.picked = {}   # strand -> the primer clicked on the template (any primer of the sequence, listed beside the file's own)
@@ -92,10 +93,9 @@ class PcrPage(ToolDialog):
         middle.addLayout(buttons)
         # -- left and right
         self.left_view = SequenceView(editor)
-        self.right_title = QLabel("<b>Product</b> (read only)")
         self.right_box = QVBoxLayout()
         self.right_box.setContentsMargins(0, 0, 0, 0)
-        self.right_box.addWidget(self.right_title)
+        self.right_box.addWidget(QLabel("<b>Product</b> (read only)"))
         left = QWidget()
         lbox = QVBoxLayout(left)
         lbox.setContentsMargins(0, 0, 0, 0)
@@ -114,14 +114,8 @@ class PcrPage(ToolDialog):
         editor.primer_clicked.connect(self._primer_clicked)
         self._set_target()
         self.refresh()
-        self._first = True
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        if getattr(self, "_first", False):   # opened on a selection (right-click > Design Primers): design for it at once
-            self._first = False
-            if self.editor.end > self.editor.start:
-                QTimer.singleShot(0, self.design)
+        if parent.__dict__.pop("design_on_open", False) and editor.end > editor.start:   # right-click > Design Primers
+            QTimer.singleShot(0, self.design)
 
     # -- the right: the product of whatever was chosen last
     def _show(self, doc, text, error=False):
@@ -144,12 +138,13 @@ class PcrPage(ToolDialog):
     def _from_pair(self):
         """The product of the two primers chosen in the lists: the lists are the one source of what is shown."""
         pair = self.pair()
-        span = product_range(self.editor, *pair) if pair else None
         if not pair:
             self.save_button.setEnabled(False)
             self._show_details(None)
             return self._show(None, "Pick a forward and a reverse primer, or design a pair for the selected region.")
         f, r = pair
+        self.version = self.editor.version
+        span = product_range(self.editor, f, r)
         designed = self.temp is not None and f is self.temp["fwd"] and r is self.temp["rev"]   # (the pair clicked in the table)
         self.save_button.setEnabled(designed)
         self._show_details(self.temp["checks"] if designed else None, heterodimer(f.sequence, r.sequence))
@@ -170,10 +165,6 @@ class PcrPage(ToolDialog):
     @staticmethod
     def _key(site):
         return (site.label, site.start, site.strand)
-
-    def _chosen_keys(self):
-        pair = self.pair()
-        return tuple(self._key(s) for s in pair) if pair else None
 
     def _selected(self):
         """(key of the forward primer chosen, key of the reverse primer chosen): None for a list with nothing chosen."""
@@ -205,11 +196,11 @@ class PcrPage(ToolDialog):
         """The primers of the template came or changed: list them again, keeping the choice. Only a pair that is not the one
         shown is drawn: the primers come back a moment after each design (they are searched in the background), and that must
         not make a new PCR of what was chosen."""
-        before = self._chosen_keys()
+        before = self._selected()
         self._populate()
         if self._selected() == (None, None):
             self._pick_default()
-        if self.product_doc is None or self._chosen_keys() != before:
+        if self.product_doc is None or self._selected() != before or self.version != self.editor.version:
             self._from_pair()
 
     def _template_edited(self):
@@ -225,12 +216,15 @@ class PcrPage(ToolDialog):
         site = self.editor.site_by_key.get(key)
         if site is None:
             return
-        listed = [self._key(s) for s in (self.fwd_sites if site.strand > 0 else self.rev_sites)]
-        if self._key(site) not in listed:
-            self.picked[1 if site.strand > 0 else -1] = site
+        combo = self.fwd if site.strand > 0 else self.rev
+        if self._key(site) not in self._listed(site):
+            self.picked[site.strand] = site
             self._populate()
-            listed = [self._key(s) for s in (self.fwd_sites if site.strand > 0 else self.rev_sites)]
-        (self.fwd if site.strand > 0 else self.rev).setCurrentIndex(listed.index(self._key(site)))   # (draws through _pair_chosen)
+        combo.setCurrentIndex(self._listed(site).index(self._key(site)))   # (draws through _pair_chosen)
+
+    def _listed(self, site):
+        """The keys listed in the list of this site's strand."""
+        return [self._key(s) for s in (self.fwd_sites if site.strand > 0 else self.rev_sites)]
 
     def _pick_default(self):
         """The pair of the file's own primers giving the shortest product (a designed pair is never picked for you)."""
@@ -278,10 +272,11 @@ class PcrPage(ToolDialog):
             return
         self._clear_designs()
         self._populate()
-        args = (ed, ed.start, ed.end, self.tm.value(), self.min_len.value(), max(self.min_len.value(), self.max_len.value()),
-                self.window.value())
+        args = dict(start=ed.start, end=ed.end, tm_target=self.tm.value(), min_len=self.min_len.value(),
+                    max_len=max(self.min_len.value(), self.max_len.value()), window=self.window.value(),
+                    tm_tolerance=None if self.window.value() == 0 else 5)   # (on a fixed place: the best whatever its Tm)
         # (thousands of candidates: in a thread behind a busy dialog, so the window is drawn and stays alive meanwhile)
-        self.pairs = run_busy(self, "Designing primers…", lambda: design(*args))
+        self.pairs = run_busy(self, "Designing primers…", lambda: design(ed, **args))
         self.table.setRowCount(len(self.pairs))
         # The genome search (every chromosome) first, with a progress dialog; the checks below then read its results.
         warm_genome(self, ed, [p[k]["seq"] for p in self.pairs for k in ("fwd", "rev")])
@@ -302,7 +297,7 @@ class PcrPage(ToolDialog):
         if self.pairs:
             self.table.selectRow(0)
         else:
-            self.shown_checks = None
+            self._from_pair()   # (back to what the lists say)
             self.details.setText("No pair found: widen the search window, the length range or the Tm.")
 
     def _show_details(self, checks, hetero=None):

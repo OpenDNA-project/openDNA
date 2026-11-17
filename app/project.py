@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the installer is EXE_NAME-setup.exe).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,9 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = True
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.8.1": ["The PCR tab has three panes: the template on the left, the primers in the middle, the product on the right. Choose a forward and a reverse primer, click primers on the template, or select a region and press Design (the search window starts at 0 bp: the product is exactly the selection). Designed pairs get a heterodimer check.",
+              "The menus are shorter and grouped: Edit, View, Feature, Primers, Databases and Tools lost the items that are on the toolbar, the right-click menus or the keys. Edit has Set Origin to Selection Start, and icons line up with the checkmarks.",
+              "Right-click on a feature: Delete feature, Hide feature, Edit feature, then its translation items."],
     "0.8.0": ["Several files in one window: each file opens as a file tab in the top row, and keeps its own view tabs, side panels, search and undo history. View > Open Files in Tabs goes back to one window per file.",
               "The range box is two boxes, From and To, that follow the selection: type in them, or turn the mouse wheel over a number (Shift: by 10, Ctrl: by 100), and the selection changes at once.",
               "Double-clicking a file while openDNA is open sends it to that copy (a new tab). The genetic code and the background genome are labelled in the second row.",

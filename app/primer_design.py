@@ -54,17 +54,18 @@ def candidate(seq, tm_target, cond, tolerance=5):
     return {"seq": seq, "tm": t, "gc": gc, "penalty": penalty, "notes": notes}
 
 
-def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0, count=5):
+def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0, count=5, tm_tolerance=5):
     """Best primer pairs whose product contains [start, end). Returns a list of dicts:
     fwd/rev candidates, their positions, product size, pair penalty. The forward primer starts (5') at most `window` bases before
     `start`, the reverse primer starts (5') at most `window` bases after `end`: with the default 0 the product is exactly the
-    target, the primers sitting on its two ends."""
+    target, the primers sitting on its two ends. A primer whose Tm is more than `tm_tolerance` °C from `tm_target` is not
+    considered (None: any Tm, ranked by its penalty)."""
     n = editor.length
     seq = editor.doc.sequence().upper()
     cond = conditions()
     fwds, revs = [], []
     off, total = 0, n
-    tolerance = 5 if window else float("inf")   # on a fixed place the best primer is taken whatever its Tm (it is penalised)
+    tolerance = float("inf") if tm_tolerance is None else tm_tolerance
     if editor.doc.circular:
         # Three laps with the target in the middle one, so primers (and the target) may pass through the origin.
         # The two search windows must not meet on the other side of the circle.
@@ -101,6 +102,8 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0,
     pairs = []
     for f in fwds:
         for r in revs:
+            if r["raw"] - f["raw"] < max(len(f["seq"]), len(r["seq"])):
+                continue   # the product would be shorter than a primer
             _, cross3 = dimer(f["seq"], r["seq"], **salt(cond))
             penalty = f["penalty"] + r["penalty"] + abs(f["tm"] - r["tm"]) + max(0.0, -5 - cross3)
             notes = [f"F: {x}" for x in f["notes"]] + [f"R: {x}" for x in r["notes"]]

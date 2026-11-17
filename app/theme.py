@@ -73,7 +73,8 @@ class PressedStyle(QProxyStyle):
             option = type(option)(option)
             for role in (QPalette.ButtonText, QPalette.WindowText, QPalette.Text):
                 option.palette.setColor(role, color("primary_text"))
-        icon_in_check_column = element == QStyle.CE_MenuItem and not option.icon.isNull() and             option.menuItemType in (QStyleOptionMenuItem.Normal, QStyleOptionMenuItem.SubMenu)
+        icon_in_check_column = (element == QStyle.CE_MenuItem and not option.icon.isNull()
+                                and option.menuItemType in (QStyleOptionMenuItem.Normal, QStyleOptionMenuItem.SubMenu))
         if icon_in_check_column:   # the icon is drawn below, in the column of the checkmarks; the style draws neither here
             icon, checked = option.icon, option.checkType != QStyleOptionMenuItem.NotCheckable and option.checked
             option = QStyleOptionMenuItem(option)

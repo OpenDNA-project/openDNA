@@ -48,7 +48,7 @@ Checks the flags, colour and display-filter behaviour of the four primer origins
 
 ## `test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.04 s · [line 220](../../tests/test_primer_design.py#L220) · **Area:** Primer design on circular DNA · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 220](../../tests/test_primer_design.py#L220) · **Area:** Primer design on circular DNA · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, designing primers for a target at or across a plasmid's origin could return nothing, or primers whose bases are not actually on the template or whose product does not contain the target.
 
@@ -56,7 +56,7 @@ Checks that on a circular 3000 bp sequence the designer returns pairs for a targ
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | circular 3000 bp, targets (0,200), (2800,3000), (2900,3100) (across the origin), window 0 and 40 | non-empty pairs in every case |
+| 1 | circular 3000 bp, targets (0,200), (2800,3000), (2900,3100) (across the origin), window 0 (no Tm limit) and 40 | non-empty pairs in every case |
 | 2 | each returned pair | fwd bases equal (seq*2)[start:end]; rev bases equal the reverse complement of (seq*2)[start:end] |
 | 3 | the gap between each primer's 5' end and the target | both (start - fwd.start) mod n and (rev.end - end) mod n are <= the window |
 | 4 | the reported size | size == before + (end-start) + after; with window 0, size == end-start |
