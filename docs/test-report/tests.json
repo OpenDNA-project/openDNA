@@ -4483,7 +4483,7 @@
    "id": "tests/test_documents.py::test_saving_never_damages_the_original",
    "area": "Safe saving",
    "role": "Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.",
-   "purpose": "Forces GenBank and FASTA saves to fail in several ways and checks the original file, the modified flag and the directory are untouched with no temp files left, and that a later save works. Also checks the Windows-retry rename helper and that autosave writes beside the file without counting as a save.",
+   "purpose": "Forces GenBank and FASTA saves to fail in several ways and checks the original file, the modified flag and the directory are untouched with no temp files left, and that a later save works. Also checks the Windows-retry rename helper and that autosave writes its copy in the data folder, never beside the file and never as a save; that a copy an older version left beside the file is adopted; and that the start-up sweep deletes only old copies of files that are gone.",
    "cases": [
     {
      "input": "save_genbank with primer site 1..99999 on a 407 bp doc",
@@ -4518,8 +4518,16 @@
      "expected": "OSError in under 2 s (no pointless retry)"
     },
     {
-     "input": "autosave_path('plasmid.dna') and ('genome.fa','chr2'); write_genbank to autosave path after an edit",
-     "expected": "names 'plasmid.dna.autosave.gb' and 'genome.fa.chr2.autosave.gb'; user's file unchanged, doc still modified; autosave file holds the edited sequence"
+     "input": "autosave_path for plasmid.dna in two folders, and genome.fa record chr2; write_genbank to the autosave path after an edit",
+     "expected": "copies in the autosave folder named plasmid.dna-<hash>..., different for the two folders; genome.fa.chr2-<hash>...; nothing beside the files; user's file unchanged, doc still modified; the copy holds the edit"
+    },
+    {
+     "input": "an old plasmid.dna.autosave.gb beside the file, adopt_old; then an older one again",
+     "expected": "moved into the data folder with its .src note; the second (older) one is deleted and the first kept"
+    },
+    {
+     "input": "sweep with: old copy of a missing file, old copy of an existing file, new copy of a missing file",
+     "expected": "only the first (and its .src) is deleted"
     }
    ],
    "oracle": "property/invariant",
@@ -6107,6 +6115,10 @@
    "role": "Without it the range box could select the wrong bases, pasted protein text could keep junk characters, and bad names, NCBI keys or primer lists could end up stored in the primer database.",
    "purpose": "Checks the range box parser on common notations and refusals, cleaning of pasted protein text, the name and API-key validators, single-primer problems, a deliberately bad TSV primer list and a FASTA list (each refused line numbered with its reason), a binary file, and that the primer database itself refuses invalid add / add_many / update.",
    "cases": [
+    {
+     "input": "selection_range for 100..200, a cursor, 3699..3830 on 3780 bp, and the whole sequence, typed back through parse_range as 'first..last'",
+     "expected": "(101, 200); (None, None); (3700, 50); each round-trips to the same (start, end)"
+    },
     {
      "input": "parse_range '101..200' on a 3780 bp circle",
      "expected": "(100, 200)"

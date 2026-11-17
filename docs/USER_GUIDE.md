@@ -448,8 +448,8 @@ or extends the conda environment `opendna-tools` (bioconda) inside WSL's conda. 
 [folder]` simulates ONT and Element reads of a plasmid with typical cloning errors (mutations, indels, inversion,
 duplication, mixed populations) and maps them with the Align reads pipeline; `truth.tsv` lists what was planted.
 
-Unsaved work is autosaved every minute to `<file>.autosave.gb` next to the file; reopening the
-file after a crash offers to recover it. The copy is deleted on save or a clean close.
+Unsaved work is autosaved every minute to the program's data folder (`autosave\` in `%APPDATA%\openDNA` on Windows), not next to your file; reopening the
+file after a crash offers to recover it. The copy is deleted on save or a clean close. (A copy that an older version left beside a file is moved there and offered once.)
 
 `core/vendor/gb-io` is a patched copy of the gb-io crate (GenBank writer wrapping fix);
 see the note in `core/Cargo.toml`.

@@ -13,7 +13,7 @@ import pytest
 
 import validate
 from editor import clean_pasted_protein
-from main import parse_range
+from main import parse_range, selection_range
 from primer_db import db, primer_problem
 from primer_panel import import_primers, parse_primer_list
 
@@ -32,6 +32,12 @@ def test_typed_or_imported_text_is_parsed_or_refused_with_a_reason(tmp_path):
     for bad in ("", "abc", "1..2..3", "0..10", "100..4000"):
         with pytest.raises(ValueError):
             parse_range(bad, 3780, True)
+    # the From / To boxes show the selection so that typing it back gives the same selection
+    assert selection_range(100, 200, 3780) == (101, 200) and selection_range(5, 5, 3780) == (None, None)
+    assert selection_range(3699, 3830, 3780) == (3700, 50), "through the origin: the last base is below the first"
+    for start, end in ((0, 3780), (0, 1), (100, 200), (3779, 3780), (3699, 3830)):
+        first, last = selection_range(start, end, 3780)
+        assert parse_range(f"{first}..{last}", 3780, True) == (start, end)
 
     # --- pasted protein text: header, numbers and spaces dropped, anything else refused
     assert clean_pasted_protein(">p\nMKT AYI\n10 AKQ") == "MKTAYIAKQ"

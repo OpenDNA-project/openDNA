@@ -25,7 +25,7 @@ __pycache__/
 # Simulated reads (tests/fake_reads.py)
 /tests/fake_reads/
 
-# Autosave recovery copies
+# Autosave recovery copies (now in the data folder; older versions wrote them beside the file)
 *.autosave.gb
 
 # Sequencing data anywhere in the tree (tests build their own tiny files in temp folders)

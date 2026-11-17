@@ -6,6 +6,7 @@ Run:  python app/main.py [file.gb | file.dna | genome.fa]
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -50,6 +51,7 @@ from primer_panel import export_for_ordering, import_primers
 from primer_design import design_for_selection
 from structure_dialog import StructureDialog
 from search_bar import SearchBar
+from range_boxes import RangeBoxes
 from file_tabs import FileHost, FileStrip, all_pages, find_open, mode, open_in_tabs, set_open_in_tabs, window_settings
 from genome_view import GenomeView
 import feedback
@@ -79,6 +81,8 @@ import fileio
 import shutil
 from file_history import FileHistory
 import add_record
+import autosave
+from autosave import autosave_path
 from add_record import AddRecordsDialog
 import multigb
 from uikit import plural, run_busy
@@ -94,13 +98,6 @@ ANNOTATION_FILTER = "Annotation tracks (*.gff *.gff3 *.gtf *.bed);;All files (*)
 VCF_FILTER = "Variants (*.vcf *.vcf.gz);;All files (*)"
 BAM_FILTER = "Aligned reads (*.bam);;All files (*)"
 AUTOSAVE_MS = 60_000
-
-
-def autosave_path(path, record=None):
-    """Recovery copy next to the file: plasmid.dna -> plasmid.dna.autosave.gb
-    (FASTA: one per sequence, genome.fa.chr2.autosave.gb)."""
-    path = Path(path)
-    return path.with_name(path.name + (f".{record}" if record else "") + ".autosave.gb")
 
 
 def is_fasta(path):
@@ -145,6 +142,14 @@ def parse_range(text, length, circular):
     return a - 1, b
 
 
+def selection_range(start, end, length):
+    """What the From / To boxes show for the selection [start, end): (first base, last base), 1-based and included; a selection
+    through the origin of a circular sequence (end > length) has a last base below the first. (None, None): nothing selected."""
+    if end <= start:
+        return None, None
+    return start + 1, end - length if end > length else end
+
+
 def other_records_note(editor, picker_count):
     """' (only chr3: the other 23 sequences of genome.fa are not included)' when a one-sequence copy leaves records behind."""
     if editor.fasta_record and picker_count > 1:
@@ -160,6 +165,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self._typing_range = False
         self.host = None   # the FileHost this page is in (set by FileHost.add_page)
         self.editor = None
         self.workspace = None
@@ -506,12 +512,9 @@ class MainWindow(QMainWindow):
         self.doc_actions.append(self.search_bar)
         # One box selects a stretch: "101..200" (1-based, both included; on a circular sequence "3700..50" runs through the
         # origin), or one number for the cursor after that base. It takes the room two number boxes and a button took.
-        self.range_box = QLineEdit(placeholderText="Select 101..200", clearButtonEnabled=True, maxLength=40)
-        self.range_box.setFixedWidth(self.range_box.fontMetrics().horizontalAdvance("100,000..100,100") + 30)   # (longer: scrolls)
-        self.range_box.setToolTip("Select a stretch of bases: 101..200 (also 101-200 or 101 to 200), both ends included.\n"
-                                  "On a circular sequence, 3700..50 selects through the origin. One number puts the cursor after "
-                                  "that base. Enter selects.")
-        self.range_box.returnPressed.connect(self.select_range)
+        self.range_box = RangeBoxes()
+        self.range_box.edited.connect(self._range_edited)
+        self.range_box.submitted.connect(self.select_range)
         toolbar.addWidget(self.range_box)
         self.doc_actions.append(self.range_box)
         # Everything else is in the second row, at the right end of the view tabs (the Workspace's corner, left of the quick
@@ -799,6 +802,7 @@ class MainWindow(QMainWindow):
                 record = record if record in names else names[0]
             else:
                 record = None
+            autosave.adopt_old(path, record)   # (a copy an earlier version wrote beside the file)
             recovery = autosave_path(path, record)
             recovered = False
             if cached is None and recovery.exists() and recovery.stat().st_mtime > Path(path).stat().st_mtime and \
@@ -811,7 +815,7 @@ class MainWindow(QMainWindow):
             elif cached is not None:
                 doc = cached
             else:
-                recovery.unlink(missing_ok=True)  # declined or stale
+                autosave.drop(recovery)  # declined or stale
                 label = f"Loading {record or Path(path).name}…"
                 if project:
                     doc, meta = run_busy(self, label, lambda: exports.open_project(path))
@@ -917,7 +921,8 @@ class MainWindow(QMainWindow):
     def _ask_recover(self, path, recovery):
         """Recover the autosaved changes? Buttons that say what happens: declining deletes the recovery copy for good."""
         box = QMessageBox(QMessageBox.Question, "Recover Unsaved Changes",
-                          f"{Path(path).name} has unsaved changes from an earlier session (autosaved {recovery.name}).", parent=self)
+                          f"{Path(path).name} has unsaved changes from an earlier session (autosaved "
+                          f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(recovery.stat().st_mtime))}).", parent=self)
         box.setInformativeText("Discarding deletes the recovery copy; the file itself is not changed either way.")
         recover = box.addButton("&Recover Changes", QMessageBox.AcceptRole)
         box.addButton("&Discard Changes", QMessageBox.DestructiveRole)
@@ -1009,7 +1014,7 @@ class MainWindow(QMainWindow):
             return False
         self.record_docs.pop(name, None)
         self.file_history.forget(name)
-        autosave_path(ed.path, name).unlink(missing_ok=True)
+        autosave.drop_all(ed.path, name)
         lengths = dict(ed.fasta_records)
         self._set_record_list([(n, lengths[n]) for n in keep])
         self._update_undo_actions()
@@ -1086,6 +1091,7 @@ class MainWindow(QMainWindow):
             ed.changed.connect(lambda: ed is self.editor and self._observe_history())
             self._observe_history()
         ed.selection_changed.connect(self._update_status)
+        ed.selection_changed.connect(self._show_range)
         ed.error.connect(lambda msg: self.statusBar().showMessage(msg, 5000))
         ed.edit_feature_requested.connect(lambda i: edit_feature(self, ed, i))
         ed.edit_primer_requested.connect(lambda name: PrimerDialog(self, ed, name).exec())
@@ -1098,7 +1104,7 @@ class MainWindow(QMainWindow):
         self.search_bar.attach(ed)
         self.display_dock.setWidget(DisplayPanel(ed))
         self.history_dock.setWidget(HistoryPanel(ed))
-        self.range_box.clear()
+        self._show_range()
 
         # Always the standard tabs (see workspace.DEFAULT); only a project carries its own layout.
         self._build_workspace(layout or DEFAULT_LAYOUT, current)
@@ -1624,6 +1630,28 @@ class MainWindow(QMainWindow):
         self.complement_action.setChecked(ed.show_complement)
         self.cds_only_action.setChecked(ed.cds_only)
 
+    def _show_range(self):
+        """The From / To boxes follow the selection (not while their own typing is what changed it)."""
+        if self.editor is not None and not self._typing_range:
+            self.range_box.show_range(*selection_range(self.editor.start, self.editor.end, self.editor.length))
+
+    def _range_edited(self):
+        """Typing in From / To changes the selection as it goes; text that is not yet a stretch (half typed, out of range) is left
+        alone, without a message."""
+        ed = self.editor
+        if ed is None:
+            return
+        try:
+            start, end = parse_range(self.range_box.text(), ed.length, ed.circular)
+        except ValueError:
+            return
+        self._typing_range = True
+        try:
+            ed.select(start, end)
+            ed.reveal.emit(ed.start)
+        finally:
+            self._typing_range = False
+
     def select_range(self, text=None):
         """The toolbar's range box (or `text`): select that stretch, or put the cursor after one base. A typing mistake is said
         in the status bar and the box keeps the text, to correct."""
@@ -1767,13 +1795,14 @@ class MainWindow(QMainWindow):
         except OSError as e:
             self.statusBar().showMessage(f"Autosave failed: {e}", 5000)
             return
+        autosave.remember_source(target, ed.path)
         if self.autosave_file not in (None, target):
             self._drop_autosave()  # file was renamed by Save As
         self.autosave_file, self.autosaved_version = target, ed.version
 
     def _drop_autosave(self):
         if self.autosave_file is not None:
-            self.autosave_file.unlink(missing_ok=True)
+            autosave.drop(self.autosave_file)
             self.autosave_file = None
 
     def tab_title(self):
@@ -2026,6 +2055,7 @@ if __name__ == "__main__":
     app.setApplicationName(project.NAME)   # the data folder is then %APPDATA%\openDNA whether run from source or as the exe
     copy_old_data()   # settings and primers kept under the old name come along, before anything reads the data folder
     feedback.setup_logging()
+    autosave.sweep()   # recovery copies of files that are gone (see autosave.py)
     theme.apply(theme.saved(), remember=False)
     win = new_window()
     # Options: --welcome opens the start page even if it was shown today or turned off. Anything else is a file to open.

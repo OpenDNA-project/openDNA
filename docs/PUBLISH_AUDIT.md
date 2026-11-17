@@ -310,7 +310,7 @@ All writes found by searching `app/` for `open(`, `write_text`, `write_bytes`, `
 - **Log files** (`app/feedback.py`): `<data folder>\logs\opendna.log`, 3 x 500 KB, scrubbed.
 - **Self-update** (`app/updater.py`): writes the new exe beside the running one, renames the running one to `openDNA.exe.old`, relaunches. That is a write to the program's own folder,
   but only after the user presses the button and the SHA-256 matched. (This replaces the earlier statement that nothing is written in the program's own folder.)
-- **Next to the user's file**: `<file>.autosave.gb` recovery copy every minute (deleted on save or clean close; for a `.dna` file the copy goes beside it and the
+- **In the data folder (`autosave/`)**: `<file>-<hash>.autosave.gb` recovery copy every minute (deleted on save or clean close; older versions wrote it beside the file; for a `.dna` file the
   `.dna` itself is never written), and Save / Save As where the user chooses. Save is atomic (temp file then rename, `app/primer_db.py:48-52` and the editor).
 - **Next to the output chosen in Map Reads**: `<out>_run\` with `ref.fa`, `command.txt`, `log.txt` and the BAM (`app/runner.py:105-118`, `app/main.py:681-683`).
 - `%TEMP%\opendna_fold_*`: scratch folder for a Local command, removed afterwards (`structure.py:170`).
