@@ -4,8 +4,10 @@ import threading
 
 import shiboken6
 
-from PySide6.QtCore import QEvent, QEventLoop, QObject, Qt, QTimer
-from PySide6.QtWidgets import QApplication, QHeaderView, QProgressDialog, QPushButton, QTableView
+from PySide6.QtCore import QEvent, QEventLoop, QModelIndex, QObject, QSettings, Qt, QTimer
+from PySide6.QtWidgets import (
+    QApplication, QHeaderView, QMessageBox, QProgressDialog, QPushButton, QStyle, QStyleOptionViewItem, QTableView, QTreeView,
+)
 
 # Words whose plural is not the word + "s".
 _IRREGULAR = {"copy": "copies", "match": "matches", "mismatch": "mismatches", "ORF": "ORFs", "is": "are", "was": "were",
@@ -35,7 +37,6 @@ def no_auto_default(*widgets):
 
 
 def _column_settings():
-    from PySide6.QtCore import QSettings
     from primer_db import data_dir
     return QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat)
 
@@ -133,7 +134,6 @@ class _Fitter(QObject):
         """Its widest cell, or its header's text with the style's margins and room for a sort arrow (and a filter mark).
         (Not Qt's own measure of the header section: with sorting on, it gives every column the room of the sort arrow at the
         style's size, which the Windows style makes large, so every column came out tens of pixels wider than it needs.)"""
-        from PySide6.QtWidgets import QStyle
         v, h = self.view, self.header
         margin = v.style().pixelMetric(QStyle.PM_HeaderMargin, None, h)
         text = str(v.model().headerData(column, Qt.Horizontal) or "")
@@ -146,8 +146,6 @@ class _Fitter(QObject):
         """The widest cell of a column, every row counted. Qt's own sizeHintForColumn only measures the rows in sight, so in a
         short window (a laptop, the Windows test machine's screen) a long name further down was cut off. A view that measures
         its column itself (a sizeHintForColumn of its own, e.g. one that skips spanned group rows) keeps its way."""
-        from PySide6.QtCore import QModelIndex
-        from PySide6.QtWidgets import QStyleOptionViewItem, QTreeView
         v = self.view
         model = v.model()
         own = any("sizeHintForColumn" in vars(k) for k in type(v).__mro__ if not k.__module__.startswith(("PySide6", "Shiboken")))
@@ -231,7 +229,6 @@ def right_aligned(item):
     """A table item holding a number: right-aligned (digits line up), vertically centred."""
     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
     return item
-
 
 
 class _BusyDialog(QProgressDialog):
@@ -322,7 +319,6 @@ def ask(parent, title, text, choices, default=None, detail=""):
     """A question whose buttons say what they do ("Delete Gene and Parts", "Delete Gene Only", Cancel) instead of Yes / No /
     Cancel with their meaning spelled out in the text. `choices`: [(key, button text)]; returns the key clicked, None for Cancel
     (and Escape). `default`: the key of the button Enter presses (None: Cancel)."""
-    from PySide6.QtWidgets import QMessageBox
     box = QMessageBox(QMessageBox.Question, title, text, parent=parent)
     if detail:
         box.setInformativeText(detail)

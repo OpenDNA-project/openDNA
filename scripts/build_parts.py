@@ -60,6 +60,8 @@ def kind_of(kind, name):
     if "origin" in low or low.endswith("_ori") or low == "orit":
         return "rep_origin" if "orit" not in low else "oriT"
     return kind
+
+
 HEADER = [
     "#title: Cloning vectors (NCBI records)",
     "#reference: Annotated features of public NCBI GenBank records of well-known cloning vectors "
@@ -178,8 +180,8 @@ def write(parts):
 def recurate():
     """Run the curation rules over the collection already on disk, without fetching anything.
     The result is what a full rebuild would write, so the two cannot drift apart."""
-    rows = [r for r in csv.DictReader([line for line in open(OUT, encoding="utf-8")
-                                       if not line.startswith("#")], delimiter="\t")]
+    with open(OUT, encoding="utf-8") as fh:
+        rows = list(csv.DictReader([line for line in fh if not line.startswith("#")], delimiter="\t"))
     before = [(r["name"], r["type"], r["sequence"], r["source"]) for r in rows]
     after = curate(before)
     # A renamed or merged part is still there under its canonical name: report it apart from a real drop.

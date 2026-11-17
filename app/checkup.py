@@ -134,10 +134,7 @@ def to_oriented(start, end, strand, n):
 
 
 def to_genomic(a, b, strand, n):
-    if strand > 0:
-        s = a % n
-    else:
-        s = (n - b) % n
+    s = a % n if strand > 0 else (n - b) % n
     return s, s + (b - a)
 
 
@@ -951,8 +948,7 @@ class CheckupDialog(ToolDialog):
         tool_settings.notifier.changed.connect(self._settings_changed)  # bound method: dropped with the dialog
         # The temporary features go with the panel (closed pane, closed window). A lambda holding the editor only:
         # by the time `destroyed` fires the panel's Python side may be gone.
-        editor_ = editor
-        self.destroyed.connect(lambda *_: clear_overlay(editor_))
+        self.destroyed.connect(lambda *_: clear_overlay(editor))
         self.refresh()
 
     def _settings_changed(self, tool):

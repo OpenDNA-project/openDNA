@@ -209,7 +209,6 @@ class MapView(QWidget):
             self.update()
         elif not self.editor.doc.circular and self.editor.length > 1:
             a, b = self._win()
-            x0, w, _, _ = self._linear()
             delta = event.angleDelta()
             if event.modifiers() & Qt.ShiftModifier or abs(delta.x()) > abs(delta.y()):   # pan: a tenth of the view per notch
                 step = (delta.x() or delta.y()) / 120 * (b - a) * 0.1
@@ -233,7 +232,6 @@ class MapView(QWidget):
 
     def resizeEvent(self, event):
         self._invalidate()
-        self._place_zoom_bar()
 
     def theme_changed(self):
         """Light / dark switch (theme.refresh_views): the cached map was drawn in the old colours."""

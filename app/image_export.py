@@ -186,8 +186,8 @@ class ImageExportDialog(QDialog):
         self.warning.setFixedHeight(3 * self.warning.fontMetrics().lineSpacing() + 4)
         self.info = QLabel()
         self.dpi.valueChanged.connect(self._dpi_changed)
-        for w in (self.format, self.scale):
-            (w.currentIndexChanged if w is self.format else w.valueChanged).connect(self._update)
+        self.format.currentIndexChanged.connect(self._update)
+        self.scale.valueChanged.connect(self._update)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.ok = buttons.button(QDialogButtonBox.Ok)
         self.ok.setText("Export…")

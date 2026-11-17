@@ -109,7 +109,7 @@ class StructureCanvas(QWidget):
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.residues, self.ligands, self.to_model, self.to_protein = [], [], {}, {}
+        self.residues, self.ligands, self.to_model, self.to_protein, self.chains = [], [], {}, {}, []
         self.highlight, self.mode, self.plddt = set(), "Rainbow", False
         self.hidden = set()   # chains ("A") and ligand groups ("HEM A900") not drawn
         self.points, self.owner, self.links, self.cas, self.atoms = [], [], [], [], {}
@@ -120,6 +120,7 @@ class StructureCanvas(QWidget):
         """Show `found` (a structure.Structure) for the amino acids `protein`."""
         self.residues, self.ligands = structure.model_of(found.pdb)
         self.plddt = found.plddt
+        self.chains = sorted({r.chain for r in self.residues})
         self.to_model = structure.residue_map(protein, self.residues)
         self.to_protein = {k: i for i, ks in self.to_model.items() for k in ks}
         centre = [sum(r.ca[n] for r in self.residues) / max(len(self.residues), 1) for n in range(3)]
@@ -166,8 +167,7 @@ class StructureCanvas(QWidget):
         if self.mode == "Confidence" and self.plddt:
             return next((c for lo, c, _ in structure.PLDDT_BANDS if r.b >= lo), structure.PLDDT_BANDS[-1][1])
         if self.mode == "Chain":
-            chains = sorted({x.chain for x in self.residues})
-            return CHAIN_COLOURS[chains.index(r.chain) % len(CHAIN_COLOURS)]
+            return CHAIN_COLOURS[self.chains.index(r.chain) % len(CHAIN_COLOURS)]
         if self.mode == "Secondary structure":
             return SS_COLOURS[r.ss]
         if self.mode in AA_SCHEMES:
@@ -423,8 +423,7 @@ class StructureView(QWidget):
         self.fields.setColumnStretch(3, 1)
         self.parts.clear()
         residues = self.canvas.residues
-        chains = sorted({r.chain for r in residues})
-        for n, c in enumerate(chains):
+        for n, c in enumerate(self.canvas.chains):
             swatch = QPixmap(10, 10)
             swatch.fill(QColor(CHAIN_COLOURS[n % len(CHAIN_COLOURS)]))   # the colours of the "Chain" colouring
             self._add_part(f"Chain {c} · {sum(r.chain == c for r in residues):,} aa", c, QIcon(swatch))

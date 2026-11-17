@@ -162,13 +162,7 @@ fn parse_gff(line: &str) -> Option<Option<(String, Item)>> {
     let mut attrs: HashMap<String, String> = HashMap::new();
     for part in f[8].split(';') {
         let part = part.trim();
-        let (k, v) = match part.split_once('=') {
-            Some(kv) => kv,
-            None => match part.split_once(' ') {
-                Some(kv) => kv,
-                None => continue,
-            },
-        };
+        let Some((k, v)) = part.split_once('=').or_else(|| part.split_once(' ')) else { continue };
         attrs.insert(k.trim().to_string(), decode(v.trim().trim_matches('"')));
     }
     let name = ["Name", "gene_name", "gene", "locus_tag", "gene_id", "ID", "transcript_id"]

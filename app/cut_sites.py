@@ -20,7 +20,7 @@ the bases under the feature (read along the feature's strand), so editing the se
 from collections import namedtuple
 from types import SimpleNamespace
 
-from enzymes import notation, revcomp_site, site_spans
+from enzymes import COMMON, find_cuts, notation, revcomp_site, site_spans
 
 # ---- Cas nucleases ----------------------------------------------------------------------------------------------------
 
@@ -236,11 +236,14 @@ def _rich(enzyme, seq, circular, top, bottom):
         return enzyme_tip(enzyme, seq, circular, top, bottom)
 
 
+def _common(name):
+    return next((e for e in COMMON if e.name == name), None)
+
+
 def hover_site(editor, key):
     """What the sequence view draws while the pointer rests on a restriction cut: (start, end, top cut, bottom cut) of its
     recognition site, the cuts counted on from the site (not reduced, see locate_site); None if `key` (see hover.describe_cut)
     is not the cut of a known enzyme (a Cas9 guide has no recognition site)."""
-    from enzymes import COMMON, find_cuts
     seq, circular = editor.doc.sequence(), editor.doc.circular
     if key[0] == "site":
         name, top = key[1], key[2]
@@ -251,7 +254,7 @@ def hover_site(editor, key):
             return None
         name, top = marks[key[2]].label, marks[key[2]].top
         pair = (top, marks[key[2]].bottom)
-    enzyme = next((e for e in COMMON if e.name == name), None)
+    enzyme = _common(name)
     if enzyme is None:
         return None
     if pair is None:
@@ -265,8 +268,7 @@ def hover_site(editor, key):
 def unique_site_tip(editor, name, pos):
     """Tooltip for an enzyme name drawn on the sequence (View > Restriction Sites): the enzyme `name` cutting the top strand at
     gap `pos`."""
-    from enzymes import COMMON, find_cuts
-    enzyme = next((e for e in COMMON if e.name == name), None)
+    enzyme = _common(name)
     if enzyme is None:
         return ""
     seq = editor.doc.sequence()
@@ -276,8 +278,7 @@ def unique_site_tip(editor, name, pos):
 
 def enzyme_mark_tip(editor, name, top, bottom):
     """Tooltip for a digest's cut mark (enzyme `name`, top and bottom cut gaps)."""
-    from enzymes import COMMON
-    enzyme = next((e for e in COMMON if e.name == name), None)
+    enzyme = _common(name)
     if enzyme is None:
         return ""
     return _rich(enzyme, editor.doc.sequence(), editor.doc.circular, top, bottom)

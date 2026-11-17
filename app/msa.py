@@ -179,5 +179,5 @@ def align(names, seqs, reference=0):
         rows.append(new)
         order.append(nxt)
         todo.discard(nxt)
-    by_input = {src: row for src, row in zip(order, rows)}
+    by_input = dict(zip(order, rows))
     return Alignment(names, [by_input[i] for i in range(len(seqs))], reference)

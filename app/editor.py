@@ -1040,9 +1040,13 @@ class Editor(QObject):
         """Clipboard content for a copy: the bases as plain text (for any other program),
         plus the bases and features as JSON under CLIP_MIME, so pasting in another
         openDNA window, even one in another running copy of the app, keeps them."""
-        bases = self.copy()
+        self.copy()
+        return self._clip_mime()
+
+    @staticmethod
+    def _clip_mime():
         mime = QMimeData()
-        mime.setText(bases)
+        mime.setText(Editor.clip[0])
         mime.setData(CLIP_MIME, json.dumps(Editor.clip).encode())
         return mime
 
@@ -1053,10 +1057,7 @@ class Editor(QObject):
         bases = reverse_complement(self.selected_sequence())
         features = [(f.kind, f.location, f.qualifiers) for f in self.doc.copy_features_reversed(self.start, self.end)]
         Editor.clip = (bases, features)
-        mime = QMimeData()
-        mime.setText(bases)
-        mime.setData(CLIP_MIME, json.dumps(Editor.clip).encode())
-        return mime
+        return self._clip_mime()
 
     def paste_mime(self, mime):
         clip = None

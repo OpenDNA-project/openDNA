@@ -191,14 +191,11 @@ class MsaView(QWidget):
             self.auto()
 
     # ---- gathering the sequences ---------------------------------------------------------------------------------------------------
-    def _open_name(self):
-        return open_name(self.editor)
-
     def gather(self):
         """[(name, bases)] of the sequences chosen in "Sequences", or None when the choice was cancelled."""
         ed, kind = self.editor, self.source.currentText()
         if kind == SOURCES[2]:
-            out = [(self._open_name(), ed.doc.sequence())]
+            out = [(open_name(ed), ed.doc.sequence())]
             if ed.end > ed.start:
                 out.append((f"selection {ed.start + 1}-{ed.end}", ed.selected_sequence()))
             return out
@@ -271,7 +268,7 @@ class MsaView(QWidget):
         """The row that is the open sequence (its record, or the whole sequence in "Open sequence + selection"), or None."""
         if self.alignment is None:
             return None
-        name = self._open_name()
+        name = open_name(self.editor)
         return self.alignment.names.index(name) if name in self.alignment.names else None
 
     def _column_clicked(self, col):

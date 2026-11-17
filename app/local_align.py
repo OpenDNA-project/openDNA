@@ -124,7 +124,7 @@ def junction_text(prev, cur, n, circular):
     q = f"{qgap:,} bp unmatched in the query" if qgap > 0 else (f"queries overlap by {-qgap:,} bp" if qgap < 0 else "")
     t = f"{tgap:,} bp of the template skipped" if tgap > 0 else (f"template back {-tgap:,} bp" if tgap < 0 else "")
     detail = "; ".join(x for x in (q, t) if x)
-    return f"{label}" + (f": {detail}" if detail else "")
+    return label + (f": {detail}" if detail else "")
 
 
 def summarize(hits, n, circular):

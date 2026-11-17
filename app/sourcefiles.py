@@ -17,11 +17,15 @@ def _settings():
     return QSettings(str(data_dir() / "recent.ini"), QSettings.IniFormat)
 
 
-def recent_files():
-    """Paths opened lately, newest first, that still exist."""
-    value = _settings().value(KEY, [])
+def _existing(key):
+    value = _settings().value(key, [])
     paths = [value] if isinstance(value, str) else list(value or [])
     return [p for p in paths if Path(p).exists()]
+
+
+def recent_files():
+    """Paths opened lately, newest first, that still exist."""
+    return _existing(KEY)
 
 
 def add_recent(path):
@@ -32,9 +36,7 @@ def add_recent(path):
 
 def pinned_files():
     """Paths pinned on the start page (kept on top, never pushed out by newer files), that still exist."""
-    value = _settings().value(PIN_KEY, [])
-    paths = [value] if isinstance(value, str) else list(value or [])
-    return [p for p in paths if Path(p).exists()]
+    return _existing(PIN_KEY)
 
 
 def set_pinned(path, pinned):

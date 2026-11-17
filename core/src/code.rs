@@ -131,7 +131,7 @@ impl GeneticCode {
     /// finder always did); with it true every start codon of the table counts (e.g. GTG and TTG in table 11).
     pub fn is_start(&self, codon: &[u8], alternative: bool) -> bool {
         if !alternative {
-            return codon_index(codon).is_some() && codon_index(codon) == codon_index(b"ATG");
+            return codon_index(codon) == codon_index(b"ATG");
         }
         codon_index(codon).is_some_and(|i| self.starts.as_bytes()[i] == b'M')
     }

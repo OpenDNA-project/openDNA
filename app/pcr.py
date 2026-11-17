@@ -15,7 +15,7 @@ from html import escape
 from opendna_core import dimer
 
 from primer_db import add_primers
-from primer_design import design
+from primer_design import design, salt
 from primer_panel import (MARKS, MAX_NAME, ReportView, conditions, is_degenerate, limit, primer_checks, primer_problem, warm_genome,
                           worst)
 from tools import ToolDialog, pcr_product, product_range
@@ -417,7 +417,6 @@ def heterodimer(forward, reverse):
     name = "Heterodimer (F × R)"
     if is_degenerate(forward) or is_degenerate(reverse):
         return (name, "info", "not calculated for a degenerate primer")
-    c = conditions()
-    anywhere, end = dimer(forward.upper(), reverse.upper(), **{k: c[k] for k in ("na_mm", "mg_mm", "dntp_mm")})
+    anywhere, end = dimer(forward.upper(), reverse.upper(), **salt(conditions()))
     level = "bad" if end < limit("dimer3_bad") or anywhere < limit("dimer_bad") else "warn" if end < -5 or anywhere < -9 else "ok"
     return (name, level, f"ΔG {anywhere:.1f} (3′ end {end:.1f}) kcal/mol")

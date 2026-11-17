@@ -189,8 +189,8 @@ pub fn find_protein_with(seq: &[u8], query: &[u8], max_mismatches: usize, limit:
     }
     let upper: Vec<u8> = seq.iter().map(|b| b.to_ascii_uppercase()).collect();
     let mut hits = Vec::new();
-    for forward in [true, false] {
-        let strand = if forward { upper.clone() } else { revcomp(&upper) };
+    let reverse = revcomp(&upper);
+    for (forward, strand) in [(true, &upper), (false, &reverse)] {
         for frame in 0..3 {
             let protein = table.translate(&strand[frame..]);
             if protein.len() < q.len() {

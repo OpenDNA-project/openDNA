@@ -34,7 +34,6 @@ ENZYMES = [
     ("AluI", "AGCT", 2, 2), ("HaeIII", "GGCC", 2, 2), ("MspI", "CCGG", 1, 3), ("RsaI", "GTAC", 2, 2),
     ("Sau3AI", "GATC", 0, 4), ("TaqI", "TCGA", 1, 3),
 ]
-_ACGT = str.maketrans("ACGT", "TGCA")
 _IUPAC_COMPLEMENT = str.maketrans("ACGTRYSWKMBDHVN", "TGCAYRSWMKVHDBN")
 _IUPAC = {"A": "A", "C": "C", "G": "G", "T": "T", "R": "AG", "Y": "CT", "S": "CG", "W": "AT", "K": "GT", "M": "AC", "B": "CGT",
           "D": "AGT", "H": "ACT", "V": "ACG", "N": "ACGT"}

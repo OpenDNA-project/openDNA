@@ -108,7 +108,7 @@ def _segments(a, b, d, starts, k, mismatches):
 def _overlap(a, b, n):
     """Bases two copies (start, length) share, on a circle of n (n huge for a line)."""
     best = 0
-    for (s1, l1), (s2, l2) in (((a), (b)), ((b), (a))):
+    for (s1, l1), (s2, l2) in ((a, b), (b, a)):
         d = (s2 - s1) % n
         if d < l1:
             best = max(best, min(l1 - d, l2))

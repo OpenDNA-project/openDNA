@@ -248,10 +248,9 @@ class KldPage(QWidget):
             ed.changed.connect(self.timer.start)
 
     def _show_right(self, widget):
-        for old in (self.right, ):
-            if old is not None:
-                old.setParent(None)
-                old.deleteLater()
+        if self.right is not None:
+            self.right.setParent(None)
+            self.right.deleteLater()
         self.right = widget
         self.right_box.addWidget(widget, 1)
 
@@ -315,8 +314,9 @@ class KldPage(QWidget):
         for s, e, t in self.found:
             spots.append((s + shift, s + shift + len(t), self.old[s:e], (s, e, t)))
             shift += len(t) - (e - s)
+        ticked = set(self._checked())
         for cs, ce, was, c in reversed(spots):   # last first: the places before it do not move
-            if not self.manual.get(c, c in self._ticked_keys()):
+            if not self.manual.get(c, c in ticked):
                 doc.replace(cs, ce, was)
         if doc.sequence().upper() != r.product:   # (never expected: the plain sequence still shows the primers)
             from opendna_core import Document
@@ -325,9 +325,10 @@ class KldPage(QWidget):
                                for n, s, _ in r.rows])
         return doc
 
-    def _ticked_keys(self):
-        return {self.changes.item(i).data(Qt.UserRole) for i in range(self.changes.count())
-                if self.changes.item(i).checkState() == Qt.Checked}
+    def _checked(self):
+        """The ticked changes of the list, in order."""
+        return [self.changes.item(i).data(Qt.UserRole) for i in range(self.changes.count())
+                if self.changes.item(i).checkState() == Qt.Checked]
 
     def save_file(self):
         """Save as new file…: the product (annotations and primers included) as a GenBank file, next to the open one."""
@@ -347,10 +348,8 @@ class KldPage(QWidget):
                 self.win.statusBar().showMessage(f"Saved {path}", 5000)
 
     def _design(self):
-        chosen = [self.changes.item(i).data(Qt.UserRole) for i in range(self.changes.count())
-                  if self.changes.item(i).checkState() == Qt.Checked]
         try:
-            self.result = r = design_selected(self.old, chosen, self.editor.circular, self.tm.value(), self.group.value(),
+            self.result = r = design_selected(self.old, self._checked(), self.editor.circular, self.tm.value(), self.group.value(),
                                               self.warn.value())
         except ValueError as e:
             self.result = None

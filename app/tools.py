@@ -529,7 +529,7 @@ class DigestDialog(ToolDialog):
 
     def __init__(self, parent, editor):
         super().__init__(parent)
-        self.editor, self.cuts, self.info = editor, {}, {}
+        self.editor, self.cuts = editor, {}
         self.lanes, self.numbers, self.frags = [set()], [1], []   # per digest: its ticked enzymes and its number (its tab's default name)
         self.setWindowTitle("Restriction Digest")
         self.resize(900, 520)
@@ -622,7 +622,6 @@ class DigestDialog(ToolDialog):
 
     def refresh(self):
         """Find the sites of the enzymes on the current sequence, keeping the ticked ones."""
-        self.info = {e.name: e for e in COMMON}
         self.cuts = find_cuts(self.editor.doc.sequence(), self.editor.doc.circular, COMMON)
         self.sites = {name: sorted({t for t, _ in cuts}) for name, cuts in self.cuts.items()}
         self.show_list()
@@ -671,9 +670,8 @@ class DigestDialog(ToolDialog):
                     right_aligned(item)
                 self.table.setItem(i, c, item)
         # The selected digest's cuts on the sequence, on both strands.
-        ed = self.editor
-        tip = lambda name, top, bottom: (lambda: enzyme_mark_tip(ed, name, top, bottom))   # made on hover, not for every cut
-        self.editor.set_cut_marks("digest", [(top, bottom, name, tip(name, top, bottom)) for name in names for top, bottom in self.cuts[name]])
+        self.editor.set_cut_marks("digest", [(top, bottom, name, self._tip(name, top, bottom))
+                                             for name in names for top, bottom in self.cuts[name]])
         lanes = []
         for k, (n, fr) in enumerate(digests):
             label = "+".join(n) or f"Digest {self.numbers[k]}"

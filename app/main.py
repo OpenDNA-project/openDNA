@@ -22,19 +22,17 @@ from opendna_core import Bam, Document, Fasta, Track
 
 from display_panel import DisplayPanel
 from history_panel import HistoryPanel, side_panel_width
-from editor import Editor, clean_pasted
+from editor import Editor, clean_pasted, primer_sequence, remember_hidden_primers
 from shortcuts import ShortcutsDialog
 from sponsors import SponsorsDialog, show_at_startup
 from feature_dialog import edit_feature
 from feature_table import FeatureTable, features_inside, group_as_gene, reverse_primer_dialog
 from map_view import MapView
-from editor import primer_sequence
 from primer_db import copy_old_data, db
 from perf import PerfWindow
-from primer_panel import PrimerDialog, PrimerPanel, annealed, melting_temp
+from primer_panel import PrimerDialog, PrimerPanel, annealed, export_for_ordering, import_primers, melting_temp
 from assembly_panel import AssemblyPanel, RecombineeringPanel
 from citations import CitationsDialog
-from editor import remember_hidden_primers
 from sourcefiles import add_recent, pinned_files, recent_files
 from local_align import LocalAlignDialog
 from codon_tools import CompareDialog, RecodeDialog
@@ -47,13 +45,11 @@ from checkup import TOOL as CHECKUP
 import image_export
 import ncbi
 from ncbi_dialog import GenomeDialog, NcbiDialog
-from primer_panel import export_for_ordering, import_primers
 from structure_dialog import StructureDialog
 from search_bar import SearchBar
 from range_boxes import RangeBoxes
-from file_tabs import last_host
 import single_instance
-from file_tabs import FileHost, FileStrip, all_pages, find_open, mode, open_in_tabs, set_open_in_tabs, window_settings
+from file_tabs import FileHost, FileStrip, all_pages, find_open, last_host, mode, open_in_tabs, set_open_in_tabs, window_settings
 from genome_view import GenomeView
 import feedback
 import file_assoc

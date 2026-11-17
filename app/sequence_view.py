@@ -948,13 +948,12 @@ class SequenceView(QAbstractScrollArea):
         L = self.editor.length
         band = QColor(theme.color("pill_site"))
         band.setAlpha(170)
+        mid, color = y + self.lh, theme.color("cut")
         for shift in ((0, -L, L) if self.editor.circular else (0,)):   # a site (or cut) across the origin shows on both ends
             a, b = max(s + shift, base0), min(e + shift, base0 + n)
             if a < b:
                 p.fillRect(QRectF(self.left + (a - base0) * self.cw, y, (b - a) * self.cw, self.strand_h), band)
             xt, xb = (self.left + (q + shift - base0) * self.cw for q in (ut, ub))
-            mid = y + self.lh
-            color = theme.color("cut")
             lo, hi = self.left - 1, self.left + n * self.cw + 1
             p.setPen(QPen(color, 4))
             if lo <= xt <= hi:
@@ -1030,7 +1029,6 @@ class SequenceView(QAbstractScrollArea):
                     chars[c + 1 - base0] = code.get(codon, "X")
                 c += 3
             line = "".join(chars)
-            p.setPen(color)
             p.drawText(QPointF(self.left, y + frame * self.lh + self.ascent), line.replace("*", " "))
             for i, aa in enumerate(line):
                 if aa == "*":  # stops stand out: a red block over the codon

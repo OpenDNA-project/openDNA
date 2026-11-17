@@ -344,7 +344,7 @@ class ProteinView(QWidget):
 
     def show_structure(self):
         """The 3D structure window for the protein shown (it stays open while you go on selecting)."""
-        chain = until_stop("".join(aa for _, aa, _, _ in self.src["cods"]))
+        chain = self._chain()
         dialog = StructureDialog(page_of(self) or self.window(), self.src["name"], chain, self.src["accession"], self.src["links"])
         dialog.found.connect(self._got_structure)
         self.dialogs = [d for d in self.dialogs if d.isVisible()] + [dialog]
@@ -357,8 +357,12 @@ class ProteinView(QWidget):
             self.structures.pop(next(iter(self.structures)))
         self.view3d.protein = None        # (a new structure of the same protein replaces the one shown)
         if self.src is not None:
-            self._show_3d(until_stop("".join(aa for _, aa, _, _ in self.src["cods"])))
+            self._show_3d(self._chain())
             self._highlight()
+
+    def _chain(self):
+        """The amino acids of the protein shown, up to its first stop codon."""
+        return until_stop("".join(aa for _, aa, _, _ in self.src["cods"]))
 
     def _show_3d(self, chain):
         """The 3D view of the protein shown, when a structure was got for it; hidden otherwise."""

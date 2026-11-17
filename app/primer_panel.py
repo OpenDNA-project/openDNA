@@ -223,9 +223,12 @@ def genome_query(editor, sequence):
     if g is None:
         return None
     seed, mm = homology_settings()
-    # The annealing part: a lowercase 5' tail does not need to match anywhere.
-    core = sequence[len(sequence) - len(sequence.lstrip("acgtnryswkmbdhv")):] or sequence
-    return g, core, mm, seed, (editor.doc.name, editor.length)
+    return g, annealing_part(sequence), mm, seed, (editor.doc.name, editor.length)
+
+
+def annealing_part(sequence):
+    """The annealing part of a primer: a lowercase 5' tail does not need to match anywhere."""
+    return sequence[len(sequence) - len(sequence.lstrip("acgtnryswkmbdhv")):] or sequence
 
 
 def genome_search(editor, sequence, progress=None, cancel=None):
@@ -372,8 +375,7 @@ def primer_checks(editor, sequence, genome_mode="wait"):
                    _listing([site_text(*x, n) for x in sites]) if sites else "nowhere in this sequence"))
     seed, mm = homology_settings()
     rule = f"last {seed} nt, {'exact' if mm == 0 else f'≤{mm} mismatch'}"
-    # The annealing part: a lowercase 5' tail does not need to match anywhere.
-    core = sequence[len(sequence) - len(sequence.lstrip("acgtnryswkmbdhv")):] or sequence
+    core = annealing_part(sequence)
     full = editor.doc.binding_sites(core, 0, len(core))  # the whole annealing part, exact
     bound = {three_prime_end(x) for x in sites}
     others = [h for h in editor.doc.binding_sites(sequence, mm, seed) if three_prime_end(h) not in bound]

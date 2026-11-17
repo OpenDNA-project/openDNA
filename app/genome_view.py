@@ -319,7 +319,6 @@ class GenomeCanvas(QWidget):
         menu.exec(global_pos)
 
     # ---- painting ------------------------------------------------------------------
-    # ---- painting ------------------------------------------------------------------
     # The tracks are drawn into a cached image (`layer`), redrawn only when what they show
     # changes (view window, size, edits, tracks, settings: `invalidate`). Cursor, selection
     # and the sequence view's frame are drawn on top at every paint, so moving the cursor

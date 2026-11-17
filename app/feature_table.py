@@ -413,9 +413,8 @@ def delete_features(parent, editor, indices):
     chosen = {i for i in indices if i in editor.by_index}
     owned = set()   # parts of the selected genes
     for i in chosen:
-        f = editor.by_index[i]
-        key = genes.group_key(f) if f.kind == genes.GENE else None
-        if key in editor.groups and editor.groups[key].master is f:
+        key = master_key(editor, editor.by_index[i])
+        if key:
             owned |= {p.index for p in editor.groups[key].parts} - chosen
     if owned:
         answer = ask(parent, "Delete Features", f"The selection holds genes with {plural(len(owned), 'other part')}.",
@@ -606,8 +605,8 @@ def group_as_gene(parent, editor, indices):
 def delete_feature(parent, editor, index):
     """Delete a feature; for a gene, ask whether its parts go too."""
     f = editor.by_index.get(index)
-    key = genes.group_key(f) if f is not None and f.kind == genes.GENE else None
-    if key in editor.groups and editor.groups[key].master is f and editor.groups[key].parts:
+    key = master_key(editor, f) if f is not None else None
+    if key and editor.groups[key].parts:
         g = editor.groups[key]
         answer = ask(parent, "Delete Gene", f"{f.label} is made of {plural(len(g.parts), 'part')}. Delete them too?",
                      [("all", "Delete Gene and Parts"), ("gene", "Delete Gene Only")], default="gene",

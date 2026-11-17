@@ -47,16 +47,27 @@ fn nn(pair: &[u8]) -> (f64, f64) {
     }
 }
 
+/// Initiation (ΔH kcal/mol, ΔS cal/(K·mol)) of a duplex end: A·T ends differ from G·C ends.
+fn end_term(b: u8) -> (f64, f64) {
+    if b == b'A' || b == b'T' { (2.3, 4.1) } else { (0.1, -2.8) }
+}
+
+/// Salt correction of ΔS for a duplex of `len` bases (Mg²⁺ converted to equivalent Na⁺).
+fn salt_ds(len: usize, c: &Conditions) -> f64 {
+    let na_eq = c.na_mm + 120.0 * (c.mg_mm - c.dntp_mm).max(0.0).sqrt();
+    0.368 * (len - 1) as f64 * (na_eq / 1000.0).ln()
+}
+
 /// Melting temperature in °C, or `None` if the sequence is shorter than 2 bases or
 /// contains anything but A, C, G, T (U is read as T).
 pub fn tm(seq: &[u8], c: &Conditions) -> Option<f64> {
-    let s: Vec<u8> = seq.iter().map(|b| match b.to_ascii_uppercase() { b'U' => b'T', x => x }).collect();
+    let s = clean(seq);
     if s.len() < 2 || s.iter().any(|b| !b"ACGT".contains(b)) {
         return None;
     }
     let (mut dh, mut ds) = (0.0, 0.0);
     for end in [s[0], s[s.len() - 1]] {
-        let (h, e) = if end == b'A' || end == b'T' { (2.3, 4.1) } else { (0.1, -2.8) };
+        let (h, e) = end_term(end);
         dh += h;
         ds += e;
     }
@@ -70,8 +81,7 @@ pub fn tm(seq: &[u8], c: &Conditions) -> Option<f64> {
     if symmetric {
         ds += -1.4;
     }
-    let na_eq = c.na_mm + 120.0 * (c.mg_mm - c.dntp_mm).max(0.0).sqrt();
-    ds += 0.368 * (s.len() - 1) as f64 * (na_eq / 1000.0).ln();
+    ds += salt_ds(s.len(), c);
     let ct = c.primer_nm * 1e-9;
     let k = if symmetric { ct } else { ct / 4.0 };
     Some(dh * 1000.0 / (ds + R * k.ln()) - 273.15)
@@ -84,22 +94,20 @@ pub fn tm(seq: &[u8], c: &Conditions) -> Option<f64> {
 /// shortcut: the symmetric (self-complementary) correction is applied to the whole bracket when some expansion could be
 /// self-complementary, so then the range may be a little wider than the true one; it always still contains every oligo.
 pub fn tm_range(seq: &[u8], c: &Conditions) -> Option<(f64, f64)> {
-    let s: Vec<u8> = seq.iter().map(|b| match b.to_ascii_uppercase() { b'U' => b'T', x => x }).collect();
+    let s = clean(seq);
     let masks: Vec<u8> = s.iter().map(|&b| pattern_mask(b, true)).collect();
     if s.len() < 2 || masks.contains(&0) {
         return None;
     }
     let n = s.len();
-    let na_eq = c.na_mm + 120.0 * (c.mg_mm - c.dntp_mm).max(0.0).sqrt();
-    let salt = 0.368 * (n - 1) as f64 * (na_eq / 1000.0).ln();
+    let salt = salt_ds(n, c);
     let ct = c.primer_nm * 1e-9;
-    let end = |b: u8| if b == b'A' || b == b'T' { (2.3, 4.1) } else { (0.1, -2.8) };
     let options = |m: u8| -> Vec<u8> { b"ACGT".iter().enumerate().filter(|(i, _)| m >> i & 1 == 1).map(|(_, &b)| b).collect() };
     // Best (ΔH, ΔS) of any expansion for the objective ΔH·1000 − t·ΔS: smallest when `up`, else largest.
     let best = |t: f64, up: bool| -> (f64, f64) {
         let sign = if up { 1.0 } else { -1.0 };
         let cost = |(h, e): (f64, f64)| sign * (h * 1000.0 - t * e);
-        let mut layer: Vec<(u8, f64, f64)> = options(masks[0]).into_iter().map(|b| (b, end(b).0, end(b).1)).collect();
+        let mut layer: Vec<(u8, f64, f64)> = options(masks[0]).into_iter().map(|b| (b, end_term(b).0, end_term(b).1)).collect();
         for &m in &masks[1..] {
             layer = options(m)
                 .into_iter()
@@ -115,7 +123,7 @@ pub fn tm_range(seq: &[u8], c: &Conditions) -> Option<(f64, f64)> {
         }
         let (_, h, e) = layer
             .into_iter()
-            .map(|(b, h, e)| (b, h + end(b).0, e + end(b).1))
+            .map(|(b, h, e)| (b, h + end_term(b).0, e + end_term(b).1))
             .min_by(|x, y| cost((x.1, x.2)).total_cmp(&cost((y.1, y.2))))
             .unwrap();
         (h, e)
@@ -167,7 +175,7 @@ const EXACT_3P: usize = 3;
 /// shortcut: brute-force scan, ~0.2 s on a 5 Mb genome; use an index (FM/k-mer) if
 /// whole-genome primer lists become slow.
 pub fn binding_sites(template: &[u8], primer: &[u8], circular: bool, seed: usize, max_mismatches: usize) -> Vec<Site> {
-    let p: Vec<u8> = primer.iter().map(|b| match b.to_ascii_uppercase() { b'U' => b'T', x => x }).collect();
+    let p = clean(primer);
     // A degenerate base in the primer (R, N, ...) matches every base it stands for; the template is compared letter for letter.
     let same = |t: u8, q: u8| t == q || (b"ACGT".iter().position(|&x| x == t).map_or(0, |i| 1u8 << i) & pattern_mask(q, true)) != 0;
     let n = template.len();
@@ -270,7 +278,7 @@ fn stem_dg(s: &[u8], c: &Conditions, init: bool) -> f64 {
     let (mut dh, mut ds) = (0.0, 0.0);
     if init {
         for end in [s[0], s[s.len() - 1]] {
-            let (h, e) = if end == b'A' || end == b'T' { (2.3, 4.1) } else { (0.1, -2.8) };
+            let (h, e) = end_term(end);
             dh += h;
             ds += e;
         }
@@ -280,8 +288,7 @@ fn stem_dg(s: &[u8], c: &Conditions, init: bool) -> f64 {
         dh += h;
         ds += e;
     }
-    let na_eq = c.na_mm + 120.0 * (c.mg_mm - c.dntp_mm).max(0.0).sqrt();
-    ds += 0.368 * (s.len() - 1) as f64 * (na_eq / 1000.0).ln();
+    ds += salt_ds(s.len(), c);
     dh - 310.15 * ds / 1000.0
 }
 
@@ -289,7 +296,8 @@ fn pairs(a: u8, b: u8) -> bool {
     matches!((a, b), (b'A', b'T') | (b'T', b'A') | (b'C', b'G') | (b'G', b'C'))
 }
 
-fn clean(seq: &[u8]) -> Vec<u8> {
+/// Uppercase, U -> T.
+pub fn clean(seq: &[u8]) -> Vec<u8> {
     seq.iter().map(|b| match b.to_ascii_uppercase() { b'U' => b'T', x => x }).collect()
 }
 

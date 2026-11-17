@@ -20,6 +20,8 @@ os.environ.setdefault("OPENDNA_DATA_DIR", tempfile.mkdtemp(prefix="opendna_scree
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from opendna_core import Document  # noqa: E402
+
 app = QApplication.instance() or QApplication(sys.argv[:1])
 app.setApplicationName("openDNA")
 
@@ -124,7 +126,6 @@ def cas9():
 
 def local_align():
     """Local Align: the araC gene of pBAD30 found on the E. coli chromosome, the hits drawn as a track."""
-    from opendna_core import Document
     plasmid = Document(str(DEMO / "pBAD30_eilR.gb"))
     araC = next(f for f in plasmid.features() if f.label == "araC")
     query = "".join(plasmid.sequence(a, b) for a, b in araC.spans)
@@ -144,7 +145,6 @@ def reads_bam():
     import test_core_formats as T
     import runner
     bam = Path(os.environ["OPENDNA_DATA_DIR"]) / "clone.bam"
-    from opendna_core import Document
     doc = Document(str(DEMO / "pFG051_Chlor.gb"))
     ref, rng, n = doc.sequence().upper(), random.Random(55), doc.length
     gap0, gap1, snp, reads = 1850, 1970, 700, []

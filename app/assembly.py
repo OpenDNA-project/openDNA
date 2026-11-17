@@ -185,7 +185,7 @@ def oligo_checks(row):
     if t is not None:
         out.append(("Tm (annealing part)", band(t, limit("tm_low"), limit("tm_high"), limit("tm_margin")),
                     f"{t:.1f} °C ({len(core)} nt)"))
-    gc = 100 * sum(c in "GC" for c in core.upper()) / max(len(core), 1)
+    gc = gc_percent(core)
     out.append(("GC", band(gc, limit("gc_low"), limit("gc_high"), limit("gc_margin")), f"{gc:.0f} %"))
     if len(seq) >= 8:
         s = structure(seq)
@@ -214,19 +214,14 @@ def shared_kmer(a, b, k=10):
     return any(b[i:i + k] in kmers or rc(b[i:i + k]) in kmers for i in range(len(b) - k + 1))
 
 
+def gc_percent(seq):
+    return 100 * sum(c in "GC" for c in seq.upper()) / max(len(seq), 1)
+
+
 def joint_tm(seq):
     """Tm of the bases joining two fragments, or None when there are too few for it to mean
     anything: a 4 nt Golden Gate overhang is held by the ligase, not by its melting temperature."""
     return melting_temp(seq) if len(seq) >= 8 else None
-
-
-def joint_label(joint):
-    """Short text for the fragment map: how many bases join the two fragments, and how warm."""
-    kind, seq = joint.kind, joint.seq
-    if kind == "none":
-        return "✗ no match"
-    t = joint_tm(seq)
-    return f"{len(seq)} bp " + (f"· {t:.0f} °C" if t is not None else kind)
 
 
 def joints_html(d):
@@ -239,7 +234,7 @@ def joints_html(d):
         if kind == "none":
             continue
         t = joint_tm(seq)
-        gc = 100 * sum(c in "GC" for c in seq.upper()) / max(len(seq), 1)
+        gc = gc_percent(seq)
         rows.append(f"<tr><td>{escape(left)}&nbsp;&nbsp;</td><td>{escape(right)}&nbsp;&nbsp;</td>"
                     f"<td>{escape(kind)}&nbsp;&nbsp;</td><td><tt>{escape(seq)}</tt>&nbsp;&nbsp;</td>"
                     f"<td align='right'>{len(seq)}&nbsp;&nbsp;</td>"
@@ -257,7 +252,7 @@ def joint_line(jt):
     word = JOINED_BY[jt.kind]
     if not jt.seq:
         return word
-    t, gc = joint_tm(jt.seq), 100 * sum(c in "GC" for c in jt.seq.upper()) / len(jt.seq)
+    t, gc = joint_tm(jt.seq), gc_percent(jt.seq)
     return f"{len(jt.seq)} {'nt' if jt.kind == 'toehold' else 'bp'} {word}" + (f" · {t:.0f} °C" if t is not None else "") + f" · GC {gc:.0f} %"
 TAIL_BG, TAIL_FG = "#fff3e0", "#bf360c"   # bases a primer tail adds: lowercase, orange on cream
 
@@ -465,7 +460,7 @@ def design_gibson(frags, circular, min_ov=20, max_ov=40, min_tm=52.0, target=60.
     product = d.product()
     for label, ov in overlaps:
         t = melting_temp(ov)
-        gc = 100 * sum(c in "GC" for c in ov) / len(ov)
+        gc = gc_percent(ov)
         d.check(f"Overlap Tm ({label})", band(t, min_tm, 80, 4) if t else "warn", f"{t:.1f} °C, {len(ov)} bp" if t else "?")
         d.check(f"Overlap GC ({label})", band(gc, 35, 65, 10), f"{gc:.0f} %")
         hits = occurrences(product, ov, circular)
@@ -647,7 +642,7 @@ def design_sidewinder(frags, target=60.0):
         d.junctions.append(f"{d.names[j]} → {d.names[j + 1]}: toehold {t}, barcode {arm}")
         top = cuts[j]            # the coding strand of fragment j ends with the toehold
         d.joints.append(Joint(d.names[j], d.names[j + 1], "toehold", t, top - TOEHOLD, (top, top, None), (top, top, None)))
-        gc = 100 * sum(c in "GC" for c in t) / max(1, len(t))
+        gc = gc_percent(t)
         d.check(f"Toehold {j + 1} ends", "ok", f"{d.names[j]} and {d.names[j + 1]} meet at {t}", junction=j, short="ends fit")
         d.check(f"Toehold {j + 1} GC", band(gc, 30, 70, 10), f"{gc:.0f} %", junction=j, short="GC")
         if len(t) < TOEHOLD:
@@ -781,7 +776,7 @@ def analyse_gibson(frags, circular, min_ov=20, min_tm=52.0, max_ov=100):
         ov = jt.seq
         long = len(ov) > 100   # only a recombineering homology: its Tm and hairpin mean nothing at that length, and cost a lot to compute
         t = None if long else melting_temp(ov)
-        gc = 100 * sum(c in "GC" for c in ov) / len(ov)
+        gc = gc_percent(ov)
         hits = occurrences(product, ov, circular)
         d.check(f"Ends fit ({label})", "ok", f"the end of {jt.left} is the start of {jt.right} over {len(ov)} bp", junction=j, short="ends fit")
         d.check(f"Homology ({label})", "ok" if len(ov) >= min_ov else "warn", f"{len(ov)} bp: {ov}"
@@ -1155,7 +1150,7 @@ def junction_cards(d):
             lines = [f"…{d.seqs[a][-14:]}", f"{d.seqs[b][:14]}…"]
         else:
             L, t = len(jt.seq), joint_tm(jt.seq)
-            gc = 100 * sum(c in "GC" for c in jt.seq.upper()) / max(L, 1)
+            gc = gc_percent(jt.seq)
             unit, word = "nt" if jt.kind == "toehold" else "bp", JOINED_BY[jt.kind]
             title = joint_line(jt)
             # Gibson joins by homology only, so the word adds nothing there; the other methods say what they join by.

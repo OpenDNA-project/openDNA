@@ -1,8 +1,10 @@
 """Small flat icons drawn here (no image files): one colour, the text colour of the palette, so they read as black on the
 light theme and white on the dark one. A funnel for the display filter, an hourglass for the history, and one per category
 of the quick filters in the tab row."""
+import math
+
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QFont, QIcon, QPainter, QPalette, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QFont, QIcon, QPainter, QPainterPath, QPalette, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import QApplication
 
 import theme
@@ -10,20 +12,25 @@ import theme
 SIZE = 64   # drawn big; Qt scales it down to the button
 
 
+def _pixmap(draw, color, opacity=1.0, *args):
+    pix = QPixmap(SIZE, SIZE)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setOpacity(opacity)
+    p.setPen(Qt.NoPen)
+    p.setBrush(color)
+    draw(p, SIZE, *args)
+    p.end()
+    return pix
+
+
 def _icon(draw, palette=None):
     """The icon in the text colour; pressed (QIcon.On, on the dark blue of a pressed button), in white."""
     icon = QIcon()
     for state, color in ((QIcon.Off, (palette or QApplication.palette()).color(QPalette.WindowText)),
                          (QIcon.On, theme.color("highlight_text"))):
-        pix = QPixmap(SIZE, SIZE)
-        pix.fill(Qt.transparent)
-        p = QPainter(pix)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        draw(p, SIZE)
-        p.end()
-        icon.addPixmap(pix, QIcon.Normal, state)
+        icon.addPixmap(_pixmap(draw, color), QIcon.Normal, state)
     return icon
 
 
@@ -109,16 +116,8 @@ def category_icon(name, palette=None, on_color=None):
     color = (palette or QApplication.palette()).color(QPalette.WindowText)
     icon = QIcon()
     for state, opacity in ((QIcon.On, 1.0), (QIcon.Off, OFF_OPACITY)):
-        pix = QPixmap(SIZE, SIZE)
-        pix.fill(Qt.transparent)
-        p = QPainter(pix)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setOpacity(opacity)
-        p.setPen(Qt.NoPen)
-        p.setBrush(on_color if on_color is not None and state == QIcon.On else color)
-        CATEGORY_DRAW[name](p, SIZE)
-        p.end()
-        icon.addPixmap(pix, QIcon.Normal, state)
+        icon.addPixmap(_pixmap(CATEGORY_DRAW[name], on_color if on_color is not None and state == QIcon.On else color, opacity),
+                       QIcon.Normal, state)
     return icon
 
 
@@ -132,7 +131,6 @@ def history_icon(palette=None):
 
 # ---- the theme button of the toolbar: a sun (Light), a dark sun (Dark), a sun with an A (System: follows the computer) ----
 def _rays(p, s, inner, outer):
-    import math
     _line(p, s, 0.075)
     for i in range(8):
         a = i * math.pi / 4
@@ -198,7 +196,6 @@ def globe_icon(palette=None):
 
 def _genome(p, s):
     """A circular genome: a ring, thicker over a stretch (a gene on it)."""
-    from PySide6.QtCore import QRectF
     _line(p, s, 0.08)
     p.setBrush(Qt.NoBrush)
     c, r = s / 2, s * 0.36
@@ -214,8 +211,6 @@ def genome_icon(palette=None):
 # ---- the header of a pane (workspace.Pane): its options, split right / below, close. Drawn, so they look the same on every
 # computer (the font symbols they were depended on the fonts installed: other sizes, other baselines, or empty boxes) ----
 def _cog(p, s):
-    import math
-    from PySide6.QtGui import QPainterPath
     c, outer, inner, hole = s / 2, s * 0.44, s * 0.32, s * 0.13
     path = QPainterPath()
     teeth = 8
@@ -230,7 +225,6 @@ def _cog(p, s):
 
 
 def _split(p, s, vertical):
-    from PySide6.QtCore import QRectF
     _line(p, s, 0.08)
     p.setBrush(Qt.NoBrush)
     m = s * 0.14
@@ -257,7 +251,6 @@ def pane_icon(name, palette=None):
 
 # ---- the DNA lock of the toolbar: a padlock, shut (pressed: the bases cannot change) or open ----
 def _padlock(p, s, shut):
-    from PySide6.QtCore import QRectF
     body = QRectF(s * 0.2, s * 0.46, s * 0.6, s * 0.44)
     p.drawRoundedRect(body, s * 0.07, s * 0.07)
     _line(p, s, 0.09)
@@ -275,13 +268,5 @@ def lock_icon(palette=None):
     icon = QIcon()
     for state, shut, color in ((QIcon.Off, False, (palette or QApplication.palette()).color(QPalette.WindowText)),
                                (QIcon.On, True, theme.color("highlight_text"))):
-        pix = QPixmap(SIZE, SIZE)
-        pix.fill(Qt.transparent)
-        p = QPainter(pix)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        _padlock(p, SIZE, shut)
-        p.end()
-        icon.addPixmap(pix, QIcon.Normal, state)
+        icon.addPixmap(_pixmap(_padlock, color, 1.0, shut), QIcon.Normal, state)
     return icon

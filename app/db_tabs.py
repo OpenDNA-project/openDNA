@@ -370,7 +370,7 @@ class DatabaseTab(QWidget):
             item = next((root.child(i) for i in range(root.childCount()) if root.child(i).data(0, Qt.UserRole) == entry["name"]), None)
             if item is not None:
                 view.setCurrentItem(item)
-                self.show_entry(primer_db.db().find(entry["name"]) or None)
+                self.show_entry(primer_db.db().find(entry["name"]))
             else:
                 self.show_entry(None)
 

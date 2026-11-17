@@ -164,8 +164,7 @@ class Pane(QWidget):
         super().changeEvent(event)
 
     def _update_helpers(self):
-        """The cog is enabled only when the view has options; its tooltip says where they are."""
-        self.cog.setEnabled(True)
+        """The cog's tooltip says where the view's options are."""
         self.cog.setToolTip(options_tip(self.view_name))
 
     def showEvent(self, event):

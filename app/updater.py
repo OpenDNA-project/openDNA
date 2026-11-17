@@ -144,10 +144,10 @@ def fetch(url, timeout=TIMEOUT, sink=None, progress=None, cancel=None):
     progress(done, total) is called after each chunk (total 0 = unknown); `cancel` is a threading.Event that stops a download.
     UpdateError when the address is not allowed, cannot be reached or says no. Tests replace this function by a fake."""
     check_url(url)
-    headers = {"User-Agent": USER_AGENT}
-    if urlparse(url).hostname == "api.github.com":
-        headers["Accept"] = "application/vnd.github+json"
     host = urlparse(url).hostname
+    headers = {"User-Agent": USER_AGENT}
+    if host == "api.github.com":
+        headers["Accept"] = "application/vnd.github+json"
     try:
         with urllib.request.build_opener(_SafeRedirects).open(urllib.request.Request(url, headers=headers), timeout=timeout) as reply:
             total = int(reply.headers.get("Content-Length") or 0)

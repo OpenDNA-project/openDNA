@@ -1086,8 +1086,7 @@ class AssemblyPanel(QWidget):
         if f is None or not (self.design and self.method.currentIndex() == 2):
             return ""
         rows = [r for r in self.design.rows if r[0].startswith(f.name + "-")]
-        note = "Sidewinder oligos of this fragment (the product is then amplified with its own primer pair)."
-        out = [f"<span style='color:gray'>{escape(note)}</span><br>"] if note else []
+        out = ["<span style='color:gray'>Sidewinder oligos of this fragment (the product is then amplified with its own primer pair).</span><br>"]
         for name, seq, anneal, _ in rows:
             # A Sidewinder oligo is not a primer: only its hairpin and self-dimer mean something.
             checks = [c for c in oligo_checks((name, seq, anneal, "")) if anneal or c[0] in ("Hairpin", "Self-dimer")]

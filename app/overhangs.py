@@ -27,6 +27,11 @@ def rc(seq):
     return seq.translate(_COMP)[::-1]
 
 
+def is_weak(o):
+    """All one base, all G/C or all A/T."""
+    return len(set(o)) == 1 or set(o) <= set("GC") or set(o) <= set("AT")
+
+
 def mismatches(a, b):
     """(count, wobble count) of the bases where overhang `a` differs from `b`. A mismatch is
     wobble-capable when it is a transition (A<->G, C<->T): the two then pair as G:T."""
@@ -69,7 +74,7 @@ def assess(overhangs):
                 ("equal or reverse complements: " + ", ".join(bad) + "; " if bad else "")
                 + ("one base apart, so a mismatched pair (often G:T) can ligate: " + ", ".join(warn) if warn else "")
                 or "no two overhangs are equal, complementary or one base apart"))
-    weak = [o for o in overhangs if len(set(o)) == 1 or set(o) <= set("GC") or set(o) <= set("AT")]
+    weak = [o for o in overhangs if is_weak(o)]
     out.append(("Overhang GC mix", "warn" if weak else "ok",
                 "all G/C or all A/T (weak or sticky): " + ", ".join(weak) if weak else "mixed"))
     if k == 4:
@@ -95,7 +100,7 @@ def junction_checks(overhang, others):
                 f"reverse complement of {', '.join(certain)}: they will ligate" if certain else
                 f"one base from {', '.join(near)}: a mismatched pair (often G:T) can ligate" if near else
                 "no other overhang is equal, complementary or one base apart"))
-    weak = len(set(overhang)) == 1 or set(overhang) <= set("GC") or set(overhang) <= set("AT")
+    weak = is_weak(overhang)
     out.append(("GC mix", "warn" if weak else "ok", "all G/C or all A/T (weak or sticky)" if weak else "mixed"))
     if len(overhang) == 4:
         known = overhang in VALIDATED or rc(overhang) in VALIDATED
@@ -108,14 +113,14 @@ def junction_level(overhang, others):
     """ok / warn / bad for one junction's overhang among the `others` of the same assembly."""
     if overhang == rc(overhang) or any(pair_risk(overhang, q) == "bad" or overhang == q for q in others):
         return "bad"
-    weak = len(set(overhang)) == 1 or set(overhang) <= set("GC") or set(overhang) <= set("AT")
+    weak = is_weak(overhang)
     return "warn" if weak or any(pair_risk(overhang, q) for q in others) else "ok"
 
 
 def preference(overhang, chosen):
     """Penalty for picking `overhang` after the ones in `chosen` (lower is better): used when
     openDNA chooses overhangs itself."""
-    pen = 100 * (overhang == rc(overhang)) + 5 * (len(set(overhang)) == 1 or set(overhang) <= set("GC") or set(overhang) <= set("AT"))
+    pen = 100 * (overhang == rc(overhang)) + 5 * is_weak(overhang)
     pen += 0 if (len(overhang) != 4 or overhang in VALIDATED) else 3
     for q in chosen:
         pen += {"bad": 100, "warn": 10}.get(pair_risk(overhang, q), 0) + 100 * (overhang == q)

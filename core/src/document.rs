@@ -46,6 +46,24 @@ struct Edit {
     memo: EditedMemo,
 }
 
+impl Edit {
+    /// A feature-only, local edit with no bases changed; callers override fields with `..Edit::bare(..)`.
+    fn bare(features_before: Vec<Feature>) -> Edit {
+        Edit {
+            pos: 0,
+            removed: Vec::new(),
+            inserted: Vec::new(),
+            features_before,
+            features_after: None,
+            note: "",
+            summary: None,
+            topology: None,
+            remap: Remap::Local,
+            memo: EditedMemo::default(),
+        }
+    }
+}
+
 /// A snapshot of the edited stretches around one edit, so that undo and redo restore them
 /// EXACTLY (for instance an edited base that was deleted comes back still edited). It is only
 /// trusted while no save happened since (`epoch` equal to the document's): a save empties
@@ -205,12 +223,16 @@ pub struct Summary {
     pub note: &'static str,
 }
 
+/// The first 30 bases of a stretch, for the history panel.
+fn short(b: &[u8]) -> String {
+    String::from_utf8_lossy(&b[..b.len().min(30)]).into_owned()
+}
+
 /// History summary of an edit (see `Summary`).
 fn summarize(edit: &Edit) -> Summary {
     // The whole replaced stretch (what was selected), not just the bases that differ:
     // "GAC > GAG" reads better than "C > G".
     let (r, i) = (&edit.removed, &edit.inserted);
-    let short = |b: &[u8]| String::from_utf8_lossy(&b[..b.len().min(30)]).into_owned();
     let (added, deleted) = match &edit.features_after {
         Some(after) => feature_diff(&edit.features_before, after),
         None => (Vec::new(), Vec::new()),
@@ -458,16 +480,15 @@ impl Document {
                 if b <= a {
                     return f32::NAN;
                 }
-                let gc = match blocks {
+                match blocks {
                     // Whole blocks only (bin edges rounded to blocks: invisible at this zoom).
                     Some(bl) => {
                         let (ba, bb) = (a / GC_BLOCK, (b / GC_BLOCK).max(a / GC_BLOCK + 1).min(bl.len()));
                         let total = ((bb - ba) * GC_BLOCK).min(seq.len() - ba * GC_BLOCK);
-                        return bl[ba..bb].iter().sum::<u32>() as f32 / total as f32;
+                        bl[ba..bb].iter().sum::<u32>() as f32 / total as f32
                     }
-                    None => count_gc(&seq[a..b]) as usize,
-                };
-                gc as f32 / (b - a) as f32
+                    None => count_gc(&seq[a..b]) as f32 / (b - a) as f32,
+                }
             })
             .collect()
     }
@@ -557,18 +578,7 @@ impl Document {
             deleted: Vec::new(),
             note: EXTERNAL,
         };
-        self.push(Edit {
-            pos: 0,
-            removed: Vec::new(),
-            inserted: Vec::new(),
-            features_before: self.record.features.clone(),
-            features_after: None,
-            note: EXTERNAL,
-            summary: Some(summary),
-            topology: None,
-            remap: Remap::Local,
-            memo: EditedMemo::default(),
-        });
+        self.push(Edit { note: EXTERNAL, summary: Some(summary), ..Edit::bare(self.record.features.clone()) });
     }
 
     /// The token of the next step to undo (`redo` false) or redo (`redo` true) when it is an
@@ -599,13 +609,7 @@ impl Document {
             pos: start,
             removed: self.record.seq[start..end].to_vec(),
             inserted: bases.to_vec(),
-            features_before: self.record.features.clone(),
-            features_after: None,
-            note: "",
-            summary: None,
-            topology: None,
-            remap: Remap::Local,
-            memo: EditedMemo::default(),
+            ..Edit::bare(self.record.features.clone())
         });
         Ok(())
     }
@@ -626,13 +630,8 @@ impl Document {
             pos: start,
             removed: self.record.seq[start..end].to_vec(),
             inserted: bases.to_vec(),
-            features_before: self.record.features.clone(),
             features_after: Some(after),
-            note: "",
-            summary: None,
-            topology: None,
-            remap: Remap::Local,
-            memo: EditedMemo::default(),
+            ..Edit::bare(self.record.features.clone())
         });
         Ok(())
     }
@@ -732,23 +731,20 @@ impl Document {
         self.undo_stack.truncate(depth);
         self.saved_depth = saved.filter(|&d| d <= real);
         let mut edit = Edit {
-            pos: 0,
             removed: seq_before,
             inserted: self.record.seq.clone(),
-            features_before,
             features_after: Some(self.record.features.clone()),
             note: "across the origin",
-            summary: None,
-            topology: None,
             remap: Remap::Across { head, pos: start, removed: n - start, inserted: bases.len() },
             memo: EditedMemo { epoch: self.edited_epoch, before: edited_before, after: self.edited.clone() },
+            ..Edit::bare(features_before)
         };
         let mut summary = summarize(&edit);
         // The whole sequence was rewritten; say what was replaced, where (1-based in Python).
         summary.pos = start;
         summary.removed_len = end - start;
         summary.inserted_len = bases.len();
-        summary.inserted = String::from_utf8_lossy(&bases[..bases.len().min(30)]).into_owned();
+        summary.inserted = short(bases);
         summary.removed.clear();
         edit.summary = Some(summary);
         self.undo_stack.push(edit);
@@ -766,13 +762,8 @@ impl Document {
             pos,
             removed: self.record.seq[pos..pos + bases.len()].to_vec(),
             inserted: bases.to_vec(),
-            features_before: self.record.features.clone(),
             features_after: Some(self.record.features.clone()),
-            note: "",
-            summary: None,
-            topology: None,
-            remap: Remap::Local,
-            memo: EditedMemo::default(),
+            ..Edit::bare(self.record.features.clone())
         });
         Ok(())
     }
@@ -954,16 +945,12 @@ impl Document {
         // practice; undo brings it back).
         let flipped = self.record.revcomp();
         self.push(Edit {
-            pos: 0,
             removed: self.record.seq.clone(),
             inserted: flipped.seq,
-            features_before: self.record.features.clone(),
             features_after: Some(flipped.features),
             note: "reverse complement",
-            summary: None,
-            topology: None,
             remap: Remap::Mirror,
-            memo: EditedMemo::default(),
+            ..Edit::bare(self.record.features.clone())
         });
     }
 
@@ -1006,16 +993,9 @@ impl Document {
         use gb_io::seq::Topology::{Circular, Linear};
         let (before, after) = if circular { (Linear, Circular) } else { (Circular, Linear) };
         Edit {
-            pos: 0,
-            removed: Vec::new(),
-            inserted: Vec::new(),
-            features_before: self.record.features.clone(),
-            features_after: None,
             note: if circular { "made circular" } else { "made linear" },
-            summary: None,
             topology: Some((before, after)),
-            remap: Remap::Local,
-            memo: EditedMemo::default(),
+            ..Edit::bare(self.record.features.clone())
         }
     }
 
@@ -1036,33 +1016,18 @@ impl Document {
         let mut seq = self.record.seq[k..].to_vec();
         seq.extend_from_slice(&self.record.seq[..k]);
         Ok(Edit {
-            pos: 0,
             removed: self.record.seq.clone(),
             inserted: seq,
-            features_before: self.record.features.clone(),
             features_after: Some(features),
             note: "rotated",
-            summary: None,
-            topology: None,
             remap: Remap::Rotate(k),
-            memo: EditedMemo::default(),
+            ..Edit::bare(self.record.features.clone())
         })
     }
 
     /// A feature-only edit: no bases change.
     fn push_features(&mut self, after: Vec<Feature>) {
-        self.push(Edit {
-            pos: 0,
-            removed: Vec::new(),
-            inserted: Vec::new(),
-            features_before: self.record.features.clone(),
-            features_after: Some(after),
-            note: "",
-            summary: None,
-            topology: None,
-            remap: Remap::Local,
-            memo: EditedMemo::default(),
-        });
+        self.push(Edit { features_after: Some(after), ..Edit::bare(self.record.features.clone()) });
     }
 
     /// The history: summaries of the undo steps (oldest first) and of the redo steps
@@ -1190,11 +1155,7 @@ fn check_feature(feature: &mut Feature, len: i64) -> io::Result<()> {
     if spans.is_empty() || spans.iter().any(|&(s, e)| s < 0 || e < s || e > len) {
         return Err(bad(format!("location {} is outside the {len} bp sequence", feature.location)));
     }
-    for (key, value) in &mut feature.qualifiers {
-        if let Some(v) = value {
-            *v = canonical(key, v);
-        }
-    }
+    canonical_qualifiers(feature);
     Ok(())
 }
 
@@ -1209,12 +1170,13 @@ fn unwrap_text(record: &mut Seq) {
     if let Some(d) = &mut record.definition {
         *d = canonical("", d);
     }
-    for f in &mut record.features {
-        // `&mut` in the pattern: we get mutable access to each (key, value) pair in place.
-        for (key, value) in &mut f.qualifiers {
-            if let Some(v) = value {
-                *v = canonical(key, v);
-            }
+    record.features.iter_mut().for_each(canonical_qualifiers);
+}
+
+fn canonical_qualifiers(f: &mut Feature) {
+    for (key, value) in &mut f.qualifiers {
+        if let Some(v) = value {
+            *v = canonical(key, v);
         }
     }
 }

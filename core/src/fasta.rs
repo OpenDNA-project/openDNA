@@ -100,6 +100,12 @@ impl IndexedFasta {
 }
 
 impl IndexedFasta {
+    /// The whole sequence `name` (an unknown name is an error from `fetch`).
+    fn fetch_all(&mut self, name: &str) -> io::Result<Vec<u8>> {
+        let length = self.entries.iter().find(|e| e.name == name).map_or(0, |e| e.length);
+        self.fetch(name, 0, length)
+    }
+
     /// `search::find_motif` on sequence `name` (read once, whole): IUPAC letters, mismatches, either strand.
     pub fn search_motif(
         &mut self,
@@ -110,16 +116,14 @@ impl IndexedFasta {
         both: bool,
         limit: usize,
     ) -> io::Result<Vec<crate::search::MotifHit>> {
-        let length = self.entries.iter().find(|e| e.name == name).map(|e| e.length).unwrap_or(0);
-        let seq = self.fetch(name, 0, length)?;
+        let seq = self.fetch_all(name)?;
         Ok(crate::search::find_motif(&seq, motif, max_mismatches, iupac, both, false, limit))
     }
 
     /// Positions of `motif` (exact, case-insensitive) in sequence `name`, on both strands:
     /// (start, strand). The whole sequence is read once (one chromosome at a time).
     pub fn search(&mut self, name: &str, motif: &[u8]) -> io::Result<Vec<(u64, i8)>> {
-        let length = self.entries.iter().find(|e| e.name == name).map(|e| e.length).unwrap_or(0);
-        let mut seq = self.fetch(name, 0, length)?;
+        let mut seq = self.fetch_all(name)?;
         seq.make_ascii_uppercase();
         let fwd = motif.to_ascii_uppercase();
         let rev = crate::primers::revcomp(&fwd);

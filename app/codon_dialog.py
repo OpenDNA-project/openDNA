@@ -252,17 +252,12 @@ class CodonPage(QWidget):
         self._save()
         self.current = self.tables.get(self.usage.currentData())
         t = self.current
-        for _aa, _start, freq in self.boxes:
+        for c, (_aa, _start, freq) in zip(codon_usage.CODONS, self.boxes):
             freq.blockSignals(True)
-            freq.setText("")
+            freq.setText("" if t is None else f"{t.per_thousand[c]:.2f}")
             freq.setEnabled(t is not None)
             freq.blockSignals(False)
         if t is not None:
-            for i, c in enumerate(codon_usage.CODONS):
-                freq = self.boxes[i][2]
-                freq.blockSignals(True)
-                freq.setText(f"{t.per_thousand[c]:.2f}")
-                freq.blockSignals(False)
             self.source.setText(t.source if not t.note else (t.source + " " + t.note).strip())
         else:
             self.source.setText("")

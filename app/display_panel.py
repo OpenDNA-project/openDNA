@@ -45,6 +45,12 @@ class PrimerSwatch(QWidget):
         p.drawLine(QPointF(self.width() - 3, y), QPointF(self.width() - 8, y - 4))   # the half arrow
 
 
+def annotations_shown(ed):
+    """Is any annotation type drawn (with no type in the file: is nothing hidden)?"""
+    kinds = set(ed.kind_counts)
+    return bool(kinds - ed.hidden_kinds) if kinds else not ed.hidden_kinds
+
+
 class QuickFilters(QWidget):
     """The right end of the tab row: one toggle per broad category of the display filter (icons.category_icon), clear
     when shown, faded when hidden. Same switches as the side panel, which keeps the finer ones (each primer source, each
@@ -79,8 +85,7 @@ class QuickFilters(QWidget):
         self.refresh()
 
     def _annotations_on(self):
-        kinds = set(self.editor.kind_counts)
-        return bool(kinds - self.editor.hidden_kinds) if kinds else not self.editor.hidden_kinds
+        return annotations_shown(self.editor)
 
     def _set_annotations(self, on):
         ed = self.editor
@@ -221,7 +226,7 @@ class EnzymeCriteria(QWidget):
         buttons = QHBoxLayout()   # the common choices in one click, side by side on one row
         buttons.setContentsMargins(0, 4, 0, 0)
         buttons.setSpacing(3)
-        for i, (label, f, tip) in enumerate(presets):
+        for label, f, tip in presets:
             button = QPushButton(label, toolTip=tip, clicked=lambda _=False, f=f: self._preset(f))
             button.setStyleSheet("padding: 2px 4px;")   # slim buttons in the normal font (a 9 px font was hard to read)
             button.setFixedWidth(button.fontMetrics().horizontalAdvance(label) + 16)
@@ -370,9 +375,8 @@ class DisplayPanel(QScrollArea):
     def _paint_icons(self):
         """Each category's icon, clear while it is shown and faded when not (as the quick bar's toggles)."""
         ed = self.editor
-        kinds = set(ed.kind_counts)
         shown = {"primers": ed.show_primers, "enzymes": ed.show_enzymes, "cds": ed.show_cds_translation, "units": ed.show_units,
-                 "annotations": bool(kinds - ed.hidden_kinds) if kinds else not ed.hidden_kinds}
+                 "annotations": annotations_shown(ed)}
         for name, label in self.icons.items():
             state = QIcon.On if shown[name] else QIcon.Off
             label.setPixmap(icons.category_icon(name, self.palette()).pixmap(18, 18, QIcon.Normal, state))

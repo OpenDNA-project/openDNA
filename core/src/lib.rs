@@ -667,7 +667,6 @@ fn to_gb((kind, location, qualifiers): FeatureTuple) -> PyResult<gb_io::seq::Fea
     })
 }
 
-/// `opendna_core.tm("ACGT...")`: melting temperature in °C (None if not plain ACGT).
 /// One quick-alignment hit: (start, end, strand, score, identity, query start, query end,
 /// mismatches (pos, base), insertions (pos, length), deletions (start, end)). Positions are
 /// on the template, 0-based; they may pass its length for a hit across the origin.
@@ -690,6 +689,7 @@ fn quick_align(py: Python<'_>, template: &str, query: &str, circular: bool, max_
         .collect()
 }
 
+/// `opendna_core.tm("ACGT...")`: melting temperature in °C (None if not plain ACGT).
 /// `#[pyfunction]` = a module-level Python function rather than a method.
 #[pyfunction]
 #[pyo3(signature = (seq, na_mm=50.0, mg_mm=1.5, dntp_mm=0.6, primer_nm=50.0))]

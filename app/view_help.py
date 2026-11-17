@@ -2,7 +2,6 @@
 TAB_TOOLS). Edit the texts here; tests/test_view_help.py checks that every view has one.
 
 HELP[view]    - the short guide: 5-8 bullet lines, plain language (keep it near 120 words).
-OPTIONS[view] - the page of Tools > Settings that holds the view's options (an empty page says it has none).
 Every key gesture below is one the code handles (see also shortcuts.py, which lists them for Help > Keyboard Shortcuts).
 """
 from PySide6.QtCore import Qt
@@ -133,9 +132,6 @@ HELP = {
     ],
 }
 
-# Where each view's options live: the page of the view's own name in Tools > Settings (its group is the picker's).
-OPTIONS = {name: name for name in HELP}
-
 
 def help_text(view):
     """The guide of `view` as plain text, one bullet per line, then where to find more."""
@@ -150,7 +146,6 @@ def options_tip(view):
 def open_options(window, view):
     """Open the Settings page of `view` (it says so when the view has no options)."""
     window.open_settings(view)
-    return True
 
 
 class ViewHelpDialog(QDialog):

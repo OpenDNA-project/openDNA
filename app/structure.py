@@ -24,7 +24,6 @@ import urllib.request
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
-from types import SimpleNamespace
 
 from primer_db import data_dir
 import project
@@ -370,10 +369,10 @@ def from_local(sequence, command, job=None):
             raise StructureError(f"The local command did not run: {e}") from None
         if job is not None and job.cancelled:
             raise StructureError("Cancelled.")
-        done = SimpleNamespace(returncode=proc.returncode, stderr=stderr or "")
-        if not out.exists() or not looks_like_pdb(out.read_text(errors="replace")):
-            raise StructureError(f"The local command wrote no PDB file (exit code {done.returncode}). {done.stderr.strip()[-300:]}")
-        found = Structure(out.read_text(errors="replace"), "Local command", f"Local command ({words[0]})", False)
+        text = out.read_text(errors="replace") if out.exists() else ""
+        if not looks_like_pdb(text):
+            raise StructureError(f"The local command wrote no PDB file (exit code {proc.returncode}). {(stderr or '').strip()[-300:]}")
+        found = Structure(text, "Local command", f"Local command ({words[0]})", False)
         found.info = _fields(Source="Local command (predicted here)", Command=command)
         return found
 

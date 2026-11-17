@@ -27,7 +27,7 @@
 
 use std::collections::HashMap;
 
-use crate::primers::revcomp;
+use crate::primers::{clean, revcomp};
 
 // Scores: +2 match, -3 mismatch, a gap of n bases costs 5 + 2 * (n - 1).
 const MATCH: i32 = 2;
@@ -79,11 +79,6 @@ pub struct Hit {
     pub insertions: Vec<(usize, usize)>,
     /// (first, last + 1) template positions missing from the query
     pub deletions: Vec<(usize, usize)>,
-}
-
-/// Uppercase, U -> T.
-fn clean(seq: &[u8]) -> Vec<u8> {
-    seq.iter().map(|b| match b.to_ascii_uppercase() { b'U' => b'T', c => c }).collect()
 }
 
 /// 2-bit code of a base; None for N and other letters (they break k-mers).
@@ -466,9 +461,9 @@ pub fn align(template: &[u8], query: &[u8], circular: bool, max_hits: usize) -> 
         return Vec::new();
     }
     // Circular: append the start of the template so hits can run through the origin.
-    let mut text = template.clone();
+    let mut text = template;
     if circular {
-        text.extend_from_slice(&template[..n.min(m + 2 * BAND as usize)]);
+        text.extend_from_within(..n.min(m + 2 * BAND as usize));
     }
     // Short queries get short k-mers: a 60-mer with 3 mismatches often has no two shared 11-mers.
     let k = if m >= 200 { 11 } else { (m / 4).clamp(4, 9) };

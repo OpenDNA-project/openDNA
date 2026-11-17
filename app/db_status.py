@@ -159,14 +159,14 @@ def primers():
     unnamed = sum(1 for r in on_disk if not (r.get("name") or "").strip())
     if unnamed:
         st.add("No name", plural(unnamed, "row"), "warn")
-    empty = [r.get("name") or "?" for r in on_disk if not "".join((r.get("sequence") or "").split())]
+    seqs = [(r.get("name") or "?", "".join((r.get("sequence") or "").split())) for r in on_disk]
+    empty = [name for name, s in seqs if not s]
     if empty:
         st.add("No sequence", f"{len(empty)}: {_few(empty)}", "warn")
-    bad = [r.get("name") or "?" for r in on_disk
-           if "".join((r.get("sequence") or "").split()) and set("".join((r.get("sequence") or "").split()).upper()) - IUPAC]
+    bad = [name for name, s in seqs if s and set(s.upper()) - IUPAC]
     if bad:
         st.add("Letters that are not bases", f"{len(bad)}: {_few(bad)}", "warn")
-    lengths = [len("".join((r.get("sequence") or "").split())) for r in on_disk if (r.get("sequence") or "").strip()]
+    lengths = [len(s) for _, s in seqs if s]
     if lengths:
         st.add("Lengths", f"{min(lengths)}–{max(lengths)} nt")
     return st

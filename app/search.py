@@ -10,7 +10,7 @@ A query can be
 The search runs in Rust (search.rs) for DNA and proteins, so a chromosome takes about a second. `search_sequence` searches the open
 sequence; `search_file` the other sequences of a FASTA file (DNA only, the names belong to the open sequence).
 """
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 from opendna_core import Fasta, find_motif, find_protein
@@ -166,8 +166,7 @@ def search_file(path, records, current, current_seq, query, opts, stop, on_recor
             if motif:
                 hits += [hit(s, e, "dna", motif, strand, m, record=name)
                          for s, e, strand, m in find_motif(doc.sequence(), motif, mm, opts.iupac, opts.both, doc.circular, MAX_HITS)]
-            if protein_query(query, opts):
-                prot = protein_query(query, opts)
+            if prot := protein_query(query, opts):
                 for s, e, strand, m, frame in find_protein(doc.sequence(), prot, allowed_mismatches(opts, len(prot)), MAX_HITS,
                                                            genetic_code.table_id()):
                     hits.append(hit(s, e, "protein", f"{prot} (frame {'+' if strand > 0 else '−'}{frame})", strand, m, record=name))
@@ -195,7 +194,3 @@ def search_file(path, records, current, current_seq, query, opts, stop, on_recor
                 hits.append(hit(s, e, "dna", motif, strand, m, record=name))
         on_record(name, hits)
     return motif
-
-
-def without_scope(opts):
-    return replace(opts, scope="sequence")

@@ -32,14 +32,24 @@ TOOL = "Genetic code"
 TABLES = {}
 _BASES = "TCAG"
 _CODONS = [a + b + c for a in _BASES for b in _BASES for c in _BASES]   # NCBI order, same as the Rust strings
-for _id, _name, _aas, _starts in genetic_codes():
-    TABLES[_id] = SimpleNamespace(
-        id=_id, name=_name, aas=_aas, starts=_starts, builtin=True, source="NCBI translation table", note="",
-        codons=dict(zip(_CODONS, _aas)),
-        start_codons=[c for c, s in zip(_CODONS, _starts) if s == "M"],
-        stop_codons=[c for c, a in zip(_CODONS, _aas) if a == "*"])
 
-LABELS = [f"{t.id} – {t.name}" for t in TABLES.values()]
+
+def _table(id, name, aas, starts, builtin, source="", note=""):
+    return SimpleNamespace(
+        id=id, name=name, aas=aas, starts=starts, builtin=builtin, source=source, note=note,
+        codons=dict(zip(_CODONS, aas)),
+        start_codons=[c for c, s in zip(_CODONS, starts) if s == "M"],
+        stop_codons=[c for c, a in zip(_CODONS, aas) if a == "*"])
+
+
+def _label(t):
+    return f"{t.id} – {t.name}"
+
+
+for _id, _name, _aas, _starts in genetic_codes():
+    TABLES[_id] = _table(_id, _name, _aas, _starts, True, "NCBI translation table")
+
+LABELS = [_label(t) for t in TABLES.values()]
 DEFAULT_LABEL = LABELS[0]   # "1 – Standard"
 
 REMOVED = "X"        # the letter of a codon the organism no longer uses
@@ -57,19 +67,11 @@ RECODED = {
 }
 
 
-def _label(t):
-    return f"{t.id} – {t.name}"
-
-
 def _add(id, name, aas, starts, builtin, source="", note=""):
     """Register a code of id 100+ here and in the Rust core, and list it (replacing the code of that id if there is one)."""
     register_genetic_code(id, name, aas, starts)
     old = TABLES.get(id)
-    TABLES[id] = SimpleNamespace(
-        id=id, name=name, aas=aas, starts=starts, builtin=builtin, source=source, note=note,
-        codons=dict(zip(_CODONS, aas)),
-        start_codons=[c for c, s in zip(_CODONS, starts) if s == "M"],
-        stop_codons=[c for c, a in zip(_CODONS, aas) if a == "*"])
+    TABLES[id] = _table(id, name, aas, starts, builtin, source, note)
     if old is not None and _label(old) in LABELS:
         LABELS[LABELS.index(_label(old))] = _label(TABLES[id])
     else:

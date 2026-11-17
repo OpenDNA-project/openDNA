@@ -466,13 +466,9 @@ def ask_at_startup(parent=None, settings=None, registry=None, launch=None, windo
             pass   # shortcut: a refusal is silent here; Help > File Associations shows the error when the user retries
         settings.sync()
         return None
-    if kind == "first":
-        text = (f"Open .gb, .dna and FASTA files with {NAME} by default?\n\n"
-                f"This adds {NAME} to the \"Open with\" list of these file types (current user only, no administrator rights). "
-                "Windows will then ask you to confirm in its Settings. You can change your mind in Help > File Associations.")
-    else:
-        text = (f"{NAME} was set up to open sequence files, but the program file has moved since.\n\n"
-                "Update the registration so that double-clicking a file starts it from the new place?")
+    text = (f"Open .gb, .dna and FASTA files with {NAME} by default?\n\n"
+            f"This adds {NAME} to the \"Open with\" list of these file types (current user only, no administrator rights). "
+            "Windows will then ask you to confirm in its Settings. You can change your mind in Help > File Associations.")
     box = QMessageBox(QMessageBox.Question, "File associations", text, QMessageBox.NoButton, parent)
     box.yes_button = box.addButton("Yes", QMessageBox.YesRole)
     box.later_button = box.addButton("Not now", QMessageBox.RejectRole)
@@ -486,8 +482,6 @@ def ask_at_startup(parent=None, settings=None, registry=None, launch=None, windo
         elif button is box.never_button:
             settings.setValue("dont_ask", "true")
         settings.setValue("asked", "true")
-        if kind == "stale":   # whatever was answered, do not repeat the question for this same path
-            settings.setValue("stale_asked_for", command_for(launch if launch is not None else launcher() or [sys.executable]))
         settings.sync()
         if box in _open_boxes:
             _open_boxes.remove(box)
@@ -530,13 +524,11 @@ class FileAssociationsDialog(QDialog):
     def _launch(self):
         return self.launch if self.launch is not None else launcher(self.dev)
 
-    def _states(self):
-        return status(None, self.registry, self._launch()) if self._launch() else {}
-
     def refresh(self):
-        states = self._states()
+        launch = self._launch()
+        states = status(None, self.registry, launch) if launch else {}
         values = set(states.values())
-        if not self._launch():
+        if not launch:
             msg = (f"{NAME} is running from source, so there is no program file to register. "
                    "The program file (.exe) can register itself from here.")
         elif values == {THIS}:
@@ -546,13 +538,13 @@ class FileAssociationsDialog(QDialog):
                    "Click Update so that double-clicking a file starts this one.")
         else:
             msg = f"{NAME} is not yet offered to Windows for {', '.join(FILE_TYPES)} files."
-        if self._launch() and THIS in values and OTHER not in values:
+        if launch and THIS in values and OTHER not in values:
             chosen = [e for e in states if is_default_for(e, self.registry)]
             msg += (f"\n\nDefault for: {', '.join(chosen)}." if chosen else
                     "\n\nIt is not the default yet: choose it in Windows Settings (button below).")
         self.text.setText(msg)
         self.register_button.setText("Update" if OTHER in values else "Register")
-        self.register_button.setEnabled(bool(self._launch()) and values != {THIS})
+        self.register_button.setEnabled(bool(launch) and values != {THIS})
         self.remove_button.setEnabled(bool(values - {NONE}))
 
     def _register(self):
