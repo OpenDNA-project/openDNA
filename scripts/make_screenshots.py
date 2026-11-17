@@ -91,7 +91,7 @@ def gibson():
 def primers():
     """The Primers pane and the PCR pane on pBAD30, with the plasmid's own Verif pBAD30_F / _R primers."""
     win = window(DEMO / "pBAD30_eilR.gb",
-                 split("h", [4800, 5200], pane("Sequence"), split("v", [5200, 4800], pane("Primers"), pane("PCR"))))
+                 split("h", [3200, 6800], pane("Sequence"), split("v", [3000, 7000], pane("Primers"), pane("PCR"))))
     pcr = [p.view for p in win.workspace.panes() if p.view_name == "PCR"][0]
     fwd = next(i for i, s in enumerate(pcr.fwd_sites) if "Verif" in s.label)
     rev = next(i for i, s in enumerate(pcr.rev_sites) if "Verif" in s.label)

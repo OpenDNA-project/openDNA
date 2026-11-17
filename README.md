@@ -24,13 +24,34 @@ The Terminal's pipelines (optional: read mapping, assembly, MAFFT / Clustal Omeg
 
 Each release has a `SHA256SUMS` file listing the checksum of every download, on the [releases page](https://github.com/OpenDNA-project/openDNA/releases).
 
-> **This is a beta (0.5), so keep copies of your files.** The programs are not signed, which is why your system will warn you the
-> first time. Check the SHA-256 against the release notes, then click *More info* → *Run anyway* on Windows, or right-click openDNA
-> → *Open* → *Open* on macOS ([SECURITY.md](SECURITY.md)). If you are new, the [tutorial](docs/TUTORIAL.md) takes about 15 minutes.
+> **Keep a copy of files you cannot replace.** The programs are not signed, which is why your system will warn you the first time.
+> Check the SHA-256 against the release notes, then click *More info* → *Run anyway* on Windows, or right-click openDNA → *Open* →
+> *Open* on macOS ([SECURITY.md](SECURITY.md)). If you are new, the [tutorial](docs/TUTORIAL.md) takes about 15 minutes.
+
+## Features
+
+![openDNA 0.8: the sequence, the circular map and the feature table of pBAD30_eilR, side by side](docs/images/editor.png)
+
+- **Several files in one window**, each in its own tab with its own views, search and undo history. Double-click a file while
+  openDNA is open and it opens as a new tab.
+- **Editing that keeps annotations on the right bases**, including `join`, `complement`, fuzzy ends and features across the origin.
+  Unlimited undo with a plain-English History, *Set Origin*, From / To boxes that follow the selection, autosave and crash recovery.
+- **Search** on both strands with IUPAC codes and fuzzy matches, protein motifs in six frames, feature names and primers.
+- **Cloning**: Gibson / HiFi, Golden Gate, Sidewinder, KLD (point mutations, insertions, deletions), restriction and ligation
+  cloning, each with checked junctions and ready primers. Restriction digests with a virtual gel.
+- **Primers and PCR**: Tm, hairpins, self-dimers and binding sites, a three-pane PCR tab (template, primers, product),
+  design for a region, degenerate primers and oligo order export.
+- **Cas9, SaCas9 and Cas12a guides** with cut sites, scores and off-targets in the sequence or a background genome.
+- **Reads and alignment**: an IGV-style Alignment view (coverage, variants, breakpoints), Local Align, multiple alignment,
+  GFF / GTF / BED / VCF / BAM tracks.
+- **Terminal pipelines** (optional) to map reads, assemble with Unicycler and run MAFFT or Clustal Omega.
+- **Protein and codon tools**: ORFs, translation, 3D structures from RCSB PDB, AlphaFold DB or ESMFold, codon tools and a
+  construct check-up that shows transcription units.
+- **From a 5 kb plasmid to a multi-chromosome genome** in the same window, with NCBI import.
+- **Light and dark themes**, GenBank read and write, `.dna` and FASTA read, and no data sent anywhere unless you choose a feature
+  that needs the network ([Privacy](#privacy)).
 
 ## Editing
-
-![The sequence, the circular map and the feature table of pBAD30_eilR, side by side](docs/images/editor.png)
 
 You can insert, delete, replace, paste, rotate or reverse-complement a sequence, and every feature stays on the bases it belongs
 to. That includes `join` and `complement` features, fuzzy ends and features that cross the origin. The tests make hundreds of random
@@ -59,8 +80,9 @@ which gives two junctions and four oligos.
 ![The primer list of pBAD30 with Tm, matches and secondary structure, and the PCR product of its two verification primers](docs/images/primers_pcr.png)
 
 The primer list covers the primers in your file and in your own database, with their Tm, hairpins, self-dimers, binding sites and
-mismatches. Pick any two and the PCR product is shown. In the picture, the verification primers of pBAD30 give a 1,281 bp product,
-and one of them is flagged for a self-dimer.
+mismatches. The PCR tab has three panes: the template, the primers and the product. Pick a forward and a reverse primer, click primers
+on the template, or select a region and press Design. In the picture, the verification primers of pBAD30 give a 1,281 bp product
+with a heterodimer check.
 
 You can also [design primers for a selection](docs/USER_GUIDE.md), [look for other binding sites](docs/USER_GUIDE.md) in the sequence
 or in a background genome, and run a [restriction digest with a virtual gel](docs/USER_GUIDE.md).
