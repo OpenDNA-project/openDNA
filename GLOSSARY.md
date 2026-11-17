@@ -5,6 +5,26 @@ analyses run on them.
 
 ## Language
 
+### File tabs
+
+**File tab**:
+The outer tab, one per open file, in a window that shows several files. A file tab holds that file's
+view tabs, side panels and search; nothing is shared between two file tabs.
+_Avoid_: document tab, window tab
+
+**View tab**:
+The inner tab of one file (Map, Sequence, Terminal, Assembly...), made of split panes where any view
+or tool can go. Each file has its own set.
+_Avoid_: tab (alone), page
+
+**Page**:
+The code object behind a file tab (`MainWindow` in `app/main.py`): one file with all its state, as
+if it were a window of its own. In code, not on screen.
+
+**Host window**:
+The window (`FileHost` in `app/file_tabs.py`) that holds pages and remembers its size and place.
+With one page it looks and works like the window-per-file mode.
+
 ### Terminal
 
 **Terminal**:

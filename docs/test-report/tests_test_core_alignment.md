@@ -87,7 +87,7 @@ Checks local_align.clean_query on accepted formats and on errors with their mess
 
 ## `test_folder_search_finds_a_query_in_its_file_record_place_and_strand`
 
-**Result:** ✅ passed in 1.83 s · [line 414](../../tests/test_core_alignment.py#L414) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.34 s · [line 414](../../tests/test_core_alignment.py#L414) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file.
 

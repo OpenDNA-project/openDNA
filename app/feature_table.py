@@ -521,10 +521,11 @@ def selection_menu(parent, editor, global_pos):
     """Right-click on selected bases, grouped by what they do: clipboard, annotate, primers, then the selection as a protein
     or a new sequence."""
     from feature_dialog import edit_feature  # here: it imports the tools
+    from file_tabs import page_of
     from primer_design import design_for_selection
     from primer_panel import PrimerDialog
     from sequence_view import add_edit_actions
-    window = parent.window()
+    window = page_of(parent) or parent.window()
     menu = QMenu(parent)
     menu.addSection(f"{editor.end - editor.start:,} bp selected")
     add_edit_actions(menu, editor, getattr(parent, "editable", True))   # Cut / Copy / Paste / Select All, as on empty space

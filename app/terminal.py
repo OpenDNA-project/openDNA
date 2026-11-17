@@ -345,7 +345,7 @@ class Terminal(QWidget):
         self.process.readyReadStandardOutput.connect(self._read)
         self.process.finished.connect(self._ended)
         self.process.errorOccurred.connect(self._error)
-        # The pane can be closed, switched to another view or rebuilt (Reset Tabs): stop the shell with it, quietly
+        # The pane can be closed, switched to another view or rebuilt (Reset View Tabs): stop the shell with it, quietly
         # (its `finished` would otherwise reach _ended on a deleted widget and start a new shell).
         self.destroyed.connect(partial(_stop_quietly, self.process))
         self.list.setFixedHeight(self.list.sizeHintForRow(0) * self.list.count() + 2 * self.list.frameWidth() + 4)

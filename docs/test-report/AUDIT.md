@@ -8,15 +8,15 @@ Built by `scripts/test_report.py` on 2026-11-17 from `tests.json` and the last r
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 98 | 98 | 0 | 70 | 28 | 0 | 0 | 75 |
+| Python | 100 | 100 | 0 | 70 | 30 | 0 | 0 | 77 |
 | Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 163 | 163 | 0 | 112 | 50 | 1 | 0 | 119 |
+| **All** | 165 | 165 | 0 | 112 | 52 | 1 | 0 | 121 |
 
 ## Weak or unreviewed tests
 
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 163 tests)
+## Gaps and proposed tests (3 of 165 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -145,6 +145,13 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_register_writes_only_our_keys_and_status_reads_them_back` | Without it double-clicking a .gb/.fa file might not open openDNA, or registering could overwrite other programs' entries or the user's default-app choice in the registry. | in-test reference model | strong | sound | The fake registry is the test's own model of winreg; the real WinRegistry wrapper is not exercised here, so a bug in that thin layer would go unnoticed. |
 | `test_unregister_removes_exactly_what_we_added` | Without it removing the file associations could delete other programs' registry keys or the user's settings, or leave openDNA entries behind. | round-trip/self-consistency | strong | sound |  |
 | `test_startup_question_decision_table` | Without it the app could nag users at every start about file associations, ask when running from source or off Windows, ignore 'don't ask again', or fail to repair the association after the exe was moved. | hand-computed | strong | gap |  |
+
+### `tests/test_file_tabs.py` (2 tests)
+
+| Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
+|---|---|---|---|---|---|
+| `test_file_set_keeps_order_dedupes_and_picks_the_next_page_on_close` | Without it, opening a file twice could give two editors on one file, closing a file tab could leave a closed file shown or nothing shown, and a window could close without asking about a file with unsaved changes. | hand-computed | adequate | not checked | Uses stand-in pages, not real windows: that the host really shows the page FileSet says is shown is only checked by hand (no UI tests). |
+| `test_two_open_files_share_no_editor_state` | Without it, an edit or cursor move in one open file could silently land in another open file. | hand-computed | adequate | not checked | Covers the Editor objects only; the widgets of a page (search box, range box, docks) are separate objects per page by construction and are not exercised here (no UI tests). |
 
 ### `tests/test_genes_and_history.py` (2 tests)
 

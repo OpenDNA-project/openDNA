@@ -39,9 +39,8 @@ def settle(seconds=0.6):
 
 
 def window(path, layout=None):
-    win = M.MainWindow()
-    win.resize(*SIZE)
-    win.show()
+    win = M.new_window()
+    win.window().resize(*SIZE)
     assert win.load(str(path)), path
     if layout is not None:
         win._build_workspace([{"layout": layout}])
@@ -52,8 +51,8 @@ def window(path, layout=None):
 def save(win, name):
     settle()
     path = OUT / f"{name}.png"
-    win.grab().save(str(path))
-    win.close()
+    win.window().grab().save(str(path))
+    win.window().close()
     print(f"{path.relative_to(ROOT)}")
 
 

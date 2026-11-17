@@ -314,7 +314,16 @@ class Workspace(QTabWidget):
         self.quick_filters = None
         if not tool_only and getattr(window, "editor", None) is not None:
             self.quick_filters = QuickFilters(window, window.editor)
-            self.setCornerWidget(self.quick_filters, Qt.TopRightCorner)
+            # Right end of the tab row: what the window keeps there (genetic code, genome, side panel buttons: window.row2),
+            # then the quick filters.
+            corner = QWidget()
+            row = QHBoxLayout(corner)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(6)
+            if getattr(window, "row2", None) is not None:
+                row.addWidget(window.row2)
+            row.addWidget(self.quick_filters)
+            self.setCornerWidget(corner, Qt.TopRightCorner)
             self.currentChanged.connect(self._quick_filters_for)
         for tab in [] if tool_only else tabs or DEFAULT:
             name = tab.get("name")

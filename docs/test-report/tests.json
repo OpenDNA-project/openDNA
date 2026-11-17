@@ -7114,6 +7114,56 @@
     "The primers are checked against the edit by rebuilding it, not against a hand-computed primer sequence; annealing choice (length for the Tm) is not pinned.",
     "Primer quality warnings (GC, hairpin) are not asserted."
    ]
+  },
+  {
+   "id": "tests/test_file_tabs.py::test_file_set_keeps_order_dedupes_and_picks_the_next_page_on_close",
+   "area": "File tabs",
+   "role": "Without it, opening a file twice could give two editors on one file, closing a file tab could leave a closed file shown or nothing shown, and a window could close without asking about a file with unsaved changes.",
+   "purpose": "The bookkeeping of the files of one window (FileSet), with stand-in pages: tab order and dragging, stepping through the tabs, the shown page, finding a file by path whatever its spelling, which pages are unsaved, and which page is shown after a close.",
+   "cases": [
+    {
+     "input": "add a.gb, b.gb (unsaved), c.gb, one untitled unsaved page",
+     "expected": "the untitled one is shown; unsaved() = [b, untitled]"
+    },
+    {
+     "input": "find b.gb; a missing file; sub/../a.gb; C.GB in capitals",
+     "expected": "b's page; None; a's page; c's page on Windows only (case-insensitive paths there)"
+    },
+    {
+     "input": "drag a.gb to the third place; step(+1) and step(-1) from the shown last page",
+     "expected": "order b, c, a, untitled; next wraps round to b; previous is a"
+    },
+    {
+     "input": "close the shown last page",
+     "expected": "the page to its left is shown"
+    },
+    {
+     "input": "close the shown page b; then close a (not shown); then close c",
+     "expected": "c shown; c still shown; None and no pages"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Uses stand-in pages, not real windows: that the host really shows the page FileSet says is shown is only checked by hand (no UI tests)."
+   ]
+  },
+  {
+   "id": "tests/test_file_tabs.py::test_two_open_files_share_no_editor_state",
+   "area": "File tabs",
+   "role": "Without it, an edit or cursor move in one open file could silently land in another open file.",
+   "purpose": "Two Editors on two documents: typing into one changes only that one (its length, version and cursor), the other keeps its bases, version and cursor.",
+   "cases": [
+    {
+     "input": "Editor one (ACGT x50) and Editor two (TTTT x50); cursor at 0 in one, type_bases('GGGG')",
+     "expected": "one: 204 bp, version up, cursor 4; two: 200 bp, same version, cursor 0, still TTTT x50"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Covers the Editor objects only; the widgets of a page (search box, range box, docks) are separate objects per page by construction and are not exercised here (no UI tests)."
+   ]
   }
  ],
  "removed": [

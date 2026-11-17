@@ -1240,7 +1240,8 @@ class PrimerPanel(QWidget):
     def open_database(self):
         """Databases → Primer Database, as a tab of this window."""
         import db_tabs
-        db_tabs.open_tab(self.window(), "primers")
+        from file_tabs import page_of
+        db_tabs.open_tab(page_of(self), "primers")
 
     def edit_options(self):
         if open_options(self):
