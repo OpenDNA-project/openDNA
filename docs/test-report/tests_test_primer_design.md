@@ -48,20 +48,19 @@ Checks the flags, colour and display-filter behaviour of the four primer origins
 
 ## `test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.09 s · [line 220](../../tests/test_primer_design.py#L220) · **Area:** Primer design on circular DNA · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 220](../../tests/test_primer_design.py#L220) · **Area:** Primer design on circular DNA · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, designing primers for a target at or across a plasmid's origin could return nothing, or primers whose bases are not actually on the template or whose product does not contain the target.
 
-Checks that on a circular 3000 bp sequence the designer returns pairs for a target at base 1, at the last base and across the origin, that each primer's bases really match the template read round the circle, that the template between primer and target stays within 150 bp, that the reported product size is consistent, and that a linear sequence has nothing before base 1.
+Checks that on a circular 3000 bp sequence the designer returns pairs for a target at base 1, at the last base and across the origin, with the search window at 0 (the product is exactly the target) and at 40 bp, that each primer's bases really match the template read round the circle, that each primer's 5' end is within the window of the target, that the reported product size is consistent, and that a linear sequence designs from base 1 but not for a target shorter than a primer.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | circular 3000 bp, target (0,200) | non-empty pairs |
-| 2 | target (2800,3000) and (2900,3100) (across the origin) | non-empty pairs in both cases |
-| 3 | each returned pair | fwd bases equal (seq*2)[start:end]; rev bases equal the reverse complement of (seq*2)[start:end] |
-| 4 | the gap between each primer and the target | both (start - fwd.end) mod n and (rev.start - end) mod n are <= 150 |
-| 5 | the reported size | size == len(fwd) + before + (end-start) + after + len(rev) |
-| 6 | the same sequence as a line, targets (0,200) and (500,700) | no pairs for the first (nothing upstream of base 1), pairs for the second |
+| 1 | circular 3000 bp, targets (0,200), (2800,3000), (2900,3100) (across the origin), window 0 and 40 | non-empty pairs in every case |
+| 2 | each returned pair | fwd bases equal (seq*2)[start:end]; rev bases equal the reverse complement of (seq*2)[start:end] |
+| 3 | the gap between each primer's 5' end and the target | both (start - fwd.start) mod n and (rev.end - end) mod n are <= the window |
+| 4 | the reported size | size == before + (end-start) + after; with window 0, size == end-start |
+| 5 | the same sequence as a line, targets (0,200) and (500,700), then (0,10) | pairs for the first two; none for a 10 bp target |
 
 **Review notes:**
 
@@ -69,7 +68,7 @@ Checks that on a circular 3000 bp sequence the designer returns pairs for a targ
 
 ## `test_the_files_written_for_ordering`
 
-**Result:** ✅ passed in 0.02 s · [line 241](../../tests/test_primer_design.py#L241) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 245](../../tests/test_primer_design.py#L245) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the plate file sent to a synthesis company could put oligos in the wrong wells, overflow past well 96, drop the scale or purification, or corrupt names and sequences - a real-money error.
 

@@ -26,7 +26,7 @@ from editor import Editor, clean_pasted
 from shortcuts import ShortcutsDialog
 from sponsors import SponsorsDialog, show_at_startup
 from feature_dialog import edit_feature
-from feature_table import FeatureTable, delete_feature, features_inside, group_as_gene, reverse_primer_dialog
+from feature_table import FeatureTable, features_inside, group_as_gene, reverse_primer_dialog
 from map_view import MapView
 from editor import primer_sequence
 from primer_db import copy_old_data, db
@@ -38,7 +38,7 @@ from editor import remember_hidden_primers
 from sourcefiles import add_recent, pinned_files, recent_files
 from local_align import LocalAlignDialog
 from codon_tools import CompareDialog, RecodeDialog
-from tools import DigestDialog, OrfDialog, PcrDialog
+from tools import DigestDialog, OrfDialog
 import updater
 import exports
 from enzymes import EnzymeFilter
@@ -48,7 +48,6 @@ import image_export
 import ncbi
 from ncbi_dialog import GenomeDialog, NcbiDialog
 from primer_panel import export_for_ordering, import_primers
-from primer_design import design_for_selection
 from structure_dialog import StructureDialog
 from search_bar import SearchBar
 from range_boxes import RangeBoxes
@@ -61,7 +60,6 @@ import file_assoc
 import project
 import runner
 import wip
-import db_status
 import db_tabs
 from reference_picker import ReferencePicker
 import theme
@@ -251,10 +249,17 @@ class MainWindow(QMainWindow):
     def _menus(self):
         self.doc_actions = []  # enabled once a document is open
 
+        self.hidden_actions = []   # in no menu, only on a key (the shortcuts dialog lists them)
+
         def action(menu, text, shortcut, slot, checkable=False, checked=False):
+            """An action of `menu`; with menu None, one that is only on its key."""
             a = QAction(text, self, shortcut=shortcut or QKeySequence(), triggered=slot,
                         checkable=checkable, checked=checked)
-            menu.addAction(a)
+            if menu is None:
+                self.addAction(a)
+                self.hidden_actions.append(a)
+            else:
+                menu.addAction(a)
             self.doc_actions.append(a)
             return a
 
@@ -297,7 +302,6 @@ class MainWindow(QMainWindow):
                                            "protein"))
         alignments = imp.addMenu("&Alignments")
         action(alignments, "Aligned &Reads (BAM)…", None, lambda: self.load_tracks(BAM_FILTER))
-        wip.mark_action(action(alignments, "&Map Reads (FASTQ) to This Sequence…", None, lambda: self.show_terminal("align")), "mapping")
         primer_import = imp.addMenu("P&rimers")
         primer_import.addAction(QAction("Primer &List (TSV, CSV, FASTA)…", self, triggered=self.import_primer_list))
 
@@ -348,21 +352,19 @@ class MainWindow(QMainWindow):
             a.setShortcutContext(Qt.WidgetShortcut)
             edit.addAction(a)
         action(edit, "Copy Re&verse Complement", "Ctrl+Shift+C", self.copy_reverse_complement)
-        action(edit, "Reverse-Complement &Whole Sequence", None, lambda: self.editor.reverse_complement())
         self.circular_action = action(edit, "C&ircular Sequence", None, self.set_circular, True)
-        self.lock_action = action(edit, "&Lock DNA", "Ctrl+Shift+L", self.set_dna_locked, True)
-        edit.addSeparator()
-        action(edit, "&Find…", QKeySequence.Find, self.focus_find)
+        action(edit, "Set &Origin to Selection Start", None, self.set_origin_to_selection)
+        # The toolbar has the padlock (Lock DNA), the search box (Find) and the range box (Go to); their keys stay.
+        self.lock_action = action(None, "Lock DNA", "Ctrl+Shift+L", self.set_dna_locked, True)
+        action(None, "Find", QKeySequence.Find, self.focus_find)
         # F3 / Shift+F3 on every platform: the standard Find Next of macOS and GNOME is Ctrl+G, which is Go to Position here
         # (and Find Previous would be Ctrl+Shift+G, the Alignment view): two actions on one key, neither would fire
-        action(edit, "Find &Next", "F3", self.find_next)
-        action(edit, "Find Previou&s", "Shift+F3", self.find_previous)
-        action(edit, "&Go to Position…", "Ctrl+G", self.go_to)
+        action(None, "Find Next", "F3", self.find_next)
+        action(None, "Find Previous", "Shift+F3", self.find_previous)
+        action(None, "Go to Position", "Ctrl+G", self.go_to)
 
         feature = self.menuBar().addMenu("Fea&ture")
         action(feature, "&New Feature from Selection…", "Ctrl+T", lambda: edit_feature(self, self.editor))
-        action(feature, "&Edit Feature…", "Ctrl+E", self.edit_current_feature)
-        action(feature, "&Delete Feature", None, self.delete_current_feature)
         feature.addSeparator()
         action(feature, "&Group as Gene…", "Ctrl+Shift+E", self.group_as_gene)
         feature.addSeparator()
@@ -385,58 +387,53 @@ class MainWindow(QMainWindow):
         action(primers, "New Primer (&Reverse) from Selection", "Ctrl+Shift+R", lambda: reverse_primer_dialog(self, self.editor).exec())
         primers.addAction(QAction("Primer &Database…", self, triggered=lambda: db_tabs.open_tab(self, db_tabs.PRIMERS)))
         action(primers, "&Options…", None, self.primer_options)
-        primers.addSeparator()
-        action(primers, "D&esign Primers for Selection…", None, lambda: design_for_selection(self, self.editor))
-        action(primers, "&PCR Product…", None, self.pcr_product)
 
         # Each database opens as a tab of this window (db_tabs.py); none needs an open file.
         databases = self.menuBar().addMenu("Data&bases")
         for label, key in db_tabs.MENU:
             databases.addAction(QAction(label, self, shortcut="Ctrl+Shift+D" if key == db_tabs.PRIMERS else QKeySequence(),
                                         triggered=lambda _=False, key=key: db_tabs.open_tab(self, key)))
-        databases.addSeparator()
-        status = databases.addMenu("Database &Status")   # where each database is, how many entries, what is wrong in it
-        for label, check in db_status.DATABASES:
-            status.addAction(QAction(label, self, triggered=lambda _=False, check=check: db_status.show(self, check).exec()))
 
+        # Tools, by job: design, analyse, codons; Settings last
         tools = self.menuBar().addMenu("T&ools")
         action(tools, "S&pacer Finder (Cas9 / Cas12a)…", None, lambda: Cas9Dialog(self, self.editor).exec())
         assembly = tools.addMenu("&Assembly")   # needs no open file; hovering lists the methods
         for m in AssemblyPanel.METHODS:
             assembly.addAction(QAction(m, self, triggered=lambda _=False, m=m: self.show_assembly(m)))
         tools.addAction(QAction("&Recombineering", self, triggered=self.show_recombineering))
+        tools.addSeparator()
         action(tools, "&Local Align…", "Ctrl+Shift+B", lambda: LocalAlignDialog(self, self.editor).exec())
         action(tools, "Align &Clipboard…", None, lambda: LocalAlignDialog.align_clipboard(self, self.editor))
         action(tools, "Restriction &Digest…", None, lambda: DigestDialog(self, self.editor).exec())
-        tools.addSeparator()
         action(tools, "Detect Common &Features…", "Ctrl+Shift+A", lambda: DetectDialog(self, self.editor).exec())
         action(tools, "Detect &ORFs…", None, lambda: OrfDialog(self, self.editor).exec())
+        action(tools, "Plasmid C&heckup (expression of each CDS)…", None, self.open_checkup)
+        tools.addSeparator()
         action(tools, "Recode CDS for a Codon &Usage Table…", None, lambda: RecodeDialog(self, self.editor).exec())
         action(tools, "Compare CDS Under Another &Genetic Code…", None, lambda: CompareDialog(self, self.editor).exec())
-        action(tools, "Plasmid C&heckup (expression of each CDS)…", None, self.open_checkup)
-        tools.addAction(QAction("&Import Features to Features Database…", self, triggered=self.import_parts))
-        tools.addSeparator()
         tools.addSeparator()
         tools.addAction(QAction("&Settings…", self, triggered=lambda: self.open_settings()))
 
         view = self.menuBar().addMenu("&View")
-        self.enzymes_action = action(view, "&Restriction Sites", None,
+        # Restriction sites, the 3-frame translation and the Alignment view are not in the menu (the display filter and the view
+        # tabs have them); the switches stay as actions that carry the state, and two keep their keys.
+        self.enzymes_action = action(None, "Restriction Sites", None,
                                      lambda on: self.editor.set_display(enzymes=on), True, False)  # off by default
-        self.translation_action = action(view, "3-Frame &Translation", "Ctrl+Shift+T",
+        self.translation_action = action(None, "3-Frame Translation", "Ctrl+Shift+T",
                                          lambda on: self.editor.set_display(translation=on), True)
+        self.genome_action = action(None, "Alignment View", "Ctrl+Shift+G", self.set_genome_visible, True)
         self.complement_action = action(view, "&Complementary Strand", None,
                                         lambda on: self.editor.set_display(complement=on), True, True)   # off: the top strand alone
-        self.genome_action = action(view, "&Alignment View", "Ctrl+Shift+G",
-                                    self.set_genome_visible, True)
+        filter_action = self.display_dock.toggleViewAction()  # checked while the panel is shown
+        filter_action.setText("&Display Filter (Side Panel)")
+        filter_action.setShortcut("Ctrl+Shift+F")
+        view.addAction(filter_action)
+        view.addSeparator()
         self.collapse_action = action(view, "Genes as One Arrow on &Map", None,
                                       lambda on: self.editor.set_display(collapse_genes=on), True, True)
         self.cds_only_action = action(view, "Hide Gene Arrow when its CDS is A&lone", None,
                                       lambda on: self.editor.set_display(cds_only=on), True, True)
         self.cds_only_action.setToolTip("A gene whose only part is one CDS (the usual NCBI gene + CDS pair) is shown as that CDS only, in every view")
-        filter_action = self.display_dock.toggleViewAction()  # checked while the panel is shown
-        filter_action.setText("&Display Filter (Side Panel)")
-        filter_action.setShortcut("Ctrl+Shift+F")
-        view.addAction(filter_action)
         view.addSeparator()
         themes = QActionGroup(self)
         self.theme_menu = theme_menu = view.addMenu("Th&eme")
@@ -1609,12 +1606,6 @@ class MainWindow(QMainWindow):
     def _show_lock(self, on):
         self.lock_action.setChecked(on)   # the padlock icon shows the state (shut when pressed), the text stays "DNA"
 
-    def pcr_product(self):
-        dialog = PcrDialog(self, self.editor)
-        if dialog.exec() != QDialog.Accepted:
-            return None
-        return self.open_pcr_product(dialog)
-
     def set_circular(self, circular):
         """Circular button / Edit → Circular Sequence. Making a plasmid linear asks where to
         break it (that base becomes base 1) and warns about features the break cuts."""
@@ -1639,6 +1630,14 @@ class MainWindow(QMainWindow):
             return False
         ed.linearize(base - 1)
         return True
+
+    def set_origin_to_selection(self):
+        """Edit → Set Origin to Selection Start: the first selected base (else the cursor) becomes base 1."""
+        ed = self.editor
+        if not ed.circular:
+            self.statusBar().showMessage("Only a circular sequence has an origin to move.", 4000)
+        elif not ed.set_origin(ed.start):
+            self.statusBar().showMessage("The origin is already there, or the DNA is locked.", 4000)
 
     def _sync_display_actions(self):
         """The View menu ticks follow changes made in the display panel (and back)."""
@@ -1933,18 +1932,6 @@ class MainWindow(QMainWindow):
 
     def copy_reverse_complement(self):
         QGuiApplication.clipboard().setMimeData(self.editor.copy_reverse_complement_mime())
-
-    def edit_current_feature(self):
-        if self.editor.current_feature is None:
-            self.statusBar().showMessage("Click a feature first.", 3000)
-        else:
-            edit_feature(self, self.editor, self.editor.current_feature)
-
-    def delete_current_feature(self):
-        if self.editor.current_feature is None:
-            self.statusBar().showMessage("Click a feature first.", 3000)
-        else:
-            delete_feature(self, self.editor, self.editor.current_feature)  # a gene asks about its parts
 
     def group_as_gene(self):
         """Features ticked in the feature table, else those inside the selected range."""

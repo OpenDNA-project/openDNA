@@ -37,7 +37,8 @@ import wip
 from sequence_view import SequenceView
 from view_help import ViewHelpDialog, open_options, options_tip
 from view_picker import ViewPicker
-from tools import DigestDialog, OrfDialog, PcrDialog
+from pcr import PcrPage
+from tools import DigestDialog, OrfDialog
 
 # Pane choices: name -> factory(window) -> widget.
 VIEWS = {
@@ -48,7 +49,7 @@ VIEWS = {
     "Primers": lambda w: PrimerPanel(w.editor),
     "Protein": lambda w: ProteinView(w.editor),
     "Terminal": lambda w: Terminal(w),
-    "PCR": lambda w: PcrDialog(w, w.editor).embed(w.open_pcr_product),
+    "PCR": lambda w: PcrPage(w, w.editor).embed(w.open_pcr_product),
     "Spacer Finder": lambda w: Cas9Dialog(w, w.editor).embed(),
     "Local Align": lambda w: LocalAlignDialog(w, w.editor).embed(),
     "Detect ORFs": lambda w: OrfDialog(w, w.editor).embed(),

@@ -351,12 +351,13 @@ def feature_actions(menu, parent, editor, index):
     if f is None:
         return
     menu.addSection(f.label or f.kind)
-    menu.addAction("Edit…", lambda: editor.edit_feature_requested.emit(index))
-    menu.addAction("Delete", lambda: delete_feature(parent, editor, index))
+    menu.addAction("Delete feature", lambda: delete_feature(parent, editor, index))
     hidden = feature_key(f) in editor.hidden_features
-    menu.addAction("Show on Sequence" if hidden else "Hide", lambda: editor.set_features_hidden([feature_key(f)], not hidden)).setToolTip(
+    menu.addAction("Show feature" if hidden else "Hide feature", lambda: editor.set_features_hidden([feature_key(f)], not hidden)).setToolTip(
         "Stop drawing this feature in the views (it stays in the file); Show in the feature table or the display filter brings it back")
+    menu.addAction("Edit feature", lambda: editor.edit_feature_requested.emit(index))
     if f.kind == "CDS":
+        menu.addSeparator()
         menu.addAction("Copy Translation", lambda: copy_translation(editor, f))
         a = menu.addAction("Show Translation", lambda: editor.toggle_translation(index))
         a.setCheckable(True)
@@ -522,7 +523,6 @@ def selection_menu(parent, editor, global_pos):
     """Right-click on selected bases, grouped by what they do: clipboard, annotate, primers, then the selection as a protein
     or a new sequence."""
     from feature_dialog import edit_feature  # here: it imports the tools
-    from primer_design import design_for_selection
     from primer_panel import PrimerDialog
     from sequence_view import add_edit_actions
     window = page_of(parent) or parent.window()
@@ -537,7 +537,7 @@ def selection_menu(parent, editor, global_pos):
     menu.addSeparator()
     menu.addAction("Add Primer (F)", lambda: PrimerDialog(window, editor).exec())
     menu.addAction("Add Primer (R)", lambda: reverse_primer_dialog(window, editor).exec())
-    menu.addAction("Design Primers for This Sequence…", lambda: design_for_selection(window, editor))
+    menu.addAction("Design Primers for This Sequence…", lambda: window.workspace.new_tab("PCR"))   # the PCR tab designs for the selection
     menu.addSeparator()
     if hasattr(window, "workspace"):   # the Protein view follows the selection, in the frame chosen beside it
         menu.addAction("Translate", lambda: window.workspace.new_tab("Protein"))

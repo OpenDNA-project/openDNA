@@ -26,7 +26,7 @@ Checks that features sharing a locus_tag or /gene fold under their gene while un
 
 **Why it matters:** Without it, the History panel - the user's only record of what an edit actually did - could describe an edit wrongly or lump several edits into one line, making a mistake impossible to trace back.
 
-Checks the exact text written for each kind of edit (insert, delete, short and long replace, long-sequence truncation with an ellipsis, paste with features, feature added/changed/renamed/deleted, many features, reverse complement), that an undone row keeps its text in the redo list, and the texts for circular operations and edits across the origin.
+Checks the exact text written for each kind of edit (insert, delete, short and long replace, long-sequence truncation with an ellipsis, paste with features, feature added/changed/renamed/deleted, many features, reverse complement), that an undone row keeps its text in the redo list, and the texts for circular operations and edits across the origin. Also that Set Origin to Selection Start rotates a circle (and refuses at base 1 or on a line).
 
 | # | Input | Expected output |
 |---|---|---|
@@ -39,6 +39,7 @@ Checks the exact text written for each kind of edit (insert, delete, short and l
 | 7 | undo the reverse complement | the redo list holds the same text |
 | 8 | circular sequence: rotate(7), linearize(0), set_circular, linearize(50), set_circular, then replace 15 bases across the origin | 'Moved base 1 (broke the circle elsewhere)', 'Made the sequence linear', 'Made the sequence circular', 'Made the sequence linear (broke the circle elsewhere)', 'Made the sequence circular', 'Replaced 15 bp across the origin from 191 with GG' |
 | 9 | delete 15 bases across the origin | text starts 'Replaced 15 bp across the origin from ' and ends ' (deleted)' |
+| 10 | set_origin(10) on the circle; set_origin(0); linear sequence set_origin(5) | sequence becomes seq[10:]+seq[:10], still circular, cursor at 0 (True); then False; then False |
 
 **Review notes:**
 
