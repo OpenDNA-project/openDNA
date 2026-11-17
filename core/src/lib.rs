@@ -163,7 +163,13 @@ impl Document {
     /// pasted, replaced or inserted since the last save or load; the sequence view paints
     /// them yellow. Undo, redo and every later edit keep the list right; a save empties it.
     fn edited_ranges(&self) -> Vec<(usize, usize)> {
-        self.inner.edited_ranges().to_vec() // `.to_vec()` copies the slice into a Vec for Python
+        self.inner.edited_ranges()
+    }
+
+    /// `doc.deleted_points()`: the gaps (before base g, 0-based) where bases were removed since the last save or
+    /// load; the sequence view draws a small inverted ^ over each. Kept right by edits, undo and redo like `edited_ranges`.
+    fn deleted_points(&self) -> Vec<usize> {
+        self.inner.deleted_points()
     }
 
     // `#[setter]` = `doc.modified = True` from Python.

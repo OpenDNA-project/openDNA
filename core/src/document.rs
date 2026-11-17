@@ -78,24 +78,35 @@ enum Remap {
     Across { head: usize, pos: usize, removed: usize, inserted: usize },
 }
 
-/// Sort stretches and join those that overlap or touch, dropping empty ones.
-/// `&mut Vec<..>` = a borrowed list we may change in place (the caller keeps ownership).
+/// Sort stretches and join those that overlap or touch, dropping inverted ones. An EMPTY stretch `(g, g)` is a
+/// deletion marker (bases were removed at gap `g`): it stays apart from its neighbours, and only goes when it falls
+/// strictly inside a typed stretch (or repeats another marker).
 fn normalize(ranges: &mut Vec<(usize, usize)>) {
-    ranges.retain(|&(a, b)| a < b);
+    ranges.retain(|&(a, b)| a <= b);
     ranges.sort_unstable();
     let mut out: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
-    for &(a, b) in ranges.iter() {
+    for &(a, b) in ranges.iter().filter(|r| r.0 < r.1) {
         match out.last_mut() {
             Some(last) if a <= last.1 => last.1 = last.1.max(b), // touches the previous one: extend it
             _ => out.push((a, b)),
         }
     }
+    let typed = out.clone();
+    let mut marks: Vec<usize> = ranges.iter().filter(|r| r.0 == r.1).map(|r| r.0).collect();
+    marks.dedup(); // (sorted already)
+    out.extend(marks.into_iter().filter(|&g| !typed.iter().any(|&(a, b)| a < g && g < b)).map(|g| (g, g)));
+    out.sort_unstable();
     *ranges = out;
 }
 
 /// Local edit going forward: `removed` bases at `pos` became `inserted` new ones. Stretches
 /// lose the part inside the removed span, later ones shift, and the new bases are marked.
 fn edited_forward(ranges: &mut Vec<(usize, usize)>, pos: usize, removed: usize, inserted: usize) {
+    edited_forward_marked(ranges, pos, removed, inserted, true)
+}
+
+/// `edited_forward`; `mark` false leaves no deletion marker where bases only went (a step of an edit across the origin).
+fn edited_forward_marked(ranges: &mut Vec<(usize, usize)>, pos: usize, removed: usize, inserted: usize, mark: bool) {
     let cut_end = pos + removed;
     let mut out = Vec::with_capacity(ranges.len() + 1);
     for &(a, b) in ranges.iter() {
@@ -108,7 +119,9 @@ fn edited_forward(ranges: &mut Vec<(usize, usize)>, pos: usize, removed: usize, 
             out.push((a.max(cut_end) + inserted - removed, b + inserted - removed));
         }
     }
-    out.push((pos, pos + inserted));
+    if inserted > 0 || (removed > 0 && mark) {
+        out.push((pos, pos + inserted)); // the new bases; with none, a deletion marker at the gap
+    }
     normalize(&mut out);
     *ranges = out;
 }
@@ -135,6 +148,9 @@ fn edited_backward(ranges: &mut Vec<(usize, usize)>, pos: usize, removed: usize,
 fn edited_rotate(ranges: &mut Vec<(usize, usize)>, k: usize, n: usize) {
     let mut out = Vec::with_capacity(ranges.len() + 1);
     for &(a, b) in ranges.iter() {
+        if a == b && a == k {
+            out.push((0, 0)); // a deletion marker at the new origin
+        }
         if a < k {
             out.push((a + n - k, b.min(k) + n - k)); // before k: they end up at the far end
         }
@@ -165,7 +181,7 @@ fn remap_edited(ranges: &mut Vec<(usize, usize)>, edit: &Edit, forward: bool, n:
         Remap::Rotate(k) => edited_rotate(ranges, if forward { k } else { n - k }, n),
         Remap::Across { head, pos, removed, inserted } => {
             if forward {
-                edited_forward(ranges, 0, head, 0);
+                edited_forward_marked(ranges, 0, head, 0, false);
                 edited_forward(ranges, pos - head, removed, inserted);
             } else {
                 edited_backward(ranges, pos - head, removed, inserted);
@@ -458,8 +474,14 @@ impl Document {
 
     /// The edited stretches `[start, end)` (typed, pasted, replaced or inserted bases since the
     /// last save or load), for the yellow highlight. Sorted, never overlapping.
-    pub fn edited_ranges(&self) -> &[(usize, usize)] {
-        &self.edited
+    pub fn edited_ranges(&self) -> Vec<(usize, usize)> {
+        self.edited.iter().copied().filter(|r| r.0 < r.1).collect()
+    }
+
+    /// The gaps (0-based: before base `g`) where bases were removed since the last save or load, for the ^ marker.
+    /// Not listed where typed bases now stand (they are highlighted instead).
+    pub fn deleted_points(&self) -> Vec<usize> {
+        self.edited.iter().filter(|r| r.0 == r.1).map(|r| r.0).collect()
     }
 
     /// After an undo or redo that lands exactly on the saved state, nothing differs from the
@@ -2503,6 +2525,13 @@ ORIGIN
         assert_eq!(doc.edited_ranges(), &[(3, 6)]);
         doc.replace(4, 5, b"").unwrap(); // delete inside: the run shrinks
         assert_eq!(doc.edited_ranges(), &[(3, 5)]);
+        assert_eq!(doc.deleted_points(), vec![0], "the deletion at 0 is marked; the one inside the typed run is not");
+        doc.replace(10, 12, b"").unwrap();
+        assert_eq!(doc.deleted_points(), vec![0, 10]);
+        assert!(doc.undo() && doc.undo() && doc.undo());
+        assert!(doc.deleted_points().is_empty(), "undo takes the markers back");
+        assert!(doc.redo() && doc.redo());
+        assert_eq!(doc.deleted_points(), vec![0]);
         assert!(doc.undo() && doc.undo());
         assert_eq!(doc.edited_ranges(), &[(5, 8)]);
         assert!(doc.undo() && doc.undo() && doc.undo());

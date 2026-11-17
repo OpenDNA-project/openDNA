@@ -228,6 +228,12 @@ def test_edited_base_ranges_follow_edits_undo_redo_and_saves(tmp_path):
     ed.select(50, 54)
     ed.type_bases("TT")           # replace four bases by two
     assert ed.doc.edited_ranges() == [(10, 13), (50, 52)]
+    assert ed.doc.deleted_points() == [], "a replacement is not a deletion: its new bases are the mark"
+    ed.select(150, 153)
+    ed.backspace()
+    assert ed.doc.deleted_points() == [150], "removed bases leave a marker at the gap"
+    ed.undo()
+    assert ed.doc.deleted_points() == []
     ed.select(100, 100)
     ed.paste("GGGGG")
     assert ed.doc.edited_ranges()[-1] == (100, 105)

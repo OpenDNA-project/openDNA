@@ -40,7 +40,7 @@ Checks that a CMV unit ends at its polyA signal and is judged on Kozak context r
 
 ## `test_how_far_a_unit_runs_and_how_it_ends`
 
-**Result:** ✅ passed in 0.05 s · [line 183](../../tests/test_checkup.py#L183) · **Area:** Transcription units · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 183](../../tests/test_checkup.py#L183) · **Area:** Transcription units · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the drawn transcript could stop at the wrong base, miss that it wraps the origin, claim an exact +1 it cannot know, or describe its ending wrongly, misleading the user about what is actually transcribed.
 
@@ -56,7 +56,7 @@ Checks that a promoter without a terminator runs round a circle or to the end of
 
 ## `test_origins_and_prediction_thresholds`
 
-**Result:** ✅ passed in 0.15 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.14 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the Checkup could name the wrong origin family (or miss that a plasmid has none, or needs a pir host), and the motif predictors could flood a real plasmid with chance hits.
 

@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.54 s · [line 61](../../tests/test_documents.py#L61) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.63 s · [line 61](../../tests/test_documents.py#L61) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -29,7 +29,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.47 s · [line 144](../../tests/test_documents.py#L144) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.26 s · [line 144](../../tests/test_documents.py#L144) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -50,7 +50,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 20.26 s · [line 206](../../tests/test_documents.py#L206) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 17.92 s · [line 206](../../tests/test_documents.py#L206) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -79,12 +79,13 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 |---|---|---|
 | 1 | Fresh 200 bp doc | [] |
 | 2 | Type A,C,G at 10; select 50..54 type 'TT'; paste GGGGG at 100 | [(10,13)]; then [(10,13),(50,52)]; last range (100,105) |
-| 3 | Type AAAA at 100, delete 0..10, type CC at 0, delete 93..95 | [(90,94)]; [(0,2),(92,96)]; [(0,2),(92,94)] |
-| 4 | Type GG at 20, delete 5..8, undo, undo, redo, redo | [(17,19)] -> [(20,22)] -> [] -> [(20,22)] -> [(17,19)] |
-| 5 | Type TTT at 30, write_genbank (autosave), Editor.save | still [(30,33)] after autosave; [] after save |
-| 6 | Type A at 0, undo twice (past the save), redo; then modified=False | [(0,1)]; []; [] (back at saved state); [] |
-| 7 | Circular: select 190..205 across origin, type 6 G; undo; redo | ranges total 6 bases; []; same ranges again |
-| 8 | Type A at 0, rotate(50), then three undos | total 7 bases after rotation; [] after undoing |
+| 3 | After the replacement: deleted_points(); select 150..153, backspace; undo | [] (a replacement is no deletion); [150]; [] |
+| 4 | Type AAAA at 100, delete 0..10, type CC at 0, delete 93..95 | [(90,94)]; [(0,2),(92,96)]; [(0,2),(92,94)] |
+| 5 | Type GG at 20, delete 5..8, undo, undo, redo, redo | [(17,19)] -> [(20,22)] -> [] -> [(20,22)] -> [(17,19)] |
+| 6 | Type TTT at 30, write_genbank (autosave), Editor.save | still [(30,33)] after autosave; [] after save |
+| 7 | Type A at 0, undo twice (past the save), redo; then modified=False | [(0,1)]; []; [] (back at saved state); [] |
+| 8 | Circular: select 190..205 across origin, type 6 G; undo; redo | ranges total 6 bases; []; same ranges again |
+| 9 | Type A at 0, rotate(50), then three undos | total 7 bases after rotation; [] after undoing |
 
 **Review notes:**
 
@@ -97,7 +98,7 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.07 s · [line 334](../../tests/test_documents.py#L334) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 340](../../tests/test_documents.py#L340) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
@@ -123,7 +124,7 @@ Checks the names of annotation steps, that primer database add/rename/edit/delet
 
 ## `test_copy_reverse_complement_keeps_annotations_flipped`
 
-**Result:** ✅ passed in 0.01 s · [line 455](../../tests/test_documents.py#L455) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 461](../../tests/test_documents.py#L461) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin.
 
@@ -150,7 +151,7 @@ Copies a selection as reverse complement and pastes it into another document, ch
 
 ## `test_text_exports_and_the_project_file`
 
-**Result:** ✅ passed in 0.02 s · [line 518](../../tests/test_documents.py#L518) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 524](../../tests/test_documents.py#L524) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.
 
@@ -182,7 +183,7 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 
 ## `test_gene_groups_and_display_switches`
 
-**Result:** ✅ passed in 0.01 s · [line 617](../../tests/test_documents.py#L617) · **Area:** Feature display / gene groups · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 623](../../tests/test_documents.py#L623) · **Area:** Feature display / gene groups · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, gene + CDS pairs might not group by locus_tag, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 

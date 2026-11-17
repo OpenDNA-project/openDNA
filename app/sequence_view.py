@@ -670,6 +670,7 @@ class SequenceView(QAbstractScrollArea):
         sites = [(pos, name) for pos, name in ed.shown_sites() if start <= pos <= end]
         edited_color = theme.color("edited_fg")
         edited = [(a, b) for a, b in ed.doc.edited_ranges() if a < end and b > start]
+        deleted = [g for g in ed.doc.deleted_points() if start <= g <= end]
 
         for screen_row in range(first, last + 1):
             row = screen_row - shift
@@ -738,6 +739,11 @@ class SequenceView(QAbstractScrollArea):
                 self._draw_letters(p, complement(line), marks, y + self.lh + self.ascent, dim, edited_color)
             for a, b in marks:   # thin blue underline under the edited letter pairs
                 p.fillRect(QRectF(self.left + a * self.cw, y + self.strand_h - 1, (b - a) * self.cw, 1), edited_color)
+            p.setPen(QPen(edited_color, 1.5))
+            for g in deleted:   # a small inverted ^ over the gap where bases were removed (not saved yet)
+                if base0 <= g <= base0 + n and (g < base0 + bpl or base0 + n == ed.length):
+                    x = self.left + (g - base0) * self.cw
+                    p.drawPolyline([QPointF(x - 3, y - 4), QPointF(x, y), QPointF(x + 3, y - 4)])
             self._draw_cuts(p, base0, n, y)
 
             if ed.show_translation:

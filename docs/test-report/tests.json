@@ -4616,6 +4616,10 @@
      "expected": "[(10,13)]; then [(10,13),(50,52)]; last range (100,105)"
     },
     {
+     "input": "After the replacement: deleted_points(); select 150..153, backspace; undo",
+     "expected": "[] (a replacement is no deletion); [150]; []"
+    },
+    {
      "input": "Type AAAA at 100, delete 0..10, type CC at 0, delete 93..95",
      "expected": "[(90,94)]; [(0,2),(92,96)]; [(0,2),(92,94)]"
     },
@@ -6772,6 +6776,10 @@
     {
      "input": "delete 0..2; delete 4..5",
      "expected": "[(3,6)]; [(3,5)]"
+    },
+    {
+     "input": "then delete 10..12; undo x3; redo x2; undo x2 (deleted_points)",
+     "expected": "[0] after the first two (the one inside the typed run is absorbed); [0, 10]; [] ; [0]; run (5,8) again"
     },
     {
      "input": "undo x2; undo x3",
