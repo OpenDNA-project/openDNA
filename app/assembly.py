@@ -12,7 +12,7 @@ from PySide6.QtGui import QColor
 from opendna_core import Document, find_primers
 
 import overhangs as OH
-from editor import MAX_SITES, reverse_complement as rc, site_location
+from editor import MAX_SITES, gc_percent, reverse_complement as rc, site_location
 from enzymes import COMMON, find_cuts, find_sites, site_spans
 from primer_panel import MARKS, band, limit, melting_temp, structure, worst
 import theme
@@ -212,10 +212,6 @@ def shared_kmer(a, b, k=10):
     """True if a and b (either strand) share a k-mer."""
     kmers = {a[i:i + k] for i in range(len(a) - k + 1)}
     return any(b[i:i + k] in kmers or rc(b[i:i + k]) in kmers for i in range(len(b) - k + 1))
-
-
-def gc_percent(seq):
-    return 100 * sum(c in "GC" for c in seq.upper()) / max(len(seq), 1)
 
 
 def joint_tm(seq):

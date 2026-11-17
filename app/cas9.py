@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 import opendna_core as core
 
 from cut_sites import CAS9_KEY, NUCLEASES, cas9_mark_tip, cas9_qualifier, cut_places
-from editor import reverse_complement, site_location
+from editor import gc_percent, reverse_complement, site_location
 from primer_panel import MARKS, genome, genome_label_text, open_options
 from reference import as_reference
 from tools import ToolDialog
@@ -42,10 +42,6 @@ INDEX = Qt.UserRole + 1        # item data: which guide (index in Cas9Dialog.gui
 # One guide: where it sits, how it reads, where the nuclease cuts it (the top-strand base the cut falls before; `bottom`: the same
 # for the bottom strand, which differs from `cut` for Cas12a) and its score.
 Guide = namedtuple("Guide", "start end strand guide pam cut gc score notes bottom", defaults=(None,))
-
-
-def gc_percent(seq):
-    return 100 * sum(c in "GC" for c in seq.upper()) / max(len(seq), 1)
 
 
 def score_guide(guide):

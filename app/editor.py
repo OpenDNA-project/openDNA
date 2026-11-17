@@ -100,6 +100,10 @@ def reverse_complement(seq):
     return seq.translate(_COMPLEMENT)[::-1]
 
 
+def gc_percent(seq):
+    return 100 * sum(c in "GC" for c in seq.upper()) / max(len(seq), 1)
+
+
 def mono_font(size):
     """A clear fixed-width font for bases (Windows' default Courier New is thin)."""
     families = QFontDatabase.families()

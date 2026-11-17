@@ -104,6 +104,30 @@ The assembly panel's Actions menu works on PySide6 6.12 (what `.venv` has) and f
 not a bug in the app. `requirements.txt` only asks for `>=6.8`, so a fresh install can land on a
 version that fails. Check the PySide6 version before chasing that error in the code.
 
+## Whole-project cleanup passes (/simplify, /code-review)
+
+Mistakes made on the last one, and what to do instead:
+
+- **Split the files across subagents by line count, and tell each to read every file in full.** Given
+  a long list, agents read two or three files, reported "already tight" and skipped the rest. Keep a
+  group to about 3000 lines and ask for the list of files actually read.
+- **Rebuild the core, then run everything on the final tree.** After any `core/src` change run
+  `maturin develop` (see above) before pytest, or Python tests the old Rust. Run pytest, pyflakes and
+  `cargo test` after the last agent finishes, not while others are still editing.
+- **Look for edit typos.** An agent left `full =editor...` and `dialog =StructureDialog(...)` (no space
+  after `=`); pyflakes does not catch it. Grep the diff for `=[A-Za-z]` on added lines.
+- **Keep the line endings.** The files are CRLF; an edit that writes LF shows as `LF will be replaced
+  by CRLF` warnings in git. If a diff shows whole-file changes, that is why.
+- **Some duplicates are deliberate; leave them:**
+  - `is_frozen()` in both `file_assoc.py` and `updater.py`: tests monkeypatch `file_assoc.is_frozen`.
+  - `genes.site_location`: a lazy-import wrapper that avoids a circular import with `editor`.
+  Before deleting a "dead" function or merging module-level names, grep `tests/`, `scripts/` and
+  `docs/` for it.
+- **No widget tests exist**, so UI-only refactors (icons, structure view, map view) are checked by
+  reading only. Say so in the report instead of calling them tested.
+- **Commit with `tests.json` untouched only when no test changed.** A pure refactor needs no report
+  rebuild; adding or renaming a test does (see above).
+
 ## Before pushing a PR
 
 Run `/simplify` and then `/code-review` on the change before pushing any PR, and act on what they find.
