@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox,
     QPushButton, QSpinBox, QSplitter, QStackedWidget, QTextBrowser, QVBoxLayout, QWidget,
@@ -43,6 +43,9 @@ def write_fasta(path, seqs):
     Path(path).write_text(msa.to_fasta(names, [s for _, s in seqs]), encoding="utf-8")
 
 
+LIGHT_GREEN, GREEN_TEXT = QColor("#b7e4c7"), QColor("#14301f")   # dark text on light green reads on a light or a dark theme
+
+
 class PipelineDiagram(QWidget):
     """The current pipeline as a flow chart (runner.diagram): its inputs side by side on top, then one box per
     step, down to the result. Redrawn whenever the preset, an option or the inputs shown change."""
@@ -51,11 +54,12 @@ class PipelineDiagram(QWidget):
     def __init__(self):
         super().__init__()
         self.nodes = []
+        self.progress = None   # None: idle; 0..1: share of the run's steps finished (1: done, all boxes green)
         self.setToolTip("The steps the selected pipeline runs, from its inputs to the result opened in openDNA. "
                         "A dashed step is switched off by the current options.")
 
     def set_nodes(self, nodes):
-        self.nodes = nodes
+        self.nodes, self.progress = nodes, None
         rows = any(k == "input" for k, _ in nodes) + sum(k != "input" for k, _ in nodes)
         self.setFixedHeight(2 * self.PAD + rows * self.BOX + max(rows - 1, 0) * self.GAP)
         self.update()
@@ -70,24 +74,28 @@ class PipelineDiagram(QWidget):
             slot = (w - 2 * self.PAD) / len(inputs)
             for i, text in enumerate(inputs):
                 r = QRectF(self.PAD + i * slot + 2, y, slot - 4, self.BOX)
-                self._box(p, r, text, pal.alternateBase().color(), QPen(pal.mid().color(), 1), pal.text().color(), fm, round_=True)
+                self._box(p, r, text, LIGHT_GREEN, QPen(pal.mid().color(), 1), GREEN_TEXT, fm, round_=True)
                 above.append(r.center().x())
             y += self.BOX + self.GAP
         bw = min(w - 2 * self.PAD, self.WIDTH)
         x = (w - bw) / 2
-        for kind, text in self.nodes:
-            if kind == "input":
-                continue
+        later = [k for k, _ in self.nodes if k != "input"]
+        reached = 0 if self.progress is None else self.progress * len(later)   # boxes finished, with the current one's share
+        for n, (kind, text) in enumerate((k, t) for k, t in self.nodes if k != "input"):
             r = QRectF(x, y, bw, self.BOX)
             for cx in above:
                 self._arrow(p, QPointF(cx, y - self.GAP), QPointF(r.center().x(), y), pal.placeholderText().color())
-            if kind == "output":
+            if n + 1 <= reached + 1e-9 and kind != "skipped":   # done: light green with dark text, legible on either theme
+                self._box(p, r, text, LIGHT_GREEN, QPen(pal.highlight().color(), 1.5), GREEN_TEXT, fm, round_=kind == "output")
+            elif kind == "output":
                 self._box(p, r, text, pal.highlight().color(), QPen(pal.highlight().color(), 1), pal.highlightedText().color(), fm, round_=True)
             elif kind == "skipped":
                 self._box(p, r, text + " (off)", pal.window().color(), QPen(pal.mid().color(), 1, Qt.DashLine),
                           pal.placeholderText().color(), fm)
             else:
                 self._box(p, r, text, pal.base().color(), QPen(pal.highlight().color(), 1.5), pal.text().color(), fm)
+            if self.progress is not None and n == int(reached) and n < len(later):   # the box being worked on: a green strip grows along its foot
+                p.fillRect(QRectF(r.left() + 3, r.bottom() - 4, (r.width() - 6) * (reached - n), 3), LIGHT_GREEN)
             above, y = [r.center().x()], y + self.BOX + self.GAP
 
     @staticmethod
@@ -413,7 +421,7 @@ class Terminal(QWidget):
         plain = []   # output lines between markers, shown in one go (one append and one log write per chunk)
         for line in lines:
             line = line.rstrip("\r")
-            if not line.startswith(("__PID__ ", "__DONE__ ", "__OPEN__ ", "__OPENMSA__ ")):
+            if not line.startswith(("__PID__ ", "__DONE__ ", "__OPEN__ ", "__OPENMSA__ ", "__STEP__ ")):
                 plain.append(line)
                 continue
             self._append(plain)
@@ -422,6 +430,11 @@ class Terminal(QWidget):
                 self.pid, self.keep = line.split()[1:3]
             elif line.startswith("__DONE__ "):
                 self._finish(int(line.split()[1]))
+            elif line.startswith("__STEP__ "):
+                done, total = map(int, line.split()[1:3])
+                if self.run is not None:
+                    self.diagram.progress = done / total
+                    self.diagram.update()
             else:
                 tag, path = line.split(" ", 1)
                 self.open_file(path, msa=tag == "__OPENMSA__")
@@ -437,6 +450,8 @@ class Terminal(QWidget):
         run = self.run
         if run is None:
             return
+        self.diagram.progress = 1.0 if code == 0 else None   # all green when done; back to plain after a failure or Stop
+        self.diagram.update()
         # still the current run while these are written, so they also go into its log.txt
         self._append(runner.summary(run.folder), bold=True)
         self._append([f"Report: {path}" for path in runner.reports(run.folder)])
@@ -549,6 +564,8 @@ class Terminal(QWidget):
             return
         (folder / "command.txt").write_text(command + "\n", encoding="utf-8")
         self.run = SimpleNamespace(folder=folder, target=target)
+        self.diagram.progress = 0.0
+        self.diagram.update()
         self.send(command)
 
     def _prepare(self, form):
@@ -583,5 +600,5 @@ class Terminal(QWidget):
         folder.mkdir(parents=True, exist_ok=True)
         for path, seqs in to_write:
             run_busy(self, "Writing the sequences…", lambda: write_fasta(path, seqs))
-        command, _ = runner.build(form.pipeline, form.values(), files, form.threads.value(), folder)
+        command, _ = runner.build(form.pipeline, form.values(), files, form.threads.value(), folder, marks=True)
         return command, folder, target
