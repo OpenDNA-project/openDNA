@@ -2,7 +2,7 @@
 
 [← unit-test report](README.md)
 
-Built by `scripts/test_report.py` on 2026-11-16 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
+Built by `scripts/test_report.py` on 2026-11-17 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
 
 ## Totals
 

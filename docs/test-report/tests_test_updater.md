@@ -16,7 +16,7 @@ Checks version parsing and numeric comparison, then feeds updater.check fake Git
 | 2 | parse_version('v0.10.0'), ' V2.1 ', '1.2.3-rc1', '1.2.3+build' | (0,10,0), (2,1), None, None |
 | 3 | release_asset('v0.7.0', 'win32' / 'linux' / 'darwin' with machine arm64 and x86_64); a Linux copy checking a release that only has the Windows installer | oDNA_beta_0_7_0-setup.exe / -linux-x86_64.AppImage / -macos-arm64.zip and -macos-x86_64.zip; no update for the Linux copy |
 | 4 | the names release_asset gives for win32, darwin (arm64) and linux, against the text of .github/workflows/release.yml | -setup.exe, -macos-arm64.zip and -linux-x86_64.AppImage; each suffix (its stem and its extension) appears in release.yml |
-| 5 | check('0.1.0') with a v0.2.0 release carrying exe + .sha256 + other.zip | Update with version 0.2.0, tag v0.2.0, notes 'Fixes things.', exact asset, sha256 and page URLs; check_for_update returns the same object |
+| 5 | check('0.1.0') with a v0.2.0 release carrying exe + SHA256SUMS + other.zip | Update with version 0.2.0, tag v0.2.0, notes 'Fixes things.', exact asset, sha256 and page URLs; check_for_update returns the same object |
 | 6 | check() with no version given, release tag = current project version | No update; exactly one request, to LATEST_RELEASE_API |
 | 7 | check_for_update('0.1.0') with module-level fetch monkeypatched | Version 0.2.0 (default fetch is used) |
 | 8 | Releases tagged v0.1.0 (same), v0.0.9 (older), v0.3.0 draft, v0.3.0 prerelease, v0.3.0-beta1 | No update; only the -beta1 tag produces a 'not understood' error |
@@ -40,7 +40,7 @@ Checks version parsing and numeric comparison, then feeds updater.check fake Git
 
 ## `test_download_comes_only_from_github_and_is_kept_only_when_it_matches_its_checksum`
 
-**Result:** ✅ passed in 0.03 s · [line 223](../../tests/test_updater.py#L223) · **Area:** Updater: download safety · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 223](../../tests/test_updater.py#L223) · **Area:** Updater: download safety · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the updater could download a program from a look-alike or hijacked host, follow a redirect off GitHub, or install a tampered or partial file.
 
@@ -72,7 +72,7 @@ Checks the HTTPS GitHub host allow-list (direct and on redirects), the real fetc
 
 ## `test_install_swaps_relaunches_and_cleans_up`
 
-**Result:** ✅ passed in 0.03 s · [line 337](../../tests/test_updater.py#L337) · **Area:** Updater: install and cleanup · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 337](../../tests/test_updater.py#L337) · **Area:** Updater: install and cleanup · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it a successful update could fail to replace the installed program (installer not started, .app or AppImage not swapped), fail to restart it, start it with a broken PyInstaller environment, or leave downloads and .old files behind (or delete the user's own files).
 
