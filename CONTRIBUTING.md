@@ -75,7 +75,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_exe.ps1
 
 It builds from the committed recipe `packaging/openDNA.spec`, prints the size and SHA-256, and smoke-tests the exe: it starts it,
 opens a demo file and checks that it stays alive (`-NoSmoke` skips that). It also builds `dist\openDNA-folder.zip`, the same program
-as a folder with the Qt files replaceable (`-NoFolder` skips it). Releases are built from a `v*` tag by
+as a folder with the Qt files replaceable (`-NoInstaller` skips the installer). Releases are built from a `v*` tag by
 `.github/workflows/release.yml` into a draft GitHub release, under the name in `app/project.py` (`EXE_NAME`); see
 [docs/PUBLISHING.md](docs/PUBLISHING.md).
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Builds openDNA for macOS (dist/openDNA.app, zipped as dist/openDNA-macos.zip) or Linux (the folder dist/openDNA, packed as
-# dist/openDNA-linux.tar.gz) from packaging/openDNA.spec, smoke-tests it (scripts/smoke_unix.py) and prints its size and SHA-256.
+# Builds openDNA for macOS or Linux from packaging/openDNA.spec, smoke-tests it (scripts/smoke_unix.py) and prints the size and SHA-256
+# of what it makes:
+#   macOS  dist/openDNA.app, zipped as dist/openDNA-macos.zip (what the program downloads to update itself) and put in
+#          dist/openDNA-macos.dmg (drag to Applications: the first install)
+#   Linux  the folder dist/openDNA packed as dist/openDNA-linux.tar.gz (portable) and as dist/openDNA-linux.AppImage (the installed,
+#          self-updating form; needs appimagetool: downloaded to build/ when it is not on PATH)
 # The macOS / Linux counterpart of scripts/build_exe.ps1.
 #
 #   pip install -r requirements-dev.txt   (and Pillow on macOS: PyInstaller makes the .icns icon with it)
@@ -31,7 +35,7 @@ step "Checking the setup ($OS)"
 [ "$OS" = macos ] && { "$PYTHON" -c "import PIL" || { echo "Pillow is needed for the macOS icon: pip install pillow" >&2; exit 1; }; }
 
 step "Building (PyInstaller, about 1-2 minutes)"
-rm -rf dist/openDNA dist/openDNA.app dist/openDNA-macos.zip dist/openDNA-linux.tar.gz
+rm -rf dist/openDNA dist/openDNA.app dist/openDNA-macos.zip dist/openDNA-macos.dmg dist/openDNA-linux.tar.gz dist/openDNA-linux.AppImage
 "$PYTHON" -m PyInstaller --noconfirm --clean --log-level WARN --workpath build/pyinstaller --distpath dist packaging/openDNA.spec
 
 if [ "$OS" = macos ]; then
@@ -56,14 +60,60 @@ else
     echo "(smoke test skipped)"
 fi
 
+if [ "$OS" = linux ]; then
+    step "Building the AppImage"
+    rm -rf dist/openDNA.AppDir
+    mkdir -p dist/openDNA.AppDir
+    cp -al dist/openDNA dist/openDNA.AppDir/openDNA   # hard links: no second copy of the bundle
+    cp app/logo/icon_256.png dist/openDNA.AppDir/openDNA.png
+    printf '#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/openDNA/openDNA" "$@"
+' > dist/openDNA.AppDir/AppRun
+    chmod +x dist/openDNA.AppDir/AppRun
+    printf '[Desktop Entry]
+Type=Application
+Name=openDNA
+Comment=Offline DNA sequence editor
+Exec=openDNA %%F
+Icon=openDNA
+Categories=Science;Education;
+' > dist/openDNA.AppDir/openDNA.desktop
+    TOOL="$(command -v appimagetool || true)"
+    if [ -z "$TOOL" ]; then
+        TOOL=build/appimagetool
+        mkdir -p build
+        curl -fsSL -o "$TOOL" https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+        chmod +x "$TOOL"
+    fi
+    # --appimage-extract-and-run: the build machine need not have FUSE
+    ARCH=x86_64 "$TOOL" --appimage-extract-and-run dist/openDNA.AppDir dist/openDNA-linux.AppImage
+    rm -rf dist/openDNA.AppDir
+    if [ "$SMOKE" = 1 ]; then
+        step "Smoke test (AppImage)"
+        APPIMAGE_EXTRACT_AND_RUN=1 "$PYTHON" scripts/smoke_unix.py dist/openDNA-linux.AppImage
+    fi
+fi
+
 # Packed last, after the smoke test, so the archive is of what was tested.
 step "Packing"
 if [ "$OS" = macos ]; then
     ARCHIVE=dist/openDNA-macos.zip
     ditto -c -k --sequesterRsrc --keepParent dist/openDNA.app "$ARCHIVE"   # keeps the bundle's symlinks and attributes (zip -r does not)
+    # The disk image for the first install: the app and a shortcut to Applications to drag it onto.
+    rm -rf dist/dmg
+    mkdir dist/dmg
+    ditto dist/openDNA.app dist/dmg/openDNA.app
+    ln -s /Applications dist/dmg/Applications
+    hdiutil create -quiet -volname openDNA -srcfolder dist/dmg -ov -format UDZO dist/openDNA-macos.dmg
+    rm -rf dist/dmg
+    OUTPUTS="$ARCHIVE dist/openDNA-macos.dmg"
 else
     ARCHIVE=dist/openDNA-linux.tar.gz
     tar -C dist -czf "$ARCHIVE" openDNA   # keeps the executable bit, which a zip loses
+    OUTPUTS="$ARCHIVE dist/openDNA-linux.AppImage"
 fi
-echo "$ARCHIVE  $(du -h "$ARCHIVE" | cut -f1)"
-echo "SHA-256 $(sha256 "$ARCHIVE")"
+for f in $OUTPUTS; do
+    echo "$f  $(du -h "$f" | cut -f1)"
+    echo "SHA-256 $(sha256 "$f")"
+done

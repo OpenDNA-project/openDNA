@@ -1,12 +1,14 @@
 name: release
 
 # Builds, from a tag, on three machines at once:
-#   Windows  openDNA.exe (one file) and openDNA-folder.zip (the same program as a folder, Qt replaceable)
-#   macOS    openDNA.app for Apple Silicon and for Intel Macs (macOS 14+), zipped
-#   Linux    the folder openDNA (x86-64, glibc 2.35+), as a .tar.gz
-# renames them to the released name (project.EXE_NAME + the version: oDNA_beta_0_6_1.exe, oDNA_beta_0_6_1-folder.zip, oDNA_beta-macos-arm64.zip,
-# oDNA_beta-macos-x86_64.zip, oDNA_beta-linux-x86_64.tar.gz), each with its .sha256, and attaches them to a DRAFT GitHub release. It never publishes: you read the
-# draft, then press "Publish release" yourself (docs/PUBLISHING.md, section 7).
+#   Windows  openDNA-setup.exe (the installer, which is also what the program updates itself with) and openDNA-folder.zip (the same
+#            program as a portable folder, Qt replaceable); the installer is installed, started and uninstalled as a test
+#   macOS    openDNA.app for Apple Silicon and for Intel Macs (macOS 14+): a .dmg to install from, and a .zip the program updates itself with
+#   Linux    x86-64, glibc 2.35+: an AppImage (installed, updates itself) and the folder openDNA as a portable .tar.gz
+# renames them to the released name (project.EXE_NAME + the version: oDNA_beta_0_7_0-setup.exe, oDNA_beta_0_7_0-folder.zip,
+# oDNA_beta_0_7_0-macos-arm64.zip / .dmg (and x86_64), oDNA_beta_0_7_0-linux-x86_64.AppImage / .tar.gz), each with its .sha256, and attaches
+# them to a DRAFT GitHub release. It never publishes: you read the draft, then press "Publish release" yourself (docs/PUBLISHING.md,
+# section 7). app/updater.py:release_asset names the file each system updates itself with: change both together.
 #
 #   git tag v0.1.0 && git push origin v0.1.0        # the normal way
 #   Actions > release > Run workflow                  # a dry run from any branch: same build, draft named after project.VERSION;
@@ -105,9 +107,13 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
-      # scripts/build_exe.ps1 builds dist/openDNA.exe and dist/openDNA-folder.zip and smoke-tests both (starts it, opens demo/demo_vector.gb, checks the
-      # bundled data files). A failed smoke test stops the release here.
-      - name: Build openDNA.exe and the folder zip
+      # Inno Setup builds the installer (packaging/openDNA.iss).
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      # scripts/build_exe.ps1 builds dist/openDNA-setup.exe and dist/openDNA-folder.zip and smoke-tests them (starts the program, opens
+      # demo/demo_vector.gb, checks the bundled data files; installs, starts and uninstalls the installer). A failure stops the release here.
+      - name: Build the installer and the folder zip
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_exe.ps1
 
       # The tested files under their released name (the same bytes: only the file name changes; inside the folder zip the program keeps
@@ -116,9 +122,9 @@ jobs:
       - name: Name the files for the release and compute their checksums
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          Copy-Item dist/openDNA.exe "release/$env:EXE_NAME.exe"
+          Copy-Item dist/openDNA-setup.exe "release/$env:EXE_NAME-setup.exe"
           Copy-Item dist/openDNA-folder.zip "release/$env:EXE_NAME-folder.zip"
-          foreach ($name in "$env:EXE_NAME.exe", "$env:EXE_NAME-folder.zip") {
+          foreach ($name in "$env:EXE_NAME-setup.exe", "$env:EXE_NAME-folder.zip") {
             $hash = (Get-FileHash "release/$name" -Algorithm SHA256).Hash.ToLower()
             [IO.File]::WriteAllText("$PWD/release/$name.sha256", "$hash  $name`n")
             Write-Host "$hash  $name"
@@ -180,12 +186,14 @@ jobs:
       - name: Build openDNA.app and smoke-test it
         run: PYTHON=python bash scripts/build_unix.sh
 
-      - name: Name the file for the release and compute its checksum
+      - name: Name the files for the release and compute their checksums
         run: |
           mkdir -p release
-          name="$EXE_NAME-macos-${{ matrix.arch }}.zip"
-          cp dist/openDNA-macos.zip "release/$name"
-          (cd release && printf '%s  %s\n' "$(shasum -a 256 "$name" | cut -d' ' -f1)" "$name" > "$name.sha256" && cat "$name.sha256")
+          for ext in zip dmg; do
+            name="$EXE_NAME-macos-${{ matrix.arch }}.$ext"
+            cp "dist/openDNA-macos.$ext" "release/$name"
+            (cd release && printf '%s  %s\n' "$(shasum -a 256 "$name" | cut -d' ' -f1)" "$name" > "$name.sha256" && cat "$name.sha256")
+          done
 
       - uses: actions/upload-artifact@v4
         with:
@@ -241,12 +249,14 @@ jobs:
       - name: Build the Linux folder and smoke-test it
         run: PYTHON=python bash scripts/build_unix.sh
 
-      - name: Name the file for the release and compute its checksum
+      - name: Name the files for the release and compute their checksums
         run: |
           mkdir -p release
-          name="$EXE_NAME-linux-x86_64.tar.gz"
-          cp dist/openDNA-linux.tar.gz "release/$name"
-          (cd release && sha256sum "$name" > "$name.sha256" && cat "$name.sha256")
+          for ext in tar.gz AppImage; do
+            name="$EXE_NAME-linux-x86_64.$ext"
+            cp "dist/openDNA-linux.$ext" "release/$name"
+            (cd release && sha256sum "$name" > "$name.sha256" && cat "$name.sha256")
+          done
 
       - uses: actions/upload-artifact@v4
         with:
@@ -274,18 +284,18 @@ jobs:
           EXE_NAME: ${{ needs.version.outputs.exe_name }}
         run: |
           tag="v$VERSION"
-          exe="$EXE_NAME.exe"; zip="$EXE_NAME-folder.zip"; linux="$EXE_NAME-linux-x86_64.tar.gz"
-          mac="$EXE_NAME-macos-arm64.zip"; intel="$EXE_NAME-macos-x86_64.zip"
+          setup="$EXE_NAME-setup.exe"; zip="$EXE_NAME-folder.zip"; linux="$EXE_NAME-linux-x86_64.tar.gz"; appimage="$EXE_NAME-linux-x86_64.AppImage"
+          mac="$EXE_NAME-macos-arm64.dmg"; intel="$EXE_NAME-macos-x86_64.dmg"
           ls -l release
           cat > release-notes.md <<NOTES
           openDNA $VERSION. Early software: keep copies of your files.
 
           **Downloads.** Each file has its own \`.sha256\` to check the download against.
-          - **Windows** (10 or 11, 64-bit): \`$exe\`, one file, and the one that can update itself later. \`$zip\` is the same program as a folder, for people who want to replace the Qt libraries (see README.txt inside); it does not update itself.
-          - **macOS** (macOS 14 Sonoma or later): \`$mac\` for Apple Silicon (M1 and later), \`$intel\` for Intel Macs. Unzip it and move openDNA to Applications.
-          - **Linux** (x86-64, glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+; a desktop with OpenGL): \`$linux\`. \`tar -xzf $linux\`, then run \`openDNA/openDNA\` (see README.txt inside).
+          - **Windows** (10 or 11, 64-bit): \`$setup\`, the installer (no administrator rights needed): it installs openDNA for you, and openDNA then updates itself. \`$zip\` is the same program as a portable folder, for people who want to replace the Qt libraries (see README.txt inside); it does not update itself.
+          - **macOS** (macOS 14 Sonoma or later): \`$mac\` for Apple Silicon (M1 and later), \`$intel\` for Intel Macs. Open it and drag openDNA to Applications; openDNA then updates itself.
+          - **Linux** (x86-64, glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+; a desktop with OpenGL): \`$appimage\`. Make it executable (\`chmod +x\`) and run it; it updates itself. It needs FUSE 2 (\`libfuse2\`, not installed by default on Ubuntu 24.04+); without it run it with \`--appimage-extract-and-run\`. \`$linux\` is the portable folder (\`tar -xzf $linux\`, then run \`openDNA/openDNA\`, see README.txt inside); it does not update itself.
 
-          **The programs are not signed**, so the system warns about them. Windows: SmartScreen shows "Windows protected your PC" (More info > Run anyway), and some antivirus programs may flag it wrongly. macOS: the first time, right-click openDNA > Open > Open (or System Settings > Privacy & Security > Open Anyway). Check a download with \`Get-FileHash $exe\` (Windows) or \`shasum -a 256 <file>\` (macOS, Linux).
+          **The programs are not signed**, so the system warns about them. Windows: SmartScreen shows "Windows protected your PC" (More info > Run anyway), and some antivirus programs may flag it wrongly. macOS: the first time, right-click openDNA > Open > Open (or System Settings > Privacy & Security > Open Anyway). Check a download with \`Get-FileHash $setup\` (Windows) or \`shasum -a 256 <file>\` (macOS, Linux).
 
           Licence: AGPL-3.0. Source: this repository at tag \`$tag\`.
           NOTES
@@ -297,7 +307,8 @@ jobs:
             gh release delete "$tag" --yes && echo "Replaced the earlier draft $tag"
           fi
           files=()
-          for f in "$exe" "$zip" "$mac" "$intel" "$linux"; do files+=("release/$f" "release/$f.sha256"); done
+          mac_zip="$EXE_NAME-macos-arm64.zip"; intel_zip="$EXE_NAME-macos-x86_64.zip"   # what the program updates itself with
+          for f in "$setup" "$zip" "$mac" "$intel" "$mac_zip" "$intel_zip" "$linux" "$appimage"; do files+=("release/$f" "release/$f.sha256"); done
           gh release create "$tag" "${files[@]}" --draft --title "openDNA $VERSION" --notes-file release-notes.md "${target[@]}" ||
             { echo "gh release create failed (does a release for $tag already exist?)"; exit 1; }
           echo "Draft release $tag created: review it under Releases, then publish it yourself." >> "$GITHUB_STEP_SUMMARY"
