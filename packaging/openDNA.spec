@@ -38,6 +38,7 @@ DATA = [
     (ROOT / "demo" / "pBAD30_eilR.gb", "demo"),   # sponsors.py: DEMO, "Open the Demo Plasmid" on the startup page
     (APP / "vendor" / "3Dmol-min.js", "vendor"),   # structure.py: VENDOR, the protein viewer's library
     (APP / "vendor" / "3Dmol.LICENSE", "vendor"),  # BSD-3-Clause: must travel with the library
+    (APP / "agent", "agent"),                  # cli.py: the recipes for agents (skills show)
     (ROOT / "LICENSE", "."),                   # AGPL-3.0
 ]
 # main.py: window icon (all sizes); sponsors.py: the wordmark on the welcome page. Drawn by packaging/make_icon.py.
@@ -90,12 +91,21 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+# oDNA-cli.exe (Windows folder build only): the same program as a console program, for agents and scripts (app/cli.py). A windowed
+# exe prints nothing a shell can read; this one has stdout, stderr and exit codes. It shares the libraries of openDNA.exe (MERGE).
+FOLDER = os.environ.get("OPENDNA_BUILD") == "folder" or not WINDOWS   # macOS and Linux: always a folder (a .app is one)
+CLI = FOLDER and WINDOWS
+if CLI:
+    cli_a = Analysis(
+        [str(APP / "cli.py")], pathex=[str(APP)], binaries=[], datas=datas, hiddenimports=[], hookspath=[], hooksconfig={},
+        runtime_hooks=[], excludes=["tkinter", "pytest", "Bio", "numpy"], noarchive=False, optimize=0,
+    )
+    MERGE((a, project.NAME, project.NAME), (cli_a, "oDNA-cli", "oDNA-cli"))
 pyz = PYZ(a.pure)
 
 # Two layouts from this one recipe. Default: one file, dist/openDNA.exe. OPENDNA_BUILD=folder: dist/openDNA-folder/ (the exe
 # plus an _internal folder where the Qt DLLs are plain files). The folder exists so that a user can replace Qt, which the LGPL asks
 # for and a one-file exe cannot offer (docs/PUBLISHING.md, "Qt (LGPL)"). scripts/build_exe.ps1 runs PyInstaller once for each.
-FOLDER = os.environ.get("OPENDNA_BUILD") == "folder" or not WINDOWS   # macOS and Linux: always a folder (a .app is one)
 # The icon: the .ico on Windows; on macOS the 256 px picture, which PyInstaller turns into an .icns (with Pillow); Linux has none.
 ICON = str(ROOT / "packaging" / "openDNA.ico") if WINDOWS else str(APP / "logo" / "icon_256.png") if MACOS else None
 
@@ -123,11 +133,18 @@ exe = EXE(
     entitlements_file=None,
 )
 
+if CLI:
+    cli_exe = EXE(
+        PYZ(cli_a.pure), cli_a.scripts, [], exclude_binaries=True, name="oDNA-cli", icon=ICON, version=version_info,
+        debug=False, strip=False, upx=False, console=True,
+    )
+
 if FOLDER:
     coll = COLLECT(
         exe,
         a.binaries,
         a.datas,
+        *([cli_exe, cli_a.binaries, cli_a.datas] if CLI else []),
         strip=False,
         upx=False,
         upx_exclude=[],

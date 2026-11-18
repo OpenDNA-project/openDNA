@@ -21,6 +21,7 @@ from assembly import TAIL_COLOR, anneal_len, oligo_checks
 from editor import reverse_complement as rc
 from primer_panel import melting_temp
 
+DEFAULT_TM, DEFAULT_GROUP, DEFAULT_WARN = 60.0, 30, 120   # the panel's starting values and the command line's defaults (app/cli.py)
 MAX_INSERT = 500    # bp: new bases beyond this are not made with primers
 ONE_TAIL = 40       # bp: up to here the new bases ride on the forward primer alone; beyond, they are split between the two
 MIN_LENGTH = 100    # bp: a shorter plasmid cannot take two annealing parts and a change
@@ -61,7 +62,7 @@ def auto(found, group=30, n=None):
     return chosen
 
 
-def design(old, new, circular=True, tm=60.0, group=30, warn_insert=120):
+def design(old, new, circular=True, tm=DEFAULT_TM, group=DEFAULT_GROUP, warn_insert=DEFAULT_WARN):
     """`design_selected` for the changes `auto` picks; `.skipped` lists the others."""
     found = changes(old.upper(), new.upper())
     chosen = auto(found, group, len(old) if circular else None)
@@ -73,7 +74,7 @@ def design(old, new, circular=True, tm=60.0, group=30, warn_insert=120):
     return r
 
 
-def design_selected(old, chosen, circular=True, tm=60.0, group=30, warn_insert=120):
+def design_selected(old, chosen, circular=True, tm=DEFAULT_TM, group=DEFAULT_GROUP, warn_insert=DEFAULT_WARN):
     """The KLD primers that make the `chosen` changes ((start, end, text) on `old`, as `changes` gives them) in `old`, the sequence
     as saved. Returns SimpleNamespace(rows, notes, product, change, skipped): rows [(name, sequence, annealing length)], notes
     [(level, text)] ("warn" is the orange one), the sequence the primers make, the stretch replaced (start, end, text) and []. Bases
@@ -137,6 +138,18 @@ def design_selected(old, chosen, circular=True, tm=60.0, group=30, warn_insert=1
     return SimpleNamespace(rows=rows, notes=notes, product=expected, change=((a + spin) % n, b + spin if b + spin <= n else b + spin - n, text), skipped=[])
 
 
+def with_primers(doc, r):
+    """`doc` (the plasmid after the changes) with the two primers of `design_selected`'s result `r` placed where they bind: the file the
+    panel's "Save as new file" and the command line write. A plasmid whose bases are not `r.product` is replaced by it (never expected)."""
+    from assembly import transfer_primers
+    if doc.sequence().upper() != r.product:
+        from opendna_core import Document
+        doc = Document.new_sequence(doc.name, r.product, True)
+    transfer_primers(doc, [SimpleNamespace(fwd=(n, s) if n.endswith("F") else None, rev=(n, s) if n.endswith("R") else None)
+                           for n, s, _ in r.rows])
+    return doc
+
+
 # ---- the page of the Assembly panel -------------------------------------------------------------------------
 
 
@@ -167,9 +180,9 @@ class KldPage(QWidget):
         self._editor_class, self._view_class = FragmentEditor, ReadOnlyView
         self.editor = self.left = self.right = self.right_editor = None
         self.found, self.old, self.manual, self.result, self.product_doc = [], "", {}, None, None
-        self.tm = QDoubleSpinBox(minimum=45, maximum=72, value=60, suffix=" °C")
-        self.group = QSpinBox(minimum=1, maximum=MAX_INSERT, value=30, suffix=" bp")
-        self.warn = QSpinBox(minimum=1, maximum=MAX_INSERT, value=120, suffix=" bp")
+        self.tm = QDoubleSpinBox(minimum=45, maximum=72, value=DEFAULT_TM, suffix=" °C")
+        self.group = QSpinBox(minimum=1, maximum=MAX_INSERT, value=DEFAULT_GROUP, suffix=" bp")
+        self.warn = QSpinBox(minimum=1, maximum=MAX_INSERT, value=DEFAULT_WARN, suffix=" bp")
         self.group.setToolTip("Changes closer than this are ticked together and made by the same primer pair.")
         self.warn.setToolTip(f"More new bases than this get an orange warning (primers may be hard or expensive to order); "
                              f"over {MAX_INSERT} bp the change is refused.")
@@ -307,7 +320,7 @@ class KldPage(QWidget):
     def _product(self, r):
         """The sequence after the ticked changes as a Document: the open sequence with its annotations (they follow the edits), the
         unticked changes put back, and the two primers added where they bind."""
-        from assembly import snapshot, transfer_primers
+        from assembly import snapshot
         doc = snapshot(self.editor.doc, self.editor.doc.name)
         shift = 0
         spots = []   # (start, end, old text) of every change in the current sequence
@@ -318,12 +331,7 @@ class KldPage(QWidget):
         for cs, ce, was, c in reversed(spots):   # last first: the places before it do not move
             if not self.manual.get(c, c in ticked):
                 doc.replace(cs, ce, was)
-        if doc.sequence().upper() != r.product:   # (never expected: the plain sequence still shows the primers)
-            from opendna_core import Document
-            doc = Document.new_sequence(self.editor.doc.name, r.product, True)
-        transfer_primers(doc, [SimpleNamespace(fwd=(n, s) if n.endswith("F") else None, rev=(n, s) if n.endswith("R") else None)
-                               for n, s, _ in r.rows])
-        return doc
+        return with_primers(doc, r)
 
     def _checked(self):
         """The ticked changes of the list, in order."""

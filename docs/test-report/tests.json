@@ -7201,6 +7201,162 @@
    "issues": [
     "Does not open the files in a window (that is main.open_handed_over, checked by hand: no UI tests), and not a launch while the running program is busy or hung."
    ]
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_agent_reads_the_plasmid",
+   "area": "Command line for agents",
+   "role": "An agent would plan 200 edits from wrong positions, strands or amino acids, and every one of them would be wrong.",
+   "purpose": "inspect, feature and region give what the GenBank file says: length, topology, feature count, a reverse-strand CDS read from its own start codon, its protein, and 1-based inclusive regions.",
+   "cases": [
+    {
+     "input": "inspect demo/pBAD30_eilR.gb",
+     "expected": "length and topology of the Document, one entry per feature"
+    },
+    {
+     "input": "feature araC (3655..4533, strand -1)",
+     "expected": "sequence = reverse complement of bases 3655..4533, starts ATG; protein starts M, ends *, 292 aa"
+    },
+    {
+     "input": "region 1 12",
+     "expected": "the first 12 bases of the Document"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "adequate",
+   "issues": [
+    "One demo plasmid only: a join or a feature across the origin is not exercised."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_agent_mistakes_are_one_error_line",
+   "area": "Command line for agents",
+   "role": "A mistake in the agent's input could end as a traceback or silent output that the agent cannot read or pass to the user.",
+   "purpose": "Each user mistake gives exit code 1, nothing on stdout and exactly one `ERROR:` line on stderr that says what is wrong.",
+   "cases": [
+    {
+     "input": "missing file; unknown feature; region 0..12; region past the end; unknown recipe",
+     "expected": "exit 1, empty stdout, one ERROR line naming the problem"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_every_recipe_example_still_runs",
+   "area": "Command line for agents",
+   "role": "A recipe could keep telling agents to run a command that no longer exists or whose arguments changed.",
+   "purpose": "Every command in the Example block of every recipe (and the index) runs and succeeds, so the recipes cannot drift from the tool.",
+   "cases": [
+    {
+     "input": "skills list, then each recipe's Example block",
+     "expected": "index and inspect are listed; every example command exits 0"
+    }
+   ],
+   "oracle": "smoke",
+   "strength": "adequate",
+   "issues": [
+    "Checks that examples run, not that their output is what the recipe says."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_hgvs_mutations_become_the_change_they_name",
+   "area": "Command line for agents",
+   "role": "A mutation written in HGVS could be turned into the wrong bases (off by one, wrong strand, wrong codon) and 200 wrong plasmids and primer pairs would be made from it.",
+   "purpose": "Each HGVS form (substitution, deletion, insertion, deletion-insertion, duplication; c., o. and protein; one or three letters) becomes the exact plasmid change, with its HGVS text, predicted protein and effect, on a forward and on a reverse-strand copy of the same gene.",
+   "cases": [
+    {
+     "input": "gx (CDS 101..121 forward) c.4G>A, p.Ala2Thr, A2T, o.104G>A",
+     "expected": "(103, 104, 'A'), o.104G>A; the first also p.(Ala2Thr) missense"
+    },
+    {
+     "input": "gx p.Glu3del; c.9_10insCCC; c.9_10insC; c.7_9dup",
+     "expected": "(106,109,''); (109,109,'CCC') p.(Glu3_Lys4insPro); frameshift; (109,109,'GAA') p.(Glu3dup)"
+    },
+    {
+     "input": "gx p.Glu3_Lys4delinsGln; c.7_12delinsCAA",
+     "expected": "(106, 110, 'C') for both (only GAAA -> C differs)"
+    },
+    {
+     "input": "gy (complement(401..421)) c.4G>A, p.Ala2Thr, p.Glu3del, c.9_10insCCC",
+     "expected": "(417,418,'T') o.418C>T; (417,418,'T'); (412,415,''); (412,412,'GGG')"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "Features made of several parts (joins) and changes beyond the ends of a CDS are not exercised."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_hgvs_mistakes_say_what_to_fix_and_ambiguities_only_warn",
+   "area": "Command line for agents",
+   "role": "A wrong reference base or amino acid in a mutation table could be applied silently, and an ambiguous codon choice could be made without telling the user.",
+   "purpose": "Every mistake (wrong reference, wrong residue, nothing to change, outside the plasmid, past the CDS end, unknown feature, non-adjacent insertion, position 0, missing feature name, unreadable text, c.*N) raises one readable error; a unique nearest codon gives no warning, tied codons give a default and a warning naming the alternatives.",
+   "cases": [
+    {
+     "input": "gx:c.4C>A, p.Lys2Thr, p.Ala2Ala, o.600A>T, c.50G>A, nope:c.1A>T, c.9_11insA, c.0A>T, c.4G>A, 'lacZ del 5', c.*3A>T",
+     "expected": "an error each, with the words 'not C', 'is Ala (GCT), not Lys', 'already', 'outside the plasmid', 'past the end', 'No feature called', 'neighbouring', 'no position 0', 'name the feature', 'Cannot read', 'stop codon'"
+    },
+    {
+     "input": "gx:p.Ala2Gly; p.Ala2Ser; p.Glu3Asp",
+     "expected": "G with no warning; T; C with a warning naming GAC and GAT"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "The warning for a change that can slide along a repeat is not tested."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_kld_batch_gives_the_files_and_primers_the_panel_gives",
+   "area": "Command line for agents",
+   "role": "The batch could give files or primers different from what the user gets by hand in the KLD panel, or overwrite earlier results, or accept a malformed table.",
+   "purpose": "A 4-row table (substitution, reverse-strand substitution, deletion, wrong reference) writes the 3 good edited plasmids with both primers drawn on them, a primers table, a report and the settings; the plasmids are the string edits of the original; the primers are those of kld.design_selected; the failed row is reported and gives exit code 1; a second run into the same folder, extra columns, repeated or bad ids are refused.",
+   "cases": [
+    {
+     "input": "kld run t.gb m.csv --out out (rows sub, rev, del, bad)",
+     "expected": "exit 1; summary 3 ok 1 error; out holds del.gb primers.csv report.jsonl rev.gb settings.json sub.gb"
+    },
+    {
+     "input": "each written .gb",
+     "expected": "bases = original with the change; primer_bind features KLD-F and KLD-R; primers equal kld.design_selected's"
+    },
+    {
+     "input": "same run again; table with a note column; ids 'a b' and a repeated id",
+     "expected": "'already exists'; 'exactly id,mutation'; 'used twice'"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": [
+    "Settings are the defaults of the test machine: a saved setting that changes the primers is not exercised."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
   }
  ],
  "removed": [
