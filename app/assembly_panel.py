@@ -664,8 +664,8 @@ class AssemblyPanel(QWidget):
         self.min_ov = QSpinBox(minimum=15, maximum=60, value=20, suffix=" bp")
         self.max_ov = QSpinBox(minimum=15, maximum=80, value=40, suffix=" bp")
         self.ov_tm = QDoubleSpinBox(minimum=40, maximum=75, value=52, suffix=" °C")
-        self.anneal_tm = QDoubleSpinBox(minimum=45, maximum=72, value=60, suffix=" °C")
-        self.homology = [QSpinBox(minimum=35, maximum=R.MAX_HOMOLOGY, value=R.HOMOLOGY, suffix=" bp", minimumWidth=110) for _ in range(2)]   # recombineering: left, right
+        self.anneal_tm = QDoubleSpinBox(minimum=R.LIMITS["annealing_tm"][0], maximum=R.LIMITS["annealing_tm"][1], value=R.DEFAULT_TM, suffix=" °C")
+        self.homology = [QSpinBox(minimum=R.LIMITS["homology"][0], maximum=R.LIMITS["homology"][1], value=R.HOMOLOGY, suffix=" bp", minimumWidth=110) for _ in range(2)]   # recombineering: left, right
         self.report_button = QPushButton("Full report…", clicked=self.show_report, toolTip="Every junction, check and oligo in detail")
         self.options = []   # (label, widget, methods it belongs to) shown only for those methods
         grid = QGridLayout()

@@ -4,7 +4,7 @@
 
 ## `test_agent_reads_the_plasmid`
 
-**Result:** ✅ passed in 0.01 s · [line 29](../../tests/test_agent_cli.py#L29) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 37](../../tests/test_agent_cli.py#L37) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent would plan 200 edits from wrong positions, strands or amino acids, and every one of them would be wrong.
 
@@ -22,7 +22,7 @@ inspect, feature and region give what the GenBank file says: length, topology, f
 
 ## `test_agent_mistakes_are_one_error_line`
 
-**Result:** ✅ passed in 0.01 s · [line 46](../../tests/test_agent_cli.py#L46) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 54](../../tests/test_agent_cli.py#L54) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A mistake in the agent's input could end as a traceback or silent output that the agent cannot read or pass to the user.
 
@@ -34,7 +34,7 @@ Each user mistake gives exit code 1, nothing on stdout and exactly one `ERROR:` 
 
 ## `test_every_recipe_example_still_runs`
 
-**Result:** ✅ passed in 0.01 s · [line 54](../../tests/test_agent_cli.py#L54) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 62](../../tests/test_agent_cli.py#L62) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** A recipe could keep telling agents to run a command that no longer exists or whose arguments changed.
 
@@ -86,17 +86,17 @@ Every mistake (wrong reference, wrong residue, nothing to change, outside the pl
 
 ## `test_kld_batch_gives_the_files_and_primers_the_panel_gives`
 
-**Result:** ✅ passed in 0.06 s · [line 133](../../tests/test_agent_cli.py#L133) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 133](../../tests/test_agent_cli.py#L133) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give files or primers different from what the user gets by hand in the KLD panel, or overwrite earlier results, or accept a malformed table.
 
-A 4-row table (substitution, reverse-strand substitution, deletion, wrong reference) writes the 3 good edited plasmids with both primers drawn on them, a primers table, a report and the settings; the plasmids are the string edits of the original; the primers are those of kld.design_selected; the failed row is reported and gives exit code 1; a second run into the same folder, extra columns, repeated or bad ids are refused.
+A 4-row table (substitution, reverse-strand substitution, deletion, wrong reference) writes the 3 good edited plasmids with both primers drawn on them, a primers table, a report and the settings; the plasmids are the string edits of the original; the primers are those of kld.design_selected; the failed row is reported and gives exit code 1; a second run into the same folder and a table with extra columns are refused.
 
 | # | Input | Expected output |
 |---|---|---|
 | 1 | kld run t.gb m.csv --out out (rows sub, rev, del, bad) | exit 1; summary 3 ok 1 error; out holds del.gb primers.csv report.jsonl rev.gb settings.json sub.gb |
 | 2 | each written .gb | bases = original with the change; primer_bind features KLD-F and KLD-R; primers equal kld.design_selected's |
-| 3 | same run again; table with a note column; ids 'a b' and a repeated id | 'already exists'; 'exactly id,mutation'; 'used twice' |
+| 3 | same run again; table with a note column | 'already exists'; 'exactly id,mutation' |
 
 **Review notes:**
 
@@ -104,7 +104,7 @@ A 4-row table (substitution, reverse-strand substitution, deletion, wrong refere
 
 ## `test_pcr_batch_gives_the_pairs_the_panel_gives`
 
-**Result:** ✅ passed in 1.74 s · [line 170](../../tests/test_agent_cli.py#L170) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.60 s · [line 167](../../tests/test_agent_cli.py#L167) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results.
 
@@ -122,7 +122,7 @@ pcr check and run give, for 150..400 and 200..450, the pairs of primer_design.de
 
 ## `test_recombineering_batch_gives_the_designs_the_panel_gives`
 
-**Result:** ✅ passed in 0.04 s · [line 204](../../tests/test_agent_cli.py#L204) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 200](../../tests/test_agent_cli.py#L200) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could place the cassette in the wrong orientation or place, give primers whose tails are not the genome's homologies, or overwrite earlier results.
 
@@ -138,3 +138,21 @@ For a 521 bp circular genome, a 120 bp cassette and rows replacing a CDS, a 11 b
 **Review notes:**
 
 - A genome with a linear topology and a region near its end is not exercised.
+
+## `test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names`
+
+**Result:** ✅ passed in 0.05 s · [line 231](../../tests/test_agent_cli.py#L231) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** One bad row could end a 200-row run, two rows could overwrite each other's file, or a value the windows would refuse could pass without the user knowing.
+
+A table (saved as cp1252, as Excel does) with ids differing only by case, unsafe characters, a Windows device name, a ragged row, an empty cell, a mutation that changes nothing and a row that fails in an unforeseen way: every other row is processed, every ok row has its own file (unique in any letter case), renames are told in the row's warnings, the errors are loud on stderr (with the traceback of the unforeseen one), a no-op mutation is accepted with a warning and no primers, and a Tm beyond the window's range is used with a responsibility warning.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | ids A, a, 'bad id!', CON, café; rows ragged (3 cells), empty (no mutation), noop (o.104G>G), boom (resolve raises RuntimeError) | files A.gb _CON.gb a_2.gb bad_id_.gb caf_.gb noop.gb; ragged '3 cells but the header has 2', empty 'mutation is empty', boom 'Unexpected RuntimeError' with a traceback; exit 1 |
+| 2 | noop | effect 'no change', no primers, 'o.104=', warning 'no change'; its file is the plasmid unchanged |
+| 3 | kld check --tm 80 | exit 0; settings max 72.0; top-level warning 'responsibility'; WARNING on stderr |
+
+**Review notes:**
+
+- Only the KLD batch is exercised; pcr and recombineering share the same helpers (run_rows, finish) but are not run with bad rows.

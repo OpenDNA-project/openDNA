@@ -11,6 +11,7 @@ from editor import reverse_complement as rc
 MAX_HOMOLOGY = 50_000   # longest homology the panel offers
 HOMOLOGY = 50      # nt of homology on each side of the cassette
 DEFAULT_TM = 60.0   # annealing Tm of the cassette primers
+LIMITS = {"homology": (35, MAX_HOMOLOGY), "annealing_tm": (45.0, 72.0)}   # what the panel's boxes accept; the command line warns beyond
 MAX_MISMATCHES = 5  # check mode: mismatches tolerated in an arm, so non-specific sites show up
 
 
@@ -64,6 +65,16 @@ def design(genome, cassette, start, end, left=HOMOLOGY, right=HOMOLOGY, flip=Fal
     rows = primer_rows(arms[0], arms[1], c, tm)
     feats = [(f.kind, f.location, f.qualifiers) for f in cas.copy_features(0, cas.length)]
     return SimpleNamespace(left=arms[0], right=arms[1], rows=rows, product=apply(genome, start, end, c, feats))
+
+
+def design_primers(genome, cassette, start, end, left=HOMOLOGY, right=HOMOLOGY, flip=False, tm=DEFAULT_TM):
+    """`design` without the recombinant genome (a bacterial genome is megabytes to copy): SimpleNamespace(left, right, rows) only."""
+    g = _bases(genome)
+    arms = (_arm(g, start - left, start, genome.circular), _arm(g, end, end + right, genome.circular))
+    cas = snapshot(cassette)
+    if flip:
+        cas.reverse_complement()
+    return SimpleNamespace(left=arms[0], right=arms[1], rows=primer_rows(arms[0], arms[1], _bases(cas), tm))
 
 
 def amplicon(template, circular, fwd, rev):

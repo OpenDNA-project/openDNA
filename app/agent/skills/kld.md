@@ -19,7 +19,7 @@ m2,lacZ:c.360G>C
 m3,o.1234_1240del
 ```
 
-- `id`: letters, digits, `.` `_` `-` only; unique (it names the output files `<id>.gb`). Use the user's own name for the mutation if it has one, else `m1`, `m2`...
+- `id`: names the output file `<id>.gb`. Use the user's own name for the mutation if it has one, else a convention that suits them (`m1`, `m2`... or `<gene>_<change>`). Ids that would collide (also by letter case) or hold unsafe characters are renamed by openDNA with a warning, and no file is ever lost; but a clear unique id is better.
 - `mutation`: HGVS, as in the table of `skills show index` (feature name before the colon; `o.` positions along the plasmid need no feature). One mutation per row. Anything else in the user's table (notes, positions in other formats) you translate yourself into one of the accepted forms when the meaning is clear, and ask when it is not. Other columns are an error.
 - A mutation always carries what it expects to find (the reference base, or the amino acid before the number). Keep it: it is the guard against a wrong coordinate.
 
@@ -33,7 +33,7 @@ Nothing is written. The answer is JSON: `settings`, `summary` (rows, ok, errors,
 
 ## 4. Show the settings, then wait for the user's OK
 
-Show the user the `settings` block: Tm and the other KLD values (default or your override), the PCR conditions (`saved in openDNA` or default), the genetic code table, the codon usage table. Tell them which matter (Tm and the codon usage table change the primers and the codon chosen). Options if they want other values: `--tm` (annealing Tm, default 60), `--group` (changes closer than this share a primer pair, default 30), `--warn` (warn for insertions above this many bp, default 120). **Do not run before the user agrees.**
+Show the user the `settings` block: Tm and the other KLD values (default or your override), the PCR conditions (`saved in openDNA` or default), the genetic code table, the codon usage table. Tell them which matter (Tm and the codon usage table change the primers and the codon chosen). Options if they want other values: `--tm` (annealing Tm, default 60), `--group` (changes closer than this share a primer pair, default 30), `--warn` (warn for insertions above this many bp, default 120). Every setting shows the range the windows accept (`min`, `max`): tell the user. A value beyond it is used as given, with a warning that the result is their responsibility. **Do not run before the user agrees.**
 
 ## 5. Run
 
@@ -41,20 +41,21 @@ Show the user the `settings` block: Tm and the other KLD values (default or your
 kld run PLASMID.gb MUTATIONS.csv --out NEW_FOLDER
 ```
 
-`--out` must be a folder that does not exist or is empty: nothing is ever overwritten. It writes `<id>.gb` (the edited plasmid with both primers drawn on it), `primers.csv` (id, mutation, hgvs_dna, hgvs_protein, forward and reverse primer with Tm, warnings), `report.jsonl` (one record per row) and `settings.json`. Rows that failed get no file and are listed in the answer; exit code 1.
+`--out` must be a folder that does not exist or is empty: nothing is ever overwritten. It writes `<id>.gb` (the edited plasmid with both primers drawn on it), `primers.csv` (id, mutation, hgvs_dna, hgvs_protein, forward and reverse primer with Tm, warnings), `report.jsonl` (one record per row) and `settings.json`. Rows that failed get no file and are listed in the answer (and on stderr); exit code 1; the other rows are done. `summary.files_written` counts the files, and the run checks that each is there.
 
 ## What to tell the user
 
 - Where the folder is, how many rows succeeded, and each failed row with its error in plain words.
-- **Every warning**, per mutation. Warnings never stop a row: openDNA picks a default and says so. The ones you will see: several codons for the new amino acid (the one used and the alternatives), a change in a repeat that could be placed elsewhere (same plasmid, slightly different primers), a frameshift, a stop codon appearing, a changed start codon, an insertion above `--warn`, a primer with a low GC or a long primer.
+- **Every warning**, per mutation. Warnings never stop a row: openDNA picks a default and says so. The ones you will see: several codons for the new amino acid (the one used and the alternatives), a change in a repeat that could be placed elsewhere (same plasmid, slightly different primers), a frameshift, a stop codon appearing, a changed start codon, an insertion above `--warn`, a mutation that changes nothing ("no change": the plasmid already has those bases, no primers, the file is the plasmid as it is), a file renamed because its id collided or was unsafe, a primer with a low GC or a long primer.
 - The `hgvs_protein` and `effect` of each mutation: they say what the user's edit does to the protein.
 
 ## Errors you may see
 
 | Message | Fix |
 |---|---|
-| `the columns must be exactly id,mutation` | remove or rename the extra columns |
-| `id ... must be letters, digits` / `used twice` | rename the ids |
+| `the columns must be exactly id,mutation` | remove or rename the extra columns (stops the run) |
+| `line N ... has X cells but the header has 2` / `... is empty` | that row only: fix the line (a comma inside a cell needs double quotes) and re-run it |
+| `Unexpected ...` | a bug in openDNA: give the user the row and the `detail` |
 | `Cannot read the mutation` | the message lists the accepted forms: rewrite it |
 | `residue N of X is Y (CODON), not Z` | the amino acid the user gave is not what the plasmid has there: ask the user (a different plasmid or numbering?) |
 | `the plasmid has X at that place, not Y` | the expected base is wrong: same question |

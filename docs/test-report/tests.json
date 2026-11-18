@@ -7333,7 +7333,7 @@
    "id": "tests/test_agent_cli.py::test_kld_batch_gives_the_files_and_primers_the_panel_gives",
    "area": "Command line for agents",
    "role": "The batch could give files or primers different from what the user gets by hand in the KLD panel, or overwrite earlier results, or accept a malformed table.",
-   "purpose": "A 4-row table (substitution, reverse-strand substitution, deletion, wrong reference) writes the 3 good edited plasmids with both primers drawn on them, a primers table, a report and the settings; the plasmids are the string edits of the original; the primers are those of kld.design_selected; the failed row is reported and gives exit code 1; a second run into the same folder, extra columns, repeated or bad ids are refused.",
+   "purpose": "A 4-row table (substitution, reverse-strand substitution, deletion, wrong reference) writes the 3 good edited plasmids with both primers drawn on them, a primers table, a report and the settings; the plasmids are the string edits of the original; the primers are those of kld.design_selected; the failed row is reported and gives exit code 1; a second run into the same folder and a table with extra columns are refused.",
    "cases": [
     {
      "input": "kld run t.gb m.csv --out out (rows sub, rev, del, bad)",
@@ -7344,8 +7344,8 @@
      "expected": "bases = original with the change; primer_bind features KLD-F and KLD-R; primers equal kld.design_selected's"
     },
     {
-     "input": "same run again; table with a note column; ids 'a b' and a repeated id",
-     "expected": "'already exists'; 'exactly id,mutation'; 'used twice'"
+     "input": "same run again; table with a note column",
+     "expected": "'already exists'; 'exactly id,mutation'"
     }
    ],
    "oracle": "independent implementation",
@@ -7414,6 +7414,35 @@
    "strength": "strong",
    "issues": [
     "A genome with a linear topology and a region near its end is not exercised."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names",
+   "area": "Command line for agents",
+   "role": "One bad row could end a 200-row run, two rows could overwrite each other's file, or a value the windows would refuse could pass without the user knowing.",
+   "purpose": "A table (saved as cp1252, as Excel does) with ids differing only by case, unsafe characters, a Windows device name, a ragged row, an empty cell, a mutation that changes nothing and a row that fails in an unforeseen way: every other row is processed, every ok row has its own file (unique in any letter case), renames are told in the row's warnings, the errors are loud on stderr (with the traceback of the unforeseen one), a no-op mutation is accepted with a warning and no primers, and a Tm beyond the window's range is used with a responsibility warning.",
+   "cases": [
+    {
+     "input": "ids A, a, 'bad id!', CON, café; rows ragged (3 cells), empty (no mutation), noop (o.104G>G), boom (resolve raises RuntimeError)",
+     "expected": "files A.gb _CON.gb a_2.gb bad_id_.gb caf_.gb noop.gb; ragged '3 cells but the header has 2', empty 'mutation is empty', boom 'Unexpected RuntimeError' with a traceback; exit 1"
+    },
+    {
+     "input": "noop",
+     "expected": "effect 'no change', no primers, 'o.104=', warning 'no change'; its file is the plasmid unchanged"
+    },
+    {
+     "input": "kld check --tm 80",
+     "expected": "exit 0; settings max 72.0; top-level warning 'responsibility'; WARNING on stderr"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "Only the KLD batch is exercised; pcr and recombineering share the same helpers (run_rows, finish) but are not run with bad rows."
    ],
    "verdict": "sound",
    "evidence": "",

@@ -18,7 +18,7 @@ araC,araC
 ori_region,2839..3384
 ```
 
-- `id`: letters, digits, `.` `_` `-` only; unique.
+- `id`: a name for the row (no file is named after it); choose one that suits the user.
 - `target`: a feature name (or `#INDEX` when several share a name), or `START..END`, 1-based and inclusive, along the plasmid (START smaller than END). A region across the origin is not accepted: ask for it in two parts, or ask the user.
 - Primers sit exactly on the two ends of the target (`--window 0`, the default), so the product is the target. A primer needs a product at least as long as itself, so a target of about 25 bases or fewer gives no pair: widen it or say so.
 - Anything else in the user's table you translate yourself when the meaning is clear (for example a start and an end in two columns become `START..END`), and ask when it is not. Other columns are an error.
@@ -37,7 +37,7 @@ Nothing is written. JSON: `settings`, `summary` and one record per row: `status`
 
 ## 4. Show the settings, then wait for the user's OK
 
-Show the `settings` block: the Tm and length options, the PCR conditions (salt, dNTP, primer concentrations: `saved in openDNA` or default), and the **background genome** that primers are checked against (the `background_genome` of the settings; the user sets it in openDNA under Primers > Options). If none is set the genome check says `no genome set` and primers are only checked against the plasmid: tell the user. A source checkout falls back to the demo E. coli genome, so a primer for an E. coli gene is then marked `bad` ("the whole primer binds" in the genome) for the right reason. **Do not run before the user agrees.**
+Show the `settings` block: the Tm and length options, the PCR conditions (salt, dNTP, primer concentrations: `saved in openDNA` or default), and the **background genome** that primers are checked against (the `background_genome` of the settings; the user sets it in openDNA under Primers > Options). If none is set the genome check says `no genome set` and primers are only checked against the plasmid: tell the user. A source checkout falls back to the demo E. coli genome, so a primer for an E. coli gene is then marked `bad` ("the whole primer binds" in the genome) for the right reason. Every setting shows the range the windows accept (`min`, `max`): tell the user; a value beyond it is used as given with a warning that the result is their responsibility. **Do not run before the user agrees.**
 
 ## 5. Run
 

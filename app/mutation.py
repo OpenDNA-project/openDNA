@@ -44,12 +44,12 @@ def hull(f):
     return min(s for s, _ in f.spans) + 1, max(e for _, e in f.spans)
 
 
-def find_feature(doc, name, kinds=None):
+def find_feature(doc, name):
     """The one feature called `name` (its label, case ignored, or #INDEX). A gene and its CDS share a label: the CDS is the one meant."""
     if name.startswith("#") and name[1:].isdigit():
         found = [f for f in doc.features() if f.index == int(name[1:])]
     else:
-        found = [f for f in doc.features() if f.label.lower() == name.lower() and f.kind != "source" and (kinds is None or f.kind in kinds)]
+        found = [f for f in doc.features() if f.label.lower() == name.lower() and f.kind != "source"]
     if not found:
         raise UserError(f"No feature called {name!r}. Run `inspect` for the names.")
     if len(found) > 1:
@@ -106,7 +106,7 @@ def resolve(doc, spec, usage=None):
     warnings = []
     seq = doc.sequence(0, n).upper()
     f = None
-    if scope != "o" or name:
+    if scope != "o":   # (o. numbers run along the plasmid: a name before it is not needed)
         if not name:
             raise UserError(f"{spec!r}: name the feature, as in lacZ:{spec}")
         f = find_feature(doc, name)
@@ -116,10 +116,17 @@ def resolve(doc, spec, usage=None):
         start, end, text = _protein_change(doc, f, seq, kind, g, usage, warnings, spec)
     else:
         start, end, text = _dna_change(f if scope == "c" else None, seq, kind, g, warnings, spec)
+    asked = (start, end)
     while start < end and text and seq[start] == text[0]:   # a replacement keeps only the bases that differ (a codon change of one base is a substitution)
         start, text = start + 1, text[1:]
     while start < end and text and seq[end - 1] == text[-1]:
         end, text = end - 1, text[:-1]
+    if start == end and not text:   # the plasmid already has what was asked: accepted, with a warning, and nothing to make
+        warnings.append(f"{spec}: no change, the plasmid already has these bases ({seq[asked[0]:asked[1]] or 'nothing to add'}): no primers are designed.")
+        r = SimpleNamespace(spec=spec, feature=None if f is None else f.label, start=start, end=end, text=text, warnings=warnings)
+        r.hgvs_dna = f"o.{asked[0] + 1}{'' if asked[1] - asked[0] < 2 else f'_{asked[1]}'}="
+        r.hgvs_protein, r.effect = "p.(=)", "no change"
+        return r
     if start == end and start in (0, n):
         raise UserError(f"{spec!r}: an insertion at the very start or end touches the origin of the plasmid, which is not supported.")
     slide = sliding(seq, start, end, text)

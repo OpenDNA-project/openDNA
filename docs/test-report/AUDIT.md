@@ -8,15 +8,15 @@ Built by `scripts/test_report.py` on 2026-11-18 from `tests.json` and the last r
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 109 | 109 | 0 | 74 | 35 | 0 | 0 | 85 |
+| Python | 110 | 110 | 0 | 75 | 35 | 0 | 0 | 86 |
 | Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 174 | 174 | 0 | 116 | 57 | 1 | 0 | 129 |
+| **All** | 175 | 175 | 0 | 117 | 57 | 1 | 0 | 130 |
 
 ## Weak or unreviewed tests
 
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 174 tests)
+## Gaps and proposed tests (3 of 175 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -43,7 +43,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 ## Every test, by file
 
-### `tests/test_agent_cli.py` (8 tests)
+### `tests/test_agent_cli.py` (9 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -55,6 +55,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_kld_batch_gives_the_files_and_primers_the_panel_gives` | The batch could give files or primers different from what the user gets by hand in the KLD panel, or overwrite earlier results, or accept a malformed table. | independent implementation | strong | sound | Settings are the defaults of the test machine: a saved setting that changes the primers is not exercised. |
 | `test_pcr_batch_gives_the_pairs_the_panel_gives` | The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results. | independent implementation | strong | sound | The genome checks run against the demo genome of the repository, whatever the machine's own setting. |
 | `test_recombineering_batch_gives_the_designs_the_panel_gives` | The batch could place the cassette in the wrong orientation or place, give primers whose tails are not the genome's homologies, or overwrite earlier results. | hand-computed | strong | sound | A genome with a linear topology and a region near its end is not exercised. |
+| `test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names` | One bad row could end a 200-row run, two rows could overwrite each other's file, or a value the windows would refuse could pass without the user knowing. | hand-computed | strong | sound | Only the KLD batch is exercised; pcr and recombineering share the same helpers (run_rows, finish) but are not run with bad rows. |
 
 ### `tests/test_assembly.py` (10 tests)
 

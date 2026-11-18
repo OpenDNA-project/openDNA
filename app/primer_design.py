@@ -22,6 +22,7 @@ from uikit import plural
 
 KEEP = 25  # best candidates per side that get the (slower) uniqueness check and pairing
 DEFAULT_TM, DEFAULT_MIN_LEN, DEFAULT_MAX_LEN, DEFAULT_WINDOW = 60.0, 18, 25, 0   # the Primers panel's starting values and the command line's defaults
+LIMITS = {"tm": (45.0, 75.0), "min_len": (12, 35), "max_len": (12, 40), "window": (0, 2000)}   # what the panel's boxes accept; the command line warns beyond
 
 
 def salt(cond):

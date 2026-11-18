@@ -23,6 +23,7 @@ from primer_panel import melting_temp
 
 DEFAULT_TM, DEFAULT_GROUP, DEFAULT_WARN = 60.0, 30, 120   # the panel's starting values and the command line's defaults (app/cli.py)
 MAX_INSERT = 500    # bp: new bases beyond this are not made with primers
+LIMITS = {"tm": (45.0, 72.0), "group": (1, MAX_INSERT), "warn_insert": (1, MAX_INSERT)}   # what the panel's boxes accept; the command line warns beyond
 ONE_TAIL = 40       # bp: up to here the new bases ride on the forward primer alone; beyond, they are split between the two
 MIN_LENGTH = 100    # bp: a shorter plasmid cannot take two annealing parts and a change
 MAX_MIDDLE = 20_000  # bp: a bigger stretch between the first and last difference is taken as one change, not aligned
@@ -180,9 +181,9 @@ class KldPage(QWidget):
         self._editor_class, self._view_class = FragmentEditor, ReadOnlyView
         self.editor = self.left = self.right = self.right_editor = None
         self.found, self.old, self.manual, self.result, self.product_doc = [], "", {}, None, None
-        self.tm = QDoubleSpinBox(minimum=45, maximum=72, value=DEFAULT_TM, suffix=" °C")
-        self.group = QSpinBox(minimum=1, maximum=MAX_INSERT, value=DEFAULT_GROUP, suffix=" bp")
-        self.warn = QSpinBox(minimum=1, maximum=MAX_INSERT, value=DEFAULT_WARN, suffix=" bp")
+        self.tm = QDoubleSpinBox(minimum=LIMITS["tm"][0], maximum=LIMITS["tm"][1], value=DEFAULT_TM, suffix=" °C")
+        self.group = QSpinBox(minimum=LIMITS["group"][0], maximum=LIMITS["group"][1], value=DEFAULT_GROUP, suffix=" bp")
+        self.warn = QSpinBox(minimum=LIMITS["warn_insert"][0], maximum=LIMITS["warn_insert"][1], value=DEFAULT_WARN, suffix=" bp")
         self.group.setToolTip("Changes closer than this are ticked together and made by the same primer pair.")
         self.warn.setToolTip(f"More new bases than this get an orange warning (primers may be hard or expensive to order); "
                              f"over {MAX_INSERT} bp the change is refused.")

@@ -19,7 +19,7 @@ ko_eilR,eilR,cassettes/kan.gb,forward
 del_araC,araC,none,
 ```
 
-- `id`: letters, digits, `.` `_` `-` only; unique.
+- `id`: names the output genome `<id>.gb`; choose a convention that suits the user. Colliding or unsafe ids are renamed with a warning (see the index), never lost.
 - `region`: what is replaced: a feature name (or `#INDEX`), or `START..END`, 1-based and inclusive, along the genome. A region across the origin is not accepted.
 - `cassette`: the cassette's GenBank file (relative to the CSV's folder, or an absolute path), or `none` to delete the region (no primers: there is nothing to amplify).
 - `orientation`: optional column, `forward` (default) or `reverse` (the cassette goes in reverse-complemented). Say to the user which one you used; for a gene knock-out it usually matches the direction of the gene it replaces.
@@ -28,7 +28,7 @@ del_araC,araC,none,
 
 ## 2b. Options (all optional)
 
-`--homology` (bp of homology on each side of the cassette, default 50), `--tm` (annealing Tm of the primers, default 60), `--primers-only` (with `run`: do not write the recombinant genomes: a bacterial genome is several megabytes each, 200 of them are gigabytes).
+`--homology` (bp of homology on each side of the cassette, default 50), `--tm` (annealing Tm of the primers, default 60), `--primers-only` (with `run`: write only the primers, not the recombinant genomes. Each recombinant is a full copy of the genome: for a bacterial genome that is several megabytes per row, so 200 rows are about a gigabyte of files and a lot of time. Use it when the user only wants the primers to order; leave it off when they want the edited genomes). `check` never builds genomes.
 
 ## 3. Check
 
@@ -40,7 +40,7 @@ Nothing is written. JSON: `settings`, `summary` and one record per row: `status`
 
 ## 4. Show the settings, then wait for the user's OK
 
-Show the `settings` block (homology length, annealing Tm, whether genomes are written, the PCR conditions) and **the warnings of every row**: they say which features the region removes and which it cuts in two. Check with the user that those are meant. **Do not run before the user agrees.**
+Show the `settings` block (homology length, annealing Tm, whether genomes are written, the PCR conditions) and **the warnings of every row**: they say which features the region removes and which it cuts in two. Check with the user that those are meant. Every setting shows the range the windows accept (`min`, `max`): tell the user; a value beyond it is used as given with a warning that the result is their responsibility. **Do not run before the user agrees.**
 
 ## 5. Run
 

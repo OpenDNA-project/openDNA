@@ -96,9 +96,23 @@ def cmd_region(args):
     return {"start": args.start, "end": args.end, "length": args.end - args.start + 1, "sequence": doc.sequence(args.start - 1, args.end)}
 
 
-def given(value, default):
-    """A setting for the agent to show: the value in use and where it came from."""
-    return {"value": default if value is None else value, "source": "default" if value is None else "override (command line)"}
+def given(value, default, limits=None, name="this value"):
+    """A setting for the agent to show: the value in use, where it came from, and the range the windows accept (`limits`). A value
+    given beyond that range is used as given, with a warning that the result is the sender's responsibility."""
+    out = {"value": default if value is None else value, "source": "default" if value is None else "override (command line)"}
+    if limits:
+        out["min"], out["max"] = limits
+        if value is not None and not limits[0] <= value <= limits[1]:
+            out["warning"] = (f"{name} = {value} is outside what openDNA's windows accept ({limits[0]} to {limits[1]}): it is used as given, "
+                              "and the result is your responsibility.")
+    return out
+
+
+def setting_warnings(settings):
+    """The warnings found anywhere in a settings block."""
+    if isinstance(settings, dict):
+        return ([settings["warning"]] if "warning" in settings else []) + [w for v in settings.values() for w in setting_warnings(v)]
+    return []
 
 
 def effective_settings(extra):
@@ -124,31 +138,79 @@ def effective_settings(extra):
     }
 
 
+RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}   # names Windows will not make a file of
+
+
 def read_table(path, *columns, optional=()):
-    """Rows of a CSV with the columns id and `columns` (and the `optional` ones, if present; nothing else): each row a dict."""
+    """Rows of a CSV with the columns id and `columns` (and the `optional` ones; nothing else). A wrong header stops the run (the table
+    cannot be read at all). A malformed row does not: it comes back with an `_error` saying what is wrong, and the other rows go on."""
     import csv
-    import re
+    import io
     if not Path(path).is_file():
         raise UserError(f"File not found: {path}")
-    with open(path, newline="", encoding="utf-8-sig") as fh:
-        reader = csv.DictReader(fh)
-        found, need = list(reader.fieldnames or []), ["id", *columns]
-        if not set(need) <= set(found) or not set(found) <= set(need) | set(optional):
-            raise UserError(f"{path}: the columns must be exactly {','.join(need)}" + (f" (and optionally {','.join(optional)})" if optional else "")
-                           + f"; found: {', '.join(found) or 'none'}.")
-        rows = [{k: (v or "").strip() for k, v in r.items()} for r in reader]
+    raw = Path(path).read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:   # a table saved by Excel
+        text = raw.decode("cp1252", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    header, need = [h.strip() for h in next(reader, [])], ["id", *columns]
+    if len(set(header)) != len(header) or not set(need) <= set(header) or not set(header) <= set(need) | set(optional):
+        raise UserError(f"{path}: the columns must be exactly {','.join(need)}" + (f" (and optionally {','.join(optional)})" if optional else "")
+                        + f"; found: {', '.join(header) or 'none'}.")
+    rows = []
+    for line, cells in enumerate(reader, 2):   # (line 1 is the header)
+        if not any(c.strip() for c in cells):
+            continue
+        row = {"_line": line, **dict.fromkeys(header, ""), **dict(zip(header, (c.strip() for c in cells)))}
+        row["id"] = row["id"] or f"line{line}"
+        if len(cells) != len(header):
+            row["_error"] = (f"line {line} of {path} has {len(cells)} cells but the header has {len(header)} ({','.join(header)}): the cells found are "
+                             f"{[c.strip() for c in cells]!r}. A cell that contains a comma must be in double quotes. This row was skipped; the others were processed.")
+        elif empty := [c for c in need if not row[c]]:
+            row["_error"] = f"line {line} of {path}: {', '.join(empty)} is empty. This row was skipped; the others were processed."
+        rows.append(row)
     if not rows:
         raise UserError(f"{path}: no rows.")
-    seen, problems = set(), []
-    for n, r in enumerate(rows, 2):   # (line 1 is the header)
-        if not re.fullmatch(r"[A-Za-z0-9._-]+", r["id"]):
-            problems.append(f"line {n}: id {r['id']!r} must be letters, digits, . _ - (it names the output file)")
-        elif r["id"] in seen:
-            problems.append(f"line {n}: id {r['id']!r} is used twice")
-        seen.add(r["id"])
-    if problems:
-        raise UserError(f"{path}: " + "; ".join(problems))
     return rows
+
+
+def assign_files(rows):
+    """`file_stem` of every row: its id made safe for a file name (letters, digits, . _ -), and never the name of another row, in any
+    letter case (a Windows or macOS disk would make them one file): `m1`, `M1` -> m1, M1_2. A changed name is said in the row's warnings."""
+    import re
+    taken = set()
+    for row in rows:
+        stem = re.sub(r"[^A-Za-z0-9._-]", "_", row["id"]).strip(".") or f"line{row['_line']}"
+        stem = f"_{stem}" if stem.split(".")[0].lower() in RESERVED else stem
+        name, n = stem, 1
+        while name.lower() in taken:
+            n += 1
+            name = f"{stem}_{n}"
+        taken.add(name.lower())
+        row["file_stem"] = name
+        if name != row["id"]:
+            row["file_note"] = f"The id {row['id']!r} is not usable as a file name here (unsafe characters, or the same name as another row): the file is {name}.gb."
+
+
+def run_rows(rows, row_fn, key):
+    """A record for every row, whatever happens: a malformed row, or one that fails in an unforeseen way (a bug: it is reported with its
+    traceback), is an error record and the batch goes on."""
+    import traceback
+    records = []
+    for row in rows:
+        if "_error" in row:
+            rec = {"id": row["id"], key: row.get(key, ""), "status": "error", "error": row["_error"]}
+        else:
+            try:
+                rec = row_fn(row)
+            except Exception as e:   # one row's unforeseen failure must not end the batch
+                rec = {"id": row["id"], key: row.get(key, ""), "status": "error", "detail": traceback.format_exc(),
+                       "error": f"Unexpected {type(e).__name__}: {e} (a bug in openDNA: please report it with this row)"}
+        if rec["status"] == "ok" and row.get("file_note"):
+            rec.setdefault("warnings", []).append(row["file_note"])
+        records.append(rec)
+    return records
 
 
 def make_out_dir(args, source, suffix):
@@ -164,11 +226,17 @@ def make_out_dir(args, source, suffix):
 
 def finish(out_dir, settings, records, header, csv_rows, warned):
     """The answer of a batch: settings, summary and every record; with `out_dir` also primers.csv (`header`, and the lines `csv_rows`
-    gives for each record), report.jsonl and settings.json. (result, exit code): 1 when a row failed, the others are still reported."""
+    gives for each record), report.jsonl and settings.json, after checking that every file a record names is there. (result, exit code):
+    1 when a row failed, the others are still reported. Every error and settings warning is also printed on stderr."""
     import csv
+    if out_dir is not None:
+        for r in records:
+            if r["status"] == "ok" and r.get("file") and not (out_dir / r["file"]).is_file():
+                r.update(status="error", error=f"The file {r['file']} was expected in {out_dir} and is not there.")
     failed = [r for r in records if r["status"] == "error"]
-    result = {"settings": settings, "summary": {"rows": len(records), "ok": len(records) - len(failed), "errors": len(failed),
-                                                 "with_warnings": sum(map(warned, records))}, "rows": records}
+    result = {"settings": settings, "warnings": setting_warnings(settings),
+              "summary": {"rows": len(records), "ok": len(records) - len(failed), "errors": len(failed), "with_warnings": sum(map(warned, records)),
+                          **({"files_written": sum(1 for r in records if r.get("file"))} if out_dir is not None else {})}, "rows": records}
     if out_dir is not None:
         with open(out_dir / "primers.csv", "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
@@ -179,6 +247,10 @@ def finish(out_dir, settings, records, header, csv_rows, warned):
         (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
         (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
         result["out"] = str(out_dir)
+    for w in result["warnings"]:
+        print(f"WARNING: {w}", file=sys.stderr)
+    for r in failed:
+        print(f"ERROR [row {r['id']}]: {r['error']}" + (f"\n{r['detail']}" if r.get("detail") else ""), file=sys.stderr)
     return result, 1 if failed else 0
 
 
@@ -193,7 +265,7 @@ def tm_of(primer):
 
 
 def primer_pair_line(r, *lead):
-    """primers.csv line of a record with one forward and one reverse primer (a deletion has none: empty cells)."""
+    """primers.csv line of a record with one forward and one reverse primer (a deletion, or a mutation that changes nothing, has none)."""
     f, rv = (r["primers"] + [{"sequence": "", "annealing_tm": None}] * 2)[:2]
     return [*lead, f["sequence"], tm_of(f), rv["sequence"], tm_of(rv)]
 
@@ -206,20 +278,24 @@ def kld_row(source, row, args, usage, out_dir):
     rec = {"id": row["id"], "mutation": row["mutation"], "status": "error"}
     try:
         r = mutation.resolve(source, row["mutation"], usage)
-        d = kld.design_selected(source.sequence(0, None).upper(), [(r.start, r.end, r.text)], source.circular,
-                                kld.DEFAULT_TM if args.tm is None else args.tm, kld.DEFAULT_GROUP if args.group is None else args.group,
-                                kld.DEFAULT_WARN if args.warn is None else args.warn)
+        d = None if r.effect == "no change" else kld.design_selected(
+            source.sequence(0, None).upper(), [(r.start, r.end, r.text)], source.circular,
+            kld.DEFAULT_TM if args.tm is None else args.tm, kld.DEFAULT_GROUP if args.group is None else args.group,
+            kld.DEFAULT_WARN if args.warn is None else args.warn)
     except (UserError, ValueError) as e:   # (design raises ValueError with a sentence: too short, too many new bases, ...)
         rec["error"] = str(e)
         return rec
+    notes = d.notes if d else []
     rec.update(status="ok", feature=r.feature, hgvs_dna=r.hgvs_dna, hgvs_protein=r.hgvs_protein, effect=r.effect,
-               warnings=r.warnings + [t for level, t in d.notes if level == "warn"], notes=[t for level, t in d.notes if level != "warn"],
-               primers=primer_records(d.rows))
-    if out_dir is not None:
+               warnings=r.warnings + [t for level, t in notes if level == "warn"], notes=[t for level, t in notes if level != "warn"],
+               primers=primer_records(d.rows) if d else [])
+    if out_dir is not None:   # (a mutation that changes nothing still gets its file: the plasmid as it is)
         doc = snapshot(source, source.name)
-        doc.replace(r.start, r.end, r.text)
-        kld.with_primers(doc, d).write_genbank(str(out_dir / f"{row['id']}.gb"), None)
-        rec["file"] = f"{row['id']}.gb"
+        if d:
+            doc.replace(r.start, r.end, r.text)
+            doc = kld.with_primers(doc, d)
+        doc.write_genbank(str(out_dir / f"{row['file_stem']}.gb"), None)
+        rec["file"] = f"{row['file_stem']}.gb"
     return rec
 
 
@@ -227,14 +303,16 @@ def cmd_kld(args):
     import codon_usage
     import kld
     source, rows = load(args.plasmid), read_table(args.mutations, "mutation")
+    assign_files(rows)
     out_dir = make_out_dir(args, args.plasmid, "_kld")
-    settings = effective_settings({"kld": {"tm": given(args.tm, kld.DEFAULT_TM), "group": given(args.group, kld.DEFAULT_GROUP),
-                                           "warn_insert": given(args.warn, kld.DEFAULT_WARN)}})
+    lim = kld.LIMITS
+    settings = effective_settings({"kld": {"tm": given(args.tm, kld.DEFAULT_TM, lim["tm"], "--tm"), "group": given(args.group, kld.DEFAULT_GROUP, lim["group"], "--group"),
+                                           "warn_insert": given(args.warn, kld.DEFAULT_WARN, lim["warn_insert"], "--warn")}})
     usage = codon_usage.active()
-    records = [kld_row(source, row, args, usage, out_dir) for row in rows]
+    records = run_rows(rows, lambda row: kld_row(source, row, args, usage, out_dir), "mutation")
     return finish(out_dir, settings, records,
-                  ["id", "mutation", "hgvs_dna", "hgvs_protein", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"],
-                  lambda r: [primer_pair_line(r, r["id"], r["mutation"], r["hgvs_dna"], r["hgvs_protein"]) + [" | ".join(r["warnings"])]],
+                  ["id", "mutation", "file", "hgvs_dna", "hgvs_protein", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"],
+                  lambda r: [primer_pair_line(r, r["id"], r["mutation"], r.get("file", ""), r["hgvs_dna"], r["hgvs_protein"]) + [" | ".join(r["warnings"])]],
                   lambda r: bool(r.get("warnings")))
 
 
@@ -282,10 +360,12 @@ def cmd_pcr(args):
     import primer_design
     doc, rows = load(args.plasmid), read_table(args.targets, "target")
     out_dir = make_out_dir(args, args.plasmid, "_pcr")
-    settings = effective_settings({"pcr_design": {"tm": given(args.tm, primer_design.DEFAULT_TM), "min_len": given(args.min_len, primer_design.DEFAULT_MIN_LEN),
-                                                  "max_len": given(args.max_len, primer_design.DEFAULT_MAX_LEN),
-                                                  "window": given(args.window, primer_design.DEFAULT_WINDOW)}})
-    records = [pcr_row(doc, row, args) for row in rows]
+    lim = primer_design.LIMITS
+    settings = effective_settings({"pcr_design": {
+        "tm": given(args.tm, primer_design.DEFAULT_TM, lim["tm"], "--tm"), "min_len": given(args.min_len, primer_design.DEFAULT_MIN_LEN, lim["min_len"], "--min-len"),
+        "max_len": given(args.max_len, primer_design.DEFAULT_MAX_LEN, lim["max_len"], "--max-len"),
+        "window": given(args.window, primer_design.DEFAULT_WINDOW, lim["window"], "--window")}})
+    records = run_rows(rows, lambda row: pcr_row(doc, row, args), "target")
     return finish(out_dir, settings, records,
                   ["id", "target", "rank", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "product_size", "penalty", "mark", "notes"],
                   lambda r: [[r["id"], r["target"], p["rank"], p["fwd"]["sequence"], p["fwd"]["tm"], p["rev"]["sequence"], p["rev"]["tm"], p["product_size"],
@@ -300,6 +380,7 @@ def rec_row(genome, row, args, folder, cassettes, out_dir):
     from opendna_core import Document
     from types import SimpleNamespace
     rec = {"id": row["id"], "region": row["region"], "cassette": row["cassette"], "status": "error"}
+    writing = out_dir is not None and not args.primers_only   # (only a written genome needs the recombinant: a bacterial genome is costly to copy)
     try:
         first, last = target_range(genome, row["region"])
         orientation = row.get("orientation", "").lower() or "forward"
@@ -314,7 +395,8 @@ def rec_row(genome, row, args, folder, cassettes, out_dir):
                 cassettes[path] = load(path)
             cassette = cassettes[path]
         left = R.HOMOLOGY if args.homology is None else args.homology
-        d = R.design(genome, cassette, first - 1, last, left, left, orientation == "reverse", R.DEFAULT_TM if args.tm is None else args.tm)
+        d = (R.design if writing else R.design_primers)(genome, cassette, first - 1, last, left, left, orientation == "reverse",
+                                                         R.DEFAULT_TM if args.tm is None else args.tm)
     except (UserError, ValueError) as e:
         rec["error"] = str(e)
         return rec
@@ -328,11 +410,11 @@ def rec_row(genome, row, args, folder, cassettes, out_dir):
             warnings.append(f"The region cuts the {f.kind} {f.label!r} ({f.location}): only part of it is replaced.")
     rec.update(status="ok", start=first, end=last, replaced_bp=last - first + 1, cassette_bp=cassette.length, orientation=orientation,
                left_homology=d.left, right_homology=d.right, warnings=warnings, primers=primer_records(d.rows))
-    if out_dir is not None and not args.primers_only:   # (only the written genome shows the primers: a bacterial genome is costly to scan)
+    if writing:
         if d.rows:
             transfer_primers(d.product, [SimpleNamespace(fwd=d.rows[0][:2], rev=d.rows[1][:2])])
-        d.product.write_genbank(str(out_dir / f"{row['id']}.gb"), None)
-        rec["file"] = f"{row['id']}.gb"
+        d.product.write_genbank(str(out_dir / f"{row['file_stem']}.gb"), None)
+        rec["file"] = f"{row['file_stem']}.gb"
     return rec
 
 
@@ -340,15 +422,18 @@ def cmd_recombineering(args):
     import recombineering as R
     genome = load(args.genome)
     rows = read_table(args.table, "region", "cassette", optional=("orientation",))
+    assign_files(rows)
     out_dir = make_out_dir(args, args.genome, "_rec")
-    settings = effective_settings({"recombineering": {"homology": given(args.homology, R.HOMOLOGY), "annealing_tm": given(args.tm, R.DEFAULT_TM),
-                                                      "write_genomes": given(False if args.primers_only else None, True)}})
+    lim = R.LIMITS
+    settings = effective_settings({"recombineering": {
+        "homology": given(args.homology, R.HOMOLOGY, lim["homology"], "--homology"), "annealing_tm": given(args.tm, R.DEFAULT_TM, lim["annealing_tm"], "--tm"),
+        "write_genomes": given(False if args.primers_only else None, True)}})
     cassettes = {}
     folder = Path(args.table).resolve().parent
-    records = [rec_row(genome, row, args, folder, cassettes, out_dir) for row in rows]
+    records = run_rows(rows, lambda row: rec_row(genome, row, args, folder, cassettes, out_dir), "region")
     return finish(out_dir, settings, records,
-                  ["id", "region", "cassette", "orientation", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"],
-                  lambda r: [primer_pair_line(r, r["id"], r["region"], r["cassette"], r["orientation"]) + [" | ".join(r["warnings"])]],
+                  ["id", "region", "cassette", "orientation", "file", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"],
+                  lambda r: [primer_pair_line(r, r["id"], r["region"], r["cassette"], r["orientation"], r.get("file", "")) + [" | ".join(r["warnings"])]],
                   lambda r: bool(r.get("warnings")))
 
 

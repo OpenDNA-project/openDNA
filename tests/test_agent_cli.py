@@ -139,7 +139,7 @@ def test_kld_batch_gives_the_files_and_primers_the_panel_gives(tmp_path, capsys)
     out = tmp_path / "out"
     code, text, _ = run(capsys, "kld", "run", gb, table, "--out", out)
     res = json.loads(text)
-    assert code == 1 and res["summary"] == {"rows": 3 + 1, "ok": 3, "errors": 1, "with_warnings": res["summary"]["with_warnings"]}
+    assert code == 1 and res["summary"] == {"rows": 3 + 1, "ok": 3, "errors": 1, "with_warnings": 3, "files_written": 3}
     assert [r["status"] for r in res["rows"]] == ["ok", "ok", "ok", "error"] and "not C" in res["rows"][3]["error"]
     assert sorted(p.name for p in out.iterdir()) == ["del.gb", "primers.csv", "report.jsonl", "rev.gb", "settings.json", "sub.gb"]
     for name, edit in (("sub", (103, 104, "A")), ("rev", (417, 418, "T")), ("del", (106, 109, ""))):
@@ -152,14 +152,12 @@ def test_kld_batch_gives_the_files_and_primers_the_panel_gives(tmp_path, capsys)
         assert [p["sequence"] for p in row["primers"]] == [seq_ for _, seq_, _ in direct.rows]
     rows = list(csv.DictReader(open(out / "primers.csv", encoding="utf-8")))
     assert [r["id"] for r in rows] == ["sub", "rev", "del"] and rows[0]["forward_primer"] == res["rows"][0]["primers"][0]["sequence"]
-    assert res["settings"]["kld"]["tm"] == {"value": 60.0, "source": "default"} and "pcr_conditions" in res["settings"]
+    assert res["settings"]["kld"]["tm"] == {"value": 60.0, "source": "default", "min": 45.0, "max": 72.0} and "pcr_conditions" in res["settings"]
     # nothing is overwritten, and a bad table is refused whole
     code, text, err = run(capsys, "kld", "run", gb, table, "--out", out)
     assert code == 1 and text == "" and "already exists" in err
     table.write_text("id,mutation,note\nx,gx:A2T,hello\n", encoding="utf-8")
     assert "exactly id,mutation" in run(capsys, "kld", "check", gb, table)[2]
-    table.write_text("id,mutation\na b,gx:A2T\nc,gx:A2T\nc,gx:A2T\n", encoding="utf-8")
-    assert "used twice" in run(capsys, "kld", "check", gb, table)[2]
 
 
 # ---- PCR primers ---------------------------------------------------------------------------------------------------------------
@@ -184,11 +182,11 @@ def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys):
         best = row["pairs"][0]   # on the ends of the target: the product is the target
         assert best["product_size"] == b - a + 1 and best["fwd"]["start"] == a and best["rev"]["end"] == b and best["mark"] in ("ok", "warn", "bad")
         assert best["fwd"]["sequence"] == seq[a - 1:a - 1 + len(best["fwd"]["sequence"])]
-    assert res["settings"]["pcr_design"]["tm"] == {"value": 60.0, "source": "default"} and "pcr_conditions" in res["settings"]
+    assert res["settings"]["pcr_design"]["tm"] == {"value": 60.0, "source": "default", "min": 45.0, "max": 75.0} and "pcr_conditions" in res["settings"]
     out = tmp_path / "out"
     code, text, _ = run(capsys, "pcr", "run", gb, table, "--out", out, "--tm", 62)
     res = json.loads(text)
-    assert code == 1 and res["settings"]["pcr_design"]["tm"] == {"value": 62.0, "source": "override (command line)"}
+    assert code == 1 and res["settings"]["pcr_design"]["tm"] == {"value": 62.0, "source": "override (command line)", "min": 45.0, "max": 75.0}
     assert sorted(p.name for p in out.iterdir()) == ["primers.csv", "report.jsonl", "settings.json"]
     rows = list(csv.DictReader(open(out / "primers.csv", encoding="utf-8")))
     assert len(rows) == sum(len(r.get("pairs", [])) for r in res["rows"]) and {r["id"] for r in rows} == {"a", "b"}
@@ -228,3 +226,36 @@ def test_recombineering_batch_gives_the_designs_the_panel_gives(tmp_path, capsys
     assert len(list(csv.DictReader(open(out / "primers.csv", encoding="utf-8")))) == 3 and "already exists" in run(capsys, "recombineering", "run", tmp_path / "g.gb", table, "--out", out)[2]
     code, text, _ = run(capsys, "recombineering", "run", tmp_path / "g.gb", table, "--out", tmp_path / "o2", "--primers-only", "--homology", 600)
     assert "no room" in json.loads(text)["rows"][0]["error"] and not list((tmp_path / "o2").glob("*.gb"))
+
+
+def test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names(tmp_path, capsys, monkeypatch):
+    doc, seq = plasmid()
+    gb = tmp_path / "t.gb"
+    doc.write_genbank(str(gb), None)
+    table = tmp_path / "m.csv"
+    # cp1252, as Excel saves it: ids that differ only by case, with unsafe characters, a Windows device name, a ragged row, an empty cell,
+    # a mutation that changes nothing (base 104 is already G), a failure nobody foresaw
+    table.write_bytes("id,mutation\nA,gx:p.Ala2Thr\na,gx:p.Ala2Thr\nbad id!,gx:p.Ala2Thr\nCON,gx:p.Ala2Thr\nragged,gx:p.Ala2Thr,extra\nempty,\n"
+                      "noop,o.104G>G\ncaf\xe9,gx:p.Glu3del\nboom,gx:c.7_9dup\n".encode("cp1252"))
+    real = mutation.resolve
+    monkeypatch.setattr(mutation, "resolve", lambda d, spec, usage=None: (_ for _ in ()).throw(RuntimeError("surprise")) if spec == "gx:c.7_9dup" else real(d, spec, usage))
+    out = tmp_path / "out"
+    code, text, err = run(capsys, "kld", "run", gb, table, "--out", out)
+    res = json.loads(text)
+    rows = {r["id"]: r for r in res["rows"]}
+    assert code == 1 and [r["status"] for r in res["rows"]] == ["ok", "ok", "ok", "ok", "error", "error", "ok", "ok", "error"]
+    files = sorted(p.name for p in out.glob("*.gb"))
+    assert files == ["A.gb", "_CON.gb", "a_2.gb", "bad_id_.gb", "caf_.gb", "noop.gb"] and len({f.lower() for f in files}) == len(files)   # every ok row has its own file
+    assert all((out / r["file"]).is_file() for r in res["rows"] if r["status"] == "ok") and res["summary"]["files_written"] == 6
+    assert "a_2.gb" in rows["a"]["warnings"][-1] and not any("file name" in w for w in rows["A"]["warnings"])   # (only the renamed one is told)
+    assert "3 cells but the header has 2" in rows["ragged"]["error"] and "mutation is empty" in rows["empty"]["error"] and "skipped" in rows["empty"]["error"]
+    assert rows["boom"]["error"].startswith("Unexpected RuntimeError: surprise") and "Traceback" in rows["boom"]["detail"]
+    assert rows["noop"]["effect"] == "no change" and rows["noop"]["primers"] == [] and "no change" in rows["noop"]["warnings"][0] and rows["noop"]["hgvs_dna"] == "o.104="
+    assert Document(str(out / "noop.gb")).sequence(0, None).upper() == seq
+    assert "ERROR [row ragged]" in err and "ERROR [row boom]" in err and "Traceback" in err    # loud, on stderr too
+    assert len(list(csv.DictReader(open(out / "primers.csv", encoding="utf-8")))) == 6
+    # a value beyond what the windows accept is used, with a warning that it is the sender's responsibility
+    table.write_text("id,mutation\nm,gx:p.Ala2Thr\n", encoding="utf-8")
+    code, text, err = run(capsys, "kld", "check", gb, table, "--tm", 80)
+    res = json.loads(text)
+    assert code == 0 and res["settings"]["kld"]["tm"]["max"] == 72.0 and "responsibility" in res["warnings"][0] and "WARNING: --tm = 80.0" in err

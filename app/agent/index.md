@@ -14,9 +14,12 @@ openDNA has a command line with no window. Every recipe in this folder is for on
 2. **Look before you write.** Run `inspect <file.gb>` first: it gives the length, topology, every feature with its position and strand, and the protein of each CDS. Use `feature` and `region` for exact bases.
 3. **`check`, then `run`.** `check` validates the whole input and computes nothing; it reports every problem at once. Fix them, then `run`.
 4. **Show the settings before `run`.** `check` prints the effective settings (value and where it came from: your saved openDNA settings, a default, or an override). Show the ones that matter to the user and wait for their OK.
-5. **Relay every warning to the user.** The tool never stops on an ambiguity: it picks a default and adds a warning to that row (for example "3 codons give Ala: used GCG, alternatives GCC, GCA, GCT"). The user must see them.
+5. **Relay every warning to the user** (each row's `warnings`, and the top-level `warnings` about settings). The tool never stops on an ambiguity: it picks a default and adds a warning to that row (for example "3 codons give Ala: used GCG, alternatives GCC, GCA, GCT"). The user must see them.
 6. **Errors are loud.** A message starting `ERROR:` (exit code 1) is for you to fix or to pass to the user in plain words. Never retry blindly.
-7. **Inputs are never overwritten.** Outputs go to a new folder.
+7. **A bad row never stops the others.** A malformed row (wrong number of cells, an empty cell) or one that fails is reported as an error record, loudly (in the JSON and on stderr), and every other row is processed. A wrong header (the columns) stops the run, since the table cannot be read. Tell the user which rows failed and why, and offer to fix and re-run only those.
+8. **Names are yours to choose, files are never lost.** The `id` of a row names its output file. Choose a naming convention that suits the user (their own names, or a clear pattern such as `<gene>_<change>`). If two ids would give the same file (also differing only by letter case, which a Windows or macOS disk cannot tell apart), or an id has characters unsafe in a file name, openDNA renames the file (`a_2.gb`, `bad_id_.gb`) and says so in that row's `warnings`; each record's `file` is the real name, and the run checks that every file it names is there. Relay such renames.
+9. **Limits.** Each adjustable setting is shown in `settings` with its `min` and `max`, the range openDNA's windows accept. Tell the user these values. A value outside them is used as given, with a `warning` ("the result is your responsibility"): only pass one if the user chose it, and repeat the warning to them.
+10. **Inputs are never overwritten.** Outputs go to a new folder.
 
 ## Positions and mutations
 
