@@ -14,6 +14,7 @@ from html import escape
 
 from opendna_core import dimer
 
+import theme
 from primer_db import add_primers
 from primer_design import DEFAULT_MAX_LEN, DEFAULT_MIN_LEN, DEFAULT_TM, DEFAULT_WINDOW, design_region, salt
 from primer_panel import (MARKS, MAX_NAME, ReportView, conditions, is_degenerate, limit, primer_checks, primer_problem, warm_genome,
@@ -86,7 +87,7 @@ class PcrPage(ToolDialog):
         middle.addLayout(form)
         middle.addWidget(QLabel("<b>or design for the selected region</b>"))
         middle.addLayout(design_form)
-        middle.addWidget(QPushButton("Design", clicked=self.design))
+        middle.addWidget(theme.mark_primary(QPushButton("Design", clicked=self.design)))
         middle.addWidget(self.table, 1)
         middle.addWidget(self.details)
         middle.addWidget(self.info)
