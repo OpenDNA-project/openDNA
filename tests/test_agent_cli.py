@@ -1,7 +1,9 @@
 """The command line for agents (app/cli.py and the recipes in app/agent/): what an agent reads from a plasmid must be what the
 GenBank file says, a mistake must be one `ERROR:` line, and the example in every recipe must still run."""
+import csv
 import json
 import os
+import random
 import re
 import shlex
 import sys
@@ -13,9 +15,15 @@ os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "app"))
 
+import pytest
+
 import cli
+import kld
 import mutation
+import primer_design
+import recombineering
 from opendna_core import Document
+from user_error import UserError
 
 DEMO = str(ROOT / "demo" / "pBAD30_eilR.gb")
 
@@ -67,14 +75,6 @@ def test_every_recipe_example_still_runs(capsys):
 
 
 # ---- mutations in HGVS and the KLD batch ---------------------------------------------------------------------------------------
-
-import csv
-import random
-
-import kld
-import pytest
-from user_error import UserError
-
 CDS = "ATGGCTGAAAAATTTGGTTAA"   # M A E K F G *
 
 
@@ -164,7 +164,6 @@ def test_kld_batch_gives_the_files_and_primers_the_panel_gives(tmp_path, capsys)
 
 # ---- PCR primers ---------------------------------------------------------------------------------------------------------------
 
-import primer_design
 
 
 def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys):
@@ -198,7 +197,6 @@ def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys):
 
 # ---- recombineering ------------------------------------------------------------------------------------------------------------
 
-import recombineering
 
 
 def test_recombineering_batch_gives_the_designs_the_panel_gives(tmp_path, capsys):

@@ -17,10 +17,9 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # some modules import Qt; nothing is ever shown
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # the modules import each other by flat name
 
+from user_error import UserError   # a mistake the agent can fix: its message is printed as it is
+
 AGENT_DIR = Path(__file__).with_name("agent")   # the recipes; the PyInstaller spec bundles the folder next to the modules
-
-
-from user_error import UserError as CliError   # a mistake the agent can fix: its message is printed as it is
 
 
 def qt_setup():
@@ -35,11 +34,11 @@ def qt_setup():
 def load(path):
     from opendna_core import Document
     if not Path(path).is_file():
-        raise CliError(f"File not found: {path}")
+        raise UserError(f"File not found: {path}")
     try:
         return Document(str(path))
     except Exception as e:   # the core raises ValueError / OSError with its own words
-        raise CliError(f"Cannot read {path} as GenBank: {e}")
+        raise UserError(f"Cannot read {path} as GenBank: {e}")
 
 
 def feature_dna(doc, f):
@@ -54,13 +53,12 @@ def feature_dna(doc, f):
 def protein(doc, f):
     """{frame, table, length, sequence} of a CDS, or {"note": why none}."""
     import genetic_code
+    import mutation
     plan = genetic_code.cds_plan(doc, f)
     dna = feature_dna(doc, f)
     if dna is None or plan.why:
         return {"note": plan.why or "crosses the origin: not translated here"}
-    dna = dna[plan.frame:].upper()
-    code = genetic_code.codon_map(plan.table)
-    aa = "".join(code.get(dna[i:i + 3], "X") for i in range(0, len(dna) - 2, 3))
+    aa = mutation.translate(dna[plan.frame:].upper(), genetic_code.codon_map(plan.table))
     return {"frame": plan.frame + 1, "table": plan.table, "length": len(aa.rstrip("*")), "sequence": aa}
 
 
@@ -84,7 +82,7 @@ def cmd_feature(args):
     start, end = hull(f)
     dna = feature_dna(doc, f)
     if dna is None:
-        raise CliError(f"{args.name!r} crosses the origin of the plasmid: read it with `region` in two parts.")
+        raise UserError(f"{args.name!r} crosses the origin of the plasmid: read it with `region` in two parts.")
     out = {"index": f.index, "kind": f.kind, "label": f.label, "start": start, "end": end, "strand": f.strand, "length": len(dna), "sequence": dna}
     if f.kind == "CDS":
         out["protein"] = protein(doc, f)
@@ -94,7 +92,7 @@ def cmd_feature(args):
 def cmd_region(args):
     doc = load(args.file)
     if not 1 <= args.start <= args.end <= doc.length:
-        raise CliError(f"Positions must satisfy 1 <= START <= END <= {doc.length} (a region across the origin: ask for it in two parts).")
+        raise UserError(f"Positions must satisfy 1 <= START <= END <= {doc.length} (a region across the origin: ask for it in two parts).")
     return {"start": args.start, "end": args.end, "length": args.end - args.start + 1, "sequence": doc.sequence(args.start - 1, args.end)}
 
 
@@ -131,16 +129,16 @@ def read_table(path, *columns, optional=()):
     import csv
     import re
     if not Path(path).is_file():
-        raise CliError(f"File not found: {path}")
+        raise UserError(f"File not found: {path}")
     with open(path, newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
         found, need = list(reader.fieldnames or []), ["id", *columns]
         if not set(need) <= set(found) or not set(found) <= set(need) | set(optional):
-            raise CliError(f"{path}: the columns must be exactly {','.join(need)}" + (f" (and optionally {','.join(optional)})" if optional else "")
+            raise UserError(f"{path}: the columns must be exactly {','.join(need)}" + (f" (and optionally {','.join(optional)})" if optional else "")
                            + f"; found: {', '.join(found) or 'none'}.")
         rows = [{k: (v or "").strip() for k, v in r.items()} for r in reader]
     if not rows:
-        raise CliError(f"{path}: no rows.")
+        raise UserError(f"{path}: no rows.")
     seen, problems = set(), []
     for n, r in enumerate(rows, 2):   # (line 1 is the header)
         if not re.fullmatch(r"[A-Za-z0-9._-]+", r["id"]):
@@ -149,15 +147,61 @@ def read_table(path, *columns, optional=()):
             problems.append(f"line {n}: id {r['id']!r} is used twice")
         seen.add(r["id"])
     if problems:
-        raise CliError(f"{path}: " + "; ".join(problems))
+        raise UserError(f"{path}: " + "; ".join(problems))
     return rows
+
+
+def make_out_dir(args, source, suffix):
+    """None for `check`; for `run` a new, empty folder (--out, or next to `source`): nothing is ever overwritten."""
+    if args.action != "run":
+        return None
+    out_dir = Path(args.out) if args.out else Path(source).with_name(Path(source).stem + suffix)
+    if out_dir.exists() and any(out_dir.iterdir()):
+        raise UserError(f"The output folder {out_dir} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
+
+
+def finish(out_dir, settings, records, header, csv_rows, warned):
+    """The answer of a batch: settings, summary and every record; with `out_dir` also primers.csv (`header`, and the lines `csv_rows`
+    gives for each record), report.jsonl and settings.json. (result, exit code): 1 when a row failed, the others are still reported."""
+    import csv
+    failed = [r for r in records if r["status"] == "error"]
+    result = {"settings": settings, "summary": {"rows": len(records), "ok": len(records) - len(failed), "errors": len(failed),
+                                                 "with_warnings": sum(map(warned, records))}, "rows": records}
+    if out_dir is not None:
+        with open(out_dir / "primers.csv", "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(header)
+            for r in records:
+                if r["status"] == "ok":
+                    w.writerows(csv_rows(r))
+        (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+        (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+        result["out"] = str(out_dir)
+    return result, 1 if failed else 0
+
+
+def primer_records(rows):
+    """The primers of a design as records: rows are (name, sequence, annealing length, ...)."""
+    import primer_panel
+    return [{"name": n, "sequence": s, "annealing_length": a, "annealing_tm": primer_panel.melting_temp(s[-a:])} for n, s, a, *_ in rows]
+
+
+def tm_of(primer):
+    return round(primer["annealing_tm"], 1) if primer["annealing_tm"] else ""
+
+
+def primer_pair_line(r, *lead):
+    """primers.csv line of a record with one forward and one reverse primer (a deletion has none: empty cells)."""
+    f, rv = (r["primers"] + [{"sequence": "", "annealing_tm": None}] * 2)[:2]
+    return [*lead, f["sequence"], tm_of(f), rv["sequence"], tm_of(rv)]
 
 
 def kld_row(source, row, args, usage, out_dir):
     """One mutation: the result record, and the edited plasmid with its primers written to `out_dir` (when there is one)."""
     import kld
     import mutation
-    import primer_panel
     from assembly import snapshot
     rec = {"id": row["id"], "mutation": row["mutation"], "status": "error"}
     try:
@@ -165,12 +209,12 @@ def kld_row(source, row, args, usage, out_dir):
         d = kld.design_selected(source.sequence(0, None).upper(), [(r.start, r.end, r.text)], source.circular,
                                 kld.DEFAULT_TM if args.tm is None else args.tm, kld.DEFAULT_GROUP if args.group is None else args.group,
                                 kld.DEFAULT_WARN if args.warn is None else args.warn)
-    except (CliError, ValueError) as e:   # (design raises ValueError with a sentence: too short, too many new bases, ...)
+    except (UserError, ValueError) as e:   # (design raises ValueError with a sentence: too short, too many new bases, ...)
         rec["error"] = str(e)
         return rec
     rec.update(status="ok", feature=r.feature, hgvs_dna=r.hgvs_dna, hgvs_protein=r.hgvs_protein, effect=r.effect,
                warnings=r.warnings + [t for level, t in d.notes if level == "warn"], notes=[t for level, t in d.notes if level != "warn"],
-               primers=[{"name": n, "sequence": s, "annealing_length": a, "annealing_tm": primer_panel.melting_temp(s[-a:])} for n, s, a in d.rows])
+               primers=primer_records(d.rows))
     if out_dir is not None:
         doc = snapshot(source, source.name)
         doc.replace(r.start, r.end, r.text)
@@ -183,34 +227,15 @@ def cmd_kld(args):
     import codon_usage
     import kld
     source, rows = load(args.plasmid), read_table(args.mutations, "mutation")
-    out_dir = None
-    if args.action == "run":
-        out_dir = Path(args.out) if args.out else Path(args.plasmid).with_name(Path(args.plasmid).stem + "_kld")
-        if out_dir.exists() and any(out_dir.iterdir()):
-            raise CliError(f"The output folder {out_dir} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
-        out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = make_out_dir(args, args.plasmid, "_kld")
     settings = effective_settings({"kld": {"tm": given(args.tm, kld.DEFAULT_TM), "group": given(args.group, kld.DEFAULT_GROUP),
                                            "warn_insert": given(args.warn, kld.DEFAULT_WARN)}})
     usage = codon_usage.active()
     records = [kld_row(source, row, args, usage, out_dir) for row in rows]
-    failed = [r for r in records if r["status"] == "error"]
-    result = {"settings": settings, "summary": {"rows": len(rows), "ok": len(rows) - len(failed), "errors": len(failed),
-                                                 "with_warnings": sum(bool(r.get("warnings")) for r in records)}, "rows": records}
-    if out_dir is not None:
-        import csv
-        with open(out_dir / "primers.csv", "w", newline="", encoding="utf-8") as fh:
-            w = csv.writer(fh)
-            w.writerow(["id", "mutation", "hgvs_dna", "hgvs_protein", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"])
-            for r in records:
-                if r["status"] == "ok":
-                    f, rv = r["primers"]
-                    tm = lambda p: round(p["annealing_tm"], 1) if p["annealing_tm"] else ""
-                    w.writerow([r["id"], r["mutation"], r["hgvs_dna"], r["hgvs_protein"], f["sequence"], tm(f), rv["sequence"], tm(rv),
-                                " | ".join(r["warnings"])])
-        (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
-        (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
-        result["out"] = str(out_dir)
-    return result, 1 if failed else 0
+    return finish(out_dir, settings, records,
+                  ["id", "mutation", "hgvs_dna", "hgvs_protein", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"],
+                  lambda r: [primer_pair_line(r, r["id"], r["mutation"], r["hgvs_dna"], r["hgvs_protein"]) + [" | ".join(r["warnings"])]],
+                  lambda r: bool(r.get("warnings")))
 
 
 def target_range(doc, text):
@@ -222,13 +247,12 @@ def target_range(doc, text):
         return hull(find_feature(doc, text))
     first, last = int(m.group(1)), int(m.group(2))
     if not 1 <= first < last <= doc.length:
-        raise CliError(f"{text!r}: positions must satisfy 1 <= START < END <= {doc.length}.")
+        raise UserError(f"{text!r}: positions must satisfy 1 <= START < END <= {doc.length}.")
     return first, last
 
 
 def pcr_row(doc, row, args):
     """The best primer pairs for one target (a feature name or START..END, 1-based inclusive): the record of the row."""
-    from types import SimpleNamespace
     import primer_design
     import primer_panel
     rec = {"id": row["id"], "target": row["target"], "status": "error"}
@@ -236,13 +260,13 @@ def pcr_row(doc, row, args):
         first, last = target_range(doc, row["target"])
         opts = {k: v for k, v in dict(tm_target=args.tm, min_len=args.min_len, max_len=args.max_len, window=args.window).items() if v is not None}
         pairs = primer_design.design_region(doc, first - 1, last, **opts)
-    except CliError as e:
+    except UserError as e:
         rec["error"] = str(e)
         return rec
     if not pairs:
         rec["error"] = "No pair found: widen the search window (--window), the length range (--min-len, --max-len) or the Tm (--tm)."
         return rec
-    ed = SimpleNamespace(length=doc.length, doc=doc)   # (what primer_checks reads of an editor)
+    ed = primer_design.editor_like(doc)
     out = []
     for rank, p in enumerate(pairs, 1):
         checks = {k: primer_panel.primer_checks(ed, p[k]["seq"], "wait") for k in ("fwd", "rev")}
@@ -257,60 +281,41 @@ def pcr_row(doc, row, args):
 def cmd_pcr(args):
     import primer_design
     doc, rows = load(args.plasmid), read_table(args.targets, "target")
-    out_dir = None
-    if args.action == "run":
-        out_dir = Path(args.out) if args.out else Path(args.plasmid).with_name(Path(args.plasmid).stem + "_pcr")
-        if out_dir.exists() and any(out_dir.iterdir()):
-            raise CliError(f"The output folder {out_dir} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
-        out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = make_out_dir(args, args.plasmid, "_pcr")
     settings = effective_settings({"pcr_design": {"tm": given(args.tm, primer_design.DEFAULT_TM), "min_len": given(args.min_len, primer_design.DEFAULT_MIN_LEN),
                                                   "max_len": given(args.max_len, primer_design.DEFAULT_MAX_LEN),
                                                   "window": given(args.window, primer_design.DEFAULT_WINDOW)}})
     records = [pcr_row(doc, row, args) for row in rows]
-    failed = [r for r in records if r["status"] == "error"]
-    result = {"settings": settings, "summary": {"rows": len(rows), "ok": len(rows) - len(failed), "errors": len(failed),
-                                                 "with_warnings": sum(any(p["mark"] in ("warn", "bad") for p in r.get("pairs", [])) for r in records)},
-              "rows": records}
-    if out_dir is not None:
-        import csv
-        with open(out_dir / "primers.csv", "w", newline="", encoding="utf-8") as fh:
-            w = csv.writer(fh)
-            w.writerow(["id", "target", "rank", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "product_size", "penalty", "mark", "notes"])
-            for r in records:
-                for p in r.get("pairs", []):
-                    w.writerow([r["id"], r["target"], p["rank"], p["fwd"]["sequence"], p["fwd"]["tm"], p["rev"]["sequence"], p["rev"]["tm"],
-                                p["product_size"], p["penalty"], p["mark"], " | ".join(p["notes"])])
-        (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
-        (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
-        result["out"] = str(out_dir)
-    return result, 1 if failed else 0
+    return finish(out_dir, settings, records,
+                  ["id", "target", "rank", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "product_size", "penalty", "mark", "notes"],
+                  lambda r: [[r["id"], r["target"], p["rank"], p["fwd"]["sequence"], p["fwd"]["tm"], p["rev"]["sequence"], p["rev"]["tm"], p["product_size"],
+                              p["penalty"], p["mark"], " | ".join(p["notes"])] for p in r["pairs"]],
+                  lambda r: any(p["mark"] in ("warn", "bad") for p in r.get("pairs", [])))
 
 
 def rec_row(genome, row, args, folder, cassettes, out_dir):
     """One recombineering design: the cassette (a GenBank file, or `none` for a deletion) replaces a region of the genome."""
-    import primer_design
-    import primer_panel
     import recombineering as R
     from assembly import transfer_primers
+    from opendna_core import Document
     from types import SimpleNamespace
     rec = {"id": row["id"], "region": row["region"], "cassette": row["cassette"], "status": "error"}
     try:
         first, last = target_range(genome, row["region"])
         orientation = row.get("orientation", "").lower() or "forward"
         if orientation not in ("forward", "reverse"):
-            raise CliError(f"orientation must be forward or reverse, not {orientation!r}.")
+            raise UserError(f"orientation must be forward or reverse, not {orientation!r}.")
         if row["cassette"].lower() in ("none", "-"):   # a deletion
-            cassette = Document_new("none", "")
+            cassette = Document.new_sequence("none", "", False)
         else:
             path = Path(row["cassette"])
-            path = path if path.is_absolute() else folder / path
-            if str(path) not in cassettes:
-                cassettes[str(path)] = load(path)
-            cassette = cassettes[str(path)]
+            path = str(path if path.is_absolute() else folder / path)
+            if path not in cassettes:
+                cassettes[path] = load(path)
+            cassette = cassettes[path]
         left = R.HOMOLOGY if args.homology is None else args.homology
-        d = R.design(genome, cassette, first - 1, last, left, left, orientation == "reverse",
-                     primer_design.DEFAULT_TM if args.tm is None else args.tm)
-    except (CliError, ValueError) as e:
+        d = R.design(genome, cassette, first - 1, last, left, left, orientation == "reverse", R.DEFAULT_TM if args.tm is None else args.tm)
+    except (UserError, ValueError) as e:
         rec["error"] = str(e)
         return rec
     warnings = []
@@ -321,55 +326,30 @@ def rec_row(genome, row, args, folder, cassettes, out_dir):
             warnings.append(f"The region removes the {f.kind} {f.label!r} ({f.location}).")
         else:
             warnings.append(f"The region cuts the {f.kind} {f.label!r} ({f.location}): only part of it is replaced.")
-    rec.update(status="ok", start=first, end=last, replaced_bp=last - first + 1, cassette_bp=sum(len(s) for s in [cassette.sequence(0, None)]),
-               orientation=orientation, left_homology=d.left, right_homology=d.right, warnings=warnings,
-               primers=[{"name": n, "sequence": s, "annealing_length": a, "annealing_tm": primer_panel.melting_temp(s[-a:])} for n, s, a, _ in d.rows])
-    if out_dir is not None:
+    rec.update(status="ok", start=first, end=last, replaced_bp=last - first + 1, cassette_bp=cassette.length, orientation=orientation,
+               left_homology=d.left, right_homology=d.right, warnings=warnings, primers=primer_records(d.rows))
+    if out_dir is not None and not args.primers_only:   # (only the written genome shows the primers: a bacterial genome is costly to scan)
         if d.rows:
             transfer_primers(d.product, [SimpleNamespace(fwd=d.rows[0][:2], rev=d.rows[1][:2])])
-        if not args.primers_only:
-            d.product.write_genbank(str(out_dir / f"{row['id']}.gb"), None)
-            rec["file"] = f"{row['id']}.gb"
+        d.product.write_genbank(str(out_dir / f"{row['id']}.gb"), None)
+        rec["file"] = f"{row['id']}.gb"
     return rec
-
-
-def Document_new(name, bases):
-    from opendna_core import Document
-    return Document.new_sequence(name, bases, False)
 
 
 def cmd_recombineering(args):
     import recombineering as R
     genome = load(args.genome)
     rows = read_table(args.table, "region", "cassette", optional=("orientation",))
-    out_dir = None
-    if args.action == "run":
-        out_dir = Path(args.out) if args.out else Path(args.genome).with_name(Path(args.genome).stem + "_rec")
-        if out_dir.exists() and any(out_dir.iterdir()):
-            raise CliError(f"The output folder {out_dir} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
-        out_dir.mkdir(parents=True, exist_ok=True)
-    import primer_design
-    settings = effective_settings({"recombineering": {"homology": given(args.homology, R.HOMOLOGY), "annealing_tm": given(args.tm, primer_design.DEFAULT_TM),
-                                                      "write_genomes": {"value": not args.primers_only, "source": "default" if not args.primers_only else "override (command line)"}}})
+    out_dir = make_out_dir(args, args.genome, "_rec")
+    settings = effective_settings({"recombineering": {"homology": given(args.homology, R.HOMOLOGY), "annealing_tm": given(args.tm, R.DEFAULT_TM),
+                                                      "write_genomes": given(False if args.primers_only else None, True)}})
     cassettes = {}
-    records = [rec_row(genome, row, args, Path(args.table).resolve().parent, cassettes, out_dir) for row in rows]
-    failed = [r for r in records if r["status"] == "error"]
-    result = {"settings": settings, "summary": {"rows": len(rows), "ok": len(rows) - len(failed), "errors": len(failed),
-                                                 "with_warnings": sum(bool(r.get("warnings")) for r in records)}, "rows": records}
-    if out_dir is not None:
-        import csv
-        with open(out_dir / "primers.csv", "w", newline="", encoding="utf-8") as fh:
-            w = csv.writer(fh)
-            w.writerow(["id", "region", "cassette", "orientation", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"])
-            for r in records:
-                if r["status"] == "ok":
-                    f, rv = (r["primers"] + [{"sequence": "", "annealing_tm": None}] * 2)[:2]   # (a deletion has no primers: nothing to amplify)
-                    tm = lambda p: round(p["annealing_tm"], 1) if p["annealing_tm"] else ""
-                    w.writerow([r["id"], r["region"], r["cassette"], r["orientation"], f["sequence"], tm(f), rv["sequence"], tm(rv), " | ".join(r["warnings"])])
-        (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
-        (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
-        result["out"] = str(out_dir)
-    return result, 1 if failed else 0
+    folder = Path(args.table).resolve().parent
+    records = [rec_row(genome, row, args, folder, cassettes, out_dir) for row in rows]
+    return finish(out_dir, settings, records,
+                  ["id", "region", "cassette", "orientation", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"],
+                  lambda r: [primer_pair_line(r, r["id"], r["region"], r["cassette"], r["orientation"]) + [" | ".join(r["warnings"])]],
+                  lambda r: bool(r.get("warnings")))
 
 
 def recipes():
@@ -383,7 +363,7 @@ def cmd_skills(args):
     if args.action == "list":
         return "\n".join(f"{n}: " + next((ln.lstrip("# ").strip() for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()), "") for n, p in names.items())
     if args.name not in names:
-        raise CliError(f"No recipe called {args.name!r}. Choices: {', '.join(names)}.")
+        raise UserError(f"No recipe called {args.name!r}. Choices: {', '.join(names)}.")
     return names[args.name].read_text(encoding="utf-8")
 
 
@@ -446,7 +426,7 @@ def main(argv=None):
         if args.command != "skills":
             qt_setup()   # (genetic_code reads the settings file: the same table choice as the windows)
         result = args.run(args)
-    except CliError as e:
+    except UserError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     code = 0

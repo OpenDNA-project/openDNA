@@ -10,6 +10,7 @@ from editor import reverse_complement as rc
 
 MAX_HOMOLOGY = 50_000   # longest homology the panel offers
 HOMOLOGY = 50      # nt of homology on each side of the cassette
+DEFAULT_TM = 60.0   # annealing Tm of the cassette primers
 MAX_MISMATCHES = 5  # check mode: mismatches tolerated in an arm, so non-specific sites show up
 
 
@@ -42,7 +43,7 @@ def _arm(seq, i, j, circular):
     return seq[i:j]
 
 
-def primer_rows(left, right, c, tm=60.0, stem="Rec"):
+def primer_rows(left, right, c, tm=DEFAULT_TM, stem="Rec"):
     """The two primers that amplify cassette `c` (bases, in the orientation it goes in) with the homologies as 5' tails."""
     if not c:
         return []
@@ -50,7 +51,7 @@ def primer_rows(left, right, c, tm=60.0, stem="Rec"):
     return [(f"{stem}-F", left + c[:nf], nf, "recombineering"), (f"{stem}-R", rc(right) + rc(c)[:nr], nr, "recombineering")]
 
 
-def design(genome, cassette, start, end, left=HOMOLOGY, right=HOMOLOGY, flip=False, tm=60.0):
+def design(genome, cassette, start, end, left=HOMOLOGY, right=HOMOLOGY, flip=False, tm=DEFAULT_TM):
     """The cassette (a Document) replaces genome[start:end]. `flip`: it goes in reverse-complemented. An empty cassette is a
     deletion (no primers: nothing to amplify), start == end an insertion. Returns SimpleNamespace(left, right: the
     homologies; rows: [(name, 5'->3' sequence, annealing length, "recombineering")]; product: the recombinant Document)."""

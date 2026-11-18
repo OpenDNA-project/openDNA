@@ -12,6 +12,7 @@ import re
 from types import SimpleNamespace
 
 import genetic_code
+from editor import complement, reverse_complement
 from user_error import UserError
 
 THREE = {"Ala": "A", "Arg": "R", "Asn": "N", "Asp": "D", "Cys": "C", "Gln": "Q", "Glu": "E", "Gly": "G", "His": "H", "Ile": "I",
@@ -37,13 +38,6 @@ PROTEIN_FORMS = [
 ACCEPTED = ("Accepted forms (1-based): lacZ:c.360G>C, lacZ:c.360_365del, lacZ:c.360_361insATG, lacZ:c.360_365delinsATG, lacZ:c.360_365dup; "
             "o.1234G>C and the same with o. positions along the plasmid; lacZ:p.Asp120Ala (or lacZ:D120A), lacZ:p.Lys12_Gly14del, "
             "lacZ:p.Lys12_Gly13insAla, lacZ:p.Lys12_Gly14delinsAla, lacZ:p.Gly13dup.")
-
-_COMP = str.maketrans("ACGTacgt", "TGCAtgca")
-
-
-def reverse_complement(seq):
-    return seq.translate(_COMP)[::-1]
-
 
 def hull(f):
     """(first, last) base of a feature, 1-based inclusive, over all its parts."""
@@ -166,25 +160,23 @@ def _dna_change(f, seq, kind, g, warnings, spec):
         for p in (ia, ib):
             if not 0 <= p < n:
                 raise UserError(f"{spec!r}: that position is off the end of the plasmid (the origin is not crossed).")
-    out = (lambda s: reverse_complement(s)) if strand < 0 else (lambda s: s)   # the bases as written -> forward strand
-    lo, hi = min(ia, ib), max(ia, ib) + 1
+    out = reverse_complement if strand < 0 else str   # the bases as written -> forward strand
     if kind == "ins":
         if abs(ia - ib) != 1:
             raise UserError(f"{spec!r}: an insertion goes between two neighbouring bases (c.360_361insATG).")
         at = max(ia, ib)
         return at, at, out(g["alt"])
+    lo, hi = min(ia, ib), max(ia, ib) + 1
     if a * b > 0 and hi - lo != b - a + 1:
         raise UserError(f"{spec!r}: that range crosses the origin or a gap of the feature: write it with o. positions.")
     old = seq[lo:hi]
-    given = g.get("ref") or ""
-    if given and out(given) != old:   # the bases the sender expects must be the ones there
-        raise UserError(f"{spec!r}: the plasmid has {old if strand > 0 else reverse_complement(old)} at that place, not {given}.")
-    if kind == "sub":
+    expected = g.get("ref") or ""
+    if expected and out(expected) != old:   # the bases the sender expects must be the ones there
+        raise UserError(f"{spec!r}: the plasmid has {old if strand > 0 else reverse_complement(old)} at that place, not {expected}.")
+    if kind in ("sub", "delins"):
         return lo, hi, out(g["alt"])
     if kind == "del":
         return lo, hi, ""
-    if kind == "delins":
-        return lo, hi, out(g["alt"])
     return hi, hi, old   # dup: a second copy straight after
 
 
@@ -199,8 +191,8 @@ def _codons(doc, f, spec):
     code = genetic_code.codon_map(plan.table)
     seq = doc.sequence(0, doc.length).upper()
     cod = [("".join(seq[i] for i in idx[k:k + 3])) for k in range(0, len(idx) - 2, 3)]
-    if f.strand < 0:
-        cod = [c.translate(_COMP) for c in cod]
+    if f.strand < 0:   # (idx runs against the plasmid: the bases are read complemented)
+        cod = [complement(c) for c in cod]
     return idx, code, cod
 
 
@@ -230,7 +222,7 @@ def _protein_change(doc, f, seq, kind, g, usage, warnings, spec):
         raise UserError(f"{spec!r}: the first residue is after the last one.")
     span = idx[3 * (a - 1):3 * b]
     lo, hi = min(span), max(span) + 1
-    out = (lambda s: reverse_complement(s)) if f.strand < 0 else (lambda s: s)
+    out = reverse_complement if f.strand < 0 else str
     if kind == "sub":
         new = one(g["alt"])
         if protein[a - 1] == new:
@@ -255,7 +247,8 @@ def _protein_change(doc, f, seq, kind, g, usage, warnings, spec):
         raise UserError(f"{spec!r}: an insertion goes between two neighbouring residues (p.Lys12_Gly13insAla).")
     # (kind == "ins": a and b are the neighbours; `span` covers both residues)
     mid = idx[3 * a - 1]   # last base of residue a in coding order
-    return (mid + 1 if f.strand > 0 else mid), (mid + 1 if f.strand > 0 else mid), text
+    at = mid + 1 if f.strand > 0 else mid
+    return at, at, text
 
 
 def sliding(seq, start, end, text):
@@ -286,13 +279,27 @@ def translate(dna, code):
     return "".join(code.get(dna[i:i + 3], "X") for i in range(0, len(dna) - len(dna) % 3, 3))
 
 
+def t3(aa):
+    return LETTER3.get(aa, aa)
+
+
+def to_stop(protein):
+    """`protein` up to and including its first stop."""
+    return protein[:protein.index("*") + 1] if "*" in protein else protein
+
+
+def residues(aas, first):
+    """HGVS text of the amino acids `aas` that start at residue number `first`: Lys12, or Lys12_Gly14."""
+    return f"{t3(aas[0])}{first}" + ("" if len(aas) == 1 else f"_{t3(aas[-1])}{first + len(aas) - 1}")
+
+
 def effect(doc, seq, start, end, text, warnings):
     """(HGVS protein text of the CDS the change falls in, effect word); ("", "non-coding") outside every CDS."""
     delta = len(text) - (end - start)
-    hits = [f for f in doc.features() if f.kind == "CDS" and len(f.spans) == 1 and f.spans[0][0] <= start and end <= f.spans[0][1]
-            and not (start == end and start in f.spans[0])]
-    touched = [f for f in doc.features() if f.kind == "CDS" and any(s < end and start < e for s, e in f.spans)]
+    cds = [f for f in doc.features() if f.kind == "CDS"]
+    hits = [f for f in cds if len(f.spans) == 1 and f.spans[0][0] <= start and end <= f.spans[0][1] and not (start == end and start in f.spans[0])]
     if not hits:
+        touched = [f for f in cds if any(s < end and start < e for s, e in f.spans)]
         if touched:
             warnings.append(f"The change overlaps the edge of {touched[0].label!r}: its protein effect is not worked out.")
             return "", "overlaps CDS edge"
@@ -301,15 +308,10 @@ def effect(doc, seq, start, end, text, warnings):
     s, e = f.spans[0]
     plan = genetic_code.cds_plan(doc, f)
     code = genetic_code.codon_map(plan.table)
-    new_seq = seq[:start] + text + seq[end:]
-    old_cds, new_cds = seq[s:e], new_seq[s:e + delta]
+    old_cds, new_cds = seq[s:e], seq[s:start] + text + seq[end:e]   # (only the CDS: the rest of the plasmid does not matter)
     if f.strand < 0:
         old_cds, new_cds = reverse_complement(old_cds), reverse_complement(new_cds)
-    old_p, new_p = translate(old_cds[plan.frame:], code), translate(new_cds[plan.frame:], code)
-    if "*" in old_p:
-        old_p = old_p[:old_p.index("*") + 1]
-    if "*" in new_p:
-        new_p = new_p[:new_p.index("*") + 1]
+    old_p, new_p = to_stop(translate(old_cds[plan.frame:], code)), to_stop(translate(new_cds[plan.frame:], code))
     p = 0
     while p < min(len(old_p), len(new_p)) and old_p[p] == new_p[p]:
         p += 1
@@ -317,11 +319,10 @@ def effect(doc, seq, start, end, text, warnings):
         return "p.(=)", "silent"
     if delta % 3:
         warnings.append(f"Frameshift in {f.label!r} from residue {p + 1}.")
-        return f"p.({LETTER3.get(old_p[p], old_p[p]) if p < len(old_p) else 'Ter'}{p + 1}fs)", "frameshift"
-    t = lambda aa: LETTER3.get(aa, aa)
+        return f"p.({t3(old_p[p]) if p < len(old_p) else 'Ter'}{p + 1}fs)", "frameshift"
     if p < len(new_p) and new_p[p] == "*" and p < len(old_p) and old_p[p] != "*":   # a stop where there was an amino acid
         warnings.append(f"A stop codon appears in {f.label!r} at residue {p + 1}: the protein ends there.")
-        return f"p.({t(old_p[p])}{p + 1}Ter)", "nonsense"
+        return f"p.({t3(old_p[p])}{p + 1}Ter)", "nonsense"
     o_mid_end, n_mid_end = len(old_p), len(new_p)
     while o_mid_end > p and n_mid_end > p and old_p[o_mid_end - 1] == new_p[n_mid_end - 1]:
         o_mid_end, n_mid_end = o_mid_end - 1, n_mid_end - 1
@@ -329,16 +330,13 @@ def effect(doc, seq, start, end, text, warnings):
     if p == 0 and old_p[0] == "M":
         warnings.append(f"The start codon of {f.label!r} is changed.")
     if len(old_mid) == len(new_mid) == 1:
-        return f"p.({t(old_mid)}{p + 1}{t(new_mid)})", "missense"
+        return f"p.({t3(old_mid)}{p + 1}{t3(new_mid)})", "missense"
     if "*" in new_mid[:-1] or (new_mid.endswith("*") and not old_mid.endswith("*")):
         warnings.append(f"A premature stop codon appears in {f.label!r}.")
-    first = f"{t(old_mid[0])}{p + 1}" if old_mid else ""
-    last = f"{t(old_mid[-1])}{p + len(old_mid)}" if old_mid else ""
     if not new_mid:
-        return f"p.({first}{'' if len(old_mid) == 1 else '_' + last}del)", "in-frame deletion"
+        return f"p.({residues(old_mid, p + 1)}del)", "in-frame deletion"
     if not old_mid and p >= len(new_mid) and old_p[p - len(new_mid):p] == new_mid:
-        first = f"{t(new_mid[0])}{p - len(new_mid) + 1}"
-        return f"p.({first}{'' if len(new_mid) == 1 else '_' + t(new_mid[-1]) + str(p)}dup)", "in-frame duplication"
+        return f"p.({residues(new_mid, p - len(new_mid) + 1)}dup)", "in-frame duplication"
     if not old_mid:
-        return f"p.({t(old_p[p - 1])}{p}_{t(old_p[p])}{p + 1}ins{''.join(t(a) for a in new_mid)})", "in-frame insertion"
-    return f"p.({first}{'' if len(old_mid) == 1 else '_' + last}delins{''.join(t(a) for a in new_mid)})", "in-frame deletion-insertion"
+        return f"p.({t3(old_p[p - 1])}{p}_{t3(old_p[p])}{p + 1}ins{''.join(map(t3, new_mid))})", "in-frame insertion"
+    return f"p.({residues(old_mid, p + 1)}delins{''.join(map(t3, new_mid))})", "in-frame deletion-insertion"

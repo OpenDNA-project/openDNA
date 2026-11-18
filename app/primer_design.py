@@ -116,8 +116,13 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0,
     return pairs[:count]
 
 
+def editor_like(doc):
+    """What `design` and the primer checks read of an editor: its length and its document."""
+    return SimpleNamespace(length=doc.length, doc=doc)
+
+
 def design_region(doc, start, end, tm_target=DEFAULT_TM, min_len=DEFAULT_MIN_LEN, max_len=DEFAULT_MAX_LEN, window=DEFAULT_WINDOW):
     """`design` as the PCR panel calls it, for the region [start, end) of `doc`: the longest allowed length is never below the shortest, and
     on a fixed place (window 0) the best pair whatever its Tm, else only primers within 5 degrees of the target."""
-    return design(SimpleNamespace(length=doc.length, doc=doc), start, end, tm_target=tm_target, min_len=min_len, max_len=max(min_len, max_len),
+    return design(editor_like(doc), start, end, tm_target=tm_target, min_len=min_len, max_len=max(min_len, max_len),
                   window=window, tm_tolerance=None if window == 0 else 5)
