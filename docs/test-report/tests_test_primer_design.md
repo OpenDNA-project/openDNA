@@ -28,7 +28,7 @@ Checks that the documented default limits are exactly what the settings declare 
 
 ## `test_where_a_primer_comes_from_decides_how_it_is_kept`
 
-**Result:** ✅ passed in 0.03 s · [line 160](../../tests/test_primer_design.py#L160) · **Area:** Primer sources and storage · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 160](../../tests/test_primer_design.py#L160) · **Area:** Primer sources and storage · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a primer from the shared database could be confused with one stored in the file, be drawn in the wrong colour or hidden by the wrong filter, or an imported primer could fail to be saved or to undo cleanly.
 

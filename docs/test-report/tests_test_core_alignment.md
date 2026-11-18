@@ -58,7 +58,7 @@ Builds A-gap-B-C(inverted)-D queries for six template layouts, on lines and circ
 
 ## `test_local_align_query_cleaning_and_junction_texts`
 
-**Result:** ✅ passed in 0.04 s · [line 360](../../tests/test_core_alignment.py#L360) · **Area:** Local Align query input and report text · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 360](../../tests/test_core_alignment.py#L360) · **Area:** Local Align query input and report text · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, pasting a FASTA, GenBank ORIGIN or RNA query could be rejected or mangled, and the junction descriptions (insertion, deletion, inversion) in the Local Align report could be wrong.
 
@@ -87,7 +87,7 @@ Checks local_align.clean_query on accepted formats and on errors with their mess
 
 ## `test_folder_search_finds_a_query_in_its_file_record_place_and_strand`
 
-**Result:** ✅ passed in 1.66 s · [line 414](../../tests/test_core_alignment.py#L414) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.35 s · [line 414](../../tests/test_core_alignment.py#L414) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file.
 

@@ -38,6 +38,11 @@ def seq_id(editor):
     return re.sub(r"[^A-Za-z0-9_.:|-]", "_", editor.fasta_record or editor.doc.name or "sequence") or "sequence"
 
 
+def sequence_fasta(editor):
+    """The whole sequence as FASTA, its topology in the header (what Export > FASTA and table2asn write)."""
+    return fasta_text(seq_id(editor), editor.doc.sequence(), "[topology=circular]" if editor.circular else "")
+
+
 def fasta_text(name, seq, header_extra="", width=70):
     body = "\n".join(seq[i:i + width] for i in range(0, len(seq), width))
     return f">{name}{(' ' + header_extra) if header_extra else ''}\n{body}\n"
@@ -102,8 +107,7 @@ def tbl_text(editor):
 def write_submission(editor, path):
     """table2asn input: `path` with .fsa (sequence) and .tbl (features) suffixes; returns both paths."""
     fsa, tbl = Path(path).with_suffix(".fsa"), Path(path).with_suffix(".tbl")
-    extra = "[topology=circular]" if editor.circular else ""
-    fsa.write_text(fasta_text(seq_id(editor), editor.doc.sequence(), extra), encoding="utf-8")
+    fsa.write_text(sequence_fasta(editor), encoding="utf-8")
     tbl.write_text(tbl_text(editor), encoding="utf-8")
     return fsa, tbl
 

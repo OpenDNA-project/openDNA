@@ -5,6 +5,7 @@ without options says so). Stored in settings.ini in the app data folder (tests u
 
 A change emits notifier.changed(tool), so open tools can redo their work.
 """
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 from PySide6.QtCore import QObject, QSettings, Qt, Signal
@@ -71,7 +72,25 @@ def register(tool, params):
 _cache = {}  # (tool, key) -> value: reading settings.ini takes ~ms, and drawing asks per base
 
 
+_overrides = {}   # (tool, key) -> value of a run that was given one (never saved): see `override`
+
+
+@contextmanager
+def override(values):
+    """For the length of the block, `value` answers `values` ({(tool, key): value}) instead of what is saved; nothing is written to the settings file."""
+    before = {k: _overrides[k] for k in values if k in _overrides}
+    _overrides.update(values)
+    try:
+        yield
+    finally:
+        for k in values:
+            _overrides.pop(k, None)
+        _overrides.update(before)
+
+
 def value(tool, key):
+    if (tool, key) in _overrides:
+        return _overrides[tool, key]
     if (tool, key) not in _cache:
         _cache[tool, key] = _read(tool, key)
     return _cache[tool, key]

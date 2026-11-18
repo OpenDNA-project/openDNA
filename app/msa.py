@@ -159,6 +159,11 @@ def _merge(rows, seq):
     return ["".join(reversed(r)) for r in new_rows], "".join(reversed(new_seq))
 
 
+def unique_names(names):
+    """`names` with a number added to the ones that repeat (two files with one name stay two rows)."""
+    return names if len(set(names)) == len(names) else [f"{n}_{i}" if names.count(n) > 1 else n for i, n in enumerate(names, 1)]
+
+
 def align(names, seqs, reference=0):
     """The Alignment of `seqs` (DNA strings) by the built-in progressive aligner. Rows come back in the order given."""
     seqs = [s.upper().replace("U", "T") for s in seqs]

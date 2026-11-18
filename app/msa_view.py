@@ -229,7 +229,7 @@ class MsaView(QWidget):
         self._align(seqs)
 
     def _align(self, seqs):
-        names, bases = [n for n, _ in seqs], [s for _, s in seqs]
+        names, bases = msa.unique_names([n for n, _ in seqs]), [s for _, s in seqs]
         if len(seqs) < 2:
             self._say("Pick at least two sequences to align.")
             return

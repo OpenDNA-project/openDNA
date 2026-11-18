@@ -6,9 +6,21 @@ from pathlib import Path
 CHECKED = 5000   # items read for the checks (the first ones of the sequence): enough to tell, fast on any file
 
 
-def _names_match(a, b):
+def names_match(a, b):
     norm = lambda s: s.lower().removeprefix("chr")
     return bool(a) and bool(b) and (a == b or norm(a) == norm(b))
+
+
+def match_contig(seqs, *names):
+    """The sequence of a track file (`seqs`) that is the open one, or None: the same name as one of `names` (the document's
+    name, the FASTA record), else the same name once "chr" and the case are ignored ("chr1" is "1") if only one fits."""
+    for n in names:
+        if n and n in seqs:
+            return n
+    plain = lambda x: x.lower().removeprefix("chr")
+    wanted = {plain(n) for n in names if n}
+    close = [q for q in seqs if plain(q) in wanted]
+    return close[0] if len(close) == 1 else None
 
 
 def mismatches(editor, track, seqid, length=None, path=""):
@@ -17,7 +29,7 @@ def mismatches(editor, track, seqid, length=None, path=""):
     out = []
     here = editor.fasta_record or editor.doc.name
     name = Path(path).name or "The file"
-    if not _names_match(seqid, here) and not _names_match(seqid, editor.doc.name):
+    if not names_match(seqid, here) and not names_match(seqid, editor.doc.name):
         out.append(f"{name} is for the sequence '{seqid}', and this one is '{here}'.")
     if track is None:
         if length is not None and length != editor.length:

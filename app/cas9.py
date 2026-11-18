@@ -35,6 +35,7 @@ IUPAC = {"A": "A", "C": "C", "G": "G", "T": "T", "N": "[ACGT]", "R": "[AG]", "Y"
 MAX_CANDIDATES = 300           # rows shown: the best by score
 MAX_REGION = 2_000_000         # bp: longer stretches must be narrowed with a selection first
 SEED = 12                      # bases next to the PAM where a mismatch matters most
+DEFAULT_MAX_MM, MAX_MM_LIMITS = 3, (1, 4)   # "Count sites up to N mismatches"
 AUTO_CHECK = 100               # the first guides of the list are checked against the reference without being asked
 CHUNK = 10                     # guides scanned per step of that check: a result lands in the table (and a cancel is seen) at each
 INDEX = Qt.UserRole + 1        # item data: which guide (index in Cas9Dialog.guides) a table row shows (rows may be sorted)
@@ -96,6 +97,26 @@ def candidates(seq, circular, nuclease, offset=0, wrap=False):
                              round(gc_percent(guide)), score, notes, bottom + offset))
     out.sort(key=lambda g: (-g.score, g.start))
     return out
+
+
+def stretch(doc, selection=None):
+    """(offset, sequence, whole circular sequence?, error text) the guides are looked for in: the `selection` (start, end; 0-based, end
+    exclusive) when it holds bases, else the whole sequence (refused above MAX_REGION bp)."""
+    if selection and selection[1] > selection[0]:
+        a, b = selection[0], min(selection[1], doc.length)
+        return a, doc.sequence(a, b), False, ""
+    if doc.length > MAX_REGION:
+        return 0, "", False, f"This sequence is {doc.length:,} bp: select a region first (up to {MAX_REGION:,} bp)."
+    return 0, doc.sequence(0, None), doc.circular, ""
+
+
+def guide_row(nuclease, g, spec, n):
+    """The facts of a guide on a sequence of n bases, as the table of the window and `guides` on the command line show them (1-based, the end
+    that of the last base, also over the origin): rank-independent; `spec` is its Specificity (None: not checked yet)."""
+    mark, text = verdict(spec, g)
+    return {"start": g.start % n + 1, "end": (g.end - 1) % n + 1, "strand": g.strand, "guide": g.guide, "pam": g.pam, "gc": g.gc, "score": g.score,
+            "cut": cut_text(nuclease, g, n), "other_sites_here": None if spec is None else spec.here, "other_sites_genome": None if spec is None else spec.genome,
+            "mark": mark, "verdict": text}
 
 
 def seed_mismatches(mask, length):
@@ -220,7 +241,7 @@ class Cas9Dialog(ToolDialog):
         self.nuclease.addItems(list(NUCLEASES))
         self.region = QComboBox()
         self.region.addItems(["Selection (else the whole sequence)", "Whole sequence"])
-        self.max_mm = QSpinBox(minimum=1, maximum=4, value=3, suffix=" mismatches")
+        self.max_mm = QSpinBox(minimum=MAX_MM_LIMITS[0], maximum=MAX_MM_LIMITS[1], value=DEFAULT_MAX_MM, suffix=" mismatches")
         self.max_mm.setToolTip("Other sites with up to this many mismatches are counted")
         self.max_mm.valueChanged.connect(lambda v: self.max_mm.setSuffix(" mismatch" if v == 1 else " mismatches"))   # not "1 mismatches"
         find = QPushButton("Find guides", clicked=self.reload)
@@ -321,14 +342,8 @@ class Cas9Dialog(ToolDialog):
 
     # -- finding guides
     def _stretch(self):
-        """(offset, sequence, whole circular sequence?) the guides are looked for in, or an error text."""
         ed = self.editor
-        if self.region.currentIndex() == 0 and ed.end > ed.start:
-            a, b = ed.start, min(ed.end, ed.length)
-            return a, ed.doc.sequence(a, b), False, ""
-        if ed.length > MAX_REGION:
-            return 0, "", False, f"This sequence is {ed.length:,} bp: select a region first (up to {MAX_REGION:,} bp)."
-        return 0, ed.doc.sequence(0, None), ed.circular, ""
+        return stretch(ed.doc, (ed.start, ed.end) if self.region.currentIndex() == 0 else None)
 
     def reload(self):
         self.version += 1
@@ -349,11 +364,12 @@ class Cas9Dialog(ToolDialog):
 
     def _cells(self, g, spec, nuc, n):
         """[(text, sort key)] of the nine cells of a guide's row."""
-        level, text = verdict(spec, g)
+        row = guide_row(nuc, g, spec, n)
+        level, text = row["mark"], row["verdict"]
         here = "–" if spec is None else "/".join(map(str, spec.here))
         far = "–" if spec is None or spec.genome is None else "/".join(map(str, spec.genome))
         pam_guide = f"{g.pam} {g.guide}" if nuc.pam_first else f"{g.guide} {g.pam}"
-        return [(f"{g.start % n + 1:,}–{(g.end - 1) % n + 1:,}", g.start % n), ("→" if g.strand > 0 else "←", g.strand), (pam_guide, pam_guide),
+        return [(f"{row['start']:,}–{row['end']:,}", g.start % n), ("→" if g.strand > 0 else "←", g.strand), (pam_guide, pam_guide),
                 (f"{g.cut % n:,}", g.cut % n), (f"{g.gc} %", g.gc), (str(g.score), g.score),
                 (here, counts_key(None if spec is None else spec.here)),
                 (far, counts_key(None if spec is None else spec.genome)),

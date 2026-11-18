@@ -8,6 +8,7 @@ import re
 import shlex
 import sys
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -17,11 +18,20 @@ sys.path.insert(0, str(ROOT / "app"))
 
 import pytest
 
+import cas9
 import cli
+import cli_tools
+import enzymes
 import kld
+import local_align
+import msa
 import mutation
 import primer_design
 import recombineering
+import repeats
+import search
+import tools
+from cut_sites import NUCLEASES
 from opendna_core import Document
 from user_error import UserError
 
@@ -59,16 +69,18 @@ def test_agent_mistakes_are_one_error_line(capsys):
         assert code == 1 and out == "" and err.startswith("ERROR: ") and words in err and err.count("\n") == 1
 
 
-def test_every_recipe_example_still_runs(capsys):
+def test_every_recipe_example_still_runs(capsys, tmp_path, monkeypatch):
     """The `## Example` block of each recipe is a list of commands, one per line: all of them must succeed (a recipe that drifted from
     the tool is caught here)."""
+    monkeypatch.chdir(tmp_path)   # (an example that writes a file writes it here)
+    fake_ncbi(monkeypatch)        # (and none of them reaches the network)
     code, out, _ = run(capsys, "skills", "list")
     names = [line.split(":")[0] for line in out.splitlines()]
-    assert code == 0 and {"index", "inspect", "kld", "pcr", "recombineering"} <= set(names)
+    assert code == 0 and {"index", "inspect", "kld", "pcr", "recombineering", "sites", "guides", "repeats", "search", "align", "msa", "codon", "export", "order", "variants", "checkup", "annotate", "gibson", "ncbi"} <= set(names)
     for name in names:
         code, text, _ = run(capsys, "skills", "show", name)
         assert code == 0
-        for block in re.findall(r"## Example\s+```\n(.*?)```", text, re.S):
+        for block in re.findall(r"## Example.*?```\n(.*?)```", text, re.S):
             for line in block.splitlines():
                 code, _, err = run(capsys, *shlex.split(line.replace("demo/", (ROOT / "demo").as_posix() + "/").replace("app/agent/", (ROOT / "app" / "agent").as_posix() + "/")))
                 assert code == 0, f"{name}: {line}: {err}"
@@ -278,3 +290,356 @@ def test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names(tmp_pa
     code, text, err = run(capsys, "kld", "check", gb, table, "--tm", 80)
     res = json.loads(text)
     assert code == 0 and res["settings"]["kld"]["tm"]["max"] == 72.0 and "responsibility" in res["warnings"][0] and "WARNING: --tm = 80.0" in err
+    # the other batch commands keep the same promises: a ragged row or an empty cell is that row's error, and ids differing by case get two files
+    ptable = tmp_path / "p.csv"
+    ptable.write_text("id,target\nok,150..400\nragged,150..400,x\nempty,\n", encoding="utf-8")
+    code, text, err = run(capsys, "pcr", "check", gb, ptable)
+    prow = json.loads(text)["rows"]
+    assert code == 1 and [r["status"] for r in prow] == ["ok", "error", "error"] and "3 cells but the header has 2" in prow[1]["error"] and "target is empty" in prow[2]["error"]
+    assert "ERROR [row ragged]" in err and "ERROR [row empty]" in err
+    rtable = tmp_path / "r.csv"
+    rtable.write_text("id,region,cassette\nA,gx,none\na,gy,none\nragged,gx,none,extra\nempty,gx,\n", encoding="utf-8")
+    code, text, err = run(capsys, "recombineering", "run", gb, rtable, "--out", tmp_path / "rout")
+    rrows = json.loads(text)["rows"]
+    assert code == 1 and [r["status"] for r in rrows] == ["ok", "ok", "error", "error"] and sorted(p.name for p in (tmp_path / "rout").glob("*.gb")) == ["A.gb", "a_2.gb"]
+    assert "cassette is empty" in rrows[3]["error"] and "a_2.gb" in rrows[1]["warnings"][-1]
+
+
+# ---- the analysis commands (sites, guides, repeats, search): read-only, one JSON answer -------------------------------------------
+def planted(tmp_path, *plants, n=400, circular=True):
+    """A random n bp sequence with each (0-based position, bases) written over it, saved as a GenBank file: (path, sequence)."""
+    seq = list(dna(n, 5))
+    for at, bases in plants:
+        seq[at:at + len(bases)] = bases
+    seq = "".join(seq)
+    gb = tmp_path / "p.gb"
+    Document.new_sequence("p", seq, circular).write_genbank(str(gb), None)
+    return gb, seq
+
+
+def answer(capsys, *argv):
+    code, text, err = run(capsys, *argv)
+    assert code == 0, err
+    return json.loads(text)
+
+
+def test_sites_command_gives_the_cuts_and_fragments_of_the_windows(tmp_path, capsys):
+    gb, seq = planted(tmp_path, (200, "GAATTC"), (300, "GGATCC"))
+    assert seq.count("GAATTC") == seq.count("GGATCC") == 1
+    res = answer(capsys, "sites", gb, "--enzymes", "EcoRI,BamHI,NotI", "--digest", "EcoRI,BamHI")
+    eco, bam, notl = res["enzymes"]
+    # G^AATTC at bases 201..206 cuts the top strand after base 201 and the bottom after 205; GGATCC at 301..306 likewise; NotI is absent
+    assert (eco["notation"], eco["sites"], eco["cuts"]) == ("G^AATTC", [{"start": 201, "end": 206, "strand": 1}], [{"top_after_base": 201, "bottom_after_base": 205}])
+    assert bam["cuts"][0]["top_after_base"] == 301 and notl["count"] == 0
+    assert [(f["size"], f["start"], f["end"], f["left"], f["right"]) for f in res["digest"]["fragments"]] == [(300, 302, 201, ["BamHI"], ["EcoRI"]), (100, 202, 301, ["EcoRI"], ["BamHI"])]
+    # the default list is the window's: the enzymes that cut once and recognise 6 bases or more, and it is what the module says
+    want = {n for n, c in enzymes.find_cuts(seq, True).items() if len(c) == 1 and len(next(e for e in enzymes.COMMON if e.name == n).site) >= 6}
+    assert {e["enzyme"] for e in answer(capsys, "sites", gb)["enzymes"]} == want >= {"EcoRI", "BamHI"}
+    assert sorted(f[0] for f in tools.fragments(400, True, {201: ["EcoRI"], 301: ["BamHI"]})) == [100, 300]
+    assert "No enzyme called" in run(capsys, "sites", gb, "--enzymes", "Nope")[2]
+
+
+def test_guides_command_gives_the_guides_and_marks_of_the_spacer_finder(tmp_path, capsys):
+    guide = "GCGCATGCAAGTCCGATGAC"
+    gb, seq = planted(tmp_path, (100, guide + "AGG"))
+    res = answer(capsys, "guides", gb, "--no-genome", "--top", "400")
+    # the planted site is there: bases 101..123 (guide and PAM) on the top strand, cut 3 bp from the PAM, before base 118
+    mine = next(g for g in res["guides"] if g["guide"] == guide)
+    assert (mine["start"], mine["end"], mine["strand"], mine["pam"]) == (101, 123, 1, "AGG") and mine["cut"].endswith("before base 118")
+    # the window's own three functions give the same list and marks
+    nuc = NUCLEASES["SpCas9 (NGG, 20 nt)"]
+    found = cas9.candidates(seq, True, nuc, 0, True)
+    assert [g["guide"] for g in res["guides"]] == [g.guide for g in found] and res["guides_found"] == len(found)
+    specs = cas9.scan(seq, True, "p", found, nuc, 3, None)
+    assert [g["mark"] for g in res["guides"]] == [cas9.verdict(s, g)[0] for s, g in zip(specs, found)]
+    assert res["settings"]["cas9"]["max_mismatches"] == {"value": 3, "source": "default", "min": 1, "max": 4}
+    # a region keeps to its bases, and the limits warn without stopping
+    sub = answer(capsys, "guides", gb, "--no-genome", "--region", "90..130", "--max-mm", "9")
+    assert all(90 <= g["start"] and g["end"] <= 130 for g in sub["guides"]) and "responsibility" in sub["warnings"][0]
+    assert "No nuclease called" in run(capsys, "guides", gb, "--nuclease", "Cas99")[2]
+    assert "--top must be at least 1" in run(capsys, "guides", gb, "--no-genome", "--top", "-5")[2]
+    assert len(answer(capsys, "guides", gb, "--no-genome", "--top", "2")["guides"]) == 2
+
+
+def test_repeats_command_gives_the_stretches_the_compare_view_gives(tmp_path, capsys):
+    gb, seq = planted(tmp_path, (20, dna(30, 9)), (220, dna(30, 9)))
+    res = answer(capsys, "repeats", gb, "--min-len", "20")
+    assert [(r["kind"], r["start_in_a"], r["start_in_b"], r["length"], r["differences"]) for r in res["repeats"]] == [("direct", 21, 221, 30, 0)]
+    assert [(k, i + 1, j + 1, n) for k, i, j, n, _ in repeats.pair_repeats(seq, seq, 20).repeats] == [("direct", 21, 221, 30)]
+    other = tmp_path / "q.gb"
+    Document.new_sequence("q", dna(100, 7) + dna(30, 9) + dna(100, 8), False).write_genbank(str(other), None)
+    two = answer(capsys, "repeats", gb, other, "--min-len", "25")
+    assert {(r["start_in_a"], r["start_in_b"]) for r in two["repeats"] if r["kind"] == "direct"} == {(21, 101), (221, 101)}
+
+
+def test_search_command_finds_dna_on_both_strands_and_names(tmp_path, capsys):
+    site = "TTGACAGCTAGCTCAGTCC"
+    gb, seq = planted(tmp_path, (50, site))
+    rc = mutation.reverse_complement(site)
+    both = answer(capsys, "search", gb, rc)["hits"]
+    assert [(h["kind"], h["start"], h["end"], h["strand"]) for h in both] == [("dna", 51, 69, -1)]
+    assert answer(capsys, "search", gb, rc, "--single-strand")["hits"] == []
+    assert [(h["start"], h["strand"]) for h in answer(capsys, "search", gb, site[:-1] + "A", "--fuzzy", "1")["hits"]] == [(51, 1)]
+    assert [h["label"] for h in answer(capsys, "search", DEMO, "araC")["hits"]][0] == "araC"
+    ed = SimpleNamespace(doc=Document(DEMO), features=Document(DEMO).features(), tracks=[], primer_sites=[], start=0, end=0)
+    direct, _ = search.search_sequence(ed, "araC", search.Options(primers=False))
+    assert [(h.start + 1, h.end) for h in direct] == [(h["start"], h["end"]) for h in answer(capsys, "search", DEMO, "araC")["hits"]]
+
+
+def test_every_command_has_a_recipe_example_and_a_test_that_compares_it_with_the_window(capsys):
+    """A command added without a recipe whose example runs, or without a `test_<command>_...` here, fails this test."""
+    commands = set(cli.parser()._subparsers._group_actions[0].choices) - {"skills", "inspect", "feature", "region"}   # (the three that read a file are tested above, with skills)
+    examples = chr(10).join(re.findall(r"## Example.*?```\n(.*?)```", "".join(p.read_text(encoding="utf-8") for p in cli.recipes().values()), re.S))
+    mine = [n for n in globals() if n.startswith("test_")]
+    for name in commands:
+        assert re.search(rf"^{name} ", examples, re.M), f"{name}: no recipe has a runnable example for it"
+        assert any(n.startswith(f"test_{name}_") for n in mine), f"{name}: no test_{name}_... compares it with the module the window calls"
+
+
+def test_align_command_finds_pieces_and_structural_changes_like_local_align(tmp_path, capsys):
+    gb, seq = planted(tmp_path)
+    one = answer(capsys, "align", gb, seq[100:160])
+    assert [(p["query_start"], p["query_end"], p["start"], p["end"], p["strand"], p["identity"]) for p in one["pieces"]] == [(1, 60, 101, 160, 1, 1.0)]
+    rev = answer(capsys, "align", gb, mutation.reverse_complement(seq[100:160]))
+    assert [(p["start"], p["end"], p["strand"]) for p in rev["pieces"]] == [(101, 160, -1)]
+    gap = seq[100:130] + seq[160:190]   # 30 bp of the template skipped between the two pieces
+    two = answer(capsys, "align", gb, gap)
+    p0, p1 = two["pieces"]   # (the second piece may start a base or two early: the bases next to a junction can match by chance)
+    assert (p0["start"], p0["end"], p1["end"]) == (101, 130, 190) and 28 <= p1["start"] - p0["end"] - 1 <= 30 and p1["before"].startswith("deletion from the query")
+    direct = local_align.find_hits(seq, gap, True)    # the window's own function
+    assert [(h.start + 1, h.end) for h in direct] == [(p["start"], p["end"]) for p in two["pieces"]]
+    err = run(capsys, "align", gb, "MKLVPQ")[2]
+    assert err.startswith("ERROR: ") and "protein" in err
+
+
+def test_msa_command_aligns_the_files_and_never_overwrites(tmp_path, capsys):
+    a = dna(200, 11)
+    b = a[:80] + a[90:]   # 10 bases deleted
+    for name, s in (("a", a), ("b", b)):
+        Document.new_sequence(name, s, False).write_genbank(str(tmp_path / f"{name}.gb"), None)
+    out = tmp_path / "aln.fa"
+    res = answer(capsys, "msa", tmp_path / "a.gb", tmp_path / "b.gb", "--out", out)
+    ra, rb = (s["aligned"] for s in res["sequences"])
+    assert ra.replace("-", "") == a and rb.replace("-", "") == b and rb.count("-") == 10 and res["width"] == 200
+    assert [s["identity_to_first"] for s in res["sequences"]] == [100.0, 95.0]    # 190 identical columns of the 200 where either has a base
+    assert msa.parse_aligned_fasta(out.read_text())[1] == [ra, rb]
+    code, text, err = run(capsys, "msa", tmp_path / "a.gb", tmp_path / "b.gb", "--out", out)
+    assert code == 1 and "already exists" in err
+    assert "at least two" in run(capsys, "msa", tmp_path / "a.gb")[2]
+
+
+def test_codon_batch_recodes_in_place_keeping_the_protein(tmp_path, capsys):
+    doc, seq = plasmid()
+    gb = tmp_path / "t.gb"
+    doc.write_genbank(str(gb), None)
+    table = ROOT / "app" / "agent" / "examples" / "codon_usage_ecoli.csv"
+    rows = tmp_path / "r.csv"
+    rows.write_text("id,feature\nfwd,gx\nrev,gy\nbad,nope\n", encoding="utf-8")
+    out = tmp_path / "out"
+    code, text, _ = run(capsys, "codon", "run", gb, rows, "--usage", table, "--method", "Highest frequency", "--out", out)
+    res = json.loads(text)
+    assert code == 1 and [r["status"] for r in res["rows"]] == ["ok", "ok", "error"] and "No feature called" in res["rows"][2]["error"]
+    # hand-computed from the table: the most used synonym of each codon (M ATG, A GCG, E GAA, K AAA, F TTT, G GGC, stop TAA)
+    best = "ATGGCGGAAAAATTTGGCTAA"
+    assert res["rows"][0]["sequence"] == res["rows"][1]["sequence"] == best and res["rows"][0]["codons_changed"] == 2
+    assert Document(str(out / "fwd.gb")).sequence(0, None).upper() == seq[:100] + best + seq[121:]
+    assert Document(str(out / "rev.gb")).sequence(0, None).upper() == seq[:400] + mutation.reverse_complement(best) + seq[421:]   # the reverse CDS is written on the other strand
+    # the window's own function, with the same seed, gives the same recoding
+    import codon_tools
+    import codon_usage
+    import genetic_code
+    s = codon_tools.feature_source(doc, doc.features()[0])
+    want = codon_tools.recode(s.seq, genetic_code.codon_map(s.table), codon_usage.read_csv(str(table)), gc_range=codon_tools.DEFAULT_GC, left=s.left, right=s.right, seed=1)
+    matched = json.loads(run(capsys, "codon", "check", gb, rows, "--usage", table)[1])
+    assert matched["rows"][0]["sequence"] == want.seq and codon_tools.translate(want.seq, genetic_code.codon_map(1)) == codon_tools.translate(CDS, genetic_code.codon_map(1))
+    assert "--gc-low is above" in run(capsys, "codon", "check", gb, rows, "--usage", table, "--gc-low", "70")[2]
+    nogc = json.loads(run(capsys, "codon", "check", gb, rows, "--usage", table, "--no-gc")[1])["settings"]["codon"]   # the settings say what was applied
+    assert nogc["gc_limits"]["value"] == "none" and "gc_low" not in nogc and "gc_window" not in nogc
+
+
+def test_export_command_writes_the_formats_and_never_overwrites(tmp_path, capsys):
+    import exports
+    doc, seq = plasmid()
+    gb = tmp_path / "t.gb"
+    doc.write_genbank(str(gb), None)
+    ed = SimpleNamespace(doc=doc, features=doc.features(), length=doc.length, circular=True, fasta_record=None)
+    for fmt, want in (("fasta", exports.fasta_text("t", doc.sequence(0, None), "[topology=circular]")), ("gff3", exports.gff3_text(ed)),
+                      ("bed", exports.bed_text(ed)), ("tbl", exports.tbl_text(ed)), ("proteins", exports.proteins_fasta(ed))):
+        out = tmp_path / f"o.{fmt}"
+        assert answer(capsys, "export", gb, fmt, out)["file"] == str(out) and out.read_text(encoding="utf-8") == want, fmt
+    assert ">gx" in (tmp_path / "o.proteins").read_text() and "MAEKFG" in (tmp_path / "o.proteins").read_text()
+    answer(capsys, "export", gb, "genbank", tmp_path / "o.gb")
+    assert Document(str(tmp_path / "o.gb")).sequence(0, None).upper() == seq.upper()
+    assert "already exists" in run(capsys, "export", gb, "fasta", tmp_path / "o.fasta")[2]
+
+
+def test_order_command_writes_the_supplier_file_or_nothing(tmp_path, capsys):
+    table = tmp_path / "p.csv"
+    table.write_text("id,sequence\nF1,atgcgtacgttagcagct\nR1,TTAGCGGCATCGATCGAA\n", encoding="utf-8")
+    res = answer(capsys, "order", table, tmp_path / "o.csv", "--scale", "100nm", "--purification", "PAGE")
+    assert res["primers"] == 2 and list(csv.reader(open(tmp_path / "o.csv", encoding="utf-8"))) == [
+        ["Well Position", "Name", "Sequence", "Scale", "Purification"], ["A1", "F1", "ATGCGTACGTTAGCAGCT", "100nm", "PAGE"], ["B1", "R1", "TTAGCGGCATCGATCGAA", "100nm", "PAGE"]]
+    answer(capsys, "order", table, tmp_path / "plain.csv", "--format", "plain")
+    assert list(csv.reader(open(tmp_path / "plain.csv", encoding="utf-8"))) == [["F1", "ATGCGTACGTTAGCAGCT"], ["R1", "TTAGCGGCATCGATCGAA"]]
+    assert "already exists" in run(capsys, "order", table, tmp_path / "o.csv")[2]
+    table.write_text("id,sequence\nF1,ATGCGTACGTTAGCAGCT\nshort,ACGT\nbad,ATGCXTACGTTAG\n", encoding="utf-8")
+    code, _, err = run(capsys, "order", table, tmp_path / "never.csv")
+    assert code == 1 and "short" in err and "bad" in err and not (tmp_path / "never.csv").exists()
+
+
+READS = ROOT / "app" / "agent" / "examples" / "pBAD30_eilR_clone_reads.bam"
+
+
+def test_variants_command_finds_what_the_simulated_reads_were_given(tmp_path, capsys):
+    """The reads were simulated from the plasmid with the changes listed in tests/pBAD30_eilR_reads/truth.tsv (the 100 percent ones are consensus changes,
+    the 30 percent one is a mixed colony)."""
+    res = answer(capsys, "variants", DEMO, READS)
+    found = {(v["position"], v["kind"], v["reference"], v["alternative"]): v for v in res["variants"]}
+    assert found[(4000, "snp", "C", "A")]["level"] == "consensus" and found[(5300, "snp", "T", "A")]["level"] == "consensus"
+    assert found[(4200, "snp", "A", "T")]["level"] == "variant" and 0.2 <= found[(4200, "snp", "A", "T")]["fraction"] < 0.8      # truth.tsv: 30 % of the plasmids
+    assert found[(4700, "ins", "", "A")]["level"] == "consensus" and found[(5400, "del", "GGA", "")]["can_apply"]
+    assert any(v["kind"] == "gap" and v["position"] == 2000 for v in res["variants"])     # the 100-bp deletion: no read covers it
+    # the Variants pane's own scan gives the same list
+    import alignments
+    from opendna_core import Bam
+    direct = alignments.scan_variants(Bam(str(READS)), "pBAD30_eilR", Document(DEMO).sequence(0, None), (5, 20, 80, 13, 0))
+    assert [(v.pos + 1, v.kind, v.count) for v in direct] == [(v["position"], v["kind"], v["reads"]) for v in res["variants"]]
+    # --apply writes the consensus changes into a copy: 1 base inserted, 3 + 1 deleted, the substitution at 4000 made
+    out = tmp_path / "fixed.gb"
+    applied = answer(capsys, "variants", DEMO, READS, "--apply", out)["applied"]
+    fixed = Document(str(out))
+    assert fixed.length == 5936 + 1 - 3 - 1 and fixed.sequence(3999, 4000).upper() == "A" and Document(DEMO).sequence(3999, 4000).upper() == "C"
+    assert applied["changes"] == sum(1 for v in direct if v.level == "consensus" and v.kind in ("snp", "del", "ins"))
+    code, _, err = run(capsys, "variants", DEMO, READS, "--apply", out)
+    assert code == 1 and "already exists" in err
+    assert "Cannot read" in run(capsys, "variants", DEMO, DEMO)[2] and "responsibility" in answer(capsys, "variants", DEMO, READS, "--min-depth", "0")["warnings"][0]
+
+
+def test_tool_settings_override_restores_the_outer_value_and_is_never_saved():
+    import checkup
+    import tool_settings
+    key = (checkup.TOOL, "min_promoter")
+    with tool_settings.override({key: 41}):
+        with tool_settings.override({key: 42}):
+            assert tool_settings.value(*key) == 42
+        assert tool_settings.value(*key) == 41
+    assert key not in tool_settings._overrides and tool_settings.value(*key) != 41
+
+
+def test_checkup_command_gives_the_verdicts_of_the_checkup_window(tmp_path, capsys):
+    doc, seq = plasmid()
+    gb = tmp_path / "t.gb"
+    doc.write_genbank(str(gb), None)
+    bare = answer(capsys, "checkup", gb, "--no-predict", "--no-library")
+    assert [(c["cds"], c["verdict"]) for c in bare["cds"]] == [("gx", "Not expressed"), ("gy", "Not expressed")]   # a CDS with nothing upstream
+    assert "no bacterial promoter upstream on this strand" in bare["cds"][0]["reasons"]
+    # annotated promoter, RBS and terminator around gx (forward, 101..121): the design is complete
+    doc.add_features([("promoter", "40..70", [("label", "Pgx")]), ("RBS", "88..99", [("label", "rbs_gx")]), ("terminator", "130..160", [("label", "Tgx")])])
+    doc.write_genbank(str(tmp_path / "full.gb"), None)
+    full = answer(capsys, "checkup", tmp_path / "full.gb", "--no-predict", "--no-library")
+    gx = full["cds"][0]
+    assert gx["verdict"] == "Expressed" and gx["hosts"]["Bacteria"]["promoter"] == "Pgx" and gx["hosts"]["Bacteria"]["terminator"] == "Tgx" and full["cds"][1]["verdict"] == "Not expressed"
+    assert {(e["kind"], e["origin"]) for e in full["elements"]} == {("promoter", "annotated"), ("RBS", "annotated"), ("terminator", "annotated")}
+    # the window's own function gives the same verdicts
+    import checkup
+    import tool_settings
+    with tool_settings.override({(checkup.TOOL, "predict"): False, (checkup.TOOL, "library"): False}):
+        direct = checkup.run(cli_tools.doc_editor(Document(str(tmp_path / "full.gb"))))
+    assert [c.verdict for c in direct.cds] == [c["verdict"] for c in full["cds"]]
+    assert "responsibility" in answer(capsys, "checkup", gb, "--min-promoter", "99")["warnings"][0]
+
+
+def test_annotate_command_finds_library_parts_and_adds_only_new_ones(tmp_path, capsys):
+    import annotation
+    part = max((p for p in annotation.load_parts() if p.kind == "terminator" and set(p.sequence.upper()) <= set("ACGT")), key=lambda p: len(p.sequence))
+    gb, seq = planted(tmp_path, (100, part.sequence.upper()), n=600)
+    res = answer(capsys, "annotate", gb, "--kinds", "terminator")
+    mine = [h for h in res["hits"] if h["start"] == 101]
+    assert mine and mine[0]["end"] == 100 + len(part.sequence) and mine[0]["strand"] == 1 and mine[0]["identity"] == 1.0 and not mine[0]["already_annotated"]
+    direct = annotation.detect(cli_tools.doc_editor(Document(str(gb))), {"terminator"})
+    assert [(h.start + 1, h.end, h.name) for h in direct] == [(h["start"], h["end"], h["name"]) for h in res["hits"]]
+    out = tmp_path / "annotated.gb"
+    added = answer(capsys, "annotate", gb, "--kinds", "terminator", "--add", out)["added"]
+    made = Document(str(out))
+    assert added["features"] == len(res["hits"]) and any(f.kind == "terminator" and f.spans[0] == (100, 100 + len(part.sequence)) for f in made.features())
+    again = tmp_path / "again.gb"      # a second pass over the annotated copy finds the same parts, already annotated, and adds nothing
+    assert answer(capsys, "annotate", out, "--kinds", "terminator", "--add", again)["added"]["features"] == 0
+    assert "responsibility" in answer(capsys, "annotate", gb, "--min-dna", "10")["warnings"][0]
+
+
+def test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds(tmp_path, capsys):
+    a, b = dna(300, 21), dna(300, 22)
+    for name, s in (("a", a), ("b", b)):
+        Document.new_sequence(name, s, False).write_genbank(str(tmp_path / f"{name}.gb"), None)
+    table = tmp_path / "f.csv"
+    table.write_text("id,source,region,orientation\nfa,a.gb,,\nfb,b.gb,11..290,forward\n", encoding="utf-8")
+    out = tmp_path / "out"
+    res = answer(capsys, "gibson", "run", table, "--out", out)
+    # hand-computed: two linear fragments with nothing in common are joined end to end into a circle (the window starts it at the first
+    # fragment's own overlap, a few bases before the fragment: the same circle, turned)
+    product = Document(str(out / "assembly.gb"))
+    circle = product.sequence(0, None).upper()
+    assert res["verdict"] in ("ok", "warn") and product.circular and len(circle) == 580 and (a + b[10:290]) in circle + circle
+    prim = {p["name"]: p for p in res["primers"]}
+    tail = lambda p: p["sequence"][:len(p["sequence"]) - p["annealing_length"]].upper()   # the 5' part of a primer that does not anneal
+    assert a.endswith(tail(prim["fb-F"])) and b[10:290].startswith(mutation.reverse_complement(tail(prim["fa-R"])))   # fb-F carries the end of a; fa-R the start of b, reverse complemented
+    assert 20 <= len(tail(prim["fb-F"])) + len(tail(prim["fa-R"])) <= 40 and len(res["junctions"]) == 2
+    # the Assembly panel's own functions give the same primers, checks and product
+    import assembly
+    from assembly import Frag, snapshot
+    frags = [Frag("fa", snapshot(Document(str(tmp_path / "a.gb")))), Frag("fb", snapshot(Document(str(tmp_path / "b.gb")), "fb"), 10, 290)]
+    assembly.auto_primers(frags, 0, True)
+    d = assembly.analyse(frags, 0, True)
+    assert [p["sequence"] for p in res["primers"]] == [p[1] for f in frags for p in (f.fwd, f.rev)]
+    assert assembly.simulate(frags, d).sequence(0, None).upper() == product.sequence(0, None).upper() and [c[1] for c in d.checks] == [c["level"] for c in res["checks"]]
+    # an assembly needs every fragment: a bad row stops the command, and the message names it
+    table.write_text("id,source,region,orientation\nfa,a.gb,,\nfb,b.gb,0..5,\n", encoding="utf-8")
+    code, _, err = run(capsys, "gibson", "check", table)
+    assert code == 1 and err.startswith("ERROR: ") and "positions must satisfy" in err
+    table.write_text("id,source\nfa,a.gb\nfa,b.gb\n", encoding="utf-8")
+    assert "must be different" in run(capsys, "gibson", "check", table)[2]
+    table.write_text("id,source\nfa,a.gb\nfb,b.gb\n", encoding="utf-8")
+    assert "responsibility" in answer(capsys, "gibson", "check", table, "--min-overlap", "5")["warnings"][0]
+    assert "already exists" in run(capsys, "gibson", "run", table, "--out", out)[2]
+
+
+def test_ncbi_command_searches_and_fetches_through_the_import_dialogs_functions(tmp_path, capsys, monkeypatch):
+    seen = fake_ncbi(monkeypatch)
+    res = answer(capsys, "ncbi", "search", "pUC19", "--limit", "3")
+    assert [(r["accession"], r["length"], r["topology"]) for r in res["records"]] == [("L09137.2", 60, "circular")] and "pUC19" in res["settings"]["ncbi"]["sends"]["value"]
+    assert "retmax=3" in seen[0] and all("eutils.ncbi.nlm.nih.gov" in u for u in seen) and not any("api_key" in u for u in seen)    # only the words are sent
+    out = tmp_path / "puc.gb"
+    got = answer(capsys, "ncbi", "get", "L09137", "--out", out)    # an accession without its version finds the current one
+    assert got["record"]["accession"] == "L09137.2" and Document(str(out)).length == 60 and out.read_text().startswith("LOCUS")
+    import ncbi
+    direct = ncbi.search("nuccore", "pUC19", "", 3)
+    assert [(r.accession, r.length) for r in direct] == [("L09137.2", 60)]
+    for argv, words in ((("get", "L09137", "--out", out), "already exists"), (("get", "L09137"), "needs --out"), (("get", "XYZ", "--out", tmp_path / "x.gb"), "is not the accession"),
+                        (("search", "  "), "Type an accession")):
+        code, text, err = run(capsys, "ncbi", *argv)
+        assert code == 1 and text == "" and words in err and err.startswith("ERROR: ")
+    asked = len(seen)
+    for argv, words in ((("search", "pUC19", "--limit", "0"), "--limit must be at least 1"), (("get", "L09137", "--out", out), "already exists")):
+        assert words in run(capsys, "ncbi", *argv)[2]
+    assert len(seen) == asked    # (a mistake that can be seen here never reaches the network)
+
+
+def fake_ncbi(monkeypatch):
+    """Replace the one network call of ncbi.py with a canned NCBI: a search finds pUC19-like record L09137.2 (60 bp); the requests made are listed."""
+    import ncbi
+    gb = Path(tempfile.mkdtemp()) / "r.gb"
+    Document.new_sequence("L09137", dna(60, 3), True).write_genbank(str(gb), None)
+    asked = []
+
+    def fetch(url, timeout=60):
+        asked.append(url)
+        if "esearch" in url:
+            return json.dumps({"esearchresult": {"idlist": ["111"]}})
+        if "esummary" in url:
+            return json.dumps({"result": {"111": {"accessionversion": "L09137.2", "title": "Cloning vector pUC19", "slen": 60, "organism": "synthetic construct",
+                                                 "updatedate": "2026/01/01", "topology": "circular", "sourcedb": "genbank"}}})
+        return gb.read_text(encoding="utf-8")
+    monkeypatch.setattr(ncbi, "fetch", fetch)
+    monkeypatch.setattr(ncbi.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ncbi, "path_of", lambda record: Path(tempfile.mkdtemp()) / "cache.gb")   # (never a file left by an earlier test)
+    return asked

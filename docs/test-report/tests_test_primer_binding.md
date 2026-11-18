@@ -4,7 +4,7 @@
 
 ## `test_binding_agrees_with_the_documented_rules_written_in_python`
 
-**Result:** ✅ passed in 0.16 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.12 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer binding sites shown on the map could deviate from the documented seed/extension rules on any of thousands of combinations of mismatches, tails, strands and topologies.
 
@@ -21,7 +21,7 @@ Compares find_primers with a Python re-implementation of the documented rules on
 
 ## `test_binding_mismatches_seed_tails_and_extension`
 
-**Result:** ✅ passed in 0.05 s · [line 234](../../tests/test_primer_binding.py#L234) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 234](../../tests/test_primer_binding.py#L234) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, specific binding rules (where a mismatch is allowed, how far the annealed part extends, how tails are handled) could change and primers would be shown binding where they do not, or not where they do.
 
@@ -48,7 +48,7 @@ Checks each documented binding rule with exact expected sites: every single-mism
 
 ## `test_binding_origin_ends_repeats_and_letters`
 
-**Result:** ✅ passed in 0.03 s · [line 419](../../tests/test_primer_binding.py#L419) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 419](../../tests/test_primer_binding.py#L419) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, primers on circular plasmids across the origin, repeated or palindromic sites, lower-case/RNA/IUPAC primers or N in the template could produce missing, duplicated or wrong sites.
 
@@ -73,7 +73,7 @@ Checks site lists for repeated, tandem and palindromic sites, sites across the o
 
 ## `test_binding_matches_the_primer_sites_stored_in_the_real_dna_file`
 
-**Result:** ✅ passed in 0.01 s · [line 583](../../tests/test_primer_binding.py#L583) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 583](../../tests/test_primer_binding.py#L583) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer sites the app computes could disagree with those SnapGene stored in a real lab file, which is the most direct check that users see the same sites as in their other tool.
 

@@ -34,3 +34,5 @@ __pycache__/
 *.fastq
 *.fq
 *.fastq.gz
+!app/agent/examples/*.bam
+!app/agent/examples/*.bai

@@ -22,6 +22,8 @@ import zipfile
 from dataclasses import dataclass
 from urllib.parse import quote, urlencode
 
+from PySide6.QtCore import QSettings
+
 import structure
 from primer_db import data_dir
 
@@ -36,6 +38,11 @@ GENOME_WARN_BASES = 200_000_000   # a bigger genome is a download of hundreds of
 ASSEMBLY = re.compile(r"GC[AF]_\d{9}(\.\d+)?", re.I)
 _gap = {"last": 0.0}
 _lock = threading.Lock()
+
+
+def saved_key():
+    """The API key the user saved in Import from NCBI ("" when none)."""
+    return str(QSettings(str(data_dir() / "ncbi.ini"), QSettings.IniFormat).value("api_key", ""))
 
 
 class NcbiError(Exception):

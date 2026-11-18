@@ -88,6 +88,14 @@ def clipboard_query():
         return "", f"The clipboard has no DNA: {e}"
 
 
+def find_hits(template, query, circular):
+    """The pieces of `query` found in `template` (both strands; Rust `align`), as the Align button lists them: one SimpleNamespace per piece
+    (start, end, strand, score, identity, qstart, qend, mismatches, insertions, deletions), in the order the pieces have in the query."""
+    hits = [SimpleNamespace(start=h[0], end=h[1], strand=h[2], score=h[3], identity=h[4], qstart=h[5], qend=h[6], mismatches=h[7], insertions=h[8],
+                            deletions=h[9]) for h in align(template, query, circular, MAX_HITS)]
+    return sorted(hits, key=lambda h: (h.qstart, h.qend, h.start))
+
+
 def strand_text(strand):
     return FORWARD_TEXT if strand > 0 else INVERTED_TEXT
 
@@ -371,11 +379,7 @@ class LocalAlignDialog(ToolDialog):
             self.clear(str(e))
             return
         text, circular = ed.doc.sequence(), ed.doc.circular   # (up to 200 kb of query: in a thread, behind a busy dialog)
-        found = run_busy(self, "Aligning…", lambda: align(text, query, circular, MAX_HITS))
-        hits = [SimpleNamespace(start=h[0], end=h[1], strand=h[2], score=h[3], identity=h[4], qstart=h[5],
-                                qend=h[6], mismatches=h[7], insertions=h[8], deletions=h[9]) for h in found]
-        # One row per piece, in the order the pieces have in the query.
-        self.hits = sorted(hits, key=lambda h: (h.qstart, h.qend, h.start))
+        self.hits = run_busy(self, "Aligning…", lambda: find_hits(text, query, circular))   # (one row per piece, in the order the pieces have in the query)
         self.fill()
         ed.set_query_hits(self.hits)
         limit = " (the limit; weaker ones are left out)" if len(self.hits) >= MAX_HITS else ""

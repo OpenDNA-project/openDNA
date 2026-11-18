@@ -4,7 +4,7 @@
 
 ## `test_repeats_are_found_where_planted_and_not_in_random_dna`
 
-**Result:** ✅ passed in 0.63 s · [line 36](../../tests/test_repeats_msa.py#L36) · **Area:** Repeat finder · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.57 s · [line 36](../../tests/test_repeats_msa.py#L36) · **Area:** Repeat finder · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the repeat finder could miss planted direct, inverted or tandem repeats, flood random DNA with chance hits, or hang on long low-complexity input.
 
@@ -35,7 +35,7 @@ Plants repeats in random DNA and checks repeats.find_repeats and pair_repeats re
 
 ## `test_multiple_alignment_consensus_identity_and_parsing`
 
-**Result:** ✅ passed in 0.05 s · [line 112](../../tests/test_repeats_msa.py#L112) · **Area:** Multiple sequence alignment · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 112](../../tests/test_repeats_msa.py#L112) · **Area:** Multiple sequence alignment · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the built-in multiple aligner could lose bases, misplace a gap, or give wrong consensus, identity and column/position mapping in the alignment view.
 

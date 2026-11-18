@@ -407,6 +407,9 @@ def check_lengths(d, minimum=200):
 
 # ---- Gibson / HiFi ------------------------------------------------------------------------------
 
+GIBSON_DEFAULTS = {"min_overlap": 20, "max_overlap": 40, "overlap_tm": 52.0}   # the panel's boxes
+GIBSON_LIMITS = {"min_overlap": (15, 60), "max_overlap": (15, 80), "overlap_tm": (40.0, 75.0)}
+
 
 def design_gibson(frags, circular, min_ov=20, max_ov=40, min_tm=52.0, target=60.0):
     d = Design(frags, circular)

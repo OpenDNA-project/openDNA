@@ -43,20 +43,24 @@ def can_apply(v):
     return v.kind in ("snp", "del") or v.kind == "ins" and bool(v.alt) and "N" not in v.alt
 
 
-def apply_variants(editor, entry, chosen):
-    """Write `chosen` variants of BAM `entry` into the sequence, last position first.
-    Returns how many were applied (0 while the DNA is locked)."""
-    chosen = sorted((v for v in chosen if can_apply(v)), key=lambda v: v.pos, reverse=True)
-    if not chosen or not editor.dna_editable():
-        return 0
-    doc = editor.doc
-    for v in chosen:
+def apply_to_document(doc, chosen):
+    """Write the variants `chosen` (each one `can_apply`) into `doc`, last position first so the earlier positions stay valid."""
+    for v in sorted(chosen, key=lambda v: v.pos, reverse=True):
         if v.kind == "snp":
             doc.overwrite(v.pos, v.alt)
         elif v.kind == "del":
             doc.delete(v.pos, v.pos + len(v.ref))
         else:
             doc.insert(v.pos, v.alt)
+
+
+def apply_variants(editor, entry, chosen):
+    """Write `chosen` variants of BAM `entry` into the sequence, last position first.
+    Returns how many were applied (0 while the DNA is locked)."""
+    chosen = [v for v in chosen if can_apply(v)]
+    if not chosen or not editor.dna_editable():
+        return 0
+    apply_to_document(editor.doc, chosen)
     shifted = any(v.kind != "snp" for v in chosen)
     # Substitutions keep coordinates: scan the corrected sequence again. Indels move
     # everything after them, so the reads no longer line up: no flags until re-mapped.

@@ -36,6 +36,8 @@ MAX_REPEATS = 500          # repeats listed
 MAX_DOTS = 300_000         # dots drawn
 MAX_UNIT = 200             # longest unit of a tandem array
 MIN_SEED = 8               # shortest seed: below it random matches swamp the real ones
+DEFAULT_MIN_LEN, DEFAULT_MISMATCHES = 12, 0   # the Compare view's "Shared >=" and "Mismatches" boxes
+LIMITS = {"min_len": (8, 500), "mismatches": (0, 3)}
 WRAP = 1000                # on a circle, a repeat that runs over the origin is found if it is shorter than this
 
 # One repeat: kind ("direct", "inverted", "tandem"), length (of one copy), copies [(start, end, strand)] (0-based, end exclusive,
@@ -374,8 +376,8 @@ class PairRepeats(QWidget):
         self.a = self.b = ""
         self.result = Result([], "")
         spin = lambda lo, hi, v, tip: QSpinBox(minimum=lo, maximum=hi, value=v, toolTip=tip)
-        self.shortest = spin(8, 500, 12, "Shortest shared stretch listed (20 bases and more can recombine in the cell)")
-        self.mismatch = spin(0, 3, 0, "Differences allowed inside a shared stretch")
+        self.shortest = spin(*LIMITS["min_len"], DEFAULT_MIN_LEN, "Shortest shared stretch listed (20 bases and more can recombine in the cell)")
+        self.mismatch = spin(*LIMITS["mismatches"], DEFAULT_MISMATCHES, "Differences allowed inside a shared stretch")
         self.window = spin(6, 32, 12, "Window of the dot plot: a dot is a window that matches in the other sequence")
         top = QHBoxLayout()
         for text, w in (("Shared ≥", self.shortest), ("Mismatches", self.mismatch), ("Plot window", self.window)):

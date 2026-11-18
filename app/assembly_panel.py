@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 import recombineering as R
 import runner
 from assembly import (
-    FRAG_COLORS, GG_ENZYMES, JOINT_COLOR, RESTRICTION, TAIL_COLOR, Frag, analyse, auto_primers, cut_fragment, digest_pieces, end_words,
+    FRAG_COLORS, GG_ENZYMES, GIBSON_DEFAULTS, GIBSON_LIMITS, JOINT_COLOR, RESTRICTION, TAIL_COLOR, Frag, analyse, auto_primers, cut_fragment, digest_pieces, end_words,
     joint_line, joints_html, junction_cards, junction_html, piece_verdict, junction_summary, junction_window, oligo_checks, piece_doc, simulate, snapshot, transfer_primers,
 )
 from kld import KldPage
@@ -661,9 +661,9 @@ class AssemblyPanel(QWidget):
         self.enzyme = QComboBox()
         self.enzyme.addItems(list(GG_ENZYMES))
         self.circular = QCheckBox("Circular product (plasmid)", checked=True)
-        self.min_ov = QSpinBox(minimum=15, maximum=60, value=20, suffix=" bp")
-        self.max_ov = QSpinBox(minimum=15, maximum=80, value=40, suffix=" bp")
-        self.ov_tm = QDoubleSpinBox(minimum=40, maximum=75, value=52, suffix=" °C")
+        self.min_ov = QSpinBox(minimum=GIBSON_LIMITS["min_overlap"][0], maximum=GIBSON_LIMITS["min_overlap"][1], value=GIBSON_DEFAULTS["min_overlap"], suffix=" bp")
+        self.max_ov = QSpinBox(minimum=GIBSON_LIMITS["max_overlap"][0], maximum=GIBSON_LIMITS["max_overlap"][1], value=GIBSON_DEFAULTS["max_overlap"], suffix=" bp")
+        self.ov_tm = QDoubleSpinBox(minimum=GIBSON_LIMITS["overlap_tm"][0], maximum=GIBSON_LIMITS["overlap_tm"][1], value=GIBSON_DEFAULTS["overlap_tm"], suffix=" °C")
         self.anneal_tm = QDoubleSpinBox(minimum=R.LIMITS["annealing_tm"][0], maximum=R.LIMITS["annealing_tm"][1], value=R.DEFAULT_TM, suffix=" °C")
         self.homology = [QSpinBox(minimum=R.LIMITS["homology"][0], maximum=R.LIMITS["homology"][1], value=R.HOMOLOGY, suffix=" bp", minimumWidth=110) for _ in range(2)]   # recombineering: left, right
         self.report_button = QPushButton("Full report…", clicked=self.show_report, toolTip="Every junction, check and oligo in detail")

@@ -131,15 +131,21 @@ Mistakes made on the last one, and what to do instead:
 ## The command line for agents
 
 `app/cli.py` (`.venv\Scripts\python.exe -m app.cli ...`; installed as `oDNA-cli.exe`, a console build of the same bundle, see `packaging/openDNA.spec`)
-runs the same functions as the windows with no window: `inspect`, `feature`, `region`, `skills`, and `kld`, `pcr`, `recombineering` (each `check` then
-`run`). Each function has a recipe for agents in `app/agent/skills/<name>.md` (layout: see `kld.md`); `app/agent/index.md` holds the rules common to all.
+runs the same functions as the windows with no window: `inspect`, `feature`, `region`, `skills`; the batches `kld`, `pcr`, `recombineering`, `codon`, `gibson`
+(each `check` then `run`, a table of rows in, files out); the read-only analyses in `app/cli_tools.py` (`sites`, `guides`, `repeats`, `search`, `align`, `msa`,
+`checkup`, `annotate`, `variants`, one JSON answer, no `check`/`run`); `export`, `order` (files) and `ncbi` (the only one that uses the network). Each function has
+a recipe for agents in `app/agent/skills/<name>.md` (layout: see `kld.md`); `app/agent/index.md` holds the rules common to all.
 
 When you add or change a function a user can run:
 
 - Do not copy a panel's defaults or orchestration into `cli.py`: put them in the compute module (`kld.DEFAULT_TM`, `primer_design.design_region`, `kld.with_primers`)
   and have the panel call them too, so the command line and the window cannot differ.
 - Add a command, a recipe whose `## Example` block runs (`tests/test_agent_cli.py` runs every recipe's example), and a test that compares the command
-  with the module function the panel calls.
+  with the module function the panel calls. The test named `test_every_command_has_a_recipe_example...` fails for a command with no runnable example in a
+  recipe or no `test_<command>_...` function in `tests/test_agent_cli.py`: name the new test that way. An example that writes a file writes it in a temporary
+  folder; one that would use the network is answered by `fake_ncbi`-style canned replies, never the real service.
+- A setting that a command exposes keeps the window's limits and defaults: read them from the module the window's spinbox reads (`LIMITS`, `DEFAULT_*`) and let a
+  value beyond the limits through with a warning (`cli.given`). A value given on the command line is for that run only: never write it to the user's settings.
 - Errors a sender can fix raise `UserError` (`app/user_error.py`): one `ERROR:` line, exit 1. Ambiguities never stop a row: default plus a warning.
 
 ## Before pushing a PR

@@ -295,7 +295,7 @@ class GenomeDialog(QDialog):
         _relay.progress.connect(self._progress)
 
     def _key(self):
-        return self.settings.value("api_key", "")   # set in Import from NCBI
+        return ncbi.saved_key()   # set in Import from NCBI (the command line reads it the same way)
 
     def _run(self, work, what, cancellable=False):
         self.token = token = object()

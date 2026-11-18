@@ -130,6 +130,18 @@ def describe(pos, kind, ref, alt, count, depth):
     return f"{pos + 1:,} insertion of {alt or '?'}  {pct}"
 
 
+def scan_variants(bam, seqid, reference, settings):
+    """The positions where the reads of `bam` (sequence `seqid`) differ from `reference` (the bases): [SimpleNamespace(pos, kind, ref, alt,
+    count, depth, level, text)], `settings` as `_scan_settings` gives them. Raises OSError when the reads cannot be read."""
+    min_depth, variant_pct, consensus_pct, min_baseq, min_mapq = settings
+    found = bam.variants(seqid, reference, min_depth, variant_pct / 100, min_baseq, min_mapq)
+    return [SimpleNamespace(pos=pos, kind=kind, ref=ref, alt=alt, count=n, depth=d,
+                            # breaks and gaps are already filtered by the scan: always flagged
+                            level="consensus" if kind in ("clip", "gap") else flag_level(n, d, (min_depth, variant_pct, consensus_pct)) or "variant",
+                            text=describe(pos, kind, ref, alt, n, d))
+            for pos, kind, ref, alt, n, d in found]
+
+
 def start_scan(entry, editor):
     """Scan `entry`'s reads for positions differing from the current sequence, in a
     background thread; sets entry.variants = [SimpleNamespace(pos, kind, ref, alt, count,
@@ -140,20 +152,13 @@ def start_scan(entry, editor):
     entry.scan_token = getattr(entry, "scan_token", 0) + 1
     entry.scanning, entry.scan_settings = True, _scan_settings()
     token, reference = entry.scan_token, editor.doc.sequence()
-    min_depth, variant_pct, consensus_pct, min_baseq, min_mapq = entry.scan_settings
     bam, seqid = entry.bam, entry.seqid
 
     def work():  # pool thread; Rust releases Python's lock
         try:
-            found = bam.variants(seqid, reference, min_depth, variant_pct / 100, min_baseq, min_mapq)
+            result = scan_variants(bam, seqid, reference, entry.scan_settings)
         except OSError as e:
-            found, entry.error = [], str(e)
-        result = [SimpleNamespace(pos=pos, kind=kind, ref=ref, alt=alt, count=n, depth=d,
-                                  # breaks and gaps are already filtered by the scan: always flagged
-                                  level="consensus" if kind in ("clip", "gap") else
-                                  flag_level(n, d, (min_depth, variant_pct, consensus_pct)) or "variant",
-                                  text=describe(pos, kind, ref, alt, n, d))
-                  for pos, kind, ref, alt, n, d in found]
+            result, entry.error = [], str(e)
         if token == entry.scan_token:
             entry.variants, entry.scanning = result, False
             relay.variants_ready.emit()

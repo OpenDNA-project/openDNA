@@ -34,6 +34,8 @@ CONTEXT = 12            # bases of the neighbours read too, so a site made acros
 MAX_PASSES = 30         # rounds of repair before the remaining problems are reported as unmet
 MATCHED, HIGHEST = "Frequency matched", "Highest frequency"
 BASES = set("ACGT")
+DEFAULT_GC = (35, 65)   # the Recode window's "Keep GC between" boxes
+LIMITS = {"gc": (0, 100), "window": (10, 1000), "max_run": (3, 20)}   # what its boxes accept
 
 
 # ---- the CDS to work on ---------------------------------------------------------------------------------------------------
@@ -45,20 +47,27 @@ def cds_source(editor):
     doc = editor.doc
     f = editor.feature_by_index(editor.current_feature) if editor.current_feature is not None else None
     if f is not None and f.kind == "CDS":
-        if len(f.spans) != 1 or editor.wraps:
-            return "This CDS is made of several parts (a join, or it crosses the origin): select one piece of DNA to work on instead."
-        (start, end), strand, label = f.spans[0], f.strand, f.label
-        plan = genetic_code.cds_plan(doc, f)
-        table, frame = plan.table, plan.frame
-        if plan.exceptions or plan.why:
-            return "This CDS has a /transl_except or an annotation openDNA cannot follow in full (see its tooltip)."
-    elif editor.end > editor.start and not editor.wraps:
-        start, end, strand, label = editor.start, editor.end, 1, "Selection"
-        table, frame = genetic_code.table_id(), 0
-    else:
-        return "Select a CDS feature, or a stretch of DNA that is a whole number of codons."
+        return feature_source(doc, f, editor.wraps)
+    if editor.end > editor.start and not editor.wraps:
+        return stretch_source(doc, editor.start, editor.end, 1, "Selection", genetic_code.table_id(), 0)
+    return "Select a CDS feature, or a stretch of DNA that is a whole number of codons."
+
+
+def feature_source(doc, f, wraps=False):
+    """`cds_source` for the CDS feature `f` of `doc` (`wraps`: it crosses the origin), read as annotated (its table, /codon_start)."""
+    if len(f.spans) != 1 or wraps:
+        return "This CDS is made of several parts (a join, or it crosses the origin): select one piece of DNA to work on instead."
+    plan = genetic_code.cds_plan(doc, f)
+    if plan.exceptions or plan.why:
+        return "This CDS has a /transl_except or an annotation openDNA cannot follow in full (see its tooltip)."
+    (start, end), = f.spans
+    return stretch_source(doc, start, end, f.strand, f.label, plan.table, plan.frame)
+
+
+def stretch_source(doc, start, end, strand, label, table, frame):
+    length = doc.length
     seq = doc.sequence(start, end)
-    left, right = doc.sequence(max(0, start - CONTEXT), start), doc.sequence(end, min(editor.length, end + CONTEXT))
+    left, right = doc.sequence(max(0, start - CONTEXT), start), doc.sequence(end, min(length, end + CONTEXT))
     if strand < 0:
         seq, left, right = reverse_complement(seq), reverse_complement(right), reverse_complement(left)
     seq = seq[frame:]
@@ -120,6 +129,16 @@ def _gc_problems(seq, gc_range, window, offset):
 def _score(text, lo, hi, *rules):
     """How much is wrong: the number of problems, with a GC stretch counting by its length so a repair that shortens it scores better."""
     return sum((b - a) // 10 + 1 if what == "GC content" else 1 for what, a, b in problems(text, lo, hi, *rules))
+
+
+def recode_source(s, usage, **rules):
+    """`recode` of the CDS `s` (from `cds_source` / `feature_source`) for the codon usage `usage`; `rules` as `recode` takes them (and `seed`)."""
+    return recode(s.seq, genetic_code.codon_map(s.table), usage, left=s.left, right=s.right, **rules)
+
+
+def recoded_bases(s, r):
+    """The bases to write over `s.start`..`s.end` of the sequence for the result `r` of `recode_source` (the same length: the features stay put)."""
+    return r.seq if s.strand > 0 else reverse_complement(r.seq)
 
 
 def recode(seq, code, table, method=MATCHED, avoid=(), gc_range=None, window=GC_WINDOW, max_run=MAX_RUN, rbs=True,
@@ -266,14 +285,14 @@ class RecodeDialog(_CdsDialog):
             item.setData(Qt.UserRole, e)
             self.enzymes.addItem(item)
         self.gc_on = QCheckBox("Keep GC between", checked=True)
-        self.gc_low = QSpinBox(minimum=0, maximum=100, value=35, suffix=" %")
-        self.gc_high = QSpinBox(minimum=0, maximum=100, value=65, suffix=" %")
-        self.window = QSpinBox(minimum=10, maximum=1000, value=GC_WINDOW, suffix=" bases")
+        self.gc_low = QSpinBox(minimum=LIMITS["gc"][0], maximum=LIMITS["gc"][1], value=DEFAULT_GC[0], suffix=" %")
+        self.gc_high = QSpinBox(minimum=LIMITS["gc"][0], maximum=LIMITS["gc"][1], value=DEFAULT_GC[1], suffix=" %")
+        self.window = QSpinBox(minimum=LIMITS["window"][0], maximum=LIMITS["window"][1], value=GC_WINDOW, suffix=" bases")
         gc_row = QHBoxLayout()
         for w in (self.gc_on, self.gc_low, QLabel("and"), self.gc_high, QLabel("in every"), self.window):
             gc_row.addWidget(w)
         gc_row.addStretch()
-        self.run = QSpinBox(minimum=3, maximum=20, value=MAX_RUN, suffix=" identical bases")
+        self.run = QSpinBox(minimum=LIMITS["max_run"][0], maximum=LIMITS["max_run"][1], value=MAX_RUN, suffix=" identical bases")
         self.rbs = QCheckBox(f"No internal ribosome binding site ({RBS})", checked=True)
         form = QFormLayout()
         form.addRow("Codon usage table", self.usage)
@@ -328,8 +347,7 @@ class RecodeDialog(_CdsDialog):
         self.attempt += 1   # each press of the button draws a new sample (frequency matched)
         table = self.tables[self.usage.currentText()]
         try:
-            self.result = recode(s.seq, genetic_code.codon_map(s.table), table, left=s.left, right=s.right, seed=self.attempt,
-                                 **self.rules())
+            self.result = recode_source(s, table, seed=self.attempt, **self.rules())
         except (ValueError, RuntimeError) as e:
             self.report.setText(str(e))
             return
@@ -347,8 +365,7 @@ class RecodeDialog(_CdsDialog):
         r, s = self.result, self.src
         if r is None:
             return
-        bases = r.seq if s.strand > 0 else reverse_complement(r.seq)
-        if self.editor.overwrite_bases(s.start, bases):
+        if self.editor.overwrite_bases(s.start, recoded_bases(s, r)):
             self.accept()
 
 

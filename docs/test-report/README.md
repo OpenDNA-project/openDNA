@@ -13,17 +13,17 @@ them well. **[AUDIT.md](AUDIT.md) lists every test on one page with why it matte
 - **Input / Expected output**: the concrete cases, in the order the test runs them. Many tests are *topical*: one test function holds several sections, each a row.
 - **Review notes**: what the reviewer found could be stronger. **Fixed by the audit**: what was changed.
 
-## Totals (176 tests: 111 Python, 65 Rust)
+## Totals (192 tests: 127 Python, 65 Rust)
 
-Last run: ✅ 176 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
+Last run: ✅ 192 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
 
-Review: 🟡 adequate: 57 · 🟢 strong: 118 · 🔴 weak: 1
+Review: 🟡 adequate: 64 · 🟢 strong: 127 · 🔴 weak: 1
 
 ## Test files
 
 | Test file | Tests | Passed | Failed | Skipped | Not run | Strength (reviewed) |
 |---|---|---|---|---|---|---|
-| [`tests/test_agent_cli.py`](tests_test_agent_cli.md) | 10 | 10 | 0 | 0 | 0 | 🟡 adequate 4 · 🟢 strong 6 |
+| [`tests/test_agent_cli.py`](tests_test_agent_cli.md) | 26 | 26 | 0 | 0 | 0 | 🟡 adequate 11 · 🟢 strong 15 |
 | [`tests/test_assembly.py`](tests_test_assembly.md) | 10 | 10 | 0 | 0 | 0 | 🟡 adequate 3 · 🟢 strong 7 |
 | [`tests/test_checkup.py`](tests_test_checkup.md) | 6 | 6 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 4 |
 | [`tests/test_codons.py`](tests_test_codons.md) | 4 | 4 | 0 | 0 | 0 | 🟢 strong 4 |

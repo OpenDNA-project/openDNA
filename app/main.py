@@ -60,6 +60,7 @@ import db_tabs
 from reference_picker import ReferencePicker
 import theme
 import track_check
+from track_check import match_contig   # (tests/test_multi_record.py reads it from here)
 from sequence_view import SequenceView
 from terminal import Terminal
 from workspace import DEFAULT as DEFAULT_LAYOUT, Workspace, pane, split
@@ -105,18 +106,6 @@ def is_fasta(path):
             return fh.read(64).lstrip()[:1] == b">"
     except OSError:
         return False
-
-
-def match_contig(seqs, *names):
-    """The sequence of a track file (`seqs`) that is the open one, or None: the same name as one of `names` (the document's
-    name, the FASTA record), else the same name once "chr" and the case are ignored ("chr1" is "1") if only one fits."""
-    for n in names:
-        if n and n in seqs:
-            return n
-    plain = lambda x: x.lower().removeprefix("chr")
-    wanted = {plain(n) for n in names if n}
-    close = [q for q in seqs if plain(q) in wanted]
-    return close[0] if len(close) == 1 else None
 
 
 def parse_range(text, length, circular):

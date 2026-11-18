@@ -3,8 +3,9 @@
     oDNA-cli.exe <command> ...                      (installed: next to openDNA.exe)
     .venv\\Scripts\\python.exe -m app.cli <command>  (from the repository, run from its root)
 
-Commands: `skills list|show NAME` (the recipes in app/agent/), `inspect FILE`, `feature FILE NAME`, `region FILE START END`,
-`kld check|run PLASMID MUTATIONS.csv` (primers and edited plasmids for a table of HGVS mutations).
+Commands: `skills list|show NAME` (the recipes in app/agent/), `inspect FILE`, `feature FILE NAME`, `region FILE START END`;
+batches with a table, `check` then `run`: `kld`, `pcr`, `recombineering`, `codon`, `gibson`; read-only analyses (app/cli_tools.py): `sites`, `guides`,
+`repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`; files: `export`, `order`; network: `ncbi`.
 Everything prints JSON (skills print Markdown). An error is one line `ERROR: ...` on stderr and exit code 1, never a traceback.
 Positions are 1-based and inclusive, as in the GenBank file and HGVS (`region f.gb 10 20` is bases 10 to 20).
 """
@@ -17,6 +18,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # some modules import Qt; nothing is ever shown
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # the modules import each other by flat name
 
+import cli_tools
 from user_error import UserError   # a mistake the agent can fix: its message is printed as it is
 
 AGENT_DIR = Path(__file__).with_name("agent")   # the recipes; the PyInstaller spec bundles the folder next to the modules
@@ -502,6 +504,7 @@ def parser():
     s.add_argument("--tm", type=float, help="annealing Tm in deg C (default 60)")
     s.add_argument("--primers-only", action="store_true", help="run: do not write the recombinant genomes (a bacterial genome is megabytes each)")
     s.set_defaults(run=cmd_recombineering, returns_code=True)
+    cli_tools.register(sub, sys.modules[__name__])
     s = sub.add_parser("region", help="the bases START..END (1-based, inclusive)")
     s.add_argument("file")
     s.add_argument("start", type=int)

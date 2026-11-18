@@ -1,0 +1,3 @@
+id,source,region,orientation
+backbone,../../../demo/pBAD30_eilR.gb,2000..4000,forward
+insert,../../../demo/demo_insert.gb,,forward
