@@ -905,10 +905,11 @@ class PrimerPanel(QWidget):
         # (before fit_columns: a tree's header stretches its last column by default, and that width would count as one the user
         # dragged, never fitted again)
         self.tree.header().setStretchLastSection(False)
-        # Columns as wide as what they hold (a long primer's whole sequence, up to 480 px); the note (the database), else the
-        # structure, takes the room left.
+        # Columns as wide as what they hold; the sequence is cut at 24 bases (drag the column wider to read more) so this panel
+        # is no wider than the Features table in the same pane: switching between the two keeps the pane's width. The note
+        # (the database), else the structure, takes the room left.
         fit_columns(self.tree, stretch=self.columns.index("Note" if self.database else "Structure"),
-                    cap=self.tree.fontMetrics().horizontalAdvance("G" * 64) + 24)   # a long primer (60 nt and more) read whole
+                    cap=self.tree.fontMetrics().horizontalAdvance("G" * 24) + 24)
         self.tree.setToolTip("Tm: of the bases that anneal at that site (5' tail excluded)")
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)   # several primers: Import to This Sequence for all
         self.tree.currentItemChanged.connect(self._select)
