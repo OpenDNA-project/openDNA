@@ -242,13 +242,14 @@ def pair_dots(a, b, k=12):
     return direct, inverted, "; ".join(notes)
 
 
-def pair_repeats(a, b, min_len=12, mismatches=0):
+def pair_repeats(a, b, min_len=12, mismatches=0, same=None):
     """A Result whose repeats are the stretches `a` and `b` share, (kind, start in a, start in b, length, differences), longest
     first: "direct" (same orientation) and "inverted" (one is the reverse complement of the other; start in b is the left end of
-    the stretch on b's top strand). With the same sequence twice each pair is listed once and the main diagonal is left out."""
+    the stretch on b's top strand). With `same` (one sequence compared with itself; default: when the two are equal) each pair is listed
+    once and the main diagonal is left out; two different files that hold equal bases are not `same`: they share their whole length."""
     a, b = _clean(a)[:MAX_LENGTH], _clean(b)[:MAX_LENGTH]
     seed = min(max(MIN_SEED, min_len // (mismatches + 1)), min_len)
-    same, found, notes = a == b, [], []
+    same, found, notes = (a == b) if same is None else same, [], []
     for kind, target in (("direct", b), ("inverted", reverse_complement(b))):
         diagonals, note = _seeds(a, target, seed, same and kind == "direct", MAX_SEEDS)
         notes += [note] if note and note not in notes else []

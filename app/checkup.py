@@ -216,7 +216,7 @@ def annotated_elements(editor):
 def library_elements(editor):
     out = []
     for h in annotation.detect(editor, {PROMOTER, TERMINATOR, RBS, ORIGIN}):
-        if not h.known:
+        if not h.covered:   # (an annotation that covers most of it: Detect Features marks a part as known only when it is exact)
             out.append(element(h.kind, h.start, h.end, h.strand, h.name, "library",
                                f"{h.identity * 100:.0f} % identical to {h.source or 'a library part'}"))
     return out

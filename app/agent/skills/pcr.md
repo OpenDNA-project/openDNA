@@ -33,7 +33,7 @@ ori_region,2839..3384
 pcr check PLASMID.gb TARGETS.csv
 ```
 
-Nothing is written. JSON: `settings`, `summary` and one record per row: `status` (ok or error), `error`, and up to five `pairs` (rank 1 is the best): both primers with `sequence`, `tm`, `gc`, position, the `checks` of each (Tm, GC, 3' clamp, hairpin, self-dimer, where it binds, non-specific priming in this sequence and in the background genome), the product size, the penalty (lower is better), `notes` and a `mark` (`ok`, `warn`, `bad`). Exit code 1: at least one row failed (for example `No pair found`).
+Nothing is written. JSON: `settings`, `summary` and one record per row: `status` (ok or error), `error`, and up to five `pairs` (rank 1 is the best): both primers with `sequence`, `tm`, `gc`, position and a summary of the checks of each (Tm, GC, 3' clamp, hairpin, self-dimer, where it binds, non-specific priming in this sequence and in the background genome): `checks_passed` and `issues`, the checks that are `warn` or `bad` with their text (add `--full` to print every check; `report.jsonl` always has them all), the product size, the penalty (lower is better), `notes` and a `mark` (`ok`, `warn`, `bad`). Exit code 1: at least one row failed (for example `No pair found`).
 
 ## 4. Show the settings, then wait for the user's OK
 
@@ -49,7 +49,7 @@ pcr run PLASMID.gb TARGETS.csv --out NEW_FOLDER
 
 ## What to tell the user
 
-- Per target: the best pair (rank 1) with its Tm, the product size and the `mark`. If the mark is `warn` or `bad`, say which check says so (read the `checks` of each primer) and offer the next pair.
+- Per target: the best pair (rank 1) with its Tm, the product size and the `mark`. If the mark is `warn` or `bad`, say which check says so (read the `issues` of each primer) and offer the next pair.
 - Targets with no pair, and why.
 - That the checks use the background genome named in the settings.
 

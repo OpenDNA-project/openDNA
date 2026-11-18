@@ -126,6 +126,17 @@ def _gc_problems(seq, gc_range, window, offset):
     return out
 
 
+def _gc_side(stretch, gc_range):
+    """' (70 % GC, above 65 %)' for a GC problem on `stretch`, '' for any other problem: which way the limit is broken."""
+    if not gc_range or not stretch:
+        return ""
+    low, high = gc_range
+    g = gc(stretch)
+    if g > high:
+        return f" ({g:.0f} % GC, above {high} %)"
+    return f" ({g:.0f} % GC, below {low} %)" if g < low else ""
+
+
 def _score(text, lo, hi, *rules):
     """How much is wrong: the number of problems, with a GC stretch counting by its length so a repair that shortens it scores better."""
     return sum((b - a) // 10 + 1 if what == "GC content" else 1 for what, a, b in problems(text, lo, hi, *rules))
@@ -134,6 +145,20 @@ def _score(text, lo, hi, *rules):
 def recode_source(s, usage, **rules):
     """`recode` of the CDS `s` (from `cds_source` / `feature_source`) for the codon usage `usage`; `rules` as `recode` takes them (and `seed`)."""
     return recode(s.seq, genetic_code.codon_map(s.table), usage, left=s.left, right=s.right, **rules)
+
+
+def recode_tries(s, usage, tries=1, seed=1, **rules):
+    """`recode_source` with the seeds `seed` .. `seed + tries - 1`: the result with the fewest rules not met (the first one on a tie; it stops at
+    the first with none), with `.seed` = the seed that gave it. One try is what the window's first preview gives."""
+    best = None
+    for k in range(tries):
+        r = recode_source(s, usage, seed=seed + k, **rules)
+        r.seed = seed + k
+        if best is None or len(r.unmet) < len(best.unmet):
+            best = r
+        if not best.unmet:
+            break
+    return best
 
 
 def recoded_bases(s, r):
@@ -187,7 +212,8 @@ def recode(seq, code, table, method=MATCHED, avoid=(), gc_range=None, window=GC_
     result = "".join(new)
     if translate(result, code) != translate(seq, code):   # the one thing that must never be wrong
         raise RuntimeError("Recoding changed the protein: nothing was written.")
-    unmet = [f"{what} at bases {a - lo + 1:,}–{b - lo:,}" for what, a, b in problems(full(new), lo, lo + len(seq), *rules)]
+    final = full(new)
+    unmet = [f"{what}{_gc_side(final[a:b], gc_range)} at bases {a - lo + 1:,}–{b - lo:,}" for what, a, b in problems(final, lo, lo + len(seq), *rules)]
     return SimpleNamespace(seq=result, codons=len(old), changed=sum(a != b for a, b in zip(old, new)),
                            gc_before=gc(seq), gc_after=gc(result), unmet=unmet)
 

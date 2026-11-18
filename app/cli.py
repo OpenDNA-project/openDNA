@@ -376,11 +376,19 @@ def cmd_pcr(args):
         "max_len": given(args.max_len, primer_design.DEFAULT_MAX_LEN, lim["max_len"], "--max-len"),
         "window": given(args.window, primer_design.DEFAULT_WINDOW, lim["window"], "--window")}})
     records = run_rows(rows, lambda row: pcr_row(doc, row, args), "target")
-    return finish(out_dir, settings, records,
-                  ["id", "target", "rank", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "product_size", "penalty", "mark", "notes"],
-                  lambda r: [[r["id"], r["target"], p["rank"], p["fwd"]["sequence"], p["fwd"]["tm"], p["rev"]["sequence"], p["rev"]["tm"], p["product_size"],
-                              p["penalty"], p["mark"], " | ".join(p["notes"])] for p in r["pairs"]],
-                  lambda r: any(p["mark"] in ("warn", "bad") for p in r.get("pairs", [])))
+    result, code = finish(out_dir, settings, records,
+                          ["id", "target", "rank", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "product_size", "penalty", "mark", "notes"],
+                          lambda r: [[r["id"], r["target"], p["rank"], p["fwd"]["sequence"], p["fwd"]["tm"], p["rev"]["sequence"], p["rev"]["tm"], p["product_size"],
+                                      p["penalty"], p["mark"], " | ".join(p["notes"])] for p in r["pairs"]],
+                          lambda r: any(p["mark"] in ("warn", "bad") for p in r.get("pairs", [])))
+    if not args.full:   # (report.jsonl, written above, keeps every check)
+        for r in records:
+            for p in r.get("pairs", []):
+                for k in ("fwd", "rev"):
+                    checks = p[k].pop("checks")
+                    p[k]["checks_passed"] = sum(c["level"] == "ok" for c in checks)
+                    p[k]["issues"] = [c for c in checks if c["level"] != "ok"]   # (only what is not fine: with --full, all the checks)
+    return result, code
 
 
 def rec_row(genome, row, args, folder, cassettes, out_dir):
@@ -494,6 +502,7 @@ def parser():
     s.add_argument("--min-len", type=int, help="shortest primer (default 18)")
     s.add_argument("--max-len", type=int, help="longest primer (default 25)")
     s.add_argument("--window", type=int, help="how far from the target ends a primer may start, in bp (default 0: on the ends)")
+    s.add_argument("--full", action="store_true", help="print every check of every primer (default: a summary: sequence, Tm, GC, position and the checks that are not fine)")
     s.set_defaults(run=cmd_pcr, returns_code=True)
     s = sub.add_parser("recombineering", help="lambda Red: primers (homology tails) and the recombinant genome for cassettes that replace regions")
     s.add_argument("action", choices=["check", "run"])

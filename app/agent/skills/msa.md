@@ -10,7 +10,7 @@ msa A.gb B.gb [C.gb ...] [--out ALIGNED.fa]
 
 One sequence per file (FASTA or GenBank), named by the record's name; duplicate names get a number. The first is the reference of `identity_to_first` (a gap counts as a difference). `--out` writes the alignment as FASTA to a **new** file (an existing file is an error: nothing is overwritten).
 
-JSON: `width`, `consensus`, and per sequence `name`, `length`, `identity_to_first` (percent) and `aligned` (with `-` for gaps).
+JSON: `width`, `consensus`, and per sequence `name`, `file`, `length`, `identity_to_first` (percent) and `aligned` (with `-` for gaps).
 
 ## Limits
 

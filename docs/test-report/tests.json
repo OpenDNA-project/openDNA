@@ -7392,6 +7392,10 @@
     {
      "input": "pcr run --out out --tm 62, then again",
      "expected": "tm override reported; three files; primers.csv lines = pairs found; the second run refused ('already exists')"
+    },
+    {
+     "input": "the pairs printed by default, then pcr check --full, and report.jsonl of the run",
+     "expected": "default: no 'checks', 'checks_passed' + 'issues' = 8 and issues are warn/bad only; --full and report.jsonl: all 8 checks"
     }
    ],
    "oracle": "independent implementation",
@@ -7522,6 +7526,10 @@
     {
      "input": "--enzymes Nope",
      "expected": "ERROR listing the enzymes openDNA knows"
+    },
+    {
+     "input": "sites --digest EcoRI,BamHI (no --enzymes)",
+     "expected": "the list stays the default single cutters and the digest gives fragments 100 and 300"
     }
    ],
    "oracle": "hand-computed",
@@ -7580,6 +7588,10 @@
     {
      "input": "repeats p.gb q.gb --min-len 25",
      "expected": "direct stretches at (21, 101) and (221, 101)"
+    },
+    {
+     "input": "repeats a.gb twin.gb (another file, the same bases)",
+     "expected": "identical_sequences true; the whole length is the first repeat (direct, 1..1); one file with itself still says false"
     }
    ],
    "oracle": "hand-computed",
@@ -7665,6 +7677,10 @@
     {
      "input": "MKLVPQ",
      "expected": "ERROR"
+    },
+    {
+     "input": "one query base changed, forward and reverse-complemented",
+     "expected": "mismatch_list names position 131, the plasmid base and the query base on the top strand for both strands; 5 missing bases give a deletion 131..135 or two pieces"
     }
    ],
    "oracle": "hand-computed",
@@ -7694,6 +7710,10 @@
     {
      "input": "a.gb alone",
      "expected": "ERROR 'at least two'"
+    },
+    {
+     "input": "the two files",
+     "expected": "each sequence names its file"
     }
    ],
    "oracle": "hand-computed",
@@ -7727,6 +7747,10 @@
     {
      "input": "codon check ... --no-gc",
      "expected": "settings show gc_limits 'none' and no gc_low / gc_high / gc_window: they say what was applied"
+    },
+    {
+     "input": "--gc-high 20 --tries 3; --tries 99",
+     "expected": "seed_used in 1..3 and the warning says 'above 20 %'; settings show one usage table; recode_tries keeps the fewest unmet; ERROR for --tries 99"
     }
    ],
    "oracle": "hand-computed",
@@ -7916,6 +7940,31 @@
    "proposal": ""
   },
   {
+   "id": "tests/test_agent_cli.py::test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases",
+   "area": "Command line for agents",
+   "role": "A part could be reported as already annotated just because another feature overlaps it, hiding a real missing part.",
+   "purpose": "A stub editor with one terminator feature: the same bases (either strand for a terminator) count as known; a feature shifted by 5 bp or larger than the part does not, but still counts as covered for the Plasmid Checkup; a CDS on the other strand does not count.",
+   "cases": [
+    {
+     "input": "feature = the hit's bases, strand +1 or -1, a terminator",
+     "expected": "known"
+    },
+    {
+     "input": "feature shifted by 5 bp, or 20 bp larger each side",
+     "expected": "not known; covered (exact=False) for the shifted one"
+    },
+    {
+     "input": "a CDS hit, feature on the other strand",
+     "expected": "not known"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Uses a stand-in editor, not a real one; Detect Features' window itself has no widget test."
+   ]
+  },
+  {
    "id": "tests/test_agent_cli.py::test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds",
    "area": "Command line for agents",
    "role": "An agent could give primers whose overlaps do not join the fragments, or a product that is not what the Assembly panel makes.",
@@ -7936,6 +7985,10 @@
     {
      "input": "--min-overlap 5",
      "expected": "warning 'responsibility'"
+    },
+    {
+     "input": "primers",
+     "expected": "tail_nt equals the non-annealing 5' part of each primer"
     }
    ],
    "oracle": "independent implementation",

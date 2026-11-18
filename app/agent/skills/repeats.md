@@ -8,9 +8,9 @@
 repeats A.gb [B.gb] [--min-len N] [--mismatches N]
 ```
 
-With one file the sequence is compared with itself (each pair once, the trivial self-match left out). With two, the stretches they share. `direct`: same orientation; `inverted`: one is the reverse complement of the other. `--min-len` (default 12; the window accepts 8 to 500), `--mismatches` (default 0; 0 to 3).
+With one file the sequence is compared with itself (each pair once, the trivial self-match left out). With two, the stretches they share; two different files with the same bases share their whole length (that stretch is listed first, `identical_sequences` is true). `direct`: same orientation; `inverted`: one is the reverse complement of the other. `--min-len` (default 12; the window accepts 8 to 500), `--mismatches` (default 0; 0 to 3).
 
-JSON: `repeats`, longest first: `kind`, `start_in_a`..`end_in_a`, `start_in_b`..`end_in_b` (1-based), `length`, `differences`; `note` when the list was capped.
+JSON: `compared` (the two file names), `repeats`, longest first: `kind`, `start_in_a`..`end_in_a`, `start_in_b`..`end_in_b` (1-based), `length`, `differences`; `note` when the list was capped.
 
 ## What to tell the user
 

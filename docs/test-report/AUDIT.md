@@ -8,15 +8,15 @@ Built by `scripts/test_report.py` on 2026-11-18 from `tests.json` and the last r
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 127 | 127 | 0 | 85 | 42 | 0 | 0 | 100 |
+| Python | 128 | 128 | 0 | 85 | 43 | 0 | 0 | 101 |
 | Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 192 | 192 | 0 | 127 | 64 | 1 | 0 | 144 |
+| **All** | 193 | 193 | 0 | 127 | 65 | 1 | 0 | 145 |
 
 ## Weak or unreviewed tests
 
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 192 tests)
+## Gaps and proposed tests (3 of 193 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -43,7 +43,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 ## Every test, by file
 
-### `tests/test_agent_cli.py` (26 tests)
+### `tests/test_agent_cli.py` (27 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -71,6 +71,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_tool_settings_override_restores_the_outer_value_and_is_never_saved` | A value given on the command line could stay in force after its command, or a nested override could lose the one around it. | hand-computed | adequate | not checked | Single-threaded only: the overrides are process-wide (the command line runs one command at a time). |
 | `test_checkup_command_gives_the_verdicts_of_the_checkup_window` | An agent could say a gene will be expressed when nothing drives it, or the reverse. | independent implementation | adequate | sound | The verdict logic belongs to the checkup module and its own tests; this test only shows the command reports it and leaves the user's saved settings alone. |
 | `test_annotate_command_finds_library_parts_and_adds_only_new_ones` | An agent could annotate a plasmid twice, or with parts that are not in it. | independent implementation | adequate | sound | The part used is whichever bundled terminator is longest: if the library changes, the test follows it. |
+| `test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases` | A part could be reported as already annotated just because another feature overlaps it, hiding a real missing part. | hand-computed | adequate | not checked | Uses a stand-in editor, not a real one; Detect Features' window itself has no widget test. |
 | `test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds` | An agent could give primers whose overlaps do not join the fragments, or a product that is not what the Assembly panel makes. | independent implementation | adequate | sound | Only Gibson is covered: Golden Gate, Sidewinder and restriction/ligation have no command yet.<br>The product's origin is the window's (a few bases before fragment 1): the test compares it as a circle. |
 | `test_ncbi_command_searches_and_fetches_through_the_import_dialogs_functions` | An agent could send more than the user's words to NCBI, fetch a record other than the one named, or overwrite a file. | hand-computed | adequate | sound | The real service is never called by the tests: an NCBI change in its answers is not caught here. |
 

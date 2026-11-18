@@ -222,6 +222,12 @@ def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys):
     rows = list(csv.DictReader(open(out / "primers.csv", encoding="utf-8")))
     assert len(rows) == sum(len(r.get("pairs", [])) for r in res["rows"]) and {r["id"] for r in rows} == {"a", "b"}
     assert "already exists" in run(capsys, "pcr", "run", gb, table, "--out", out)[2]
+    # by default each primer is a summary (the checks that are not fine); the file and --full keep every check
+    first = res["rows"][0]["pairs"][0]["fwd"]
+    assert "checks" not in first and first["checks_passed"] + len(first["issues"]) == 8 and all(c["level"] != "ok" for c in first["issues"])
+    saved = json.loads((out / "report.jsonl").read_text(encoding="utf-8").splitlines()[0])["pairs"][0]["fwd"]
+    full = json.loads(run(capsys, "pcr", "check", gb, table, "--tm", 62, "--full")[1])["rows"][0]["pairs"][0]["fwd"]
+    assert len(saved["checks"]) == len(full["checks"]) == 8 and "issues" not in full and [c for c in saved["checks"] if c["level"] != "ok"] == first["issues"]
 
 
 # ---- recombineering ------------------------------------------------------------------------------------------------------------
@@ -337,6 +343,8 @@ def test_sites_command_gives_the_cuts_and_fragments_of_the_windows(tmp_path, cap
     assert {e["enzyme"] for e in answer(capsys, "sites", gb)["enzymes"]} == want >= {"EcoRI", "BamHI"}
     assert sorted(f[0] for f in tools.fragments(400, True, {201: ["EcoRI"], 301: ["BamHI"]})) == [100, 300]
     assert "No enzyme called" in run(capsys, "sites", gb, "--enzymes", "Nope")[2]
+    both = answer(capsys, "sites", gb, "--digest", "EcoRI,BamHI")    # a digest alone keeps the list of single cutters and adds the fragments
+    assert {e["enzyme"] for e in both["enzymes"]} == want and sorted(f["size"] for f in both["digest"]["fragments"]) == [100, 300]
 
 
 def test_guides_command_gives_the_guides_and_marks_of_the_spacer_finder(tmp_path, capsys):
@@ -370,6 +378,12 @@ def test_repeats_command_gives_the_stretches_the_compare_view_gives(tmp_path, ca
     Document.new_sequence("q", dna(100, 7) + dna(30, 9) + dna(100, 8), False).write_genbank(str(other), None)
     two = answer(capsys, "repeats", gb, other, "--min-len", "25")
     assert {(r["start_in_a"], r["start_in_b"]) for r in two["repeats"] if r["kind"] == "direct"} == {(21, 101), (221, 101)}
+    twin = tmp_path / "twin.gb"      # another file, the same bases: they share their whole length (it is only one file with itself that leaves that out)
+    Document.new_sequence("twin", seq, True).write_genbank(str(twin), None)
+    same = answer(capsys, "repeats", gb, twin, "--min-len", "20")
+    first = same["repeats"][0]
+    assert same["compared"] == {"a": gb.name, "b": "twin.gb", "same_file": False, "identical_sequences": True} and (first["kind"], first["length"], first["start_in_a"], first["start_in_b"]) == ("direct", len(seq), 1, 1)
+    assert "identical" in same["note"] and not answer(capsys, "repeats", gb, "--min-len", "20")["compared"]["identical_sequences"]
 
 
 def test_search_command_finds_dna_on_both_strands_and_names(tmp_path, capsys):
@@ -406,6 +420,13 @@ def test_align_command_finds_pieces_and_structural_changes_like_local_align(tmp_
     two = answer(capsys, "align", gb, gap)
     p0, p1 = two["pieces"]   # (the second piece may start a base or two early: the bases next to a junction can match by chance)
     assert (p0["start"], p0["end"], p1["end"]) == (101, 130, 190) and 28 <= p1["start"] - p0["end"] - 1 <= 30 and p1["before"].startswith("deletion from the query")
+    base = "A" if seq[130].upper() != "A" else "C"      # one base of the query changed: it is named, with its place, on both strands
+    changed = seq[100:130] + base + seq[131:160]
+    for q, strand in ((changed, 1), (mutation.reverse_complement(changed), -1)):
+        piece = answer(capsys, "align", gb, q)["pieces"][0]
+        assert piece["strand"] == strand and [(m["position"], m["plasmid_base"].upper(), m["query_base"].upper()) for m in piece["mismatch_list"]] == [(131, seq[130].upper(), base)]
+    cut = answer(capsys, "align", gb, seq[100:130] + seq[135:165])["pieces"][0]     # 5 bases of the plasmid missing from the query (found as one gapped piece or two)
+    assert cut["deletion_list"] == [{"start": 131, "end": 135}] or len(answer(capsys, "align", gb, seq[100:130] + seq[135:165])["pieces"]) == 2
     direct = local_align.find_hits(seq, gap, True)    # the window's own function
     assert [(h.start + 1, h.end) for h in direct] == [(p["start"], p["end"]) for p in two["pieces"]]
     err = run(capsys, "align", gb, "MKLVPQ")[2]
@@ -421,6 +442,7 @@ def test_msa_command_aligns_the_files_and_never_overwrites(tmp_path, capsys):
     res = answer(capsys, "msa", tmp_path / "a.gb", tmp_path / "b.gb", "--out", out)
     ra, rb = (s["aligned"] for s in res["sequences"])
     assert ra.replace("-", "") == a and rb.replace("-", "") == b and rb.count("-") == 10 and res["width"] == 200
+    assert [s["file"] for s in res["sequences"]] == [str(tmp_path / "a.gb"), str(tmp_path / "b.gb")]
     assert [s["identity_to_first"] for s in res["sequences"]] == [100.0, 95.0]    # 190 identical columns of the 200 where either has a base
     assert msa.parse_aligned_fasta(out.read_text())[1] == [ra, rb]
     code, text, err = run(capsys, "msa", tmp_path / "a.gb", tmp_path / "b.gb", "--out", out)
@@ -453,6 +475,13 @@ def test_codon_batch_recodes_in_place_keeping_the_protein(tmp_path, capsys):
     matched = json.loads(run(capsys, "codon", "check", gb, rows, "--usage", table)[1])
     assert matched["rows"][0]["sequence"] == want.seq and codon_tools.translate(want.seq, genetic_code.codon_map(1)) == codon_tools.translate(CDS, genetic_code.codon_map(1))
     assert "--gc-low is above" in run(capsys, "codon", "check", gb, rows, "--usage", table, "--gc-low", "70")[2]
+    one = json.loads(run(capsys, "codon", "check", gb, rows, "--usage", table, "--gc-low", "0", "--gc-high", "20", "--tries", "3")[1])
+    assert one["settings"]["codon_usage_table"]["source"] == "command line" and one["settings"]["codon_usage_table"]["value"] == one["settings"]["codon"]["usage_table"]["value"]
+    assert one["rows"][0]["seed_used"] in (1, 2, 3) and "above 20 %" in one["rows"][0]["warnings"][0]     # a GC rule that cannot be met says which limit it breaks
+    s = codon_tools.feature_source(doc, doc.features()[0])
+    best = codon_tools.recode_tries(s, codon_usage.read_csv(str(table)), 4, 1, gc_range=(0, 20))
+    assert best.seed in (1, 2, 3, 4) and len(best.unmet) == min(len(codon_tools.recode_source(s, codon_usage.read_csv(str(table)), seed=k, gc_range=(0, 20)).unmet) for k in (1, 2, 3, 4))
+    assert "--tries is between" in run(capsys, "codon", "check", gb, rows, "--usage", table, "--tries", "99")[2]
     nogc = json.loads(run(capsys, "codon", "check", gb, rows, "--usage", table, "--no-gc")[1])["settings"]["codon"]   # the settings say what was applied
     assert nogc["gc_limits"]["value"] == "none" and "gc_low" not in nogc and "gc_window" not in nogc
 
@@ -567,6 +596,16 @@ def test_annotate_command_finds_library_parts_and_adds_only_new_ones(tmp_path, c
     assert "responsibility" in answer(capsys, "annotate", gb, "--min-dna", "10")["warnings"][0]
 
 
+def test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases():
+    import annotation
+    s, e = 100, 160
+    having = lambda start, end, strand=1: SimpleNamespace(length=1000, visible_features=lambda a, b, overlays=True: [SimpleNamespace(kind="terminator", strand=strand, spans=[(start, end)])])
+    assert annotation.already_there(having(s, e), "terminator", s, e, 1) and annotation.already_there(having(s, e, -1), "terminator", s, e, 1)   # (a terminator on either strand)
+    assert not annotation.already_there(having(s + 5, e), "terminator", s, e, 1) and not annotation.already_there(having(s - 20, e + 20), "terminator", s, e, 1)   # overlapping is not the same bases
+    assert annotation.already_there(having(s + 5, e), "terminator", s, e, 1, exact=False)    # (what the Plasmid Checkup still treats as covered)
+    assert not annotation.already_there(having(s, e, -1), "CDS", s, e, 1)    # a CDS: its strand counts
+
+
 def test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds(tmp_path, capsys):
     a, b = dna(300, 21), dna(300, 22)
     for name, s in (("a", a), ("b", b)):
@@ -584,6 +623,7 @@ def test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds(tm
     tail = lambda p: p["sequence"][:len(p["sequence"]) - p["annealing_length"]].upper()   # the 5' part of a primer that does not anneal
     assert a.endswith(tail(prim["fb-F"])) and b[10:290].startswith(mutation.reverse_complement(tail(prim["fa-R"])))   # fb-F carries the end of a; fa-R the start of b, reverse complemented
     assert 20 <= len(tail(prim["fb-F"])) + len(tail(prim["fa-R"])) <= 40 and len(res["junctions"]) == 2
+    assert all(p["tail_nt"] == len(tail(p)) for p in res["primers"])    # (what the primer adds at its 5' end)
     # the Assembly panel's own functions give the same primers, checks and product
     import assembly
     from assembly import Frag, snapshot

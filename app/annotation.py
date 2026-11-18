@@ -65,8 +65,8 @@ def import_files(paths, rejected=None):
 
 def detect(editor, kinds=None, run=None):
     """Hits of library parts on the sequence: SimpleNamespace(name, kind, start, end, strand, identity,
-    protein, source, collection, organism, strength, units, measured, known), sorted by start. `known`: a
-    feature of the same type already covers (almost) the same bases on the same strand. `measured`: the
+    protein, source, collection, organism, strength, units, measured, known, covered), sorted by start. `known`: a
+    feature of the same type already covers exactly the same bases (on the same strand for a CDS); `covered`: one covers most of them. `measured`: the
     strength its source reports, as text ("TS 98 (E. coli)"), or "". `kinds`: only parts of these types. `run(work)`: how the
     search itself (Rust, it lets go of Python's lock) is run, e.g. in a thread behind a busy dialog; by default, here."""
     min_len = tool_settings.value(TOOL, "min_length")
@@ -80,7 +80,8 @@ def detect(editor, kinds=None, run=None):
         hits.append(SimpleNamespace(name=p.name, kind=p.kind, start=s, end=e, strand=strand, identity=identity,
                                     protein=protein, source=p.source, collection=p.collection, organism=p.organism,
                                     strength=p.strength, units=p.units, measured=describe(p),
-                                    known=already_there(editor, p.kind, s, e, strand)))
+                                    known=already_there(editor, p.kind, s, e, strand),
+                                    covered=already_there(editor, p.kind, s, e, strand, exact=False)))
     # Library parts on the same bases (two KanR variants, one promoter annotated on opposite
     # strands by two records, "rrnB" vs "5S RNA, T1, T2, rrnB"): keep one, preferring a
     # specific type over misc_feature, then the best identity, then the longest.
@@ -102,16 +103,16 @@ def same_place(a, b, share=0.9):
     return overlap(a, b) >= share * max(a.end - a.start, b.end - b.start)
 
 
-def already_there(editor, kind, s, e, strand):
-    """An existing feature covers most of this hit, or lies mostly inside it (a shorter
-    annotation of the same thing). Strand only matters for coding sequences: origins,
-    terminators and the like are often annotated on either strand."""
+def already_there(editor, kind, s, e, strand, exact=True):
+    """An existing feature covers exactly the bases of this hit (a part that only overlaps one is not annotated: it may be another
+    part); with `exact` False, it covers most of them or lies mostly inside them (a shorter annotation of the same thing).
+    Strand only matters for coding sequences: origins, terminators and the like are often annotated on either strand."""
     probe = SimpleNamespace(start=s, end=e)
     for f in editor.visible_features(s, min(e, editor.length), overlays=False):   # a tool's temporary ones are not annotations
         if f.kind == genes.GENE or (kind == "CDS" and f.strand != strand):
             continue
         fs, fe = genes.span_of([f])
-        if overlap(probe, SimpleNamespace(start=fs, end=fe)) >= 0.8 * min(e - s, fe - fs):
+        if (fs, fe) == (s, e) if exact else overlap(probe, SimpleNamespace(start=fs, end=fe)) >= 0.8 * min(e - s, fe - fs):
             return True
     return False
 

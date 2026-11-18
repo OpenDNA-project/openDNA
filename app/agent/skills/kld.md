@@ -31,6 +31,8 @@ kld check PLASMID.gb MUTATIONS.csv
 
 Nothing is written. The answer is JSON: `settings`, `summary` (rows, ok, errors, with_warnings) and one record per row (`status` ok or error, `error` text, `hgvs_dna`, `hgvs_protein`, `effect`, `warnings`, `primers`). Every row is checked, so fix all the errors you see at once, then check again until `errors` is 0. Exit code 1 means at least one row failed.
 
+In a primer, **lowercase letters are the new bases** (the edit: the substituted or inserted bases, carried at the 5' end) and uppercase letters anneal to the plasmid; a deletion has no lowercase. Say so when you show the primers.
+
 ## 4. Show the settings, then wait for the user's OK
 
 Show the user the `settings` block: Tm and the other KLD values (default or your override), the PCR conditions (`saved in openDNA` or default), the genetic code table, the codon usage table. Tell them which matter (Tm and the codon usage table change the primers and the codon chosen). Options if they want other values: `--tm` (annealing Tm, default 60), `--group` (changes closer than this share a primer pair, default 30), `--warn` (warn for insertions above this many bp, default 120). Every setting shows the range the windows accept (`min`, `max`): tell the user. A value beyond it is used as given, with a warning that the result is their responsibility. **Do not run before the user agrees.**

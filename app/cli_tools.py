@@ -53,12 +53,13 @@ def cmd_sites(args):
     import enzymes
     import tools
     doc = C.load(args.file)
-    chosen = pick_enzymes(csv_list(args.enzymes) + csv_list(args.digest))
-    digest = [e.name for e in pick_enzymes(csv_list(args.digest))]
+    chosen = pick_enzymes(csv_list(args.enzymes))
+    cutting = pick_enzymes(csv_list(args.digest))
+    digest = [e.name for e in cutting]
     lo = 1 if args.min_sites is None else args.min_sites
     flt = enzymes.EnzymeFilter(min_sites=lo, max_sites=1 if args.min_sites is None and args.max_sites is None else args.max_sites)   # (the window's default: unique cutters)
     seq = doc.sequence(0, None).upper()
-    cuts = enzymes.find_cuts(seq, doc.circular, chosen or None)
+    cuts = enzymes.find_cuts(seq, doc.circular, list({e.name: e for e in chosen + cutting}.values()) if chosen else None)   # (None: all)
     listed = []
     for e in chosen or enzymes.COMMON:
         found = cuts.get(e.name, [])
@@ -125,10 +126,14 @@ def cmd_repeats(args):
     settings = {"repeats": {"min_length": C.given(args.min_len, repeats.DEFAULT_MIN_LEN, lim["min_len"], "--min-len"),
                             "mismatches": C.given(args.mismatches, repeats.DEFAULT_MISMATCHES, lim["mismatches"], "--mismatches")}}
     sa = a.sequence(0, None)
-    res = repeats.pair_repeats(sa, sa if b is a else b.sequence(0, None), settings["repeats"]["min_length"]["value"], settings["repeats"]["mismatches"]["value"])
-    return answer(settings, compared={"a": a.name, "b": b.name, "same_file": b is a},
+    same = b is a
+    sb = sa if same else b.sequence(0, None)
+    res = repeats.pair_repeats(sa, sb, settings["repeats"]["min_length"]["value"], settings["repeats"]["mismatches"]["value"], same=same)
+    identical = not same and sa.upper() == sb.upper()
+    note = "; ".join(n for n in (res.capped, "the two sequences are identical: they share their whole length (listed first)" if identical else "") if n)
+    return answer(settings, compared={"a": Path(args.file).name, "b": Path(args.other or args.file).name, "same_file": same, "identical_sequences": identical},
                   repeats=[{"kind": k, "start_in_a": i + 1, "end_in_a": i + n, "start_in_b": j + 1, "end_in_b": j + n, "length": n, "differences": d}
-                           for k, i, j, n, d in res.repeats], note=res.capped)
+                           for k, i, j, n, d in res.repeats], note=note)
 
 
 # ---- search: the search bar's engine -----------------------------------------------------------------------------------------------
@@ -165,8 +170,12 @@ def cmd_align(args):
     query = query_bases(args.query)
     hits = local_align.find_hits(doc.sequence(0, None), query, doc.circular)
     n = doc.length
+    top = doc.sequence(0, None)
     rows = [{"piece": i + 1, "query_start": h.qstart + 1, "query_end": h.qend, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "identity": round(h.identity, 4),
              "score": h.score, "mismatches": len(h.mismatches), "insertions": len(h.insertions), "deletions": len(h.deletions),
+             "mismatch_list": [{"position": p + 1, "plasmid_base": top[p], "query_base": q} for p, q in h.mismatches],   # (bases as on the plasmid's top strand)
+             "insertion_list": [{"after_plasmid_base": p, "extra_bases_in_query": k} for p, k in h.insertions],
+             "deletion_list": [{"start": a + 1, "end": b} for a, b in h.deletions],   # (plasmid bases the query lacks)
              "before": local_align.junction_text(hits[i - 1], h, n, doc.circular) if i else "start of the query"} for i, h in enumerate(hits)]
     note = f"at most {local_align.MAX_HITS} pieces are listed" if len(hits) >= local_align.MAX_HITS else ""
     return answer({"align": {"query_bp": {"value": len(query)}, "max_pieces": {"value": local_align.MAX_HITS}}}, summary=local_align.summarize(hits, n, doc.circular) or "No hit",
@@ -195,8 +204,8 @@ def cmd_msa(args):
         out.write_text(msa.to_fasta(aln.names, aln.rows), encoding="utf-8")
     return answer({"msa": {"aligner": {"value": f"built-in progressive aligner (up to {msa.MAX_BUILTIN} bp each)"}, "identity_against": {"value": names[0]}}},
                   width=aln.width, consensus=aln.consensus(),
-                  sequences=[{"name": nm, "length": d.length, "identity_to_first": round(aln.identity(i), 2), "aligned": row}
-                             for i, (nm, d, row) in enumerate(zip(aln.names, docs, aln.rows))], **({"file": str(out)} if out else {}))
+                  sequences=[{"name": nm, "file": str(f), "length": d.length, "identity_to_first": round(aln.identity(i), 2), "aligned": row}
+                             for i, (nm, f, d, row) in enumerate(zip(aln.names, args.files, docs, aln.rows))], **({"file": str(out)} if out else {}))
 
 
 # ---- codon: recode a CDS for a codon usage table (the Recode window) --------------------------------------------------------------
@@ -218,12 +227,12 @@ def codon_row(doc, row, args, usage, avoid, out_dir):
         s = CT.feature_source(doc, f)
         if isinstance(s, str):
             raise UserError(s)
-        r = CT.recode_source(s, usage, method=args.method, avoid=avoid, max_run=CT.MAX_RUN if args.max_run is None else args.max_run,
-                             rbs=not args.no_rbs, gc_range=gc_range(args), window=CT.GC_WINDOW if args.window is None else args.window, seed=args.seed)
+        r = CT.recode_tries(s, usage, args.tries, args.seed, method=args.method, avoid=avoid, max_run=CT.MAX_RUN if args.max_run is None else args.max_run,
+                             rbs=not args.no_rbs, gc_range=gc_range(args), window=CT.GC_WINDOW if args.window is None else args.window)
     except (UserError, ValueError, RuntimeError) as e:
         rec["error"] = str(e)
         return rec
-    rec.update(status="ok", start=s.start + 1, end=s.end, strand=s.strand, genetic_code=s.table, codons=r.codons, codons_changed=r.changed, gc_before=round(r.gc_before, 1),
+    rec.update(status="ok", start=s.start + 1, end=s.end, strand=s.strand, genetic_code=s.table, codons=r.codons, codons_changed=r.changed, seed_used=r.seed, gc_before=round(r.gc_before, 1),
                gc_after=round(r.gc_after, 1), warnings=[f"Could not be met: {u}" for u in r.unmet], sequence=r.seq)
     if out_dir is not None:
         made = snapshot(doc, doc.name)
@@ -256,6 +265,8 @@ def cmd_codon(args):
     gc = gc_range(args)
     if gc and gc[0] > gc[1]:
         raise UserError("--gc-low is above --gc-high.")
+    if not 1 <= args.tries <= 50:
+        raise UserError("--tries is between 1 and 50.")
     out_dir = C.make_out_dir(args, args.plasmid, "_codon")
     lim, g = CT.LIMITS, CT.DEFAULT_GC
     settings = C.effective_settings({"codon": {
@@ -264,7 +275,9 @@ def cmd_codon(args):
         **({"gc_limits": {"value": "none", "source": "command line: --no-gc"}} if args.no_gc else
            {"gc_low": C.given(args.gc_low, g[0], lim["gc"], "--gc-low"), "gc_high": C.given(args.gc_high, g[1], lim["gc"], "--gc-high"),
             "gc_window": C.given(args.window, CT.GC_WINDOW, lim["window"], "--window")}), "max_run": C.given(args.max_run, CT.MAX_RUN, lim["max_run"], "--max-run"),
-        "no_internal_rbs": {"value": not args.no_rbs}, "seed": {"value": args.seed, "source": "command line" if args.seed != 1 else "default (the window's first preview)"}}})
+        "no_internal_rbs": {"value": not args.no_rbs}, "seed": {"value": args.seed, "source": "command line" if args.seed != 1 else "default (the window's first preview)"},
+        "tries": {"value": args.tries, "source": "command line" if args.tries != 1 else "default (one seed, as the window's first preview)"}}})
+    settings["codon_usage_table"] = {"value": usage.name, "source": "command line" if args.usage else "openDNA settings"}   # (the table used, not the saved one)
     records = C.run_rows(rows, lambda row: codon_row(doc, row, args, usage, avoid, out_dir), "feature")
     return C.finish(out_dir, settings, records, ["id", "feature", "file", "codons", "codons_changed", "gc_before", "gc_after", "warnings"],
                     lambda r: [[r["id"], r["feature"], r.get("file", ""), r["codons"], r["codons_changed"], r["gc_before"], r["gc_after"], " | ".join(r["warnings"])]],
@@ -482,7 +495,7 @@ def cmd_gibson(args):
         raise UserError(str(e))
     product = A.simulate(frags, d)
     import primer_panel
-    primers = [{"fragment": f.name, "name": p[0], "sequence": p[1], "annealing_length": p[2], "annealing_tm": primer_panel.melting_temp(p[1][-p[2]:]), "role": role}
+    primers = [{"fragment": f.name, "name": p[0], "sequence": p[1], "annealing_length": p[2], "tail_nt": len(p[1]) - p[2], "annealing_tm": primer_panel.melting_temp(p[1][-p[2]:]), "role": role}
                for f in frags for role, p in (("forward", f.fwd), ("reverse", f.rev)) if p]
     levels = [lv for _, lv, _ in d.checks]
     verdict = "bad" if not d.ok else "warn" if "warn" in levels else "ok"   # (d.ok: every junction fits and no check is red, as the panel decides)
@@ -495,8 +508,8 @@ def cmd_gibson(args):
         result["product"]["file"] = f"{args.name}.gb"
         with open(out_dir / "primers.csv", "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
-            w.writerow(["fragment", "role", "name", "sequence", "annealing_length", "annealing_tm"])
-            w.writerows([p["fragment"], p["role"], p["name"], p["sequence"], p["annealing_length"], C.tm_of(p)] for p in primers)
+            w.writerow(["fragment", "role", "name", "sequence", "annealing_length", "tail_nt", "annealing_tm"])
+            w.writerows([p["fragment"], p["role"], p["name"], p["sequence"], p["annealing_length"], p["tail_nt"], C.tm_of(p)] for p in primers)
         (out_dir / "report.json").write_text(json.dumps(result, indent=1), encoding="utf-8")
         result["out"] = str(out_dir)
     for w in result["warnings"]:
@@ -596,6 +609,7 @@ def register(sub, cli):
     s.add_argument("--max-run", type=int, help="longest run of one base (default 5)")
     s.add_argument("--no-rbs", action="store_true", help="allow an internal ribosome binding site")
     s.add_argument("--seed", type=int, default=1, help="the random draw of a frequency-matched recoding (default 1; the same seed gives the same sequence)")
+    s.add_argument("--tries", type=int, default=1, help="try this many seeds (seed, seed+1, ...) and keep the recoding with the fewest rules not met (default 1; at most 50)")
     s.set_defaults(run=cmd_codon, returns_code=True)
     s = sub.add_parser("export", help="write the sequence as genbank, fasta, gff3, bed, tbl (NCBI feature table) or proteins (FASTA of the CDS)")
     s.add_argument("file")
