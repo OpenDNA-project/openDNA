@@ -10,6 +10,7 @@ pub mod bio;
 pub mod code;
 pub mod cas9;
 pub mod document;
+pub mod embl;
 pub mod fasta;
 pub mod locations;
 pub mod primers;

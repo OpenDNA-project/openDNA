@@ -34,7 +34,7 @@ Each user mistake gives exit code 1, nothing on stdout and exactly one `ERROR:` 
 
 ## `test_every_recipe_example_still_runs`
 
-**Result:** ✅ passed in 0.03 s · [line 62](../../tests/test_agent_cli.py#L62) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 62](../../tests/test_agent_cli.py#L62) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** A recipe could keep telling agents to run a command that no longer exists or whose arguments changed.
 
@@ -62,6 +62,7 @@ Each HGVS form (substitution, deletion, insertion, deletion-insertion, duplicati
 | 2 | gx p.Glu3del; c.9_10insCCC; c.9_10insC; c.7_9dup | (106,109,''); (109,109,'CCC') p.(Glu3_Lys4insPro); frameshift; (109,109,'GAA') p.(Glu3dup) |
 | 3 | gx p.Glu3_Lys4delinsGln; c.7_12delinsCAA | (106, 110, 'C') for both (only GAAA -> C differs) |
 | 4 | gy (complement(401..421)) c.4G>A, p.Ala2Thr, p.Glu3del, c.9_10insCCC | (417,418,'T') o.418C>T; (417,418,'T'); (412,415,''); (412,412,'GGG') |
+| 5 | gx:p.Ter7Gln ; gx:p.Met1Val | effect 'stop lost', protein p.(Ter7Glnext*?), no warning ; no warning for the changed start codon |
 
 **Review notes:**
 
@@ -69,7 +70,7 @@ Each HGVS form (substitution, deletion, insertion, deletion-insertion, duplicati
 
 ## `test_hgvs_mistakes_say_what_to_fix_and_ambiguities_only_warn`
 
-**Result:** ✅ passed in 0.00 s · [line 118](../../tests/test_agent_cli.py#L118) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 122](../../tests/test_agent_cli.py#L122) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A wrong reference base or amino acid in a mutation table could be applied silently, and an ambiguous codon choice could be made without telling the user.
 
@@ -84,9 +85,25 @@ Every mistake (wrong reference, wrong residue, nothing to change, outside the pl
 
 - The warning for a change that can slide along a repeat is not tested.
 
+## `test_a_change_through_the_origin_is_made_and_the_file_keeps_its_origin`
+
+**Result:** ✅ passed in 0.07 s · [line 137](../../tests/test_agent_cli.py#L137) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** A mutation that spans the origin of the plasmid could be refused or give a shifted, wrong plasmid.
+
+On a 521 bp circle, changes written through the origin (first position after the last) are made, and each output file equals the hand-edited string with its origin kept at base 1 unless the change replaced it.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | o.520_3del | hgvs o.520_3del; file = bases 4..519 (new origin after the change) |
+| 2 | o.521_1insATG | file = plasmid + ATG (origin unchanged) |
+| 3 | o.520_2delinsGG | file = bases 3..519 + GG |
+| 4 | o.520_2dup | file = bases 1..2, then the duplicated 520..2, then 3.. (origin kept) |
+| 5 | o.3_1del (nearly the whole plasmid) | error row, the others are made |
+
 ## `test_kld_batch_gives_the_files_and_primers_the_panel_gives`
 
-**Result:** ✅ passed in 0.07 s · [line 133](../../tests/test_agent_cli.py#L133) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 152](../../tests/test_agent_cli.py#L152) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give files or primers different from what the user gets by hand in the KLD panel, or overwrite earlier results, or accept a malformed table.
 
@@ -104,7 +121,7 @@ A 4-row table (substitution, reverse-strand substitution, deletion, wrong refere
 
 ## `test_pcr_batch_gives_the_pairs_the_panel_gives`
 
-**Result:** ✅ passed in 1.60 s · [line 167](../../tests/test_agent_cli.py#L167) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.75 s · [line 186](../../tests/test_agent_cli.py#L186) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results.
 
@@ -122,7 +139,7 @@ pcr check and run give, for 150..400 and 200..450, the pairs of primer_design.de
 
 ## `test_recombineering_batch_gives_the_designs_the_panel_gives`
 
-**Result:** ✅ passed in 0.03 s · [line 200](../../tests/test_agent_cli.py#L200) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 219](../../tests/test_agent_cli.py#L219) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could place the cassette in the wrong orientation or place, give primers whose tails are not the genome's homologies, or overwrite earlier results.
 
@@ -141,7 +158,7 @@ For a 521 bp circular genome, a 120 bp cassette and rows replacing a CDS, a 11 b
 
 ## `test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names`
 
-**Result:** ✅ passed in 0.05 s · [line 231](../../tests/test_agent_cli.py#L231) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 250](../../tests/test_agent_cli.py#L250) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** One bad row could end a 200-row run, two rows could overwrite each other's file, or a value the windows would refuse could pass without the user knowing.
 

@@ -46,7 +46,7 @@ kld run PLASMID.gb MUTATIONS.csv --out NEW_FOLDER
 ## What to tell the user
 
 - Where the folder is, how many rows succeeded, and each failed row with its error in plain words.
-- **Every warning**, per mutation. Warnings never stop a row: openDNA picks a default and says so. The ones you will see: several codons for the new amino acid (the one used and the alternatives), a change in a repeat that could be placed elsewhere (same plasmid, slightly different primers), a frameshift, a stop codon appearing, a changed start codon, an insertion above `--warn`, a mutation that changes nothing ("no change": the plasmid already has those bases, no primers, the file is the plasmid as it is), a file renamed because its id collided or was unsafe, a primer with a low GC or a long primer.
+- **Every warning**, per mutation. Warnings never stop a row: openDNA picks a default and says so. The ones you will see: several codons for the new amino acid (the one used and the alternatives), a change in a repeat that could be placed elsewhere (same plasmid, slightly different primers), a frameshift, a stop codon appearing or lost, an insertion above `--warn`, a mutation that changes nothing ("no change": the plasmid already has those bases, no primers, the file is the plasmid as it is), a file renamed because its id collided or was unsafe, a primer with a low GC or a long primer.
 - The `hgvs_protein` and `effect` of each mutation: they say what the user's edit does to the protein.
 
 ## Errors you may see

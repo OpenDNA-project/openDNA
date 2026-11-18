@@ -8,15 +8,15 @@ Built by `scripts/test_report.py` on 2026-11-18 from `tests.json` and the last r
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 110 | 110 | 0 | 75 | 35 | 0 | 0 | 86 |
+| Python | 111 | 111 | 0 | 76 | 35 | 0 | 0 | 86 |
 | Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 175 | 175 | 0 | 117 | 57 | 1 | 0 | 130 |
+| **All** | 176 | 176 | 0 | 118 | 57 | 1 | 0 | 130 |
 
 ## Weak or unreviewed tests
 
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 175 tests)
+## Gaps and proposed tests (3 of 176 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -43,7 +43,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 ## Every test, by file
 
-### `tests/test_agent_cli.py` (9 tests)
+### `tests/test_agent_cli.py` (10 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -52,6 +52,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_every_recipe_example_still_runs` | A recipe could keep telling agents to run a command that no longer exists or whose arguments changed. | smoke | adequate | sound | Checks that examples run, not that their output is what the recipe says. |
 | `test_hgvs_mutations_become_the_change_they_name` | A mutation written in HGVS could be turned into the wrong bases (off by one, wrong strand, wrong codon) and 200 wrong plasmids and primer pairs would be made from it. | hand-computed | strong | sound | Features made of several parts (joins) and changes beyond the ends of a CDS are not exercised. |
 | `test_hgvs_mistakes_say_what_to_fix_and_ambiguities_only_warn` | A wrong reference base or amino acid in a mutation table could be applied silently, and an ambiguous codon choice could be made without telling the user. | hand-computed | adequate | sound | The warning for a change that can slide along a repeat is not tested. |
+| `test_a_change_through_the_origin_is_made_and_the_file_keeps_its_origin` | A mutation that spans the origin of the plasmid could be refused or give a shifted, wrong plasmid. | hand-computed | strong | sound |  |
 | `test_kld_batch_gives_the_files_and_primers_the_panel_gives` | The batch could give files or primers different from what the user gets by hand in the KLD panel, or overwrite earlier results, or accept a malformed table. | independent implementation | strong | sound | Settings are the defaults of the test machine: a saved setting that changes the primers is not exercised. |
 | `test_pcr_batch_gives_the_pairs_the_panel_gives` | The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results. | independent implementation | strong | sound | The genome checks run against the demo genome of the repository, whatever the machine's own setting. |
 | `test_recombineering_batch_gives_the_designs_the_panel_gives` | The batch could place the cassette in the wrong orientation or place, give primers whose tails are not the genome's homologies, or overwrite earlier results. | hand-computed | strong | sound | A genome with a linear topology and a region near its end is not exercised. |
@@ -262,7 +263,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
 | `test_real_files_round_trip_and_agree_with_biopython` | Without it, opening and saving a real plasmid or genome could silently drop or alter features, qualifiers or bases, or write a file other tools read differently. | independent implementation | strong | sound | Skips entirely if the demo files are missing; the .dna sections return early without them.<br>The source id 'genome_dna' actually refers to the GenBank file BW25113_2026.gb (GENOME), not a .dna file: misleading name.<br>Saving and reloading the 4.6 Mb genome three times makes this one of the slower tests.<br>The is_directional checks are unrelated to round trips and could live in a feature-direction test. |
-| `test_unusual_records_round_trip` | Without it, unusual but legal locations (joins, fuzzy ends, order(), across the origin, between sites), tiny or empty sequences, or lower-case bases could be corrupted on save without anyone noticing. | independent implementation | strong | sound | Very long test mixing many unrelated edge cases; a single failure hides the rest. Could be split into location forms, topology, tiny sequences and case.<br>The empty-sequence-after-delete case only checks the file exists, not that it reloads. |
+| `test_unusual_records_round_trip` | Without it, unusual but legal locations (joins, fuzzy ends, order(), across the origin, between sites), tiny or empty sequences, or lower-case bases could be corrupted on save without anyone noticing. | independent implementation | strong | sound | Very long test mixing many unrelated edge cases; a single failure hides the rest. Could be split into location forms, topology, tiny sequences and case.<br>The empty-sequence-after-delete case only checks the file exists, not that it reloads.<br>EMBL: only a single record with the sample's fields is tested; multi-record and old-style ID lines are not. |
 | `test_qualifier_text_survives_and_is_written_as_documented` | Without it, notes with quotes, unicode or long text could be mangled, wrapped badly or gain spaces when saved, so other tools (or a reload) would show different annotation text. | independent implementation | strong | sound |  |
 | `test_primers_survive_save` | Without it, primers attached to a plasmid (from a .dna file or imported from the database) could vanish or lose their full sequence when the file is saved as GenBank. | round-trip/self-consistency | adequate | sound | The .dna section is skipped if the demo .dna file is missing.<br>Overlaps with test_multi_record's .dna-primers-as-primer_bind check and with primer tests elsewhere. |
 | `test_fasta_files_are_read_like_biopython` | Without it, opening a multi-sequence FASTA (genomes, Windows line endings, BOM, lower case) could return wrong bases at line breaks or include stray characters, corrupting what the user sees and edits. | independent implementation | strong | sound |  |

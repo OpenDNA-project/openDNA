@@ -670,7 +670,7 @@ class OptionsForm(QWidget):
 
     def _browse(self):
         path, _ = QFileDialog.getOpenFileName(self, "Genome for off-target check", "",
-                                              "Sequence files (*.gb *.gbk *.gbff *.genbank *.dna *.fa *.fasta *.fna *.fas);;All files (*)")
+                                              "Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas);;All files (*)")
         if path:
             self.genome.setText(path)
 

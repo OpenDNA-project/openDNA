@@ -278,8 +278,9 @@ def kld_row(source, row, args, usage, out_dir):
     rec = {"id": row["id"], "mutation": row["mutation"], "status": "error"}
     try:
         r = mutation.resolve(source, row["mutation"], usage)
+        seq = source.sequence(0, None).upper()
         d = None if r.effect == "no change" else kld.design_selected(
-            source.sequence(0, None).upper(), [(r.start, r.end, r.text)], source.circular,
+            seq[r.shift:] + seq[:r.shift], [(r.start, r.end, r.text)], source.circular,   # (a change through the origin is designed on the plasmid turned by r.shift)
             kld.DEFAULT_TM if args.tm is None else args.tm, kld.DEFAULT_GROUP if args.group is None else args.group,
             kld.DEFAULT_WARN if args.warn is None else args.warn)
     except (UserError, ValueError) as e:   # (design raises ValueError with a sentence: too short, too many new bases, ...)
@@ -292,8 +293,15 @@ def kld_row(source, row, args, usage, out_dir):
     if out_dir is not None:   # (a mutation that changes nothing still gets its file: the plasmid as it is)
         doc = snapshot(source, source.name)
         if d:
+            if r.shift:
+                doc.rotate(r.shift)
             doc.replace(r.start, r.end, r.text)
             doc = kld.with_primers(doc, d)
+            if r.shift:   # back to the file's origin: its first base stays first, unless the change replaced it (then the first base after the change)
+                j = (-r.shift) % source.length
+                first = (r.start + len(r.text) + max(0, j - r.end) if j >= r.start else j) % doc.length
+                if first:
+                    doc.rotate(first)
         doc.write_genbank(str(out_dir / f"{row['file_stem']}.gb"), None)
         rec["file"] = f"{row['file_stem']}.gb"
     return rec

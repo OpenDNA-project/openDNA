@@ -4269,7 +4269,7 @@
    "id": "tests/test_roundtrip.py::test_unusual_records_round_trip",
    "area": "GenBank round trip",
    "role": "Without it, unusual but legal locations (joins, fuzzy ends, order(), across the origin, between sites), tiny or empty sequences, or lower-case bases could be corrupted on save without anyone noticing.",
-   "purpose": "Saves made-up records that hit the edges of the GenBank format, reloads them with our reader and with Biopython, and checks every location form is written back exactly as given. Also covers topology toggling with undo, tiny/empty sequences, a gap letter and case preservation.",
+   "purpose": "Saves made-up records that hit the edges of the GenBank format, reloads them with our reader and with Biopython, and checks every location form is written back exactly as given. Also covers topology toggling with undo, tiny/empty sequences, a gap letter and case preservation. Also that an EMBL file (the sample of the format definition) is read like Biopython reads it and can be saved as GenBank.",
    "cases": [
     {
      "input": "400 bp random 'rich' record with join, complement(join), <100..>120, <150..180, 200..>230, order(), complement gene with /pseudo; save, reload, save",
@@ -4310,13 +4310,18 @@
     {
      "input": "insert 'TTT' at 0",
      "expected": "sequence starts 'TTTacg' (case of typed text kept)"
+    },
+    {
+     "input": "EMBL record HQ324066 (84 bp, linear; source 1..84, gene <1..>84 with note)",
+     "expected": "length 84, linear, bases equal Biopython's; features source 1..84 and gene <1..>84 with gene=trnL and the note; a GenBank save reloads with the same bases"
     }
    ],
    "oracle": "independent implementation",
    "strength": "strong",
    "issues": [
     "Very long test mixing many unrelated edge cases; a single failure hides the rest. Could be split into location forms, topology, tiny sequences and case.",
-    "The empty-sequence-after-delete case only checks the file exists, not that it reloads."
+    "The empty-sequence-after-delete case only checks the file exists, not that it reloads.",
+    "EMBL: only a single record with the sample's fields is tested; multi-record and old-style ID lines are not."
    ],
    "verdict": "sound",
    "evidence": "Read only (the edit lives in the Rust core; not mutated). Lines 286-290: the 'ACGT' deleted to nothing case asserts only out.exists(), not doc.modified-state AND content of the written file.",
@@ -4369,8 +4374,12 @@
    "id": "tests/test_roundtrip.py::test_primers_survive_save",
    "area": "Primers in saved files",
    "role": "Without it, primers attached to a plasmid (from a .dna file or imported from the database) could vanish or lose their full sequence when the file is saved as GenBank.",
-   "purpose": "Checks primer_bind features passed to save_genbank are written with name and full sequence (including 5' tails) without being added to the document, that a .dna file's primer list survives a GenBank save, and that Editor.save writes only primers imported to the file without adding an undo step.",
+   "purpose": "Checks primer_bind features passed to save_genbank are written with name and full sequence (including 5' tails) without being added to the document, that a .dna file's primer list survives a GenBank save, and that Editor.save writes only primers imported to the file without adding an undo step. Also that a Benchling-style file, whose primers are a `primer` feature type, is read as primer_bind and saved as primer_bind.",
    "cases": [
+    {
+     "input": "Benchling-style GenBank text with a feature type `primer` at complement(21..40), note 'sequence: aaaaGTACGTACGTACGTACGTAC', then saved",
+     "expected": "read as primer_bind: ('rv','aaaaGTACGTACGTACGTACGTAC','complement(21..40)'); the same list after save and reload"
+    },
     {
      "input": "save_genbank with fwd 5..24 and rev complement(60..80), notes carrying tailed sequences",
      "expected": "reloaded primer_bind features: ('fwd','TTTTTACGTTGCATGCCGATTAG','5..24') and ('rev','cgatccggCATGGCAACTTGGCTAATC','complement(60..80)'); the document itself still has 0 features"
@@ -7292,6 +7301,10 @@
     {
      "input": "gy (complement(401..421)) c.4G>A, p.Ala2Thr, p.Glu3del, c.9_10insCCC",
      "expected": "(417,418,'T') o.418C>T; (417,418,'T'); (412,415,''); (412,412,'GGG')"
+    },
+    {
+     "input": "gx:p.Ter7Gln ; gx:p.Met1Val",
+     "expected": "effect 'stop lost', protein p.(Ter7Glnext*?), no warning ; no warning for the changed start codon"
     }
    ],
    "oracle": "hand-computed",
@@ -7444,6 +7457,41 @@
    "issues": [
     "Only the KLD batch is exercised; pcr and recombineering share the same helpers (run_rows, finish) but are not run with bad rows."
    ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_a_change_through_the_origin_is_made_and_the_file_keeps_its_origin",
+   "area": "Command line for agents",
+   "role": "A mutation that spans the origin of the plasmid could be refused or give a shifted, wrong plasmid.",
+   "purpose": "On a 521 bp circle, changes written through the origin (first position after the last) are made, and each output file equals the hand-edited string with its origin kept at base 1 unless the change replaced it.",
+   "cases": [
+    {
+     "input": "o.520_3del",
+     "expected": "hgvs o.520_3del; file = bases 4..519 (new origin after the change)"
+    },
+    {
+     "input": "o.521_1insATG",
+     "expected": "file = plasmid + ATG (origin unchanged)"
+    },
+    {
+     "input": "o.520_2delinsGG",
+     "expected": "file = bases 3..519 + GG"
+    },
+    {
+     "input": "o.520_2dup",
+     "expected": "file = bases 1..2, then the duplicated 520..2, then 3.. (origin kept)"
+    },
+    {
+     "input": "o.3_1del (nearly the whole plasmid)",
+     "expected": "error row, the others are made"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [],
    "verdict": "sound",
    "evidence": "",
    "gaps": [],

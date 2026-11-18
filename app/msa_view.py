@@ -200,7 +200,7 @@ class MsaView(QWidget):
                 out.append((f"selection {ed.start + 1}-{ed.end}", ed.selected_sequence()))
             return out
         if kind == SOURCES[1]:
-            paths, _ = QFileDialog.getOpenFileNames(self, "Sequence files to align", "", "Sequences (*.gb *.gbk *.gbff *.fa *.fasta *.fna *.dna);;All files (*)")
+            paths, _ = QFileDialog.getOpenFileNames(self, "Sequence files to align", "", "Sequences (*.gb *.gbk *.gbff *.ape *.embl *.fa *.fasta *.fna *.dna);;All files (*)")
             return None if not paths else files_records(paths)
         return document_records(ed)   # the open record as on screen, edits not saved yet included
 

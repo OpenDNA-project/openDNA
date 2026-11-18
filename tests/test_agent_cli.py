@@ -108,6 +108,10 @@ def test_hgvs_mutations_become_the_change_they_name():
     assert change(doc, "gx:c.7_9dup") == (109, 109, "GAA", "o.109_110insGAA", "p.(Glu3dup)", "in-frame duplication")
     assert change(doc, "gx:p.Glu3_Lys4delinsGln")[:3] == (106, 110, "C") and change(doc, "gx:c.7_12delinsCAA")[:3] == (106, 110, "C")   # (GAAAAA -> CAA: only GAAA -> C differs)
     assert change(doc, "gx:p.Ala2Ter")[5] == "nonsense"
+    # the sender's own design is applied without comment: a lost stop codon is named for what it is, a changed start codon is not warned about
+    r = mutation.resolve(doc, "gx:p.Ter7Gln")
+    assert (r.effect, r.hgvs_protein, r.warnings) == ("stop lost", "p.(Ter7Glnext*?)", [])
+    assert mutation.resolve(doc, "gx:p.Met1Val").warnings == []
     # the reverse-strand copy: c. numbers and bases are read on the gene's own strand, the plasmid change is on the forward one
     assert change(doc, "gy:c.4G>A") == (417, 418, "T", "o.418C>T", "p.(Ala2Thr)", "missense")
     assert change(doc, "gy:p.Ala2Thr")[:3] == (417, 418, "T")
@@ -128,6 +132,21 @@ def test_hgvs_mistakes_say_what_to_fix_and_ambiguities_only_warn():
     assert (r.start, r.end, r.text) == (103, 104, "T")
     r = mutation.resolve(doc, "gx:p.Glu3Asp")   # GAA -> GAT or GAC: two codons one change apart: a default (alphabetical without a usage table) and a warning naming the other
     assert r.text == "C" and any("GAC chosen" in w and "GAT" in w for w in r.warnings)   # (no usage table: alphabetical)
+
+
+def test_a_change_through_the_origin_is_made_and_the_file_keeps_its_origin(tmp_path, capsys):
+    doc, seq = plasmid()   # 521 bp: bases 520, 521, 1, 2, 3 are neighbours
+    gb = tmp_path / "t.gb"
+    doc.write_genbank(str(gb), None)
+    table = tmp_path / "m.csv"
+    table.write_text("id,mutation\ndel,o.520_3del\nins,o.521_1insATG\nrep,o.520_2delinsGG\ndup,o.520_2dup\nlow,o.3_1del\n", encoding="utf-8")
+    code, text, _ = run(capsys, "kld", "run", gb, table, "--out", tmp_path / "out")
+    res = json.loads(text)
+    assert code == 1 and [r["status"] for r in res["rows"]] == ["ok"] * 4 + ["error"] and "o.520_3del" == res["rows"][0]["hgvs_dna"]
+    # hand-computed on the string: the origin stays at base 1 unless the change replaced it (then the first base after the change)
+    expected = {"del": seq[3:519], "ins": seq + "ATG", "rep": seq[2:519] + "GG", "dup": seq[:2] + seq[519:] + seq[:2] + seq[2:]}
+    for name, want in expected.items():
+        assert Document(str(tmp_path / "out" / f"{name}.gb")).sequence(0, None).upper() == want, name
 
 
 def test_kld_batch_gives_the_files_and_primers_the_panel_gives(tmp_path, capsys):

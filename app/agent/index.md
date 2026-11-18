@@ -33,4 +33,4 @@ Positions are 1-based and inclusive (GenBank and HGVS style). Mutations are writ
 | Deletion-insertion | `lacZ:c.360_365delinsATG` | `o.1234_1240delinsATG` | `lacZ:p.Lys12_Gly14delinsAla` |
 | Duplication | `lacZ:c.360_365dup` | `o.1234_1240dup` | `lacZ:p.Gly13dup` |
 
-`c.1` is the A of the start codon; `c.-N` is upstream of it. A change across the origin of the plasmid is not accepted: it is an error.
+`c.1` is the A of the start codon; `c.-N` is upstream of it. A change through the origin of the plasmid is written with `o.` positions, first to last (`o.3779_2del`, `o.3780_1insATG`); the file keeps its origin.

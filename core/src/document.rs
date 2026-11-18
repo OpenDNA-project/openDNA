@@ -334,6 +334,11 @@ fn count_gc(bases: &[u8]) -> u32 {
 impl Document {
     pub fn new(mut record: Seq, primers: Vec<Primer>) -> Self {
         unwrap_text(&mut record);
+        // Benchling (and some other tools) write a primer as `primer`, which is not a GenBank feature key; the standard one is
+        // `primer_bind`, the only one the program treats as a primer. Saving writes the standard key.
+        for f in record.features.iter_mut().filter(|f| f.kind == "primer") {
+            f.kind = PRIMER_KIND.into();
+        }
         record.len = Some(record.seq.len()); // gb-io's revcomp() needs the length set
         Document {
             record,
@@ -371,9 +376,15 @@ impl Document {
             let (record, primers) = dna_file::read_file(path)?;
             return Ok(Document::new(record, primers));
         }
-        // gb-io returns one `Seq` per record in the file.
-        let mut records = gb_io::reader::parse_file(path)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("GenBank: {e}")))?;
+        // gb-io returns one `Seq` per record in the file (an EMBL file is first turned into GenBank text).
+        let embl = crate::embl::looks_like_embl(&head);
+        let mut records = if embl {
+            let text = String::from_utf8_lossy(&std::fs::read(path)?).into_owned();
+            gb_io::reader::parse_slice(crate::embl::to_genbank(&text).as_bytes())
+        } else {
+            gb_io::reader::parse_file(path)
+        }
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {e}", if embl { "EMBL" } else { "GenBank" })))?;
         match records.len() {
             1 => Ok(Document::new(records.pop().unwrap(), Vec::new())),
             0 => Err(io::Error::new(io::ErrorKind::InvalidData, "no GenBank record found")),
@@ -381,7 +392,7 @@ impl Document {
             // documents when a real file needs it.
             n => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("file has {n} GenBank records; a document holds one record (split the file, or use it as the reference genome in Primers > Options, where every record is searched)"),
+                format!("file has {n} {} records; a document holds one record (split the file, or use it as the reference genome in Primers > Options, where every record is searched)", if embl { "EMBL" } else { "GenBank" }),
             )),
         }
     }

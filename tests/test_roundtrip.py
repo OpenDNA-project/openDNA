@@ -330,6 +330,24 @@ def test_unusual_records_round_trip(tmp_path):
     doc.insert(0, "TTT")
     assert doc.sequence()[:6] == "TTTacg", "an edit keeps the case of what was typed"
 
+    # --- an EMBL file (the sample of the format definition) is read, features and bases as Biopython reads them, and saved as GenBank
+    embl = tmp_path / "s.embl"
+    embl.write_text("ID   HQ324066; SV 1; linear; genomic DNA; STD; PLN; 84 BP.\nXX\n"
+                    "DE   Trinia glauca tRNA-Leu (trnL) gene, intron; chloroplast.\nXX\n"
+                    "FH   Key             Location/Qualifiers\nFH\n"
+                    "FT   source          1..84\nFT                   /organism=\"Trinia glauca\"\n"
+                    "FT   gene            <1..>84\nFT                   /gene=\"trnL\"\n"
+                    "FT                   /note=\"tRNA-Leu; tRNA-Leu(UAA)\"\nXX\n"
+                    "SQ   Sequence 84 BP; 35 A; 16 C; 20 G; 13 T; 0 other;\n"
+                    "     gggcaatcct gagccaaatc ctattttaca aaaacaaaca aaggcccaga aggtgaaaaa        60\n"
+                    "     aggataggtg cagagactca atgg                                               84\n//\n")
+    got, ref = Document(embl), SeqIO.read(embl, "embl")
+    assert (got.length, got.circular, got.sequence().upper()) == (84, False, str(ref.seq).upper())
+    assert [(f.kind, f.location) for f in got.features()] == [("source", "1..84"), ("gene", "<1..>84")]
+    assert dict(got.features()[1].qualifiers) == {"gene": "trnL", "note": "tRNA-Leu; tRNA-Leu(UAA)"}
+    got.save_genbank(tmp_path / "s.gb")
+    assert Document(tmp_path / "s.gb").sequence() == got.sequence()
+
 
 # ---- qualifiers ------------------------------------------------------------------------------------------------------------
 
@@ -421,6 +439,19 @@ def test_primers_survive_save(tmp_path):
     assert primer_features(Document(out)) == [("fwd", "TTTTTACGTTGCATGCCGATTAG", "5..24"),
                                               ("rev", "cgatccggCATGGCAACTTGGCTAATC", "complement(60..80)")]
     assert len(doc.features()) == 0, "the document itself does not get the primer sites"
+
+    # --- Benchling writes a primer as the feature type `primer` (not a GenBank key): read as primer_bind, saved as primer_bind
+    bench = tmp_path / "benchling.gb"
+    bench.write_text("LOCUS       b                         40 bp ds-DNA     circular     08-OCT-2026\n"
+                     "FEATURES             Location/Qualifiers\n"
+                     "     primer          complement(21..40)\n"
+                     "                     /label=\"rv\"\n"
+                     "                     /note=\"sequence: aaaaGTACGTACGTACGTACGTAC\"\n"
+                     "ORIGIN\n        1 acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt\n//\n")
+    assert primer_features(Document(bench)) == [("rv", "aaaaGTACGTACGTACGTACGTAC", "complement(21..40)")]
+    saved = tmp_path / "benchling_saved.gb"
+    Document(bench).save_genbank(saved)
+    assert primer_features(Document(saved)) == primer_features(Document(bench))
 
     # --- the primers of a .dna file survive the save as GenBank
     if PLASMID_DNA.exists():

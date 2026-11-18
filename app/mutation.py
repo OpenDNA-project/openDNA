@@ -100,7 +100,8 @@ def letters(text):
 
 def resolve(doc, spec, usage=None):
     """The mutation `spec` on `doc`: SimpleNamespace(spec, feature, start, end, text, warnings, hgvs_dna, hgvs_protein, effect),
-    the change being doc[start:end] -> text (0-based, forward strand). `usage` is a codon usage table (`.per_thousand`) or None."""
+    the change being doc[start:end] -> text (0-based, forward strand; for a change through the origin `shift` is
+    not 0 and start/end are in the plasmid turned by `shift`: doc.rotate(shift)). `usage` is a codon usage table (`.per_thousand`) or None."""
     name, scope, kind, g = parse(spec)
     n = doc.length
     warnings = []
@@ -116,6 +117,14 @@ def resolve(doc, spec, usage=None):
         start, end, text = _protein_change(doc, f, seq, kind, g, usage, warnings, spec)
     else:
         start, end, text = _dna_change(f if scope == "c" else None, seq, kind, g, warnings, spec)
+    shift = 0
+    if end > n:   # through the origin of the plasmid: worked out in a copy turned so that the change is not on the origin
+        from assembly import snapshot
+        shift = start
+        seq = seq[shift:] + seq[:shift]
+        doc = snapshot(doc)
+        doc.rotate(shift)
+        start, end = 0, end - shift
     asked = (start, end)
     while start < end and text and seq[start] == text[0]:   # a replacement keeps only the bases that differ (a codon change of one base is a substitution)
         start, text = start + 1, text[1:]
@@ -123,18 +132,16 @@ def resolve(doc, spec, usage=None):
         end, text = end - 1, text[:-1]
     if start == end and not text:   # the plasmid already has what was asked: accepted, with a warning, and nothing to make
         warnings.append(f"{spec}: no change, the plasmid already has these bases ({seq[asked[0]:asked[1]] or 'nothing to add'}): no primers are designed.")
-        r = SimpleNamespace(spec=spec, feature=None if f is None else f.label, start=start, end=end, text=text, warnings=warnings)
-        r.hgvs_dna = f"o.{asked[0] + 1}{'' if asked[1] - asked[0] < 2 else f'_{asked[1]}'}="
+        r = SimpleNamespace(spec=spec, feature=None if f is None else f.label, start=start, end=end, text=text, warnings=warnings, shift=shift)
+        r.hgvs_dna = f"o.{(asked[0] + shift) % n + 1}{'' if asked[1] - asked[0] < 2 else f'_{(asked[1] - 1 + shift) % n + 1}'}="
         r.hgvs_protein, r.effect = "p.(=)", "no change"
         return r
-    if start == end and start in (0, n):
-        raise UserError(f"{spec!r}: an insertion at the very start or end touches the origin of the plasmid, which is not supported.")
     slide = sliding(seq, start, end, text)
     if slide:
         warnings.append(f"{spec}: in a repeat, the same plasmid results if the change is placed up to {slide} base{'s' if slide > 1 else ''} further on "
                         "(HGVS writes it at the most 3' place; the primers differ slightly with the place).")
-    r = SimpleNamespace(spec=spec, feature=None if f is None else f.label, start=start, end=end, text=text, warnings=warnings)
-    r.hgvs_dna = describe(seq, start, end, text)
+    r = SimpleNamespace(spec=spec, feature=None if f is None else f.label, start=start, end=end, text=text, warnings=warnings, shift=shift)
+    r.hgvs_dna = describe(seq, start, end, text, shift)
     r.hgvs_protein, r.effect = effect(doc, seq, start, end, text, warnings)
     return r
 
@@ -155,7 +162,8 @@ def _dna_change(f, seq, kind, g, warnings, spec):
     n = len(seq)
     a = int(g["a"])
     b = int(g["b"]) if g.get("b") else a
-    if b < a:
+    wrapped = b < a and f is None   # o.3779_2del: a range through the origin of the circle
+    if b < a and not wrapped:
         raise UserError(f"{spec!r}: the first position is after the last one.")
     if f is None:   # o.: along the plasmid
         for p in (a, b):
@@ -166,17 +174,19 @@ def _dna_change(f, seq, kind, g, warnings, spec):
         ia, ib, strand = _map(f, a, spec), _map(f, b, spec), f.strand
         for p in (ia, ib):
             if not 0 <= p < n:
-                raise UserError(f"{spec!r}: that position is off the end of the plasmid (the origin is not crossed).")
+                raise UserError(f"{spec!r}: that position is off the end of the plasmid.")
     out = reverse_complement if strand < 0 else str   # the bases as written -> forward strand
     if kind == "ins":
-        if abs(ia - ib) != 1:
+        if wrapped and (a, b) == (n, 1):   # between the last base and the first
+            return n, n, out(g["alt"])
+        if wrapped or abs(ia - ib) != 1:
             raise UserError(f"{spec!r}: an insertion goes between two neighbouring bases (c.360_361insATG).")
         at = max(ia, ib)
         return at, at, out(g["alt"])
-    lo, hi = min(ia, ib), max(ia, ib) + 1
-    if a * b > 0 and hi - lo != b - a + 1:
+    lo, hi = (ia, ib + n + 1) if wrapped else (min(ia, ib), max(ia, ib) + 1)
+    if not wrapped and a * b > 0 and hi - lo != b - a + 1:
         raise UserError(f"{spec!r}: that range crosses the origin or a gap of the feature: write it with o. positions.")
-    old = seq[lo:hi]
+    old = (seq + seq)[lo:hi]
     expected = g.get("ref") or ""
     if expected and out(expected) != old:   # the bases the sender expects must be the ones there
         raise UserError(f"{spec!r}: the plasmid has {old if strand > 0 else reverse_complement(old)} at that place, not {expected}.")
@@ -184,7 +194,7 @@ def _dna_change(f, seq, kind, g, warnings, spec):
         return lo, hi, out(g["alt"])
     if kind == "del":
         return lo, hi, ""
-    return hi, hi, old   # dup: a second copy straight after
+    return (hi - n if hi > n else hi), (hi - n if hi > n else hi), old   # dup: a second copy straight after
 
 
 def _codons(doc, f, spec):
@@ -270,16 +280,21 @@ def sliding(seq, start, end, text):
     return k
 
 
-def describe(seq, start, end, text):
-    """The change as HGVS on the plasmid: o.1234G>C, o.1234_1240del, o.1234_1235insATG, o.1234_1240delinsATG."""
+def describe(seq, start, end, text, shift=0):
+    """The change as HGVS on the plasmid: o.1234G>C, o.1234_1240del, o.1234_1235insATG, o.1234_1240delinsATG. `shift`: the plasmid
+    `seq` is turned by that many bases (a change through the origin): the numbers are those of the file."""
+    n = len(seq)
+    num = lambda i: (i + shift) % n + 1   # (0-based index in seq -> 1-based position in the file)
     old = seq[start:end]
     if start == end:
-        return f"o.{start}_{start + 1}ins{text}"
+        return f"o.{num(start - 1)}_{num(start)}ins{text}"
+    first, last = num(start), num(end - 1)
+    span = f"{first}" if end - start == 1 else f"{first}_{last}"
     if not text:
-        return f"o.{start + 1}del" if end - start == 1 else f"o.{start + 1}_{end}del"
+        return f"o.{span}del"
     if len(old) == len(text) == 1:
-        return f"o.{start + 1}{old}>{text}"
-    return f"o.{start + 1}{'' if end - start == 1 else f'_{end}'}delins{text}"
+        return f"o.{first}{old}>{text}"
+    return f"o.{span}delins{text}"
 
 
 def translate(dna, code):
@@ -327,6 +342,8 @@ def effect(doc, seq, start, end, text, warnings):
     if delta % 3:
         warnings.append(f"Frameshift in {f.label!r} from residue {p + 1}.")
         return f"p.({t3(old_p[p]) if p < len(old_p) else 'Ter'}{p + 1}fs)", "frameshift"
+    if p == len(old_p) - 1 and old_p[p] == "*":   # the stop codon is lost: the protein would run on (to where, the CDS alone cannot say)
+        return f"p.(Ter{p + 1}{t3(new_p[p]) if p < len(new_p) else ''}ext*?)", "stop lost"
     if p < len(new_p) and new_p[p] == "*" and p < len(old_p) and old_p[p] != "*":   # a stop where there was an amino acid
         warnings.append(f"A stop codon appears in {f.label!r} at residue {p + 1}: the protein ends there.")
         return f"p.({t3(old_p[p])}{p + 1}Ter)", "nonsense"
@@ -334,8 +351,6 @@ def effect(doc, seq, start, end, text, warnings):
     while o_mid_end > p and n_mid_end > p and old_p[o_mid_end - 1] == new_p[n_mid_end - 1]:
         o_mid_end, n_mid_end = o_mid_end - 1, n_mid_end - 1
     old_mid, new_mid = old_p[p:o_mid_end], new_p[p:n_mid_end]
-    if p == 0 and old_p[0] == "M":
-        warnings.append(f"The start codon of {f.label!r} is changed.")
     if len(old_mid) == len(new_mid) == 1:
         return f"p.({t3(old_mid)}{p + 1}{t3(new_mid)})", "missense"
     if "*" in new_mid[:-1] or (new_mid.endswith("*") and not old_mid.endswith("*")):

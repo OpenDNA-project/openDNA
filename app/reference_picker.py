@@ -14,7 +14,7 @@ RECENT = 3
 KEY = "primers/recent_genomes"
 OFF = "No background genome"
 ADD = "Add genome file…"
-FILTER = "Sequence files (*.gb *.gbk *.gbff *.genbank *.dna *.fa *.fasta *.fna *.fas);;All files (*)"
+FILTER = "Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas);;All files (*)"
 
 
 def recent():

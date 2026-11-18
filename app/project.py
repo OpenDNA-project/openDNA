@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the installer is EXE_NAME-setup.exe).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.8.2"
+VERSION = "0.8.3"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,8 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = True
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.8.3": ["Opens more files from other programs: Benchling GenBank files (its primers, written as the feature type \"primer\", are read as primers), APE (.ape) and EMBL (.embl) files.",
+              "A command line for scripts and AI agents (oDNA-cli.exe next to the program): KLD, PCR primer and recombineering designs for a whole table of mutations or regions, with the same results as the windows. Changes through the origin of a plasmid are supported."],
     "0.8.2": ["The README has a feature list and new pictures of the 0.8 interface; no program change."],
     "0.8.1": ["The PCR tab has three panes: the template on the left, the primers in the middle, the product on the right. Choose a forward and a reverse primer, click primers on the template, or select a region and press Design (the search window starts at 0 bp: the product is exactly the selection). Designed pairs get a heterodimer check.",
               "The menus are shorter and grouped: Edit, View, Feature, Primers, Databases and Tools lost the items that are on the toolbar, the right-click menus or the keys. Edit has Set Origin to Selection Start, and icons line up with the checkmarks.",
@@ -58,7 +60,7 @@ WHATS_NEW = {
 }
 # File extensions the program opens (File > Open, "Open with", the file-type association).
 FILE_TYPES = {
-    ".gb": "GenBank file", ".gbk": "GenBank file", ".gbff": "GenBank file", ".genbank": "GenBank file",
+    ".gb": "GenBank file", ".gbk": "GenBank file", ".gbff": "GenBank file", ".genbank": "GenBank file", ".ape": "GenBank file", ".embl": "EMBL file",
     ".dna": ".dna file",
     ".fa": "FASTA file", ".fasta": "FASTA file", ".fna": "FASTA file", ".fas": "FASTA file",
 }

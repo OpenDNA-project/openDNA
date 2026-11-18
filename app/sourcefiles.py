@@ -10,7 +10,7 @@ from primer_db import data_dir
 
 KEY, PIN_KEY, MAX_RECENT = "files/recent", "files/pinned", 12
 FASTA_EXT = {".fa", ".fasta", ".fna", ".fas", ".ffn", ".frn", ".mfa"}
-OPEN_FILTER = "Sequences (*.gb *.gbk *.gbff *.genbank *.dna *.fa *.fasta *.fna *.fas);;All files (*)"
+OPEN_FILTER = "Sequences (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas);;All files (*)"
 
 
 def _settings():

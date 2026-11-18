@@ -15,7 +15,7 @@ import fileio
 from reference import genbank_records, is_fasta_file
 
 
-GENBANK_EXT = {".gb", ".gbk", ".gbff", ".genbank", ".gen"}
+GENBANK_EXT = {".gb", ".gbk", ".gbff", ".genbank", ".gen", ".ape", ".embl"}
 
 
 def is_multi_genbank(path):

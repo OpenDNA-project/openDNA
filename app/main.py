@@ -86,7 +86,7 @@ from uikit import plural, run_busy
 tool_settings.register_page(genetic_code.TOOL, codon_dialog.UsageBox)   # the codon usage line of the Genetic code page
 
 FASTA_EXT = {".fa", ".fasta", ".fna", ".fas", ".ffn", ".frn", ".mfa"}
-OPEN_FILTER = ("Sequence files (*.gb *.gbk *.gbff *.genbank *.dna *.fa *.fasta *.fna *.fas *.odp);;"
+OPEN_FILTER = ("Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas *.odp);;"
                "Open DNA Project (*.odp);;All files (*)")
 TRACK_FILTER = ("Tracks (*.gff *.gff3 *.gtf *.bed *.vcf *.vcf.gz *.bam);;Alignments (*.bam);;"
                 "Variants (*.vcf *.vcf.gz);;All files (*)")
