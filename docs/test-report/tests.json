@@ -7357,6 +7357,35 @@
    "evidence": "",
    "gaps": [],
    "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_pcr_batch_gives_the_pairs_the_panel_gives",
+   "area": "Command line for agents",
+   "role": "The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results.",
+   "purpose": "pcr check and run give, for 150..400 and 200..450, the pairs of primer_design.design_region (same sequences and sizes), sitting on the two ends of the target; a 12 bp target and an unknown feature are error rows with the reason (exit 1); check writes nothing; run writes primers.csv, report.jsonl and settings.json and shows an overridden Tm as an override; a second run into the same folder is refused.",
+   "cases": [
+    {
+     "input": "pcr check t.gb with rows a 150..400, b 200..450, short 150..161, bad nope",
+     "expected": "exit 1; a and b ok, short 'No pair found', bad 'No feature called'; no output folder"
+    },
+    {
+     "input": "pairs of a and b",
+     "expected": "equal to design_region(doc, 149, 400) and (199, 450); product 251 bp with fwd.start 150 and rev.end 400; fwd primer = the plasmid's own bases"
+    },
+    {
+     "input": "pcr run --out out --tm 62, then again",
+     "expected": "tm override reported; three files; primers.csv lines = pairs found; the second run refused ('already exists')"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": [
+    "The genome checks run against the demo genome of the repository, whatever the machine's own setting."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
   }
  ],
  "removed": [

@@ -12,6 +12,7 @@ window 0 it is exactly the target). Each candidate gets a penalty (lower is bett
 A pair adds the Tm difference and their 3' cross-dimer ΔG beyond -5 kcal/mol.
 """
 import re
+from types import SimpleNamespace
 
 from opendna_core import dimer, hairpin, tm
 
@@ -20,6 +21,7 @@ from primer_panel import conditions, homology_settings
 from uikit import plural
 
 KEEP = 25  # best candidates per side that get the (slower) uniqueness check and pairing
+DEFAULT_TM, DEFAULT_MIN_LEN, DEFAULT_MAX_LEN, DEFAULT_WINDOW = 60.0, 18, 25, 0   # the Primers panel's starting values and the command line's defaults
 
 
 def salt(cond):
@@ -112,3 +114,10 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0,
             pairs.append({"fwd": f, "rev": r, "size": r["raw"] - f["raw"], "penalty": penalty, "notes": notes})
     pairs.sort(key=lambda p: p["penalty"])
     return pairs[:count]
+
+
+def design_region(doc, start, end, tm_target=DEFAULT_TM, min_len=DEFAULT_MIN_LEN, max_len=DEFAULT_MAX_LEN, window=DEFAULT_WINDOW):
+    """`design` as the PCR panel calls it, for the region [start, end) of `doc`: the longest allowed length is never below the shortest, and
+    on a fixed place (window 0) the best pair whatever its Tm, else only primers within 5 degrees of the target."""
+    return design(SimpleNamespace(length=doc.length, doc=doc), start, end, tm_target=tm_target, min_len=min_len, max_len=max(min_len, max_len),
+                  window=window, tm_tolerance=None if window == 0 else 5)

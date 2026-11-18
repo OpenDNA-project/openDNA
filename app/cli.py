@@ -98,36 +98,44 @@ def cmd_region(args):
     return {"start": args.start, "end": args.end, "length": args.end - args.start + 1, "sequence": doc.sequence(args.start - 1, args.end)}
 
 
-def effective_settings(args):
-    """Every setting that changes the answer, with its value and where it came from: for the agent to show before `run`."""
+def given(value, default):
+    """A setting for the agent to show: the value in use and where it came from."""
+    return {"value": default if value is None else value, "source": "default" if value is None else "override (command line)"}
+
+
+def effective_settings(extra):
+    """Every setting that changes the answer, with its value and where it came from: for the agent to show before `run`. `extra`: the
+    settings of the command itself."""
     import codon_usage
     import genetic_code
-    import kld
     import primer_panel
     from primer_db import settings
     saved = settings()
-    given = lambda v, default: {"value": default if v is None else v, "source": "default" if v is None else "override (command line)"}
     usage = codon_usage.active()
+    seed, mismatches = primer_panel.homology_settings()
+    genome = primer_panel.default_genome()
     return {
-        "kld": {"tm": given(args.tm, kld.DEFAULT_TM), "group": given(args.group, kld.DEFAULT_GROUP), "warn_insert": given(args.warn, kld.DEFAULT_WARN)},
+        **extra,
         "pcr_conditions": {k: {"value": v, "source": "saved in openDNA" if saved.contains(f"pcr/{k}") else "default"}
                            for k, v in primer_panel.conditions().items()},
         "genetic_code_table": {"value": genetic_code.table_id(), "source": "openDNA settings"},
         "codon_usage_table": {"value": usage.name if usage else None,
                               "source": "openDNA settings" if usage else "none: ties between codons are broken alphabetically"},
+        "primer_checks": {"homology_seed": {"value": seed, "source": "openDNA settings"}, "homology_mismatches": {"value": mismatches, "source": "openDNA settings"},
+                          "background_genome": {"value": genome, "source": "openDNA settings (Primers > Options)" if genome else "none set: no genome check"}},
     }
 
 
-def read_table(path):
-    """Rows of a CSV with the columns id, mutation (nothing else): each row {id, mutation}."""
+def read_table(path, second="mutation"):
+    """Rows of a CSV with the columns id and `second` (nothing else): each row {id, <second>}."""
     import csv
     import re
     if not Path(path).is_file():
         raise CliError(f"File not found: {path}")
     with open(path, newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
-        if sorted(reader.fieldnames or []) != ["id", "mutation"]:
-            raise CliError(f"{path}: the columns must be exactly id,mutation (found: {', '.join(reader.fieldnames or []) or 'none'}).")
+        if sorted(reader.fieldnames or []) != sorted(["id", second]):
+            raise CliError(f"{path}: the columns must be exactly id,{second} (found: {', '.join(reader.fieldnames or []) or 'none'}).")
         rows = [{k: (v or "").strip() for k, v in r.items()} for r in reader]
     if not rows:
         raise CliError(f"{path}: no rows.")
@@ -171,6 +179,7 @@ def kld_row(source, row, args, usage, out_dir):
 
 def cmd_kld(args):
     import codon_usage
+    import kld
     source, rows = load(args.plasmid), read_table(args.mutations)
     out_dir = None
     if args.action == "run":
@@ -178,7 +187,8 @@ def cmd_kld(args):
         if out_dir.exists() and any(out_dir.iterdir()):
             raise CliError(f"The output folder {out_dir} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
         out_dir.mkdir(parents=True, exist_ok=True)
-    settings = effective_settings(args)
+    settings = effective_settings({"kld": {"tm": given(args.tm, kld.DEFAULT_TM), "group": given(args.group, kld.DEFAULT_GROUP),
+                                           "warn_insert": given(args.warn, kld.DEFAULT_WARN)}})
     usage = codon_usage.active()
     records = [kld_row(source, row, args, usage, out_dir) for row in rows]
     failed = [r for r in records if r["status"] == "error"]
@@ -195,6 +205,74 @@ def cmd_kld(args):
                     tm = lambda p: round(p["annealing_tm"], 1) if p["annealing_tm"] else ""
                     w.writerow([r["id"], r["mutation"], r["hgvs_dna"], r["hgvs_protein"], f["sequence"], tm(f), rv["sequence"], tm(rv),
                                 " | ".join(r["warnings"])])
+        (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+        (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+        result["out"] = str(out_dir)
+    return result, 1 if failed else 0
+
+
+def pcr_row(doc, row, args):
+    """The best primer pairs for one target (a feature name or START..END, 1-based inclusive): the record of the row."""
+    import re
+    from types import SimpleNamespace
+    import primer_design
+    import primer_panel
+    from mutation import find_feature, hull
+    rec = {"id": row["id"], "target": row["target"], "status": "error"}
+    try:
+        m = re.fullmatch(r"(\d+)\.\.(\d+)", row["target"])
+        if m:
+            first, last = int(m.group(1)), int(m.group(2))
+            if not 1 <= first < last <= doc.length:
+                raise CliError(f"{row['target']!r}: positions must satisfy 1 <= START < END <= {doc.length}.")
+        else:
+            first, last = hull(find_feature(doc, row["target"]))
+        opts = {k: v for k, v in dict(tm_target=args.tm, min_len=args.min_len, max_len=args.max_len, window=args.window).items() if v is not None}
+        pairs = primer_design.design_region(doc, first - 1, last, **opts)
+    except CliError as e:
+        rec["error"] = str(e)
+        return rec
+    if not pairs:
+        rec["error"] = "No pair found: widen the search window (--window), the length range (--min-len, --max-len) or the Tm (--tm)."
+        return rec
+    ed = SimpleNamespace(length=doc.length, doc=doc)   # (what primer_checks reads of an editor)
+    out = []
+    for rank, p in enumerate(pairs, 1):
+        checks = {k: primer_panel.primer_checks(ed, p[k]["seq"], "wait") for k in ("fwd", "rev")}
+        out.append({"rank": rank, "product_size": p["size"], "penalty": round(p["penalty"], 2), "notes": p["notes"],
+                    "mark": primer_panel.worst(checks["fwd"] + checks["rev"]),
+                    **{k: {"sequence": p[k]["seq"], "tm": round(p[k]["tm"], 1), "gc": round(p[k]["gc"]), "start": p[k]["start"] + 1, "end": p[k]["end"],
+                           "checks": [{"check": n, "level": lv, "text": t} for n, lv, t in checks[k]]} for k in ("fwd", "rev")}})
+    rec.update(status="ok", start=first, end=last, pairs=out)
+    return rec
+
+
+def cmd_pcr(args):
+    import primer_design
+    doc, rows = load(args.plasmid), read_table(args.targets, "target")
+    out_dir = None
+    if args.action == "run":
+        out_dir = Path(args.out) if args.out else Path(args.plasmid).with_name(Path(args.plasmid).stem + "_pcr")
+        if out_dir.exists() and any(out_dir.iterdir()):
+            raise CliError(f"The output folder {out_dir} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
+        out_dir.mkdir(parents=True, exist_ok=True)
+    settings = effective_settings({"pcr_design": {"tm": given(args.tm, primer_design.DEFAULT_TM), "min_len": given(args.min_len, primer_design.DEFAULT_MIN_LEN),
+                                                  "max_len": given(args.max_len, primer_design.DEFAULT_MAX_LEN),
+                                                  "window": given(args.window, primer_design.DEFAULT_WINDOW)}})
+    records = [pcr_row(doc, row, args) for row in rows]
+    failed = [r for r in records if r["status"] == "error"]
+    result = {"settings": settings, "summary": {"rows": len(rows), "ok": len(rows) - len(failed), "errors": len(failed),
+                                                 "with_warnings": sum(any(p["mark"] in ("warn", "bad") for p in r.get("pairs", [])) for r in records)},
+              "rows": records}
+    if out_dir is not None:
+        import csv
+        with open(out_dir / "primers.csv", "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["id", "target", "rank", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "product_size", "penalty", "mark", "notes"])
+            for r in records:
+                for p in r.get("pairs", []):
+                    w.writerow([r["id"], r["target"], p["rank"], p["fwd"]["sequence"], p["fwd"]["tm"], p["rev"]["sequence"], p["rev"]["tm"],
+                                p["product_size"], p["penalty"], p["mark"], " | ".join(p["notes"])])
         (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
         (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
         result["out"] = str(out_dir)
@@ -239,6 +317,16 @@ def parser():
     s.add_argument("--group", type=int, help="changes closer than this many bp share one primer pair (default 30)")
     s.add_argument("--warn", type=int, help="warn for insertions above this many bp (default 120)")
     s.set_defaults(run=cmd_kld, returns_code=True)
+    s = sub.add_parser("pcr", help="PCR primer pairs for a table of targets (a feature name or START..END), with the Primers panel's checks")
+    s.add_argument("action", choices=["check", "run"])
+    s.add_argument("plasmid")
+    s.add_argument("targets", help="CSV with the columns id,target")
+    s.add_argument("--out", help="run: a new output folder (default: PLASMID_pcr next to the plasmid)")
+    s.add_argument("--tm", type=float, help="target Tm in deg C (default 60)")
+    s.add_argument("--min-len", type=int, help="shortest primer (default 18)")
+    s.add_argument("--max-len", type=int, help="longest primer (default 25)")
+    s.add_argument("--window", type=int, help="how far from the target ends a primer may start, in bp (default 0: on the ends)")
+    s.set_defaults(run=cmd_pcr, returns_code=True)
     s = sub.add_parser("region", help="the bases START..END (1-based, inclusive)")
     s.add_argument("file")
     s.add_argument("start", type=int)
@@ -249,6 +337,9 @@ def parser():
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    for stream in (sys.stdout, sys.stderr):   # a Windows console is not UTF-8: primer notes and recipes have symbols
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     try:
         if args.command != "skills":
             qt_setup()   # (genetic_code reads the settings file: the same table choice as the windows)

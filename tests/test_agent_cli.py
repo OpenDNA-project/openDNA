@@ -56,7 +56,7 @@ def test_every_recipe_example_still_runs(capsys):
     the tool is caught here)."""
     code, out, _ = run(capsys, "skills", "list")
     names = [line.split(":")[0] for line in out.splitlines()]
-    assert code == 0 and {"index", "inspect", "kld"} <= set(names)
+    assert code == 0 and {"index", "inspect", "kld", "pcr"} <= set(names)
     for name in names:
         code, text, _ = run(capsys, "skills", "show", name)
         assert code == 0
@@ -160,3 +160,37 @@ def test_kld_batch_gives_the_files_and_primers_the_panel_gives(tmp_path, capsys)
     assert "exactly id,mutation" in run(capsys, "kld", "check", gb, table)[2]
     table.write_text("id,mutation\na b,gx:A2T\nc,gx:A2T\nc,gx:A2T\n", encoding="utf-8")
     assert "used twice" in run(capsys, "kld", "check", gb, table)[2]
+
+
+# ---- PCR primers ---------------------------------------------------------------------------------------------------------------
+
+import primer_design
+
+
+def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys):
+    doc, seq = plasmid()
+    gb = tmp_path / "t.gb"
+    doc.write_genbank(str(gb), None)
+    table = tmp_path / "t.csv"
+    table.write_text("id,target\na,150..400\nb,200..450\nshort,150..161\nbad,nope\n", encoding="utf-8")
+    code, text, _ = run(capsys, "pcr", "check", gb, table)   # check writes nothing
+    res = json.loads(text)
+    assert code == 1 and not (tmp_path / "t_pcr").exists() and res["summary"]["ok"] == 2 and res["summary"]["errors"] == 2
+    assert [r["status"] for r in res["rows"]] == ["ok", "ok", "error", "error"]
+    assert "No pair found" in res["rows"][2]["error"] and "No feature called" in res["rows"][3]["error"]   # (12 bp: shorter than a primer)
+    for row, (a, b) in zip(res["rows"][:2], ((150, 400), (200, 450))):
+        direct = primer_design.design_region(doc, a - 1, b)      # the panel's own call
+        assert [(p["fwd"]["sequence"], p["rev"]["sequence"], p["product_size"]) for p in row["pairs"]] == \
+               [(d["fwd"]["seq"], d["rev"]["seq"], d["size"]) for d in direct]
+        best = row["pairs"][0]   # on the ends of the target: the product is the target
+        assert best["product_size"] == b - a + 1 and best["fwd"]["start"] == a and best["rev"]["end"] == b and best["mark"] in ("ok", "warn", "bad")
+        assert best["fwd"]["sequence"] == seq[a - 1:a - 1 + len(best["fwd"]["sequence"])]
+    assert res["settings"]["pcr_design"]["tm"] == {"value": 60.0, "source": "default"} and "pcr_conditions" in res["settings"]
+    out = tmp_path / "out"
+    code, text, _ = run(capsys, "pcr", "run", gb, table, "--out", out, "--tm", 62)
+    res = json.loads(text)
+    assert code == 1 and res["settings"]["pcr_design"]["tm"] == {"value": 62.0, "source": "override (command line)"}
+    assert sorted(p.name for p in out.iterdir()) == ["primers.csv", "report.jsonl", "settings.json"]
+    rows = list(csv.DictReader(open(out / "primers.csv", encoding="utf-8")))
+    assert len(rows) == sum(len(r.get("pairs", [])) for r in res["rows"]) and {r["id"] for r in rows} == {"a", "b"}
+    assert "already exists" in run(capsys, "pcr", "run", gb, table, "--out", out)[2]

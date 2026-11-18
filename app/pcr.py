@@ -15,7 +15,7 @@ from html import escape
 from opendna_core import dimer
 
 from primer_db import add_primers
-from primer_design import design, salt
+from primer_design import DEFAULT_MAX_LEN, DEFAULT_MIN_LEN, DEFAULT_TM, DEFAULT_WINDOW, design_region, salt
 from primer_panel import (MARKS, MAX_NAME, ReportView, conditions, is_degenerate, limit, primer_checks, primer_problem, warm_genome,
                           worst)
 from tools import ToolDialog, pcr_product, product_range
@@ -39,12 +39,12 @@ class PcrPage(ToolDialog):
         self.fwd, self.rev = QComboBox(), QComboBox()
         for combo in (self.fwd, self.rev):
             combo.currentIndexChanged.connect(self._pair_chosen)
-        self.tm = QDoubleSpinBox(minimum=45, maximum=75, value=60, decimals=1, suffix=" °C")
-        self.min_len = QSpinBox(minimum=12, maximum=35, value=18)
-        self.max_len = QSpinBox(minimum=12, maximum=40, value=25)
+        self.tm = QDoubleSpinBox(minimum=45, maximum=75, value=DEFAULT_TM, decimals=1, suffix=" °C")
+        self.min_len = QSpinBox(minimum=12, maximum=35, value=DEFAULT_MIN_LEN)
+        self.max_len = QSpinBox(minimum=12, maximum=40, value=DEFAULT_MAX_LEN)
         self.min_len.valueChanged.connect(lambda v: self.max_len.setValue(max(v, self.max_len.value())))   # shortest <= longest
         self.max_len.valueChanged.connect(lambda v: self.min_len.setValue(min(v, self.min_len.value())))
-        self.window = QSpinBox(minimum=0, maximum=2000, value=0, suffix=" bp")
+        self.window = QSpinBox(minimum=0, maximum=2000, value=DEFAULT_WINDOW, suffix=" bp")
         self.window.setToolTip("How far outside the selected region the primers may sit, on each side. 0: the product is exactly "
                                "the selected region.")
         self.target = QLabel()
@@ -272,11 +272,10 @@ class PcrPage(ToolDialog):
             return
         self._clear_designs()
         self._populate()
-        args = dict(start=ed.start, end=ed.end, tm_target=self.tm.value(), min_len=self.min_len.value(),
-                    max_len=max(self.min_len.value(), self.max_len.value()), window=self.window.value(),
-                    tm_tolerance=None if self.window.value() == 0 else 5)   # (on a fixed place: the best whatever its Tm)
+        args = dict(start=ed.start, end=ed.end, tm_target=self.tm.value(), min_len=self.min_len.value(), max_len=self.max_len.value(),
+                    window=self.window.value())
         # (thousands of candidates: in a thread behind a busy dialog, so the window is drawn and stays alive meanwhile)
-        self.pairs = run_busy(self, "Designing primers…", lambda: design(ed, **args))
+        self.pairs = run_busy(self, "Designing primers…", lambda: design_region(ed.doc, **args))
         self.table.setRowCount(len(self.pairs))
         # The genome search (every chromosome) first, with a progress dialog; the checks below then read its results.
         warm_genome(self, ed, [p[k]["seq"] for p in self.pairs for k in ("fwd", "rev")])
