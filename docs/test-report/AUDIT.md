@@ -2,21 +2,21 @@
 
 [← unit-test report](README.md)
 
-Built by `scripts/test_report.py` on 2026-11-17 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
+Built by `scripts/test_report.py` on 2026-11-18 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
 
 ## Totals
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 101 | 101 | 0 | 70 | 31 | 0 | 0 | 78 |
+| Python | 109 | 109 | 0 | 74 | 35 | 0 | 0 | 85 |
 | Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 166 | 166 | 0 | 112 | 53 | 1 | 0 | 122 |
+| **All** | 174 | 174 | 0 | 116 | 57 | 1 | 0 | 129 |
 
 ## Weak or unreviewed tests
 
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 166 tests)
+## Gaps and proposed tests (3 of 174 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -42,6 +42,19 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 
 ## Every test, by file
+
+### `tests/test_agent_cli.py` (8 tests)
+
+| Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
+|---|---|---|---|---|---|
+| `test_agent_reads_the_plasmid` | An agent would plan 200 edits from wrong positions, strands or amino acids, and every one of them would be wrong. | independent implementation | adequate | sound | One demo plasmid only: a join or a feature across the origin is not exercised. |
+| `test_agent_mistakes_are_one_error_line` | A mistake in the agent's input could end as a traceback or silent output that the agent cannot read or pass to the user. | hand-computed | adequate | sound |  |
+| `test_every_recipe_example_still_runs` | A recipe could keep telling agents to run a command that no longer exists or whose arguments changed. | smoke | adequate | sound | Checks that examples run, not that their output is what the recipe says. |
+| `test_hgvs_mutations_become_the_change_they_name` | A mutation written in HGVS could be turned into the wrong bases (off by one, wrong strand, wrong codon) and 200 wrong plasmids and primer pairs would be made from it. | hand-computed | strong | sound | Features made of several parts (joins) and changes beyond the ends of a CDS are not exercised. |
+| `test_hgvs_mistakes_say_what_to_fix_and_ambiguities_only_warn` | A wrong reference base or amino acid in a mutation table could be applied silently, and an ambiguous codon choice could be made without telling the user. | hand-computed | adequate | sound | The warning for a change that can slide along a repeat is not tested. |
+| `test_kld_batch_gives_the_files_and_primers_the_panel_gives` | The batch could give files or primers different from what the user gets by hand in the KLD panel, or overwrite earlier results, or accept a malformed table. | independent implementation | strong | sound | Settings are the defaults of the test machine: a saved setting that changes the primers is not exercised. |
+| `test_pcr_batch_gives_the_pairs_the_panel_gives` | The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results. | independent implementation | strong | sound | The genome checks run against the demo genome of the repository, whatever the machine's own setting. |
+| `test_recombineering_batch_gives_the_designs_the_panel_gives` | The batch could place the cassette in the wrong orientation or place, give primers whose tails are not the genome's homologies, or overwrite earlier results. | hand-computed | strong | sound | A genome with a linear topology and a region near its end is not exercised. |
 
 ### `tests/test_assembly.py` (10 tests)
 

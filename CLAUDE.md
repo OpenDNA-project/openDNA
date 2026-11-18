@@ -128,6 +128,20 @@ Mistakes made on the last one, and what to do instead:
 - **Commit with `tests.json` untouched only when no test changed.** A pure refactor needs no report
   rebuild; adding or renaming a test does (see above).
 
+## The command line for agents
+
+`app/cli.py` (`.venv\Scripts\python.exe -m app.cli ...`; installed as `oDNA-cli.exe`, a console build of the same bundle, see `packaging/openDNA.spec`)
+runs the same functions as the windows with no window: `inspect`, `feature`, `region`, `skills`, and `kld`, `pcr`, `recombineering` (each `check` then
+`run`). Each function has a recipe for agents in `app/agent/skills/<name>.md` (layout: see `kld.md`); `app/agent/index.md` holds the rules common to all.
+
+When you add or change a function a user can run:
+
+- Do not copy a panel's defaults or orchestration into `cli.py`: put them in the compute module (`kld.DEFAULT_TM`, `primer_design.design_region`, `kld.with_primers`)
+  and have the panel call them too, so the command line and the window cannot differ.
+- Add a command, a recipe whose `## Example` block runs (`tests/test_agent_cli.py` runs every recipe's example), and a test that compares the command
+  with the module function the panel calls.
+- Errors a sender can fix raise `UserError` (`app/user_error.py`): one `ERROR:` line, exit 1. Ambiguities never stop a row: default plus a warning.
+
 ## Before pushing a PR
 
 Run `/simplify` and then `/code-review` on the change before pushing any PR, and act on what they find.

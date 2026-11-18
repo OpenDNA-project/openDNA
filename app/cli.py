@@ -126,16 +126,18 @@ def effective_settings(extra):
     }
 
 
-def read_table(path, second="mutation"):
-    """Rows of a CSV with the columns id and `second` (nothing else): each row {id, <second>}."""
+def read_table(path, *columns, optional=()):
+    """Rows of a CSV with the columns id and `columns` (and the `optional` ones, if present; nothing else): each row a dict."""
     import csv
     import re
     if not Path(path).is_file():
         raise CliError(f"File not found: {path}")
     with open(path, newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
-        if sorted(reader.fieldnames or []) != sorted(["id", second]):
-            raise CliError(f"{path}: the columns must be exactly id,{second} (found: {', '.join(reader.fieldnames or []) or 'none'}).")
+        found, need = list(reader.fieldnames or []), ["id", *columns]
+        if not set(need) <= set(found) or not set(found) <= set(need) | set(optional):
+            raise CliError(f"{path}: the columns must be exactly {','.join(need)}" + (f" (and optionally {','.join(optional)})" if optional else "")
+                           + f"; found: {', '.join(found) or 'none'}.")
         rows = [{k: (v or "").strip() for k, v in r.items()} for r in reader]
     if not rows:
         raise CliError(f"{path}: no rows.")
@@ -180,7 +182,7 @@ def kld_row(source, row, args, usage, out_dir):
 def cmd_kld(args):
     import codon_usage
     import kld
-    source, rows = load(args.plasmid), read_table(args.mutations)
+    source, rows = load(args.plasmid), read_table(args.mutations, "mutation")
     out_dir = None
     if args.action == "run":
         out_dir = Path(args.out) if args.out else Path(args.plasmid).with_name(Path(args.plasmid).stem + "_kld")
@@ -211,22 +213,27 @@ def cmd_kld(args):
     return result, 1 if failed else 0
 
 
+def target_range(doc, text):
+    """(first, last), 1-based inclusive, of a feature (name or #INDEX) or of START..END."""
+    import re
+    from mutation import find_feature, hull
+    m = re.fullmatch(r"(\d+)\.\.(\d+)", text)
+    if not m:
+        return hull(find_feature(doc, text))
+    first, last = int(m.group(1)), int(m.group(2))
+    if not 1 <= first < last <= doc.length:
+        raise CliError(f"{text!r}: positions must satisfy 1 <= START < END <= {doc.length}.")
+    return first, last
+
+
 def pcr_row(doc, row, args):
     """The best primer pairs for one target (a feature name or START..END, 1-based inclusive): the record of the row."""
-    import re
     from types import SimpleNamespace
     import primer_design
     import primer_panel
-    from mutation import find_feature, hull
     rec = {"id": row["id"], "target": row["target"], "status": "error"}
     try:
-        m = re.fullmatch(r"(\d+)\.\.(\d+)", row["target"])
-        if m:
-            first, last = int(m.group(1)), int(m.group(2))
-            if not 1 <= first < last <= doc.length:
-                raise CliError(f"{row['target']!r}: positions must satisfy 1 <= START < END <= {doc.length}.")
-        else:
-            first, last = hull(find_feature(doc, row["target"]))
+        first, last = target_range(doc, row["target"])
         opts = {k: v for k, v in dict(tm_target=args.tm, min_len=args.min_len, max_len=args.max_len, window=args.window).items() if v is not None}
         pairs = primer_design.design_region(doc, first - 1, last, **opts)
     except CliError as e:
@@ -273,6 +280,92 @@ def cmd_pcr(args):
                 for p in r.get("pairs", []):
                     w.writerow([r["id"], r["target"], p["rank"], p["fwd"]["sequence"], p["fwd"]["tm"], p["rev"]["sequence"], p["rev"]["tm"],
                                 p["product_size"], p["penalty"], p["mark"], " | ".join(p["notes"])])
+        (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+        (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+        result["out"] = str(out_dir)
+    return result, 1 if failed else 0
+
+
+def rec_row(genome, row, args, folder, cassettes, out_dir):
+    """One recombineering design: the cassette (a GenBank file, or `none` for a deletion) replaces a region of the genome."""
+    import primer_design
+    import primer_panel
+    import recombineering as R
+    from assembly import transfer_primers
+    from types import SimpleNamespace
+    rec = {"id": row["id"], "region": row["region"], "cassette": row["cassette"], "status": "error"}
+    try:
+        first, last = target_range(genome, row["region"])
+        orientation = row.get("orientation", "").lower() or "forward"
+        if orientation not in ("forward", "reverse"):
+            raise CliError(f"orientation must be forward or reverse, not {orientation!r}.")
+        if row["cassette"].lower() in ("none", "-"):   # a deletion
+            cassette = Document_new("none", "")
+        else:
+            path = Path(row["cassette"])
+            path = path if path.is_absolute() else folder / path
+            if str(path) not in cassettes:
+                cassettes[str(path)] = load(path)
+            cassette = cassettes[str(path)]
+        left = R.HOMOLOGY if args.homology is None else args.homology
+        d = R.design(genome, cassette, first - 1, last, left, left, orientation == "reverse",
+                     primer_design.DEFAULT_TM if args.tm is None else args.tm)
+    except (CliError, ValueError) as e:
+        rec["error"] = str(e)
+        return rec
+    warnings = []
+    for f in genome.features():   # (by the parts of a feature: one that joins the two ends of the plasmid is not "all of it")
+        if f.kind == "source" or not any(s < last and first - 1 < e for s, e in f.spans):
+            continue
+        if all(first - 1 <= s and e <= last for s, e in f.spans):
+            warnings.append(f"The region removes the {f.kind} {f.label!r} ({f.location}).")
+        else:
+            warnings.append(f"The region cuts the {f.kind} {f.label!r} ({f.location}): only part of it is replaced.")
+    rec.update(status="ok", start=first, end=last, replaced_bp=last - first + 1, cassette_bp=sum(len(s) for s in [cassette.sequence(0, None)]),
+               orientation=orientation, left_homology=d.left, right_homology=d.right, warnings=warnings,
+               primers=[{"name": n, "sequence": s, "annealing_length": a, "annealing_tm": primer_panel.melting_temp(s[-a:])} for n, s, a, _ in d.rows])
+    if out_dir is not None:
+        if d.rows:
+            transfer_primers(d.product, [SimpleNamespace(fwd=d.rows[0][:2], rev=d.rows[1][:2])])
+        if not args.primers_only:
+            d.product.write_genbank(str(out_dir / f"{row['id']}.gb"), None)
+            rec["file"] = f"{row['id']}.gb"
+    return rec
+
+
+def Document_new(name, bases):
+    from opendna_core import Document
+    return Document.new_sequence(name, bases, False)
+
+
+def cmd_recombineering(args):
+    import recombineering as R
+    genome = load(args.genome)
+    rows = read_table(args.table, "region", "cassette", optional=("orientation",))
+    out_dir = None
+    if args.action == "run":
+        out_dir = Path(args.out) if args.out else Path(args.genome).with_name(Path(args.genome).stem + "_rec")
+        if out_dir.exists() and any(out_dir.iterdir()):
+            raise CliError(f"The output folder {out_dir} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
+        out_dir.mkdir(parents=True, exist_ok=True)
+    import primer_design
+    settings = effective_settings({"recombineering": {"homology": given(args.homology, R.HOMOLOGY), "annealing_tm": given(args.tm, primer_design.DEFAULT_TM),
+                                                      "write_genomes": {"value": not args.primers_only, "source": "default" if not args.primers_only else "override (command line)"}}})
+    cassettes = {}
+    records = [rec_row(genome, row, args, Path(args.table).resolve().parent, cassettes, out_dir) for row in rows]
+    failed = [r for r in records if r["status"] == "error"]
+    result = {"settings": settings, "summary": {"rows": len(rows), "ok": len(rows) - len(failed), "errors": len(failed),
+                                                 "with_warnings": sum(bool(r.get("warnings")) for r in records)}, "rows": records}
+    if out_dir is not None:
+        import csv
+        with open(out_dir / "primers.csv", "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["id", "region", "cassette", "orientation", "forward_primer", "forward_tm", "reverse_primer", "reverse_tm", "warnings"])
+            for r in records:
+                if r["status"] == "ok":
+                    f, rv = (r["primers"] + [{"sequence": "", "annealing_tm": None}] * 2)[:2]   # (a deletion has no primers: nothing to amplify)
+                    tm = lambda p: round(p["annealing_tm"], 1) if p["annealing_tm"] else ""
+                    w.writerow([r["id"], r["region"], r["cassette"], r["orientation"], f["sequence"], tm(f), rv["sequence"], tm(rv), " | ".join(r["warnings"])])
         (out_dir / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
         (out_dir / "settings.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
         result["out"] = str(out_dir)
@@ -327,6 +420,15 @@ def parser():
     s.add_argument("--max-len", type=int, help="longest primer (default 25)")
     s.add_argument("--window", type=int, help="how far from the target ends a primer may start, in bp (default 0: on the ends)")
     s.set_defaults(run=cmd_pcr, returns_code=True)
+    s = sub.add_parser("recombineering", help="lambda Red: primers (homology tails) and the recombinant genome for cassettes that replace regions")
+    s.add_argument("action", choices=["check", "run"])
+    s.add_argument("genome")
+    s.add_argument("table", help="CSV with the columns id,region,cassette (and optionally orientation)")
+    s.add_argument("--out", help="run: a new output folder (default: GENOME_rec next to the genome)")
+    s.add_argument("--homology", type=int, help="bp of homology on each side of the cassette (default 50)")
+    s.add_argument("--tm", type=float, help="annealing Tm in deg C (default 60)")
+    s.add_argument("--primers-only", action="store_true", help="run: do not write the recombinant genomes (a bacterial genome is megabytes each)")
+    s.set_defaults(run=cmd_recombineering, returns_code=True)
     s = sub.add_parser("region", help="the bases START..END (1-based, inclusive)")
     s.add_argument("file")
     s.add_argument("start", type=int)

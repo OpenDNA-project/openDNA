@@ -37,7 +37,7 @@ Nothing is written. JSON: `settings`, `summary` and one record per row: `status`
 
 ## 4. Show the settings, then wait for the user's OK
 
-Show the `settings` block: the Tm and length options, the PCR conditions (salt, dNTP, primer concentrations: `saved in openDNA` or default), and the **background genome** that primers are checked against. If openDNA has no genome set it falls back to the demo E. coli genome (`demo/BW25113_2026.gb`): tell the user, because a primer for an E. coli gene will then be marked `bad` ("the whole primer binds" in the genome) for the right reason, and a primer for something else is checked against the wrong organism. They set their own genome in openDNA under Primers > Options. **Do not run before the user agrees.**
+Show the `settings` block: the Tm and length options, the PCR conditions (salt, dNTP, primer concentrations: `saved in openDNA` or default), and the **background genome** that primers are checked against (the `background_genome` of the settings; the user sets it in openDNA under Primers > Options). If none is set the genome check says `no genome set` and primers are only checked against the plasmid: tell the user. A source checkout falls back to the demo E. coli genome, so a primer for an E. coli gene is then marked `bad` ("the whole primer binds" in the genome) for the right reason. **Do not run before the user agrees.**
 
 ## 5. Run
 

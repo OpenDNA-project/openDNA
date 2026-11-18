@@ -7386,6 +7386,39 @@
    "evidence": "",
    "gaps": [],
    "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_recombineering_batch_gives_the_designs_the_panel_gives",
+   "area": "Command line for agents",
+   "role": "The batch could place the cassette in the wrong orientation or place, give primers whose tails are not the genome's homologies, or overwrite earlier results.",
+   "purpose": "For a 521 bp circular genome, a 120 bp cassette and rows replacing a CDS, a 11 bp region in reverse orientation and a CDS deleted with no cassette, the written genomes are the hand-built strings, the primers carry the 50 bp homologies as tails and equal recombineering.design's rows, the removed feature is warned about, a bad feature name and a bad orientation are error rows, nothing is overwritten and a homology longer than the genome is refused for the row.",
+   "cases": [
+    {
+     "input": "rows ko (gx, cas.gb), flip (150..160, reverse), del (gy, none), bad (nope), ori (orientation up)",
+     "expected": "exit 1; ok ok ok error error; files del.gb flip.gb ko.gb primers.csv report.jsonl settings.json"
+    },
+    {
+     "input": "ko.gb and flip.gb, del.gb",
+     "expected": "seq[:100]+cas+seq[121:]; seq[:149]+rc(cas)+seq[160:]; seq[:400]+seq[421:] (no primers)"
+    },
+    {
+     "input": "ko primers",
+     "expected": "forward = seq[50:100] + the first bases of the cassette; reverse = rc(seq[121:171]) + the first bases of rc(cassette); equal to design(); Rec-F and Rec-R drawn on ko.gb; warning 'removes the CDS gx'"
+    },
+    {
+     "input": "second run into the same folder; --homology 600 with --primers-only",
+     "expected": "'already exists'; 'no room' for the row and no .gb written"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "A genome with a linear topology and a region near its end is not exercised."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
   }
  ],
  "removed": [

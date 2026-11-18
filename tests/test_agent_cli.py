@@ -56,7 +56,7 @@ def test_every_recipe_example_still_runs(capsys):
     the tool is caught here)."""
     code, out, _ = run(capsys, "skills", "list")
     names = [line.split(":")[0] for line in out.splitlines()]
-    assert code == 0 and {"index", "inspect", "kld", "pcr"} <= set(names)
+    assert code == 0 and {"index", "inspect", "kld", "pcr", "recombineering"} <= set(names)
     for name in names:
         code, text, _ = run(capsys, "skills", "show", name)
         assert code == 0
@@ -194,3 +194,39 @@ def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys):
     rows = list(csv.DictReader(open(out / "primers.csv", encoding="utf-8")))
     assert len(rows) == sum(len(r.get("pairs", [])) for r in res["rows"]) and {r["id"] for r in rows} == {"a", "b"}
     assert "already exists" in run(capsys, "pcr", "run", gb, table, "--out", out)[2]
+
+
+# ---- recombineering ------------------------------------------------------------------------------------------------------------
+
+import recombineering
+
+
+def test_recombineering_batch_gives_the_designs_the_panel_gives(tmp_path, capsys):
+    genome, seq = plasmid()
+    cas = dna(120, 9)
+    genome.write_genbank(str(tmp_path / "g.gb"), None)
+    cassette = Document.new_sequence("cas", cas, False)
+    cassette.write_genbank(str(tmp_path / "cas.gb"), None)
+    table = tmp_path / "r.csv"
+    table.write_text("id,region,cassette,orientation\nko,gx,cas.gb,\nflip,150..160,cas.gb,reverse\ndel,gy,none,\nbad,nope,cas.gb,\nori,150..160,cas.gb,up\n", encoding="utf-8")
+    out = tmp_path / "out"
+    code, text, _ = run(capsys, "recombineering", "run", tmp_path / "g.gb", table, "--out", out)
+    res = json.loads(text)
+    assert code == 1 and [r["status"] for r in res["rows"]] == ["ok", "ok", "ok", "error", "error"]
+    assert "No feature called" in res["rows"][3]["error"] and "forward or reverse" in res["rows"][4]["error"]
+    assert sorted(p.name for p in out.iterdir()) == ["del.gb", "flip.gb", "ko.gb", "primers.csv", "report.jsonl", "settings.json"]
+    # hand-computed: gx is bases 101..121 (0-based 100..121); the cassette replaces them; 50 bp of the genome either side are the homologies
+    ko = res["rows"][0]
+    assert Document(str(out / "ko.gb")).sequence(0, None).upper() == seq[:100] + cas + seq[121:]
+    f, r = ko["primers"]
+    assert f["sequence"].startswith(seq[50:100]) and f["sequence"][50:] == cas[:f["annealing_length"]]
+    assert r["sequence"].startswith(mutation.reverse_complement(seq[121:171])) and r["sequence"][50:] == mutation.reverse_complement(cas)[:r["annealing_length"]]
+    direct = recombineering.design(genome, cassette, 100, 121)   # the panel's own function gives the same rows
+    assert [(p["name"], p["sequence"]) for p in ko["primers"]] == [(n, s) for n, s, _, _ in direct.rows]
+    assert ko["warnings"] == ["The region removes the CDS 'gx' (101..121)."]
+    assert {x.label for x in Document(str(out / "ko.gb")).features() if x.kind == "primer_bind"} == {"Rec-F", "Rec-R"}
+    assert Document(str(out / "flip.gb")).sequence(0, None).upper() == seq[:149] + mutation.reverse_complement(cas) + seq[160:]
+    assert Document(str(out / "del.gb")).sequence(0, None).upper() == seq[:400] + seq[421:] and res["rows"][2]["primers"] == []   # a deletion has nothing to amplify
+    assert len(list(csv.DictReader(open(out / "primers.csv", encoding="utf-8")))) == 3 and "already exists" in run(capsys, "recombineering", "run", tmp_path / "g.gb", table, "--out", out)[2]
+    code, text, _ = run(capsys, "recombineering", "run", tmp_path / "g.gb", table, "--out", tmp_path / "o2", "--primers-only", "--homology", 600)
+    assert "no room" in json.loads(text)["rows"][0]["error"] and not list((tmp_path / "o2").glob("*.gb"))
