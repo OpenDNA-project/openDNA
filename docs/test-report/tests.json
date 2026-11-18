@@ -5289,6 +5289,10 @@
     {
      "input": "check_for_update with fetch raising UpdateError",
      "expected": "Returns None"
+    },
+    {
+     "input": "release body 'Fixes things.' followed by a '**Downloads.**' section (the download table and signing warning)",
+     "expected": "the update's notes are only 'Fixes things.'"
     }
    ],
    "oracle": "hand-computed",

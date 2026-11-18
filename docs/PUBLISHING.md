@@ -149,7 +149,7 @@ replace themselves: they say where to download the new version. The release neve
 
 5. **Watch the run** (Actions > release, about 10 to 15 minutes). When it is green, a draft appears under Releases.
 6. **Review the draft.** Every file in the table above is attached, with one `SHA256SUMS`, the notes say what changed (edit them; the
-   workflow only writes a default text). Download the setup file from the draft, check `Get-FileHash` against its line of `SHA256SUMS`, and
+   workflow only writes a default text). Put what changed BEFORE the **Downloads.** line: the program's update window shows only the text above it. Download the setup file from the draft, check `Get-FileHash` against its line of `SHA256SUMS`, and
    install it on a PC that has no Python. To test the update itself, install the previous release first, then publish this one.
 7. **Publish** by pressing *Publish release* on the draft page, or `gh release edit v0.1.1 --draft=false --latest`. Only now does the
    release become public and the "latest" one that the in-app update check reads (`UPDATES_ENABLED` in

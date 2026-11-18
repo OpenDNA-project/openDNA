@@ -31,7 +31,7 @@ BASE = f"https://github.com/{project.REPO}/releases/download/v0.2.0"
 
 def release(tag="v0.2.0", assets=True, **extra):
     """The JSON GitHub gives for releases/latest."""
-    data = {"tag_name": tag, "html_url": f"{project.REPO_URL}/releases/tag/{tag}", "body": "Fixes things.", "draft": False, "prerelease": False,
+    data = {"tag_name": tag, "html_url": f"{project.REPO_URL}/releases/tag/{tag}", "body": "Fixes things.\n\n**Downloads.** a table of files, and a warning about signing.", "draft": False, "prerelease": False,
             "assets": [{"name": updater.release_asset(tag), "browser_download_url": f"{BASE}/openDNA.exe"},
                        {"name": updater.CHECKSUMS, "browser_download_url": f"{BASE}/openDNA.exe.sha256"},
                        {"name": "other.zip", "browser_download_url": f"{BASE}/other.zip"}] if assets else []}

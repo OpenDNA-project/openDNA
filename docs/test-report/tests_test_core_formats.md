@@ -50,7 +50,7 @@ Parses GFF3/GTF/BED files written in the test and checks names, coordinates, str
 
 ## `test_feature_locations_round_trip`
 
-**Result:** ✅ passed in 0.03 s · [line 588](../../tests/test_core_formats.py#L588) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 588](../../tests/test_core_formats.py#L588) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a GenBank file could silently change or drop complex feature locations (joins, complement, fuzzy ends, between-base sites, remote references).
 
@@ -67,7 +67,7 @@ Adds each of 20 GenBank location forms to a document and checks the written text
 
 ## `test_genome_fasta_fetch_and_search_match_slicing_and_brute_force`
 
-**Result:** ✅ passed in 0.02 s · [line 659](../../tests/test_core_formats.py#L659) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 659](../../tests/test_core_formats.py#L659) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a reference genome opened from a FASTA file could return wrong bases at line breaks or ends, and motif/sequence search on it could miss hits or report wrong strands.
 

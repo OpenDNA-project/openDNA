@@ -40,7 +40,7 @@ Two Editors on two documents: typing into one changes only that one (its length,
 
 ## `test_a_second_launch_hands_its_files_to_the_running_program`
 
-**Result:** ✅ passed in 0.23 s · [line 63](../../tests/test_file_tabs.py#L63) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.22 s · [line 63](../../tests/test_file_tabs.py#L63) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, double-clicking a file while openDNA is open would start a second copy of the program instead of opening the file in the one running, or the file names could be lost or garbled on the way.
 

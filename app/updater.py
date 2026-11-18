@@ -227,6 +227,7 @@ def check(current_version=None, fetch=None):
     except UpdateError as e:
         return Check(error=str(e), latest=tag, page_url=page)
     notes = data.get("body") if isinstance(data.get("body"), str) else ""
+    notes = notes.split("**Downloads.**")[0].strip()   # (the rest of the page, the download table and the signing warning, is for people who have not installed yet)
     update = Update(".".join(map(str, version)), tag, assets[asset_name], assets[CHECKSUMS], notes[:20000], page)
     return Check(update=update, latest=tag, page_url=page)
 

@@ -27,6 +27,7 @@ Checks version parsing and numeric comparison, then feeds updater.check fake Git
 | 13 | fetch raising UpdateError('...offline') / RuntimeError('boom') | Error ends with 'offline' / contains 'failed'; no exception |
 | 14 | Bodies 'not json', '[1, 2]', '', b'\xff\xfe\x00' | No update; error contains 'understood' |
 | 15 | check_for_update with fetch raising UpdateError | Returns None |
+| 16 | release body 'Fixes things.' followed by a '**Downloads.**' section (the download table and signing warning) | the update's notes are only 'Fixes things.' |
 
 **Review notes:**
 
@@ -114,7 +115,7 @@ Checks that install refuses when run from source or from a portable copy (not se
 
 ## `test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip`
 
-**Result:** ✅ passed in 0.15 s · [line 548](../../tests/test_updater.py#L548) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.13 s · [line 548](../../tests/test_updater.py#L548) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the app could check for updates when the user turned it off, check on every start, stop checking after the clock goes back, or forget a version the user chose to skip.
 
