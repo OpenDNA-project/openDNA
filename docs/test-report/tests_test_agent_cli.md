@@ -34,7 +34,7 @@ Each user mistake gives exit code 1, nothing on stdout and exactly one `ERROR:` 
 
 ## `test_every_recipe_example_still_runs`
 
-**Result:** ✅ passed in 2.01 s · [line 72](../../tests/test_agent_cli.py#L72) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 2.10 s · [line 72](../../tests/test_agent_cli.py#L72) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** A recipe could keep telling agents to run a command that no longer exists or whose arguments changed.
 
@@ -87,7 +87,7 @@ Every mistake (wrong reference, wrong residue, nothing to change, outside the pl
 
 ## `test_a_change_through_the_origin_is_made_and_the_file_keeps_its_origin`
 
-**Result:** ✅ passed in 0.04 s · [line 149](../../tests/test_agent_cli.py#L149) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 149](../../tests/test_agent_cli.py#L149) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A mutation that spans the origin of the plasmid could be refused or give a shifted, wrong plasmid.
 
@@ -121,7 +121,7 @@ A 4-row table (substitution, reverse-strand substitution, deletion, wrong refere
 
 ## `test_pcr_batch_gives_the_pairs_the_panel_gives`
 
-**Result:** ✅ passed in 1.69 s · [line 198](../../tests/test_agent_cli.py#L198) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.62 s · [line 198](../../tests/test_agent_cli.py#L198) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results.
 
@@ -140,7 +140,7 @@ pcr check and run give, for 150..400 and 200..450, the pairs of primer_design.de
 
 ## `test_recombineering_batch_gives_the_designs_the_panel_gives`
 
-**Result:** ✅ passed in 0.05 s · [line 237](../../tests/test_agent_cli.py#L237) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 237](../../tests/test_agent_cli.py#L237) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could place the cassette in the wrong orientation or place, give primers whose tails are not the genome's homologies, or overwrite earlier results.
 
@@ -159,7 +159,7 @@ For a 521 bp circular genome, a 120 bp cassette and rows replacing a CDS, a 11 b
 
 ## `test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names`
 
-**Result:** ✅ passed in 0.12 s · [line 268](../../tests/test_agent_cli.py#L268) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.10 s · [line 268](../../tests/test_agent_cli.py#L268) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** One bad row could end a 200-row run, two rows could overwrite each other's file, or a value the windows would refuse could pass without the user knowing.
 
@@ -197,7 +197,7 @@ On a 400 bp circle with GAATTC planted at 201..206 and GGATCC at 301..306, `site
 
 ## `test_guides_command_gives_the_guides_and_marks_of_the_spacer_finder`
 
-**Result:** ✅ passed in 0.02 s · [line 350](../../tests/test_agent_cli.py#L350) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 350](../../tests/test_agent_cli.py#L350) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could report a guide at the wrong place, or a different list or mark from the Spacer Finder window's.
 
@@ -216,7 +216,7 @@ A planted SpCas9 site (20 nt guide + AGG at 101..123) is found with its PAM, str
 
 ## `test_repeats_command_gives_the_stretches_the_compare_view_gives`
 
-**Result:** ✅ passed in 0.03 s · [line 372](../../tests/test_agent_cli.py#L372) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 372](../../tests/test_agent_cli.py#L372) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could miss a repeat that can recombine in the cell, or place it wrongly.
 
@@ -285,7 +285,7 @@ A 60 bp piece of a 400 bp plasmid is found at 101..160 with identity 1.0; its re
 
 ## `test_msa_command_aligns_the_files_and_never_overwrites`
 
-**Result:** ✅ passed in 0.04 s · [line 436](../../tests/test_agent_cli.py#L436) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 436](../../tests/test_agent_cli.py#L436) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could report a wrong identity between two variants, or overwrite an alignment file.
 
@@ -304,7 +304,7 @@ A 200 bp sequence and a copy with 10 bases deleted are aligned: removing the gap
 
 ## `test_codon_batch_recodes_in_place_keeping_the_protein`
 
-**Result:** ✅ passed in 0.05 s · [line 453](../../tests/test_agent_cli.py#L453) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 453](../../tests/test_agent_cli.py#L453) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could write a recoded plasmid whose protein changed, whose reverse-strand gene was written the wrong way round, or whose bases differ from what the Recode window gives.
 
@@ -324,7 +324,7 @@ With the Highest frequency method each codon of the planted CDS becomes the most
 
 ## `test_export_command_writes_the_formats_and_never_overwrites`
 
-**Result:** ✅ passed in 0.04 s · [line 489](../../tests/test_agent_cli.py#L489) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 489](../../tests/test_agent_cli.py#L489) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could hand the user a file in the wrong format, or overwrite one.
 
@@ -343,7 +343,7 @@ Each format is written and equals the text the Export menu's functions give (fas
 
 ## `test_order_command_writes_the_supplier_file_or_nothing`
 
-**Result:** ✅ passed in 0.02 s · [line 505](../../tests/test_agent_cli.py#L505) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 505](../../tests/test_agent_cli.py#L505) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could order a primer with a typo, or write half an order.
 
@@ -357,7 +357,7 @@ Two primers become an IDT plate file (wells A1, B1, scale and purification as as
 
 ## `test_variants_command_finds_what_the_simulated_reads_were_given`
 
-**Result:** ✅ passed in 0.04 s · [line 522](../../tests/test_agent_cli.py#L522) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 522](../../tests/test_agent_cli.py#L522) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could tell a user that a mutation is in their plasmid when it is not, or miss one that is.
 
@@ -393,7 +393,7 @@ Two nested overrides of one setting: the inner value is read inside, the outer o
 
 ## `test_checkup_command_gives_the_verdicts_of_the_checkup_window`
 
-**Result:** ✅ passed in 0.02 s · [line 558](../../tests/test_agent_cli.py#L558) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 558](../../tests/test_agent_cli.py#L558) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could say a gene will be expressed when nothing drives it, or the reverse.
 
@@ -430,7 +430,7 @@ The longest bundled terminator planted into a random 600 bp sequence is found at
 
 ## `test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases`
 
-**Result:** ✅ passed in 0.00 s · [line 599](../../tests/test_agent_cli.py#L599) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 599](../../tests/test_agent_cli.py#L599) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A part could be reported as already annotated just because another feature overlaps it, hiding a real missing part.
 

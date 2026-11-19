@@ -25,7 +25,7 @@ def answer(settings, **fields):
 def pick_enzymes(names):
     """The enzymes called `names` (each once, in order); an unknown name is an error that lists the known ones."""
     import enzymes
-    by_name = {e.name.lower(): e for e in enzymes.COMMON}
+    by_name = {n.lower(): e for e in enzymes.COMMON for n in (e.name, *e.aliases)}   # an isoschizomer's name picks the enzyme listed
     picked = {}
     for name in names:
         if name.lower() not in by_name:

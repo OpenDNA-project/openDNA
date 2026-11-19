@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import QMenu, QSizePolicy, QStackedLayout, QTabBar, QWidget
+from PySide6.QtWidgets import QMenu, QSizePolicy, QStackedLayout, QTabBar, QVBoxLayout, QWidget
 
 from primer_db import data_dir
 
@@ -112,23 +112,34 @@ def set_open_in_tabs(on):
     mode.changed.emit()
 
 
-class FileStrip(QTabBar):
-    """The file tabs as one page shows them. It takes the room the toolbar has left (never more than the tabs need, and it
-    scrolls when they do not fit), so the search box stays at the right."""
+MIN_CHARS = 12   # the least of a file's name a tab shows, before the tabs go on a second row (then scroll)
 
-    def __init__(self, page):
+
+class _Row(QTabBar):
+    """One row of the file tabs (FileStrip has two; the second shows only when the tabs do not fit in the first)."""
+
+    def __init__(self, strip):
         super().__init__()
-        self.page = page
+        self.strip = strip
         self.setTabsClosable(True)
         self.setMovable(True)
         self.setExpanding(False)
         self.setDocumentMode(True)
-        self.setElideMode(Qt.ElideMiddle)
+        self.setElideMode(Qt.ElideRight)
         self.setUsesScrollButtons(True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.currentChanged.connect(lambda i: self.page.host.select(self.page.host.files.pages[i]) if i >= 0 else None)
-        self.tabCloseRequested.connect(lambda i: self.page.host.close_page(self.page.host.files.pages[i]))
-        self.tabMoved.connect(lambda a, b: self.page.host.moved(self, a, b))
+        self.currentChanged.connect(lambda i: strip.picked(self, i))
+        self.tabCloseRequested.connect(lambda i: strip.closed(self, i))
+        self.tabMoved.connect(lambda a, b: strip.moved(self, a, b))
+
+    def min_width(self, text, i=0):
+        """Width of a tab showing the first MIN_CHARS letters of `text` (and "…"), like the room around the text in tab `i`."""
+        fm = self.fontMetrics()
+        chrome = self.tabSizeHint(i).width() - fm.horizontalAdvance(self.tabText(i))
+        return chrome + fm.horizontalAdvance(text if len(text) <= MIN_CHARS else text[:MIN_CHARS] + "…")
+
+    def minimumTabSizeHint(self, i):   # Qt shrinks the tabs to fit down to this (then it scrolls)
+        return QSize(self.min_width(self.tabText(i), i), super().minimumTabSizeHint(i).height())
 
     def sizeHint(self):
         # No wish of its own: the toolbar gives it what the search box and the range box leave (it would otherwise push them into
@@ -138,32 +149,117 @@ class FileStrip(QTabBar):
     def minimumSizeHint(self):
         return QSize(1, super().minimumSizeHint().height())
 
+    def contextMenuEvent(self, event):
+        self.strip.context(self, event)
+
+
+class FileStrip(QWidget):
+    """The file tabs as one page shows them. It takes the room the toolbar has left (never more than the tabs need), so the search
+    box stays at the right. Each tab keeps at least MIN_CHARS letters of its name; when the tabs do not fit like that they go on
+    two rows, and only past that do they scroll."""
+
+    def __init__(self, page):
+        super().__init__()
+        self.page = page
+        self.rows = [_Row(self), _Row(self)]
+        self.split = 0   # tabs in the first row
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        for row in self.rows:
+            layout.addWidget(row)
+        self.rows[1].hide()
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def sizeHint(self):
+        return QSize(1, self.rows[0].sizeHint().height() * (2 if self.rows[1].isVisible() else 1))
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def _titles(self):
+        return [p.tab_title() for p in self.page.host.files.pages]
+
+    def _split(self, titles):
+        """How many tabs go in the first row: all of them when they fit at MIN_CHARS letters, else half (or what fits, if less)."""
+        row, room, used, fits = self.rows[0], self.width() - 70, 0, 0   # (70: the scroll arrows)
+        if row.count() == 0:
+            return len(titles)
+        for t in titles:
+            used += row.min_width(t)
+            if used > room:
+                break
+            fits += 1
+        return len(titles) if fits >= len(titles) else max(1, min(fits, (len(titles) + 1) // 2))
+
+    def _shown(self):
+        return [r.tabText(i) for r in self.rows for i in range(r.count())]
+
     def sync(self):
         """The tabs the host's FileSet says, the shown one current. The tabs are only rebuilt when the files changed: a click on a
-        tab comes here from this very bar's currentChanged, which must not tear the tabs down under the mouse."""
+        tab comes here from a row's currentChanged, which must not tear the tabs down under the mouse."""
         host = self.page.host
-        pages = host.files.pages
-        self.blockSignals(True)
-        if [self.tabText(i) for i in range(self.count())] != [p.tab_title() for p in pages]:
-            while self.count():
-                self.removeTab(0)
-            for p in pages:
-                self.setTabToolTip(self.addTab(p.tab_title()), str(p.file_path() or p.tab_title()))
-        self.setCurrentIndex(pages.index(host.files.current))
-        self.blockSignals(False)
+        pages, titles = host.files.pages, self._titles()
+        split = self._split(titles)
+        for r in self.rows:
+            r.blockSignals(True)
+        if self._shown() != titles or split != self.split:
+            for r in self.rows:
+                while r.count():
+                    r.removeTab(0)
+            for i, p in enumerate(pages):
+                r = self.rows[0 if i < split else 1]
+                r.setTabToolTip(r.addTab(titles[i]), str(p.file_path() or titles[i]))
+            self.split = split
+        two = split < len(pages)
+        if self.rows[1].isVisible() != two:
+            self.rows[1].setVisible(two)
+            self.updateGeometry()
+        now = pages.index(host.files.current)
+        self.rows[0].setCurrentIndex(now if now < split else -1)
+        self.rows[1].setCurrentIndex(now - split if now >= split else -1)
+        for r in self.rows:
+            r.blockSignals(False)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        host = getattr(self.page, "host", None)   # (not yet set while the page is being built)
+        if host is not None and host.files.pages and self._split(self._titles()) != self.split:
+            self.sync()
 
     def retitle(self):
         """A file's name or "unsaved" mark changed: only the text of the tabs, not the tabs (an edit does this at typing speed)."""
-        for i, p in enumerate(self.page.host.files.pages):
-            if self.tabText(i) != p.tab_title():
-                self.setTabText(i, p.tab_title())
+        titles = self._titles()
+        for i, title in enumerate(titles):
+            row, j = self._at(i)
+            if row.tabText(j) != title:
+                row.setTabText(j, title)
+        if self._split(titles) != self.split:
+            self.sync()
 
-    def contextMenuEvent(self, event):
-        i = self.tabAt(event.pos())
+    def _at(self, i):
+        """(row, index in it) of the file tab `i`."""
+        return (self.rows[0], i) if i < self.split else (self.rows[1], i - self.split)
+
+    def _global(self, row, i):
+        return i if row is self.rows[0] else i + self.split
+
+    def picked(self, row, i):
+        if i >= 0:
+            self.page.host.select(self.page.host.files.pages[self._global(row, i)])
+
+    def closed(self, row, i):
+        self.page.host.close_page(self.page.host.files.pages[self._global(row, i)])
+
+    def moved(self, row, a, b):
+        self.page.host.moved(self, self._global(row, a), self._global(row, b))
+
+    def context(self, row, event):
+        i = row.tabAt(event.pos())
         if i < 0:
             return
         host = self.page.host
-        page = host.files.pages[i]
+        page = host.files.pages[self._global(row, i)]
         path = page.file_path()
         menu = QMenu(self)
         menu.addAction("Close", lambda: host.close_page(page))

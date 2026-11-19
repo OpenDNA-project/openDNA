@@ -1712,8 +1712,8 @@
      "expected": "EcoRI (11,15) overhang AATT; KpnI (31,27) 3' overhang GTAC; EcoRV (45,45) blunt"
     },
     {
-     "input": "every COMMON enzyme planted between 30 A on each side, both orientations",
-     "expected": "cut = declared offsets + 30, mirrored on the reverse site"
+     "input": "every COMMON enzyme (a degenerate site as one of its readings) planted between 80 A on each side, both orientations",
+     "expected": "all cuts = declared offsets + 80 (both pairs of a two-sided cutter), mirrored on the reverse site"
     },
     {
      "input": "BsaI GGTCTC fwd / GAGACC rev with 20 A pads",
@@ -1740,7 +1740,7 @@
      "expected": "cut positions equal Biopython; fragments equal and sum to length; at least 10 enzymes cut"
     },
     {
-     "input": "5 random 4000 bp circles with every enzyme planted, EcoRI or BsaI over the origin",
+     "input": "5 random 4000 bp circles with every enzyme planted (one reading of each degenerate site), EcoRI or BsaI over the origin",
      "expected": "origin cut found; every enzyme matches Biopython circular and linear; at least 40 enzymes cut"
     }
    ],
@@ -1748,7 +1748,8 @@
    "strength": "strong",
    "issues": [
     "The real-plasmid part silently does nothing if the sample file is missing (no skip reported).",
-    "Picks EcoRI/BsaI by index COMMON[14]/COMMON[9]; guarded by a name assertion, but will fail if the enzyme list is reordered."
+    "Picks EcoRI/BsaI by index COMMON[14]/COMMON[9]; guarded by a name assertion, but will fail if the enzyme list is reordered.",
+    "A cut on or past the end of a linear sequence is no cut (as Biopython): the generated enzymes cut often enough to hit that case in the random circles."
    ],
    "verdict": "sound",
    "evidence": "Read + grep: the app's digest sizes come from app/tools.py fragments(length, circular, cuts); no test in this file (nor any test file) calls it. The 'fragments equal Biopython' asserts feed the test's own _digest_fragments with our cut positions and Biopython's cut positions, so once the cut lists are equal the fragment check is a tautology, and sum(fragments)==n is true for any cut list.",
@@ -2568,6 +2569,10 @@
     {
      "input": "set_search_hits with strands",
      "expected": "-1 kept; no strand or both strands -> 0; empty clears"
+    },
+    {
+     "input": "enzymes_named('muni'), enzymes_named('ecor')",
+     "expected": "['MfeI'] (an isoschizomer's name finds the listed enzyme); EcoRI, EcoRV first for the prefix"
     }
    ],
    "oracle": "hand-computed",
@@ -3213,7 +3218,7 @@
    "id": "tests/test_enzymes_and_guides.py::test_cut_finder_the_common_list_and_the_filter",
    "area": "Restriction site finding",
    "role": "Without it, the program could report cut positions at the wrong base (or miss sites on the bottom strand, across the origin, or with IUPAC codes), so every digest, map and cloning plan built on them would be wrong.",
-   "purpose": "Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both sides, bottom-strand sites and sites spanning a circle's origin; that the shipped common enzyme list has the right cut offsets and supplier-style descriptions; and that the enzyme filter only keeps an enzyme when every selected criterion holds.",
+   "purpose": "Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both sides, bottom-strand sites and sites spanning a circle's origin; that the shipped enzyme list (the 47 hand-written ones and the generated commercial ones) has the right cut offsets and supplier-style descriptions; and that the enzyme filter only keeps an enzyme when every selected criterion holds.",
    "cases": [
     {
      "input": "AccI (GTMKAC) on AAA GTAGAC TTT GTCTAC AAA GTGGAC",
@@ -3238,6 +3243,14 @@
     {
      "input": "the COMMON list",
      "expected": "EcoRI cuts ((1,5),), KpnI ((5,1),), EcoRV blunt, BsaI ((7,11),), SapI ((8,11),); find_cuts on TTGAATTCAA gives EcoRI [(3,7)], EcoRV blunt cuts both strands at 5; find_sites gives {EcoRI:[3], BsaI:[5]}"
+    },
+    {
+     "input": "the enzymes added by enzyme_table.py (Acc65I, SfiI, BstEII, BcgI), the list's order and names",
+     "expected": "Acc65I ((1,5),), SfiI ((8,5),), BstEII ((1,6),), BcgI ((-10,-12),(24,22)); more than 200 enzymes; the first three are AatII, AflII, AgeI and EcoRI is still at index 14 (other tests index into the list); names unique, every site 4+ bases"
+    },
+    {
+     "input": "isoschizomers and methylation: MfeI/MunI, BsaI/Eco31I, DpnI vs EcoRI, EnzymeFilter methylated=False/None/True, is_owned with an alias",
+     "expected": "MfeI.aliases == ('MunI',) and MunI is not an entry; DpnI is methyl, EcoRI not; describe says 'also sold as MunI'; the default filter hides DpnI, methylated=None shows it, True keeps only DpnI; an inventory holding MunI owns MfeI"
     },
     {
      "input": "describe() for EcoRI / KpnI / EcoRV / BsaI / BbsI / SapI / BcgI",

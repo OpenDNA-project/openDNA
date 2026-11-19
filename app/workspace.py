@@ -92,8 +92,10 @@ def split(direction, sizes, *children):
     return {"split": direction, "sizes": list(sizes), "children": list(children)}
 
 
-def pane(view):
-    return {"view": view}
+def pane(view, state=None):
+    """A pane's layout entry. `state`: what its view says about itself (get_state / set_state of the view: the Digest's ticked
+    enzymes, the Sequence's letter size...), kept in an Open DNA Project."""
+    return {"view": view, **({"state": state} if state else {})}
 
 
 # Every document opens with this, whatever was on screen before: the sequence across 70 % of the window, the map above
@@ -116,9 +118,10 @@ MAX_NAMED = 3  # views named in an automatic tab name; the others are counted
 class Pane(QWidget):
     """Header (view picker, split right / split below / close) + the view itself."""
 
-    def __init__(self, workspace, view):
+    def __init__(self, workspace, view, state=None):
         super().__init__()
         view = OLD_NAMES.get(view, view)
+        self.state = state   # the view's own state from a project, given to it when it is built (and kept while it is not)
         self.workspace, self.view_name, self.view = workspace, view if view in VIEWS else "Sequence", None
         self.picker = ViewPicker(grouped_views, SUBMENUS)
         self.picker.set_current(self.view_name)
@@ -174,6 +177,12 @@ class Pane(QWidget):
     def build(self):
         if self.view is None:
             self.view = VIEWS[self.view_name](self.workspace.window)
+            if self.state and hasattr(self.view, "set_state"):
+                try:
+                    self.view.set_state(self.state)
+                except (TypeError, ValueError, KeyError, AttributeError):   # a project written by hand or by another version
+                    pass
+            self.state = None
             self.box.addWidget(self.view, 1)
             self.view.show()  # a child added to an already shown widget starts hidden
             self.workspace.rewire()
@@ -346,13 +355,14 @@ class Workspace(QTabWidget):
             if spec.get("sizes"):
                 s.setSizes(spec["sizes"])
             return s
-        return Pane(self, spec.get("view", "Sequence"))
+        return Pane(self, spec.get("view", "Sequence"), spec.get("state"))
 
     def dump_widget(self, w):
         if isinstance(w, QSplitter):
             return split("h" if w.orientation() == Qt.Horizontal else "v", w.sizes(),
                          *[self.dump_widget(w.widget(i)) for i in range(w.count())])
-        return pane(w.view_name)
+        state = w.view.get_state() if w.view is not None and hasattr(w.view, "get_state") else w.state
+        return pane(w.view_name, state)
 
     def dump(self):
         """The layouts of the tabs of panes; a tab only keeps its name when it was given one by hand."""

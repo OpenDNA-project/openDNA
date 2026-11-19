@@ -24,7 +24,7 @@ from PySide6.QtGui import (
     QPainterPath, QPalette, QPen, QPolygonF,
 )
 from PySide6.QtWidgets import (
-    QAbstractScrollArea, QApplication, QMenu, QSlider, QToolButton, QToolTip, QVBoxLayout, QWidget,
+    QAbstractScrollArea, QApplication, QLabel, QMenu, QSlider, QToolButton, QToolTip, QVBoxLayout, QWidget,
 )
 
 from cut_sites import CAS9_KEYS, feature_layout, runs
@@ -38,6 +38,7 @@ import units
 
 DEFAULT_SIZE = 11          # letter size, points
 MIN_SIZE, MAX_SIZE = 6, 32
+MAX_GAP = 8                # most extra pixels the spacing slider puts between letters
 ZOOM_BAR_W = 24            # strip kept free at the right edge for the zoom bar
 ORIGIN_COLOR = "#d50000"   # the origin mark between the copies of a circular sequence
 PRIMER_COLOR = "#5e35b1"   # exact binding site, light theme (the views use theme "primer", which has a dark-theme twin)
@@ -167,6 +168,7 @@ class SequenceView(QAbstractScrollArea):
         self._window = None
         self.editor = editor
         self._codon_cache = {}  # (feature index, editor version, table setting) -> [(middle base, amino acid, ...)]
+        self.gap = 0   # extra pixels between letters (the spacing slider; not remembered)
         self._set_metrics(DEFAULT_SIZE)
         self.anchor = None  # fixed end of the selection (set by click/drag/shift+arrows)
         self.row_h, self.rows = 1, 1
@@ -224,6 +226,14 @@ class SequenceView(QAbstractScrollArea):
         column.addWidget(buttons[0], 0, Qt.AlignHCenter)
         column.addWidget(self.zoom_slider, 0, Qt.AlignHCenter)
         column.addWidget(buttons[1], 0, Qt.AlignHCenter)
+        # Below: the space between letters (0-8 px), a slider under the zoom's
+        self.gap_slider = QSlider(Qt.Vertical)
+        self.gap_slider.setRange(0, MAX_GAP)
+        self.gap_slider.setFixedHeight(50)
+        self.gap_slider.setToolTip("Space between letters")
+        self.gap_slider.valueChanged.connect(self.set_gap)
+        column.addWidget(QLabel("↔"), 0, Qt.AlignHCenter)
+        column.addWidget(self.gap_slider, 0, Qt.AlignHCenter)
         bar.adjustSize()
         self._place_zoom_bar()
         bar.show()
@@ -250,7 +260,8 @@ class SequenceView(QAbstractScrollArea):
         self.labels.setPointSizeF(self.labels.pointSizeF() * size / DEFAULT_SIZE)
         self.label_metrics = QFontMetricsF(self.labels)
         fm = QFontMetricsF(self.font)
-        self.cw0, self.lh, self.ascent = fm.horizontalAdvance("A"), fm.height(), fm.ascent()
+        self.advance, self.lh, self.ascent = fm.horizontalAdvance("A"), fm.height(), fm.ascent()
+        self.cw0 = self.advance + self.gap
         self.cw = self.cw0  # letter pitch: cw0 stretched so the rows fill the width (_update_left)
         self.digit_w = fm.horizontalAdvance("0")
         # Row numbers in a copy of the font without the letter spacing of the bases (see _update_left): spaced out, a long
@@ -277,6 +288,20 @@ class SequenceView(QAbstractScrollArea):
         if size != self.size:
             self._set_metrics(size)
             self._relayout()
+
+    def get_state(self):
+        """What a project keeps of this view (workspace.Pane): the letter size and the space between letters."""
+        return {"size": self.size, "gap": self.gap}
+
+    def set_state(self, state):
+        self.gap_slider.setValue(int(state.get("gap", 0)))   # (its signal sets the gap)
+        self.set_size(int(state.get("size", self.size)))
+
+    def set_gap(self, gap):
+        """Extra pixels between the letters (0-MAX_GAP): the rows hold fewer bases, the letters are easier to tell apart."""
+        self.gap = max(0, min(MAX_GAP, gap))
+        self._set_metrics(self.size)
+        self._relayout()
 
     def wheelEvent(self, event):
         if event.modifiers() & Qt.ControlModifier:
@@ -313,7 +338,7 @@ class SequenceView(QAbstractScrollArea):
         self.left = self.base_left
         free = self.viewport().width() - self.base_left - 4 - ZOOM_BAR_W
         self.cw = max(self.cw0, free / self.bases_per_line())
-        self.font.setLetterSpacing(QFont.AbsoluteSpacing, self.cw - self.cw0)
+        self.font.setLetterSpacing(QFont.AbsoluteSpacing, self.cw - self.advance)
 
     def _relayout(self):
         self._update_left()

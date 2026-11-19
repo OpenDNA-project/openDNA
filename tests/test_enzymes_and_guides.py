@@ -22,7 +22,7 @@ import cut_sites as cs
 import enzymes
 import exports
 from editor import Editor, reverse_complement as rc
-from enzymes import Enzyme
+from enzymes import Enzyme, EnzymeFilter, wanted
 
 pytestmark = pytest.mark.filterwarnings("ignore::Bio.BiopythonParserWarning")
 
@@ -85,18 +85,30 @@ def test_cut_finder_the_common_list_and_the_filter():
     assert ENZ["BsaI"].cuts == ((7, 11),) and ENZ["SapI"].cuts == ((8, 11),)
     assert enzymes.find_cuts("TTGAATTCAA", False)["EcoRI"] == [(3, 7)]
     assert enzymes.find_cuts("AAGATATCAA", False)["EcoRV"] == [(5, 5)], "a blunt cutter cuts both strands in the same place"
-    assert enzymes.find_sites("TTGAATTCAA" + "GAGACCTTTTT" + "TCAA", False) == {"EcoRI": [3], "BsaI": [5]}
+    sites = enzymes.find_sites("TTGAATTCAA" + "GAGACCTTTTT" + "TCAA", False)   # (the longer list has more enzymes that cut this)
+    assert sites["EcoRI"] == [3] and sites["BsaI"] == [5]
     assert enzymes.describe(ENZ["EcoRI"]) == "GAATTC: G^AATTC, 5′ overhang 4 nt"
     assert enzymes.describe(ENZ["KpnI"]).endswith("3′ overhang 4 nt") and "blunt" in enzymes.describe(ENZ["EcoRV"])
     assert "more place" in enzymes.describe(bcgi)
     # A Type IIS enzyme cuts outside its site: written the way suppliers do, GGTCTC(1/5), so it is clear that the
     # overhang's sequence is whatever the user puts between the site and the cut (the point of Golden Gate).
-    assert enzymes.describe(ENZ["BsaI"]) == "GGTCTC: GGTCTC(1/5), 5′ overhang 4 nt"
+    assert enzymes.describe(ENZ["BsaI"]).startswith("GGTCTC: GGTCTC(1/5), 5′ overhang 4 nt")
     assert enzymes.describe(ENZ["BbsI"]).startswith("GAAGAC: GAAGAC(2/6),")
-    assert enzymes.describe(ENZ["SapI"]) == "GCTCTTC: GCTCTTC(1/4), 5′ overhang 3 nt"
+    assert enzymes.describe(ENZ["SapI"]).startswith("GCTCTTC: GCTCTTC(1/4), 5′ overhang 3 nt")
+    # Isoschizomers are one entry with the other names kept (MfeI = MunI); DpnI cuts only methylated DNA and is hidden by default.
+    assert ENZ["MfeI"].aliases == ("MunI",) and "MunI" not in ENZ and "Eco31I" in ENZ["BsaI"].aliases
+    assert ENZ["DpnI"].methyl and not ENZ["EcoRI"].methyl and "also sold as MunI" in enzymes.describe(ENZ["MfeI"])
+    assert not wanted(EnzymeFilter(1, None, 1), ENZ["DpnI"], 1) and wanted(EnzymeFilter(1, None, 1, methylated=None), ENZ["DpnI"], 1)
+    assert wanted(EnzymeFilter(1, None, 1, methylated=True), ENZ["DpnI"], 1) and not wanted(EnzymeFilter(1, None, 1, methylated=True), ENZ["EcoRI"], 1)
+    assert enzymes.is_owned(ENZ["MfeI"], {"MunI"}) and not enzymes.is_owned(ENZ["MfeI"], {"EcoRI"})
+    # The commercial enzymes beyond the first 47 (enzyme_table.py), with cuts worked out from the suppliers' notation:
+    # Acc65I G^GTACC; SfiI GGCCNNNN^NGGCC (3' overhang 3 nt); BstEII G^GTNACC; BcgI cuts on both sides.
+    assert ENZ["Acc65I"].cuts == ((1, 5),) and ENZ["SfiI"].cuts == ((8, 5),) and ENZ["BstEII"].cuts == ((1, 6),)
+    assert ENZ["BcgI"].cuts == ((-10, -12), (24, 22)) and len(enzymes.COMMON) > 200
+    assert [e.name for e in enzymes.COMMON[:3]] == ["AatII", "AflII", "AgeI"] and enzymes.COMMON[14].name == "EcoRI"
+    assert len({e.name for e in enzymes.COMMON}) == len(enzymes.COMMON) and all(len(e.site) >= 4 for e in enzymes.COMMON)
 
     # --- the filter: how often it cuts, site size, palindromic, Type IIS, kind of end; all of them must hold ---
-    from enzymes import EnzymeFilter, wanted
     anything = dict(min_sites=1, max_sites=None)
     assert EnzymeFilter() == EnzymeFilter(1, 1, 6), "the default is the unique cutters of 6+ bp"
     assert not wanted(EnzymeFilter(), ENZ["AluI"], 1) and wanted(EnzymeFilter(), ENZ["EcoRI"], 1)

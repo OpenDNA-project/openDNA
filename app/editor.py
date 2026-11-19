@@ -22,7 +22,7 @@ import multigb
 
 import genetic_code
 import inventory
-from enzymes import COMMON, EnzymeFilter, find_sites, wanted
+from enzymes import COMMON, EnzymeFilter, find_sites, is_owned, wanted
 from genes import GENE, compute_groups, fitted_master, retag, span_of
 from perf import timed
 from units import is_tu
@@ -89,7 +89,7 @@ TYPABLE = set("ACGTNacgtn")  # keyboard input; ambiguity codes only arrive by pa
 _COMPLEMENT = str.maketrans("ACGTURYSWKMBDHVNacgturyswkmbdhvn", "TGCAAYRSWMKVHDBNtgcaayrswmkvhdbn")
 
 
-ENZYME_LIMIT = 1_000_000  # bp; above this, cut sites are not computed (see _refresh)
+ENZYME_LIMIT = 250_000  # bp; above this, cut sites are not computed (see _refresh)
 
 
 def complement(seq):
@@ -791,7 +791,7 @@ class Editor(QObject):
             enzymes, mine = {e.name: e for e in COMMON}, inventory.owned()
             self._shown_sites[self.enzyme_filter] = sorted(
                 (pos, name) for name, cuts in self.site_cuts.items()
-                if wanted(self.enzyme_filter, enzymes[name], len(cuts), name in mine) for pos in cuts)
+                if wanted(self.enzyme_filter, enzymes[name], len(cuts), is_owned(enzymes[name], mine)) for pos in cuts)
         return self._shown_sites[self.enzyme_filter]
 
     def _inventory_changed(self):

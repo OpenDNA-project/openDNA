@@ -110,7 +110,7 @@ Checks Document.orfs on hand-made cases (minimum length, all three stops, strand
 
 ## `test_restriction_cuts_and_digests_match_biopython`
 
-**Result:** ✅ passed in 0.21 s · [line 392](../../tests/test_core_sequence.py#L392) · **Area:** Restriction digest · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.75 s · [line 392](../../tests/test_core_sequence.py#L392) · **Area:** Restriction digest · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, enzyme cut sites, overhangs and digest fragment sizes shown on the map could be wrong (strand, Type IIS offsets, origin-spanning sites, degenerate sites) and cloning plans built on them would fail.
 
@@ -119,19 +119,20 @@ Checks enzymes.find_cuts / site_spans on hand-made sequences (overhang types, Ty
 | # | Input | Expected output |
 |---|---|---|
 | 1 | A10 GAATTC A10 GGTACC A10 GATATC A10, linear | EcoRI (11,15) overhang AATT; KpnI (31,27) 3' overhang GTAC; EcoRV (45,45) blunt |
-| 2 | every COMMON enzyme planted between 30 A on each side, both orientations | cut = declared offsets + 30, mirrored on the reverse site |
+| 2 | every COMMON enzyme (a degenerate site as one of its readings) planted between 80 A on each side, both orientations | all cuts = declared offsets + 80 (both pairs of a two-sided cutter), mirrored on the reverse site |
 | 3 | BsaI GGTCTC fwd / GAGACC rev with 20 A pads | (27,31) and (15,19); 4-base 5' overhang |
 | 4 | ATTC + A20 + GA (EcoRI split over origin) | circular: [(25,3)]; linear: not found; site_spans [(24,30,1)] |
 | 5 | BsaI site_spans on fwd+rev | [(20,6,1), (66,6,-1)] |
 | 6 | GGTCTC linear; GGTCTCA circular | no BsaI cut; circular wraps to (0,4) |
 | 7 | BsmBI CGTCTC; AccI GTMKAC 4 matching / 3 non-matching sites; BglI GCCNNNNNGGC | (17,21); AccI (5,7) only for the allowed sites and on rc; BglI (9,6) |
 | 8 | sample plasmid (circular and linear), every COMMON enzyme | cut positions equal Biopython; fragments equal and sum to length; at least 10 enzymes cut |
-| 9 | 5 random 4000 bp circles with every enzyme planted, EcoRI or BsaI over the origin | origin cut found; every enzyme matches Biopython circular and linear; at least 40 enzymes cut |
+| 9 | 5 random 4000 bp circles with every enzyme planted (one reading of each degenerate site), EcoRI or BsaI over the origin | origin cut found; every enzyme matches Biopython circular and linear; at least 40 enzymes cut |
 
 **Review notes:**
 
 - The real-plasmid part silently does nothing if the sample file is missing (no skip reported).
 - Picks EcoRI/BsaI by index COMMON[14]/COMMON[9]; guarded by a name assertion, but will fail if the enzyme list is reordered.
+- A cut on or past the end of a linear sequence is no cut (as Biopython): the generated enzymes cut often enough to hit that case in the random circles.
 
 **Fixed by the audit of November 2026:**
 
@@ -139,7 +140,7 @@ Checks enzymes.find_cuts / site_spans on hand-made sequences (overhang types, Ty
 
 ## `test_find_parts_identity_coding_and_repeated_parts`
 
-**Result:** ✅ passed in 0.00 s · [line 535](../../tests/test_core_sequence.py#L535) · **Area:** Feature detection (find_parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 536](../../tests/test_core_sequence.py#L536) · **Area:** Feature detection (find_parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, automatic annotation of known parts could miss mutated or recoded copies, ignore identity thresholds, or report duplicated/overlapping hits.
 

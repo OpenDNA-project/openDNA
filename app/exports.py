@@ -11,7 +11,8 @@ Open DNA Project file.
 Open DNA Project file (.odp): a zip holding `sequence.gb` (the document, as Save writes it)
 and `project.json`, what a GenBank file cannot hold and the program otherwise keeps only in
 memory: the loaded tracks and BAM files (their paths, absolute and relative to the project,
-since BAM files can be gigabytes), the DNA lock and the display options. Gene groups and
+since BAM files can be gigabytes), the DNA lock, the display options and the state of the panes' views (the layout's `state` entries:
+the Digest's ticked enzymes, the Sequence view's letter size and spacing). Gene groups and
 primers are already in the GenBank part.
 """
 import json

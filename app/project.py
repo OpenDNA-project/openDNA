@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the installer is EXE_NAME-setup.exe).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.8.3"
+VERSION = "0.8.4"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -20,6 +20,10 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = True
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.8.4": ["About 250 restriction enzymes instead of 47 (commercially sold ones; isoschizomers such as MunI are found under the name shown, MfeI), with a filter for enzymes that cut only methylated DNA (DpnI).",
+              "File tabs keep at least 12 letters of a name and go on a second row when they do not fit; the search box sits against the range boxes.",
+              "The circular map's title shrinks and wraps to fit inside the circle. A slider under the zoom adds space between the letters of the sequence view.",
+              "An Open DNA Project (.odp) now also keeps each digest's ticked enzymes and filters, and the sequence view's letter size and spacing."],
     "0.8.3": ["Opens more files from other programs: Benchling GenBank files (its primers, written as the feature type \"primer\", are read as primers), APE (.ape) and EMBL (.embl) files.",
               "A command line for scripts and AI agents (oDNA-cli.exe next to the program): KLD, PCR primer and recombineering designs for a whole table of mutations or regions, with the same results as the windows. Changes through the origin of a plasmid are supported."],
     "0.8.2": ["The README has a feature list and new pictures of the 0.8 interface; no program change."],

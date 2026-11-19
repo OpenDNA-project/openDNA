@@ -8,7 +8,7 @@
 
 **Why it matters:** Without it, the program could report cut positions at the wrong base (or miss sites on the bottom strand, across the origin, or with IUPAC codes), so every digest, map and cloning plan built on them would be wrong.
 
-Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both sides, bottom-strand sites and sites spanning a circle's origin; that the shipped common enzyme list has the right cut offsets and supplier-style descriptions; and that the enzyme filter only keeps an enzyme when every selected criterion holds.
+Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both sides, bottom-strand sites and sites spanning a circle's origin; that the shipped enzyme list (the 47 hand-written ones and the generated commercial ones) has the right cut offsets and supplier-style descriptions; and that the enzyme filter only keeps an enzyme when every selected criterion holds.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -18,13 +18,15 @@ Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both
 | 4 | BsaI site on top strand vs GAGACC on the bottom | [(9,13)] and [(15,19)], bottom cuts mirrored, 4 nt overhang |
 | 5 | EcoRI on circular ATTCAAAAAAGA | [(11,3)] - site across the origin |
 | 6 | the COMMON list | EcoRI cuts ((1,5),), KpnI ((5,1),), EcoRV blunt, BsaI ((7,11),), SapI ((8,11),); find_cuts on TTGAATTCAA gives EcoRI [(3,7)], EcoRV blunt cuts both strands at 5; find_sites gives {EcoRI:[3], BsaI:[5]} |
-| 7 | describe() for EcoRI / KpnI / EcoRV / BsaI / BbsI / SapI / BcgI | 'GAATTC: G^AATTC, 5' overhang 4 nt'; KpnI ends '3' overhang 4 nt'; 'blunt' for EcoRV; 'GGTCTC: GGTCTC(1/5), 5' overhang 4 nt'; 'GAAGAC: GAAGAC(2/6),'; 'GCTCTTC: GCTCTTC(1/4), 5' overhang 3 nt'; BcgI mentions 'more place' |
-| 8 | EnzymeFilter defaults and single criteria | default == EnzymeFilter(1,1,6) (unique cutters, 6+ bp): AluI rejected, EcoRI kept; palindromic keeps EcoRI not BsaI; type_iis keeps BsaI not EcoRI; ends 5/3/blunt select EcoRI/KpnI/EcoRV; min_size=8 keeps NotI not EcoRI |
-| 9 | combined filter (palindromic + 5' + 6 bp) and a count filter (2-3 sites, <=4 bp) | EcoRI kept, KpnI and EcoRV rejected; AluI kept at 3 sites, rejected at 1; EcoRI rejected at 2 sites |
+| 7 | the enzymes added by enzyme_table.py (Acc65I, SfiI, BstEII, BcgI), the list's order and names | Acc65I ((1,5),), SfiI ((8,5),), BstEII ((1,6),), BcgI ((-10,-12),(24,22)); more than 200 enzymes; the first three are AatII, AflII, AgeI and EcoRI is still at index 14 (other tests index into the list); names unique, every site 4+ bases |
+| 8 | isoschizomers and methylation: MfeI/MunI, BsaI/Eco31I, DpnI vs EcoRI, EnzymeFilter methylated=False/None/True, is_owned with an alias | MfeI.aliases == ('MunI',) and MunI is not an entry; DpnI is methyl, EcoRI not; describe says 'also sold as MunI'; the default filter hides DpnI, methylated=None shows it, True keeps only DpnI; an inventory holding MunI owns MfeI |
+| 9 | describe() for EcoRI / KpnI / EcoRV / BsaI / BbsI / SapI / BcgI | 'GAATTC: G^AATTC, 5' overhang 4 nt'; KpnI ends '3' overhang 4 nt'; 'blunt' for EcoRV; 'GGTCTC: GGTCTC(1/5), 5' overhang 4 nt'; 'GAAGAC: GAAGAC(2/6),'; 'GCTCTTC: GCTCTTC(1/4), 5' overhang 3 nt'; BcgI mentions 'more place' |
+| 10 | EnzymeFilter defaults and single criteria | default == EnzymeFilter(1,1,6) (unique cutters, 6+ bp): AluI rejected, EcoRI kept; palindromic keeps EcoRI not BsaI; type_iis keeps BsaI not EcoRI; ends 5/3/blunt select EcoRI/KpnI/EcoRV; min_size=8 keeps NotI not EcoRI |
+| 11 | combined filter (palindromic + 5' + 6 bp) and a count filter (2-3 sites, <=4 bp) | EcoRI kept, KpnI and EcoRV rejected; AluI kept at 3 sites, rejected at 1; EcoRI rejected at 2 sites |
 
 ## `test_what_a_cut_says_about_itself`
 
-**Result:** ✅ passed in 0.00 s · [line 119](../../tests/test_enzymes_and_guides.py#L119) · **Area:** Restriction site tooltips · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 131](../../tests/test_enzymes_and_guides.py#L131) · **Area:** Restriction site tooltips · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the tooltip a user reads before ordering a digest could state the wrong cut base, the wrong overhang or the wrong strand, which is the only place those numbers are explained.
 
@@ -46,7 +48,7 @@ Checks the generated tooltip text for a 5' overhang, a 3' overhang, a blunt cutt
 
 ## `test_guide_candidates_cuts_and_scores`
 
-**Result:** ✅ passed in 0.00 s · [line 166](../../tests/test_enzymes_and_guides.py#L166) · **Area:** CRISPR guide finding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 178](../../tests/test_enzymes_and_guides.py#L178) · **Area:** CRISPR guide finding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the Spacer Finder could list guides with the wrong PAM, the wrong strand or a cut site in the wrong place, so a user would order a guide that cuts somewhere other than shown.
 
@@ -67,7 +69,7 @@ Checks SpCas9 guide candidates on both strands with their blunt cut 3 bp from th
 
 ## `test_other_guide_sites_here_and_in_a_genome`
 
-**Result:** ✅ passed in 0.01 s · [line 219](../../tests/test_enzymes_and_guides.py#L219) · **Area:** CRISPR off-target search · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 231](../../tests/test_enzymes_and_guides.py#L231) · **Area:** CRISPR off-target search · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the off-target counts and the good/warn/bad verdict a user relies on when choosing a guide could be wrong, or the fast Rust search could silently miss sites a careful search would find.
 
@@ -86,7 +88,7 @@ Checks off-target counting by mismatch class in the construct and in a reference
 
 ## `test_a_saved_guide_site_is_read_back_and_round_trips_in_the_file`
 
-**Result:** ✅ passed in 0.01 s · [line 284](../../tests/test_enzymes_and_guides.py#L284) · **Area:** Guide site storage and display · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 296](../../tests/test_enzymes_and_guides.py#L296) · **Area:** Guide site storage and display · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a saved guide could come back from a GenBank file with the protospacer, PAM or cut drawn in the wrong place, be unreadable in other software, or break for files written under the program's former name.
 

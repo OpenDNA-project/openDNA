@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 from editor import protein_field, reverse_complement, site_location
 from cut_sites import enzyme_mark_tip
 import inventory
-from enzymes import COMMON, EnzymeFilter, describe, find_cuts, wanted
+from enzymes import COMMON, EnzymeFilter, describe, find_cuts, is_owned, wanted
 import genetic_code
 from sequence_view import cds_codons, codons
 from uikit import fit_columns, no_auto_default, plural, right_aligned, run_busy
@@ -479,7 +479,7 @@ class EnzymeTable(QTreeWidget):
             item.setTextAlignment(self.SITES, Qt.AlignRight | Qt.AlignVCenter)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(self.NAME, Qt.Checked if e.name in ticked else Qt.Unchecked)
-            item.setCheckState(self.OWNED, Qt.Checked if e.name in owned else Qt.Unchecked)
+            item.setCheckState(self.OWNED, Qt.Checked if is_owned(e, owned) else Qt.Unchecked)
             tip = describe(e)
             for c in range(len(self.COLUMNS) - 1):
                 item.setToolTip(c, tip)
@@ -553,7 +553,7 @@ class DigestDialog(ToolDialog):
         self.enzymes = EnzymeTable()
         self.enzymes.setToolTip("Tick enzymes for the selected digest; click a header to sort")
         self.enzymes.ticked.connect(self._ticked)
-        self.enzymes.owned_changed.connect(lambda name, on: inventory.set_owned(name, on))
+        self.enzymes.owned_changed.connect(self._set_owned)
         # The inventory changed (an Owned box here or in another digest): the list is refilled after that click, not inside it
         # (the row clicked would be deleted under Qt's feet).
         self._list_later = QTimer(self, singleShot=True, interval=0, timeout=self.show_list)
@@ -598,6 +598,36 @@ class DigestDialog(ToolDialog):
         width = self.enzymes.fit()   # the enzyme list as narrow as its columns
         split.setSizes([bar.width(), width, 380, 260])
 
+    @staticmethod
+    def _set_owned(name, on):
+        """Tag / untag an enzyme as owned: under every name it goes by, so that an untick is not undone by an isoschizomer's tag."""
+        e = next((e for e in COMMON if e.name == name), None)
+        for n in (name, *(e.aliases if e and not on else ())):
+            inventory.set_owned(n, on)
+
+    def get_state(self):
+        """What a project keeps of this tool (workspace.Pane): every digest's ticked enzymes and number, the shown digest, the filter."""
+        return {"lanes": [sorted(lane) for lane in self.lanes], "numbers": self.numbers, "current": self.tabs.currentIndex(),
+                "name_filter": self.filter.text(), "criteria": self.criteria.filter()._asdict()}
+
+    def set_state(self, state):
+        lanes = [{str(n) for n in lane} for lane in state["lanes"]] or [set()]
+        numbers = [int(n) for n in state["numbers"]]
+        if len(numbers) != len(lanes):
+            numbers = list(range(1, len(lanes) + 1))
+        self.tabs.blockSignals(True)
+        while self.tabs.count() < len(lanes):
+            self.tabs.addTab("")
+        self.tabs.blockSignals(False)
+        self.lanes, self.numbers = lanes, numbers
+        self.tabs.setTabsClosable(len(lanes) > 1)
+        self.tabs.setCurrentIndex(min(max(int(state.get("current", 0)), 0), len(lanes) - 1))
+        f = EnzymeFilter.from_dict(state.get("criteria"))
+        if f is not None:
+            self.criteria.set_filter(f)
+        self.filter.setText(str(state.get("name_filter", "")))
+        self.show_list()
+
     @property
     def ticked(self):
         """The enzymes ticked in the selected digest."""
@@ -630,7 +660,7 @@ class DigestDialog(ToolDialog):
         """The enzymes that cut, narrowed by the name / site box and the criteria of the filter bar."""
         text, f, mine = self.filter.text().strip().upper(), self.criteria.filter(), inventory.owned()
         # Every common enzyme is looked at: with 0 sites allowed, those that do not cut are listed too.
-        keep = lambda e: (not text or text in e.name.upper() or text in e.site) and wanted(f, e, len(self.cuts.get(e.name, [])), e.name in mine)
+        keep = lambda e: (not text or any(text in n.upper() for n in (e.name, *e.aliases)) or text in e.site) and wanted(f, e, len(self.cuts.get(e.name, [])), is_owned(e, mine))
         shown = [e for e in COMMON if keep(e)]
         self.enzymes.fill(shown, self.cuts, self.ticked, mine)
         self.note.setText(f"{len(shown)} of the {len(COMMON)} common enzymes shown; {len(self.cuts)} cut this sequence.")

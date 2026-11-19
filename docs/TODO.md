@@ -64,7 +64,7 @@ What is planned, in the order we intend to do it. Tick an item when it is done a
   NCBI E-utilities, with an optional API key, a cache and a rate limit. A protein record opens in the 3D structure window (and
   can be saved as FASTA). *Not done*: a protein *document* type (editing / viewing a protein file in a window of its own); the other
   databases (ENA, UniProt, Addgene); NCBI Datasets for genomes over 100 million bases.
-- [ ] **NEB enzyme catalogue (blocked: permission).** The restriction enzymes New England Biolabs sells, in the Digest tool. REBASE (the
+- [ ] **NEB enzyme catalogue (partly done 2026-11-19: about 250 commercial enzymes from Biopython's data, see docs/ENZYME_SOURCES.md; permission still open for REBASE/NEB itself).** The restriction enzymes New England Biolabs sells, in the Digest tool. REBASE (the
   source) marks its files "All rights reserved" and publishes no licence, so we ask Dr Roberts / REBASE for written permission before
   bundling anything from it. The Digest code already reads degenerate sites and
   two-sided cutters, so a catalogue file is all that is missing. An alternative with no permission needed: a list written from NEB's

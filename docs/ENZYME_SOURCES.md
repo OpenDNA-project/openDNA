@@ -1,4 +1,19 @@
-# Enzyme data sources: NEB list evaluated, not imported (2026-11-02)
+# Enzyme data sources
+
+## Update 2026-11-19: about 200 more enzymes, from Biopython's data
+
+The list grew from 47 to about 250 enzymes (`app/enzyme_table.py`). Requested sources: REBASE, ApE, UGENE. REBASE's own files stay unused (see below,
+"All rights reserved"); ApE's and UGENE's lists are their projects' files, not read. Instead `scripts/build_enzymes.py` takes only the facts (site and
+cut offsets of each commercially sold enzyme) from `Bio.Restriction.Restriction_Dictionary` in the installed Biopython, checks that it reproduces the 47
+hand-written enzymes exactly, drops enzymes that need methylated DNA or have fewer than 4 specific bases (their cuts are not what Biopython itself
+reports), and lists isoschizomers once. The residual risk is the one in the text below: the facts are free, but the data file is derived from REBASE, so
+the owner should decide whether that is acceptable. To list every isoschizomer, drop the `by_kind` de-duplication in the script.
+
+Isoschizomers are kept as `aliases` of one listed enzyme (views show one name; search, the CLI, the Digest filter and the inventory know all of them). Enzymes that cut only methylated DNA (DpnI, GlaI, BisI, BlsI) carry a `methyl` flag and the filters hide them unless "Needs methylation" is set. The CNNR-type enzymes (MspJI, FspEI, LpnPI, AbaSI) are still left out: their sites have fewer than 4 specific bases.
+
+To regenerate: run the script with the repo's `.venv` python (Biopython is a dev-only dependency; the app does not import it).
+
+## Earlier: NEB list evaluated, not imported (2026-11-02)
 
 Request: replace the hand-written 47-enzyme table (`app/enzymes.py`) with the enzymes of NEB's "Alphabetized List of Recognition
 Specificities" (https://www.neb.com/en-ca/tools-and-resources/selection-charts/alphabetized-list-of-recognition-specificities).

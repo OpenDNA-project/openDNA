@@ -10,7 +10,7 @@ from dataclasses import replace
 from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QRadioButton, QSpinBox, QToolButton, QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QRadioButton, QSizePolicy, QSpinBox, QToolButton, QVBoxLayout, QWidget,
     QWidgetAction,
 )
 
@@ -114,7 +114,7 @@ class SearchBar(QWidget):
         layout.setSpacing(3)
         for w in (self.box, self.options_button, self.back, self.forward):
             layout.addWidget(w)
-        layout.addStretch()   # room the toolbar gives beyond what these need goes after them, not between them
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)   # no room beyond the box and its buttons: it sits against the range boxes, the file tabs get the rest
         self.box.returnPressed.connect(lambda: self.step(1))
         self.box.backward.connect(lambda: self.step(-1))
         self.box.escaped.connect(self.escape)

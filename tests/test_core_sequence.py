@@ -402,13 +402,13 @@ def test_restriction_cuts_and_digests_match_biopython():
     assert cuts["KpnI"] == [(31, 27)] and s[27:31] == "GTAC"       # top cut after GGTAC, bottom 4 earlier: a 3' overhang
     assert cuts["EcoRV"] == [(45, 45)] and common["EcoRV"].blunt
     # Every common enzyme on a planted site, in both orientations: the cut offsets declared for it, mirrored for the other strand
-    pad = "A" * 30
+    pad = "A" * 80   # room for the cuts of an enzyme that cuts far from its site, on both sides
     for e in enzymes.COMMON:
-        top, bottom = e.cuts[0]
         L = len(e.site)
-        assert enzymes.find_cuts(pad + e.site + pad, False, [e])[e.name][0] == (30 + top, 30 + bottom), e.name
+        site = "".join(enzymes._IUPAC[c][0] for c in e.site)   # a degenerate site (GGYRCC, CCANNNNNTGG) planted as one of its readings
+        assert enzymes.find_cuts(pad + site + pad, False, [e])[e.name] == sorted((80 + top, 80 + bottom) for top, bottom in e.cuts), e.name
         if enzymes.revcomp_site(e.site) != e.site:
-            assert enzymes.find_cuts(pad + rc(e.site) + pad, False, [e])[e.name] == [(30 + L - bottom, 30 + L - top)], e.name
+            assert enzymes.find_cuts(pad + rc(site) + pad, False, [e])[e.name] == sorted((80 + L - bottom, 80 + L - top) for top, bottom in e.cuts), e.name
     # --- both strands and sites across the origin ---
     bsai = next(e for e in enzymes.COMMON if e.name == "BsaI")
     pad = "A" * 20
@@ -496,7 +496,8 @@ def test_restriction_cuts_and_digests_match_biopython():
         seq = rand_dna(rng, n)
         # plant every enzyme's site in a random orientation at a random place
         for e in enzymes.COMMON:
-            site = e.site if rng.random() < .5 else rc(e.site)
+            site = "".join(rng.choice(enzymes._IUPAC[c]) for c in e.site)   # one reading of a degenerate site
+            site = site if rng.random() < .5 else rc(site)
             p = rng.randrange(n - len(site))
             seq = seq[:p] + site + seq[p + len(site):]
         # and one across the origin: the end of the file holds the start of the site, the start of the file its end. EcoRI and

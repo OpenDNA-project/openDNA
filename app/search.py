@@ -86,6 +86,14 @@ def describe(h):
 # ---- the open sequence ---------------------------------------------------------------------------------------------------------------
 
 
+def enzymes_named(needle):
+    """The enzymes a lower-case query names: the one called exactly that (EcoRI, not also EcoRII), else those whose name starts
+    with it (3 letters or more, so typing "Bsa" finds BsaI, BsaAI...)."""
+    names = lambda e: [e.name.lower(), *(a.lower() for a in e.aliases)]   # (an isoschizomer's name finds the enzyme the views show)
+    exact = [e for e in enzymes.COMMON if needle in names(e)]
+    return exact or ([e for e in enzymes.COMMON if any(n.startswith(needle) for n in names(e))] if len(needle) >= 3 else [])
+
+
 def _feature_text(f, details):
     if details:   # every value of every qualifier (the translation is a protein, not a name), the type too
         return " ".join([f.label, f.kind] + [v for k, v in f.qualifiers if v and k != "translation"]).lower()
@@ -122,10 +130,8 @@ def search_sequence(ed, query, opts):
             if needle in site.label.lower():
                 hits.append(hit(site.start, site.end, "primer", site.label, site.strand, site.mismatches))
     if opts.enzymes:
-        for e in enzymes.COMMON:
-            name = e.name.lower()
-            if name == needle or (len(needle) >= 3 and name.startswith(needle)):
-                hits += [hit(s, en, "enzyme", f"{e.name} site", strand) for s, en, strand in enzymes.site_spans(seq, circular, e)]
+        for e in enzymes_named(needle):
+            hits += [hit(s, en, "enzyme", f"{e.name} site", strand) for s, en, strand in enzymes.site_spans(seq, circular, e)]
     if opts.scope == "selection":
         if ed.end > ed.start:
             spans = ed.selected_spans()
@@ -172,11 +178,9 @@ def search_file(path, records, current, current_seq, query, opts, stop, on_recor
                     hits.append(hit(s, e, "protein", f"{prot} (frame {'+' if strand > 0 else '−'}{frame})", strand, m, record=name))
             needle = query.strip().lower()
             if opts.enzymes:
-                for en in enzymes.COMMON:
-                    en_name = en.name.lower()
-                    if en_name == needle or (len(needle) >= 3 and en_name.startswith(needle)):
-                        hits += [hit(s, e, "enzyme", f"{en.name} site", strand, record=name)
-                                 for s, e, strand in enzymes.site_spans(doc.sequence(), doc.circular, en)]
+                for en in enzymes_named(needle):
+                    hits += [hit(s, e, "enzyme", f"{en.name} site", strand, record=name)
+                             for s, e, strand in enzymes.site_spans(doc.sequence(), doc.circular, en)]
             for f in doc.features():
                 if f.kind not in HIDDEN_KINDS and needle in _feature_text(f, opts.details):
                     hits.append(hit(*feature_bounds(f), "feature", f.label or f.kind, f.strand, record=name))

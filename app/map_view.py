@@ -92,6 +92,23 @@ def QLineF_length(a, b):
     return math.hypot(a.x() - b.x(), a.y() - b.y())
 
 
+TITLE_FLAGS = Qt.AlignCenter.value | Qt.TextWordWrap.value | Qt.TextWrapAnywhere.value
+
+
+def _fit_title(font, name, width, lines=3, smallest=6.0):
+    """(font, name) for the circular map's title: the font shrunk (to `smallest` points) until the name fits `width` in at most
+    `lines` lines, and if it still does not, the name cut short with an ellipsis."""
+    font = QFont(font)
+    fits = lambda f, t: QFontMetricsF(f).boundingRect(QRectF(0, 0, width, 1e4), TITLE_FLAGS, t).height() <= lines * QFontMetricsF(f).lineSpacing() + 0.5
+    while not fits(font, name) and font.pointSizeF() > smallest:
+        font.setPointSizeF(max(smallest, font.pointSizeF() - 0.5))
+    full, n = name, len(name)
+    while n > 1 and not fits(font, name):
+        n -= 1
+        name = full[:n].rstrip() + "…"
+    return font, name
+
+
 class MapView(QWidget):
     def __init__(self, editor):
         super().__init__()
@@ -559,13 +576,15 @@ class MapView(QWidget):
 
         title = QFont(self.font())
         title.setBold(True)
-        box = QRectF(c.x() - r, c.y() - 30, 2 * r, 60)
-        name = f"{ed.doc.name}\n{ed.length:,} bp"
-        title_rect = QFontMetricsF(title).boundingRect(box, Qt.AlignCenter, name)
-        self._scale_circular(p, c, r - 6 - self._layout()[2] * (band + 3) - 1, fm, title_rect)
+        inner = r - 6 - self._layout()[2] * (band + 3) - 1   # the scale ring; the text must sit inside it, clear of the tick names
+        width = 1.6 * max(inner - 14, 0)                      # a box this wide and up to 1.2 * (inner - 14) high fits in that circle
+        title, name = _fit_title(title, ed.doc.name, width)
+        text_rect = QFontMetricsF(title).boundingRect(QRectF(0, 0, width, 1e4), TITLE_FLAGS, f"{name}\n{ed.length:,} bp")
+        box = QRectF(c.x() - width / 2, c.y() - text_rect.height() / 2, width, text_rect.height())
+        self._scale_circular(p, c, inner, fm, box)
         p.setFont(title)
         p.setPen(text)
-        p.drawText(box, Qt.AlignCenter, name)
+        p.drawText(box, TITLE_FLAGS, f"{name}\n{ed.length:,} bp")
         self._paint_left_out(p, left_out)
 
     def _scale_circular(self, p, c, radius, fm, keep_clear):

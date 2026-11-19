@@ -220,6 +220,8 @@ class EnzymeCriteria(QWidget):
         self.type_iis = choice("Type IIS", either)
         self.ends = choice("Ends", [("Any", None), ("5′", "5"), ("3′", "3"), ("Blunt", "blunt")])
         self.ends.setToolTip("The ends the enzyme leaves: a 5′ overhang, a 3′ overhang or blunt")
+        self.methylated = choice("Needs methylation", [("No", False), ("Any", None), ("Yes", True)])
+        self.methylated.setToolTip("Enzymes that cut only DNA methylated at their site (DpnI): hidden by default, as a PCR product has none")
         self.inventory = choice("Owned", either)
         self.inventory.setToolTip("Only the enzymes tagged as owned in the lab (the Owned box of the Digest's enzyme list), or not")
         outer.addLayout(form)
@@ -234,13 +236,13 @@ class EnzymeCriteria(QWidget):
         buttons.addStretch()
         outer.addLayout(buttons)
         self.fields = [self.min_sites, self.max_sites, self.min_size, self.max_size, self.palindromic, self.type_iis, self.ends,
-                       self.inventory]
+                       self.inventory, self.methylated]
 
     def filter(self):
         data = lambda c: c.currentData()
         limit = lambda box: None if box.value() == box.minimum() else box.value()   # the lowest value is "any"
         return EnzymeFilter(self.min_sites.value(), limit(self.max_sites), self.min_size.value(), limit(self.max_size),
-                            data(self.palindromic), data(self.type_iis), data(self.ends), data(self.inventory))
+                            data(self.palindromic), data(self.type_iis), data(self.ends), data(self.inventory), data(self.methylated))
 
     def set_filter(self, f):
         """Show `f` without sending it back."""
@@ -250,7 +252,7 @@ class EnzymeCriteria(QWidget):
                             (self.min_size, f.min_size), (self.max_size, self.max_size.minimum() if f.max_size is None else f.max_size)):
             spin.setValue(value)
         for combo, value in ((self.palindromic, f.palindromic), (self.type_iis, f.type_iis), (self.ends, f.ends),
-                             (self.inventory, f.inventory)):
+                             (self.inventory, f.inventory), (self.methylated, f.methylated)):
             combo.setCurrentIndex(combo.findData(value))
         for box in self.fields:
             box.blockSignals(False)

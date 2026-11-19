@@ -126,6 +126,8 @@ def test_sequence_search_engine(tmp_path):
     hits, _ = search.search_sequence(ed, "EcoRI", Options(enzymes=True))
     assert [(h.start, h.end, h.kind) for h in hits] == [(300, 306, "enzyme")]
     assert search.search_sequence(ed, "EcoRI", Options())[0] == []
+    # an isoschizomer's name finds the enzyme the views show: MunI is sold as MfeI (CAATTG), which has no site here
+    assert [e.name for e in search.enzymes_named("muni")] == ["MfeI"] and [e.name for e in search.enzymes_named("ecor")][:2] == ["EcoRI", "EcoRV"]
     # --- selection scope ---
     ed = editor()
     ed.select(250, 350)
