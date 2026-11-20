@@ -4,7 +4,7 @@
 
 ## `test_fragment_and_gibson_products`
 
-**Result:** ✅ passed in 0.07 s · [line 101](../../tests/test_assembly.py#L101) · **Area:** Gibson assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 101](../../tests/test_assembly.py#L101) · **Area:** Gibson assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Gibson designs could hand the user primers or a predicted product whose junctions do not actually exist in the assembled DNA, and silently accept ends that share no homology.
 
@@ -29,7 +29,7 @@ Checks that a fragment behaves as a PCR product (tails, core, flipping swaps the
 
 ## `test_golden_gate_products_and_overhang_checks`
 
-**Result:** ✅ passed in 0.13 s · [line 166](../../tests/test_assembly.py#L166) · **Area:** Golden Gate assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 166](../../tests/test_assembly.py#L166) · **Area:** Golden Gate assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a Golden Gate design could produce a circle with the wrong overhangs, accept overhangs that cross-ligate or repeat, or fail to warn about leftover enzyme sites, so the cloning would not work at the bench.
 
@@ -79,7 +79,7 @@ Checks that Sidewinder's toeholds are taken from the product itself (scarless), 
 
 ## `test_products_keep_every_orf_on_its_own_bases`
 
-**Result:** ✅ passed in 0.41 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.25 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an assembled product could annotate a CDS a few bases off, so the user reads a shifted frame and the wrong protein without any error being shown.
 
@@ -100,7 +100,7 @@ Builds fragments that are each a single ORF with the CDS annotated over all of i
 
 ## `test_the_product_carries_the_features_and_the_primers_of_its_fragments`
 
-**Result:** ✅ passed in 0.09 s · [line 464](../../tests/test_assembly.py#L464) · **Area:** Assembly product annotation · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 464](../../tests/test_assembly.py#L464) · **Area:** Assembly product annotation · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the simulated product could lose or duplicate the fragments' features and primer_bind annotations, or credit bases to a primer tail that the fragments already shared, misleading the user about what the design actually adds.
 
@@ -167,7 +167,7 @@ Checks the end-compatibility rule base by base (same sticky bases, same overhang
 
 ## `test_assembly_reports_bad_input_instead_of_failing`
 
-**Result:** ✅ passed in 0.33 s · [line 711](../../tests/test_assembly.py#L711) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.28 s · [line 711](../../tests/test_assembly.py#L711) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a zero-length or very short fragment could crash the assembly panel with a traceback instead of showing the user a red check saying what is wrong.
 

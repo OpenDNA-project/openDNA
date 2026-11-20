@@ -16,7 +16,7 @@ from enzymes import COMMON, EnzymeFilter, describe, find_cuts, is_owned, wanted
 import genetic_code
 from sequence_view import cds_codons, codons
 from data_table import DataTable
-from uikit import fit_columns, no_auto_default, plural, run_busy
+from uikit import SYNC_LIMIT, Latest, fit_columns, no_auto_default, plural, run_busy
 import value_filter
 
 
@@ -26,13 +26,15 @@ class ToolDialog(QDialog):
     `refresh()` runs after edits / primer changes (once typing pauses, and only while the
     pane is visible; a hidden one refreshes when shown again)."""
     embedded, stale = False, False
+    follows_primers = True   # refreshed when the primer sites change too (not a tool that does not read them)
 
     def embed(self, on_accept=None):
         self.embedded, self.on_accept = True, on_accept
         self.setWindowFlags(Qt.Widget)
         timer = QTimer(self, singleShot=True, interval=400, timeout=self._maybe_refresh)
         self.editor.changed.connect(timer.start)
-        self.editor.primers_changed.connect(timer.start)
+        if self.follows_primers:
+            self.editor.primers_changed.connect(timer.start)
         return self
 
     def done(self, result):  # accept()/reject() end here (C++ virtual, so this override works)
@@ -55,6 +57,28 @@ class ToolDialog(QDialog):
 
     def refresh(self):
         pass
+
+    def compute(self, label, work, take):
+        """`take(work())`: now on a short sequence; on a long one, `work` in a background thread (`label` in the status bar) with this
+        tool greyed meanwhile, and `take` only if the document is unchanged since and the tool still open (else the refresh after
+        that edit brings the answer). The tool clears what it draws on the document first, so nothing stale is shown."""
+        if "_job" not in vars(self):
+            self._job = Latest(self, label)
+        now, version = self.editor.length <= SYNC_LIMIT, self.editor.version
+        self.setEnabled(now or not self.embedded)   # (a dialog keeps its Close button: it has no stale result to grey)
+
+        def read():
+            try:
+                return work()
+            except Exception:   # `work` may read the editor itself: an edit meanwhile can tear what it reads, and the answer is dropped below
+                if version == self.editor.version:
+                    raise
+
+        def taken(value):
+            if version == self.editor.version:   # (an edit since makes the answer stale: the refresh after it brings the new one)
+                self.setEnabled(True)
+                take(value)
+        self._job.run(read, taken, now)
 
 
 class _EmptyHint(QObject):
@@ -524,6 +548,7 @@ class EnzymeTable(QTreeWidget):
 class DigestDialog(ToolDialog):
     """Restriction digest: pick enzymes, see the fragments, a virtual gel, and the cuts drawn on the sequence. Each tab is a
     digest with its own enzymes and table and its own lane on the shared gel (+ lane adds one, ✕ removes it)."""
+    follows_primers = False
 
     def __init__(self, parent, editor):
         super().__init__(parent)
@@ -648,7 +673,12 @@ class DigestDialog(ToolDialog):
 
     def refresh(self):
         """Find the sites of the enzymes on the current sequence, keeping the ticked ones."""
-        self.cuts = find_cuts(self.editor.doc.sequence(), self.editor.doc.circular, COMMON)
+        self.editor.set_cut_marks("digest", [])
+        seq, circular = self.editor.doc.sequence(), self.editor.doc.circular
+        self.compute("Enzymes", lambda: find_cuts(seq, circular, COMMON), self._take_cuts)
+
+    def _take_cuts(self, cuts):
+        self.cuts = cuts
         self.sites = {name: sorted({t for t, _ in cuts}) for name, cuts in self.cuts.items()}
         self.show_list()
 

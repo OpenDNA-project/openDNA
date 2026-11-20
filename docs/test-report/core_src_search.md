@@ -4,7 +4,7 @@
 
 ## `finds_an_exact_motif_on_both_strands_in_position_order`
 
-**Result:** ✅ passed · [line 232](../../core/src/search.rs#L232) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 333](../../core/src/search.rs#L333) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Sequence search could miss bottom-strand hits, report palindromes twice, ignore the top-strand-only option, or be case-sensitive.
 
@@ -22,7 +22,7 @@ Exact motif search finds palindromes once, finds a motif via its reverse complem
 
 ## `iupac_letters_in_the_query_match_every_base_they_stand_for`
 
-**Result:** ✅ passed · [line 247](../../core/src/search.rs#L247) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 348](../../core/src/search.rs#L348) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** IUPAC search queries could miss bases they stand for, or an N in the sequence could match everything, giving false or missing hits.
 
@@ -37,7 +37,7 @@ IUPAC codes in the query match all bases they stand for; with IUPAC off, R is in
 
 ## `allows_a_number_of_mismatches_and_reports_how_many`
 
-**Result:** ✅ passed · [line 266](../../core/src/search.rs#L266) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 367](../../core/src/search.rs#L367) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Search with mismatches allowed could miss near-matches or report a wrong mismatch count.
 
@@ -50,7 +50,7 @@ Fuzzy search returns hits with up to N mismatches and reports the count, on both
 
 ## `a_hit_can_run_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed · [line 278](../../core/src/search.rs#L278) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 379](../../core/src/search.rs#L379) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A motif crossing the origin of a plasmid could be missed by the search.
 
@@ -61,9 +61,43 @@ On a circular sequence a motif split across the origin is found (end > length), 
 | 1 | 'TTCAAAAAAAAAAAAGAA' (18 bp), 'GAATTC', linear / circular | empty / [MotifHit{15, 21, fwd, 0}] |
 | 2 | 'TAGGAAAAAAAACT', 'CCTAAG' circular | 1 hit, reverse, start 12 |
 
+## `many_motifs_in_one_pass_match_find_motif_one_by_one`
+
+**Result:** ✅ passed · [line 392](../../core/src/search.rs#L392) · **Area:** Sequence search (DNA motif) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+
+**Why it matters:** Restriction sites (map, sequence, Enzymes table, digests, cloning) could be missed or invented by the one-pass search that replaced the Python one.
+
+find_motifs (all the enzymes' sites in one pass, used by every restriction-site display and digest) gives, for each motif, exactly what find_motif gives with no mismatches and no limit, on a linear and a circular sequence.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | 3000 made-up bases (A C G T, lower case, N, X); GAATTC, GGTCTC, GCNNNNNNNGC, RGATCY, AC, CCWGG, GAAGAC, NNN, GAXTTC; linear and circular | each motif's hits == find_motif(seq, motif, 0, iupac, both strands, circular, no limit) |
+| 2 | 'TTCAAAGAA' circular, GAATTC | 1 hit (across the origin) |
+| 3 | 'AATTCG' circular, CGAATTC (longer than the circle) | == find_motif's answer, not empty (read once round) |
+| 4 | '' linear, GAATTC | none |
+
+**Review notes:**
+
+- find_motif is the reference, so a bug both share (the IUPAC masks of pattern_mask) would not be seen; those are checked by iupac_letters_in_the_query_match_every_base_they_stand_for.
+
+## `cuts_mirror_on_the_bottom_strand_wrap_on_a_circle_and_stop_at_linear_ends`
+
+**Result:** ✅ passed · [line 416](../../core/src/search.rs#L416) · **Area:** Restriction enzymes · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** Enzyme cut positions (map, sequence, digests, cloning) could be wrong for Type IIS enzymes on the bottom strand, through the origin or at linear ends.
+
+find_cuts turns site hits into (top, bottom) cut positions: as given on the top strand, mirrored for a site on the bottom strand (an enzyme that cuts outside its site), dropped past a linear end, taken round the origin on a circle.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | 'AAGAATTCAA' linear, EcoRI GAATTC (1, 5) | [(3, 7)] |
+| 2 | 'GGTCTCAAAAAAAAAA' linear, BsaI GGTCTC (7, 11) | [(7, 11)] |
+| 3 | 'AAAAAAAAAAGAGACCAAAA' linear, BsaI (site on the bottom strand at 10) | [(5, 9)] |
+| 4 | 'GGTCTCAA' linear / circular, BsaI and EcoRI | [] / [(7, 3)] and [] |
+
 ## `stops_at_the_limit_and_handles_tiny_and_empty_inputs`
 
-**Result:** ✅ passed · [line 291](../../core/src/search.rs#L291) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 431](../../core/src/search.rs#L431) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A search could run past its hit limit or crash on an empty or very short sequence or query.
 
@@ -81,7 +115,7 @@ The hit limit is honoured and empty or too-short inputs return nothing without p
 
 ## `finds_a_protein_motif_in_all_six_frames`
 
-**Result:** ✅ passed · [line 301](../../core/src/search.rs#L301) · **Area:** Sequence search (protein motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 441](../../core/src/search.rs#L441) · **Area:** Sequence search (protein motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Protein motif search could miss hits in some frames, report wrong DNA coordinates, or mishandle X wildcards and stops.
 

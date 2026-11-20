@@ -4,7 +4,7 @@
 
 ## `test_gene_groups_fold_their_parts_and_survive_edits`
 
-**Result:** ✅ passed in 0.03 s · [line 59](../../tests/test_genes_and_history.py#L59) · **Area:** Gene grouping · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 59](../../tests/test_genes_and_history.py#L59) · **Area:** Gene grouping · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the feature list and map could fold the wrong features under a gene (or fail to fold them), and after editing the sequence a feature could end up covering bases it never covered.
 
@@ -22,7 +22,7 @@ Checks that features sharing a locus_tag or /gene fold under their gene while un
 
 ## `test_history_texts`
 
-**Result:** ✅ passed in 0.04 s · [line 114](../../tests/test_genes_and_history.py#L114) · **Area:** Edit history wording · **Checked against:** regression value · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 114](../../tests/test_genes_and_history.py#L114) · **Area:** Edit history wording · **Checked against:** regression value · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the History panel - the user's only record of what an edit actually did - could describe an edit wrongly or lump several edits into one line, making a mistake impossible to trace back.
 

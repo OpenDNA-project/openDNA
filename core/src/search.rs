@@ -160,6 +160,107 @@ pub fn find_motif(
     hits
 }
 
+/// Every exact place of each of `motifs` (IUPAC letters) in `seq`, on both strands: for each motif, its hits in order of
+/// position (`find_motif` with no mismatches and no limit, for many motifs in one pass: the enzymes' sites at every edit).
+///
+/// How it works: each pattern is filed under every 3-base word its first three positions accept, so at each place of the
+/// sequence only the few patterns filed under the 3 bases found there are compared (all of them where those bases are not
+/// plain A C G T).
+pub fn find_motifs(seq: &[u8], motifs: &[&[u8]], circular: bool) -> Vec<Vec<MotifHit>> {
+    const K: usize = 3;
+    let n = seq.len();
+    let mut out = vec![Vec::new(); motifs.len()];
+    let mut patterns = Vec::new(); // (motif index, masks, forward)
+    for (k, motif) in motifs.iter().enumerate() {
+        let masks: Vec<u8> = motif.iter().map(|&c| pattern_mask(c, true)).collect();
+        if masks.is_empty() || masks.contains(&0) || (!circular && masks.len() > n) {
+            continue;
+        }
+        let reverse = reverse_masks(&masks);
+        let palindrome = reverse == masks;
+        patterns.push((k, masks, true));
+        if !palindrome {
+            patterns.push((k, reverse, false));
+        }
+    }
+    let longest = patterns.iter().map(|p| p.1.len()).max().unwrap_or(0);
+    if n == 0 || longest == 0 {
+        return out;
+    }
+    let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); 1 << (2 * K)];
+    for (p, (_, masks, _)) in patterns.iter().enumerate() {
+        for (word, bucket) in buckets.iter_mut().enumerate() {
+            // position j of the word holds base (word >> 2j) & 3, as the bit 1 << that of BASE
+            if (0..K.min(masks.len())).all(|j| masks[j] & (1 << ((word >> (2 * j)) & 3)) != 0) {
+                bucket.push(p);
+            }
+        }
+    }
+    let all: Vec<usize> = (0..patterns.len()).collect();
+    let wrapped: Vec<u8>;
+    let text: &[u8] = if circular {
+        wrapped = seq.iter().chain(&seq[..(longest - 1).min(n)]).copied().collect(); // (as find_motif reads a circle)
+        &wrapped
+    } else {
+        seq
+    };
+    for i in 0..n {
+        let mut word = 0;
+        let mut plain = i + K <= text.len();
+        for j in 0..K.min(text.len() - i) {
+            match BASE[text[i + j] as usize] {
+                1 => {}
+                2 => word |= 1 << (2 * j),
+                4 => word |= 2 << (2 * j),
+                8 => word |= 3 << (2 * j),
+                _ => plain = false,
+            }
+        }
+        let checked = if plain { K } else { 0 }; // the bases the bucket already matched
+        for &p in if plain { &buckets[word] } else { &all } {
+            let (k, masks, forward) = &patterns[p];
+            let m = masks.len();
+            let from = checked.min(m);
+            if i + m <= text.len() && masks[from..].iter().zip(&text[i + from..i + m]).all(|(&mask, &b)| fits(mask, b)) {
+                out[*k].push(MotifHit { start: i, end: i + m, forward: *forward, mismatches: 0 });
+            }
+        }
+    }
+    out
+}
+
+/// Where each enzyme cuts `seq`: `enzymes` are (site in IUPAC letters, cuts as (top, bottom) offsets of the gap from the start of the
+/// site, possibly outside it). For each, the sorted distinct (top, bottom) cut positions (the gap before that base on the top
+/// strand's numbering): a site on the bottom strand cuts mirrored; on a `circular` sequence positions are taken round the
+/// origin, on a linear one a cut on or past an end is no cut. (The app's `enzymes.find_cuts`.)
+pub fn find_cuts(seq: &[u8], enzymes: &[(&[u8], Vec<(i64, i64)>)], circular: bool) -> Vec<Vec<(usize, usize)>> {
+    let n = seq.len() as i64;
+    let sites: Vec<&[u8]> = enzymes.iter().map(|e| e.0).collect();
+    find_motifs(seq, &sites, circular)
+        .into_iter()
+        .zip(enzymes)
+        .map(|(hits, (site, cuts))| {
+            let l = site.len() as i64;
+            let mut out = Vec::new();
+            for h in hits {
+                for &(top, bottom) in cuts {
+                    // read the other way, the cut `t` from the start of the site is `l - t` from its end
+                    let (t, b) = if h.forward { (top, bottom) } else { (l - bottom, l - top) };
+                    let (t, b) = (h.start as i64 + t, h.start as i64 + b);
+                    if circular {
+                        out.push((t.rem_euclid(n) as usize, b.rem_euclid(n) as usize));
+                    } else if 0 < t && t < n && 0 < b && b < n {
+                        out.push((t as usize, b as usize));
+                    }
+                }
+            }
+            out.sort_unstable();
+            out.dedup();
+            out
+        })
+        .collect()
+}
+
 /// One place a protein motif occurs, read from DNA.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProteinHit {
@@ -285,6 +386,45 @@ mod tests {
         let hits = find_motif(b"TAGGAAAAAAAACT", b"CCTAAG", 0, true, true, true, 10);
         assert_eq!(hits.len(), 1);
         assert!(!hits[0].forward && hits[0].start == 12);
+    }
+
+    #[test]
+    fn many_motifs_in_one_pass_match_find_motif_one_by_one() {
+        // A made-up sequence with lower case, N and a letter that is not a base; sites plain, palindromic, degenerate and short.
+        let mut seq = Vec::new();
+        let mut x: u32 = 7;
+        for _ in 0..3000 {
+            x = x.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            seq.push(b"ACGTacgtNACGTACGTX"[(x >> 16) as usize % 18]);
+        }
+        let motifs: [&[u8]; 9] = [b"GAATTC", b"GGTCTC", b"GCNNNNNNNGC", b"RGATCY", b"AC", b"CCWGG", b"GAAGAC", b"NNN", b"GAXTTC"];
+        for circular in [false, true] {
+            let all = find_motifs(&seq, &motifs, circular);
+            for (motif, hits) in motifs.iter().zip(&all) {
+                assert_eq!(hits, &find_motif(&seq, motif, 0, true, true, circular, usize::MAX), "{}", String::from_utf8_lossy(motif));
+            }
+        }
+        assert_eq!(find_motifs(b"TTCAAAGAA", &[b"GAATTC"], true)[0].len(), 1, "a site across the origin");
+        // A site longer than a (tiny) circle: read once round, as find_motif does.
+        let tiny = find_motifs(b"AATTCG", &[b"CGAATTC"], true);
+        assert_eq!(tiny[0], find_motif(b"AATTCG", b"CGAATTC", 0, true, true, true, usize::MAX));
+        assert!(!tiny[0].is_empty(), "a site longer than the circle");
+        assert!(find_motifs(b"", &[b"GAATTC"], false)[0].is_empty());
+    }
+
+    #[test]
+    fn cuts_mirror_on_the_bottom_strand_wrap_on_a_circle_and_stop_at_linear_ends() {
+        let ecori: (&[u8], Vec<(i64, i64)>) = (b"GAATTC", vec![(1, 5)]);
+        let bsai: (&[u8], Vec<(i64, i64)>) = (b"GGTCTC", vec![(7, 11)]); // cuts outside its site, not its own reverse complement
+        // EcoRI at 2: cuts after G (3) and before the last C on the bottom strand (7).
+        assert_eq!(find_cuts(b"AAGAATTCAA", &[ecori.clone()], false), vec![vec![(3, 7)]]);
+        // BsaI forward at 0: (7, 11).
+        assert_eq!(find_cuts(b"GGTCTCAAAAAAAAAA", &[bsai.clone()], false), vec![vec![(7, 11)]]);
+        // BsaI on the bottom strand (GAGACC at 10): mirrored, (6 - 11, 6 - 7) from the site's start = (5, 9).
+        assert_eq!(find_cuts(b"AAAAAAAAAAGAGACCAAAA", &[bsai.clone()], false), vec![vec![(5, 9)]]);
+        // Linear: a cut past the end is no cut; circular: it is taken round the origin (11 % 8 = 3).
+        assert_eq!(find_cuts(b"GGTCTCAA", &[bsai.clone()], false), vec![vec![]]);
+        assert_eq!(find_cuts(b"GGTCTCAA", &[bsai, ecori], true), vec![vec![(7, 3)], vec![]]);
     }
 
     #[test]

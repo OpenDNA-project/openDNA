@@ -892,6 +892,7 @@ class CheckupDialog(ToolDialog):
 
     Tables: the transcription units with the CDSs each one carries (verdict per host) and those no unit carries, the
     replication origins, and the elements used (library / predicted ones ticked, to add to the document)."""
+    follows_primers = False
     ORIGIN_COLUMNS = ["Origin", "Location", "Replicates in", "Copies", "Notes"]
     ELEMENT_COLUMNS = ["Element", "Type", "Location", "From", "Details"]
     NONE = "Not transcribed"
@@ -969,7 +970,12 @@ class CheckupDialog(ToolDialog):
         return f"{s % n + 1:,}–{(e - 1) % n + 1:,} {'→' if strand > 0 else '←'}"
 
     def refresh(self):
-        self.result = r = run(self.editor)
+        clear_overlay(self.editor)   # (drawn again with the new result)
+        editor = self.editor
+        self.compute("Plasmid Checkup", lambda: run(editor), self._show_result)
+
+    def _show_result(self, r):
+        self.result = r
         n = self.editor.length
         # After an edit the tables are filled anew: the row you were on and the scroll position are kept.
         views = (self.units_tree, self.origin_table, self.element_table)

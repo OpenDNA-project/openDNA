@@ -33,6 +33,7 @@ import theme
 import tool_settings
 from hover import HoverTips, Text
 from perf import Laps, timed
+from uikit import run_busy
 from alignments import (COLORS, INVERTED_COLOR, LABELS, MATE_UNMAPPED_COLOR, TOOL as ALIGNMENTS, classify, flag_level, insert_limits,
                         relay as scan_relay, setting, start_scan)
 from editor import arrow, text_color_on
@@ -1390,7 +1391,7 @@ class GenomeView(QWidget):
             ed.reveal.emit(numbers[0] - 1)
             self.center_on(numbers[0] - 1)
         elif text:
-            hit = ed.lookup(text)
+            hit = run_busy(self, "Looking it up…", lambda: ed.lookup(text))   # (every track's names: in a thread)
             if hit is None:
                 ed.error.emit(f"'{text}' not found")
                 return

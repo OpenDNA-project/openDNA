@@ -39,7 +39,7 @@ from primer_db import db
 from primer_panel import MARKS, checks_html, melting_temp, worst
 from sequence_view import SequenceView
 from sourcefiles import OPEN_FILTER, add_recent, read_document, recent_files
-from uikit import fit_columns, plural, right_aligned
+from uikit import fit_columns, plural, right_aligned, run_busy
 import theme
 import wip
 
@@ -1436,7 +1436,7 @@ class AssemblyPanel(QWidget):
         for i, f, path in todo:
             doc = piece_doc(self.slots, d, i) if f.vector else f.doc
             try:
-                doc.save_genbank(path)
+                run_busy(self, f"Saving {path.name}…", lambda: doc.save_genbank(path))
             except OSError as e:   # a read-only folder, a full disk: said, and the files written so far are counted
                 QMessageBox.critical(self, "Save fragments", f"{path}\n\n{e}")
                 break

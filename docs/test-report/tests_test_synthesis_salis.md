@@ -95,7 +95,7 @@ Whitespace and case are accepted; the first other base is named; an empty text i
 
 ## `test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the_paper`
 
-**Result:** ✅ passed in 2.97 s · [line 104](../../tests/test_synthesis_salis.py#L104) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.92 s · [line 104](../../tests/test_synthesis_salis.py#L104) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The folding, window and repeat parts together must reproduce the published model on real sequences.
 

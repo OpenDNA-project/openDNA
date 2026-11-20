@@ -44,23 +44,17 @@ must release the GIL (`py.allow_threads`) for a Python thread to help; pure-Pyth
 - `app/synthesis_salis.py` `_vienna_richest`: about 6 folds per base (18,000 for a 3 kb fragment); fold the windows in parallel (process pool
   unless ViennaRNA releases the GIL), then the order-dependent dedup in one pass.
 - `core/src/annotate.rs` `find_parts_with` (Detect Features, Plasmid Checkup): library parts are independent; split them over `std::thread::scope`, hits kept in part order.
-- `app/enzymes.py` `find_cuts`: about 250 enzymes x 2 orientations in Python; move to Rust (`search::find_motif` reads IUPAC) with the enzymes over threads;
-  lifts the 250 kb limit (see KNOWN_ISSUES section 4).
 - `app/folder_search.py` `search_folder`: files one after another; a thread pool over files (the parsing and `align` release the GIL), shared progress and cancel.
 - `core/src/primers.rs` `binding_sites` via `lib.rs` `find_primers`: every database primer scans the whole template in turn; split the primers over threads.
-  `editor.py` runs it on the GUI thread below 300 kb.
 - `app/reference.py` `Reference.search` (genome checks of primers): records and 1 Mb windows in turn; a pool over them.
 - `core/src/cas9.rs` `find_sites` (Spacer Finder specificity): strands x guides x PAMs over every chromosome; threads per strand or guide range. The
   automatic check calls it per 10 guides, rescanning the genome's PAMs each time: one call for all. `cas9.py` `candidates` is a Python regex over up to 2 Mb.
-- `app/search_bar.py`: the search bar runs `search.search_sequence` on the GUI thread (about 1 s per chromosome for a motif or protein search); use its
-  file-search thread pattern, and chunk `find_motif` / `find_protein_with` in Rust.
+- `core/src/search.rs` `find_motif` / `find_protein_with` (the search bar, in a background thread: about 1 s per chromosome): chunk the sequence over threads.
 - `app/primer_design.py` `design`: 50 separate genome scans for the candidates; one `find_primers` call for all.
 - `app/cli.py` `run_rows` (kld, pcr, recombineering, codon batches): rows in turn, mostly pure Python; a process pool keeping row order for large batches.
 - `core/src/alignments.rs` `Bam::variants`: 1 Mb windows in turn; pile them in parallel, then merge junctions across window edges in one pass.
 - `app/repeats.py` (pair repeats, dot plot) and `app/msa.py`: pure Python, threads give nothing; port to Rust first.
 - Small: `salis::hairpin_rule_best_gc` (about 550 independent passes); annotation of the other records of a multi-record file (one at a time).
-- Rust calls that keep the GIL, so `run_busy` cannot keep the window alive during them: `write_genbank`, `save_genbank`, `Track.search`, `Track.query`,
-  `Fasta.fetch`; add `py.allow_threads`.
 
 ## 3. Features not built
 

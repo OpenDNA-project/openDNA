@@ -4,7 +4,7 @@
 
 ## `test_align_single_queries_coordinates_indels_and_overhangs`
 
-**Result:** ✅ passed in 0.02 s · [line 58](../../tests/test_core_alignment.py#L58) · **Area:** Local alignment (core.align) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 58](../../tests/test_core_alignment.py#L58) · **Area:** Local alignment (core.align) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Local Align could report wrong coordinates, strands, indel positions or invented alignments when a user maps a read or construct onto a sequence.
 
@@ -88,7 +88,7 @@ Checks local_align.clean_query on accepted formats and on errors with their mess
 
 ## `test_folder_search_finds_a_query_in_its_file_record_place_and_strand`
 
-**Result:** ✅ passed in 1.32 s · [line 421](../../tests/test_core_alignment.py#L421) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.29 s · [line 421](../../tests/test_core_alignment.py#L421) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file.
 

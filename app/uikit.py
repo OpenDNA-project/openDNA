@@ -1,10 +1,11 @@
 """Small pieces every panel of the interface shares, so the same thing looks and behaves the same everywhere: counted words
 ("3 primers", never "3 primer(s)"), tables whose columns fit what they hold, and buttons that Enter does not press by surprise."""
 import threading
+import time
 
 import shiboken6
 
-from PySide6.QtCore import QEvent, QEventLoop, QModelIndex, QObject, QSettings, Qt, QTimer
+from PySide6.QtCore import QEvent, QEventLoop, QModelIndex, QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication, QHeaderView, QMessageBox, QProgressDialog, QPushButton, QStyle, QStyleOptionViewItem, QTableView, QTreeView,
 )
@@ -313,6 +314,104 @@ def run_busy(parent, text, work):
     if "error" in result:
         raise result["error"]
     return result["value"]
+
+
+class _Delivery(QObject):
+    """Hands a background job's answer to the GUI thread (a queued signal). Lives forever, so a late answer never hits a deleted object."""
+    done = Signal(object, object, object)   # done callback, value, error
+
+    def __init__(self):
+        super().__init__()
+        self.done.connect(self._call)   # a slot of this object (made on the GUI thread): queued, so it runs there
+
+    def _call(self, done, value, error):
+        if error is not None:
+            raise error
+        done(value)
+
+
+_delivery = _Delivery()
+_jobs = {}   # job -> (label, time.monotonic() at its start): what the status bar says is running
+
+
+SYNC_LIMIT = 50_000   # bp: on a longer sequence the analyses that follow every edit run in a background thread (`Latest`)
+
+
+def in_background(label, work, done):
+    """Run `work()` in a worker thread without blocking anything; then `done(value)` on the GUI thread (an exception `work` raised is
+    raised there instead). `label` is what the status bar says while it runs (`background_jobs`). Returns the thread (`.join()` waits)."""
+    job = object()
+
+    def target():
+        value = error = None
+        try:
+            value = work()
+        except Exception as e:   # raised on the GUI thread
+            error = e
+        finally:
+            _jobs.pop(job, None)
+        try:
+            _delivery.done.emit(done, value, error)
+        except RuntimeError:   # the program is closing
+            pass
+
+    _jobs[job] = (label, time.monotonic())
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    return thread
+
+
+def background_jobs(after=1.0):
+    """The labels of the `in_background` jobs running for more than `after` seconds, oldest first, each once."""
+    now = time.monotonic()
+    return list(dict.fromkeys(label for label, start in list(_jobs.values()) if now - start > after))   # (a dict keeps its start order)
+
+
+class Latest:
+    """An analysis that follows the document (`run` after every edit): now on a short sequence, else `in_background`, one job at a time.
+    A request made while one runs waits, only the newest of them; `take(value)` gets an answer only if nothing was asked since (nor
+    `cancel`), and only while `owner` (a QObject) exists. So a stale answer is never shown, and fast typing starts no pile of threads.
+    An error is raised only from the current request (an older one may have read a document being edited)."""
+
+    def __init__(self, owner, label):
+        self.owner, self.label = owner, label
+        self.asked, self.running, self.waiting = 0, False, None
+
+    def run(self, work, take, now=False):
+        """`now`: on the GUI thread, at once (a short sequence: see SYNC_LIMIT). `work` must not read what an edit changes (give it copies), or
+        `take` must check that the document is the one it read (ToolDialog.compute)."""
+        self.cancel()
+        if now:
+            take(work())
+        elif self.running:
+            self.waiting = (work, take)
+        else:
+            self._start(work, take)
+
+    def cancel(self):
+        self.asked += 1
+        self.waiting = None
+
+    def _start(self, work, take):
+        self.running, ticket = True, self.asked
+
+        def guarded():
+            try:
+                return work(), None
+            except Exception as e:
+                return None, e
+
+        def done(answer):
+            self.running = False
+            if self.waiting:
+                self._start(*self.waiting)
+                self.waiting = None
+            elif ticket == self.asked and shiboken6.isValid(self.owner):
+                value, error = answer
+                if error is not None:
+                    raise error
+                take(value)
+        in_background(self.label, guarded, done)
 
 
 def ask(parent, title, text, choices, default=None, detail=""):

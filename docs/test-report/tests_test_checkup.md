@@ -4,7 +4,7 @@
 
 ## `test_bacterial_cds_verdicts`
 
-**Result:** ✅ passed in 0.05 s · [line 77](../../tests/test_checkup.py#L77) · **Area:** Plasmid checkup (bacteria) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 77](../../tests/test_checkup.py#L77) · **Area:** Plasmid checkup (bacteria) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the Checkup could tell a user that a gene will be expressed in E. coli when a terminator blocks it, when it is on the wrong strand or when it has no RBS - or refuse to predict the parts a plain file does not annotate.
 
@@ -21,7 +21,7 @@ Checks the verdict given to each CDS in a bacterial context: an annotated promot
 
 ## `test_eukaryotic_hosts_and_unit_ends`
 
-**Result:** ✅ passed in 0.03 s · [line 139](../../tests/test_checkup.py#L139) · **Area:** Plasmid checkup (eukaryotes) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 139](../../tests/test_checkup.py#L139) · **Area:** Plasmid checkup (eukaryotes) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a mammalian expression construct could be judged by bacterial rules - no Kozak check, a polyA or a Pol III promoter ignored - and a shuttle vector would not get a per-host verdict.
 
@@ -40,7 +40,7 @@ Checks that a CMV unit ends at its polyA signal and is judged on Kozak context r
 
 ## `test_how_far_a_unit_runs_and_how_it_ends`
 
-**Result:** ✅ passed in 0.09 s · [line 183](../../tests/test_checkup.py#L183) · **Area:** Transcription units · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 183](../../tests/test_checkup.py#L183) · **Area:** Transcription units · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the drawn transcript could stop at the wrong base, miss that it wraps the origin, claim an exact +1 it cannot know, or describe its ending wrongly, misleading the user about what is actually transcribed.
 
@@ -56,7 +56,7 @@ Checks that a promoter without a terminator runs round a circle or to the end of
 
 ## `test_origins_and_prediction_thresholds`
 
-**Result:** ✅ passed in 0.16 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.13 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the Checkup could name the wrong origin family (or miss that a plasmid has none, or needs a pir host), and the motif predictors could flood a real plasmid with chance hits.
 
@@ -87,7 +87,7 @@ Checks that annotated rep_origin features are mapped to origin names, hosts and 
 
 ## `test_library_parts_on_a_real_plasmid`
 
-**Result:** ✅ passed in 0.08 s · [line 285](../../tests/test_checkup.py#L285) · **Area:** Plasmid checkup (parts library) · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.06 s · [line 285](../../tests/test_checkup.py#L285) · **Area:** Plasmid checkup (parts library) · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the built-in parts library could override a file's own annotations, or fail to supply the terminator a bare sequence needs, changing the verdicts on real plasmids.
 
@@ -110,7 +110,7 @@ Runs the Checkup on the annotated demo plasmid pBAD30_eilR and on the same bases
 
 ## `test_unit_features_keep_their_geometry_and_survive_a_file_round_trip`
 
-**Result:** ✅ passed in 0.02 s · [line 318](../../tests/test_checkup.py#L318) · **Area:** Transcription unit features · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 318](../../tests/test_checkup.py#L318) · **Area:** Transcription unit features · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a transcription unit saved into a file could be drawn with the wrong +1, the wrong thick/thin split or lost altogether on reload, and old files written under the program's former name would stop working.
 
