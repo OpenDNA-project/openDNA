@@ -22,7 +22,7 @@ inspect, feature and region give what the GenBank file says: length, topology, f
 
 ## `test_agent_mistakes_are_one_error_line`
 
-**Result:** ✅ passed in 0.01 s · [line 65](../../tests/test_agent_cli.py#L65) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 65](../../tests/test_agent_cli.py#L65) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A mistake in the agent's input could end as a traceback or silent output that the agent cannot read or pass to the user.
 
@@ -34,7 +34,7 @@ Each user mistake gives exit code 1, nothing on stdout and exactly one `ERROR:` 
 
 ## `test_every_recipe_example_still_runs`
 
-**Result:** ✅ passed in 4.32 s · [line 73](../../tests/test_agent_cli.py#L73) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 4.26 s · [line 73](../../tests/test_agent_cli.py#L73) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** A recipe could keep telling agents to run a command that no longer exists or whose arguments changed.
 
@@ -103,7 +103,7 @@ On a 521 bp circle, changes written through the origin (first position after the
 
 ## `test_kld_batch_gives_the_files_and_primers_the_panel_gives`
 
-**Result:** ✅ passed in 0.06 s · [line 167](../../tests/test_agent_cli.py#L167) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 167](../../tests/test_agent_cli.py#L167) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give files or primers different from what the user gets by hand in the KLD panel, or overwrite earlier results, or accept a malformed table.
 
@@ -121,7 +121,7 @@ A 4-row table (substitution, reverse-strand substitution, deletion, wrong refere
 
 ## `test_pcr_batch_gives_the_pairs_the_panel_gives`
 
-**Result:** ✅ passed in 2.20 s · [line 201](../../tests/test_agent_cli.py#L201) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.19 s · [line 201](../../tests/test_agent_cli.py#L201) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results.
 
@@ -162,7 +162,7 @@ For a 521 bp circular genome, a 120 bp cassette and rows replacing a CDS, a 11 b
 
 ## `test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names`
 
-**Result:** ✅ passed in 0.09 s · [line 282](../../tests/test_agent_cli.py#L282) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.10 s · [line 282](../../tests/test_agent_cli.py#L282) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** One bad row could end a 200-row run, two rows could overwrite each other's file, or a value the windows would refuse could pass without the user knowing.
 
@@ -237,7 +237,7 @@ A 30 bp stretch planted twice (21..50 and 221..250) is reported as one direct re
 
 ## `test_synthesis_command_gives_what_the_synthesis_module_gives`
 
-**Result:** ✅ passed in 3.46 s · [line 404](../../tests/test_agent_cli.py#L404) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 3.39 s · [line 404](../../tests/test_agent_cli.py#L404) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** The command line and the Synthesis tab could drift apart if the command had its own copy of the logic.
 
@@ -310,7 +310,7 @@ A 60 bp piece of a 400 bp plasmid is found at 101..160 with identity 1.0; its re
 
 ## `test_msa_command_aligns_the_files_and_never_overwrites`
 
-**Result:** ✅ passed in 0.09 s · [line 476](../../tests/test_agent_cli.py#L476) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 476](../../tests/test_agent_cli.py#L476) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could report a wrong identity between two variants, or overwrite an alignment file.
 
@@ -350,7 +350,7 @@ With the Highest frequency method each codon of the planted CDS becomes the most
 
 ## `test_export_command_writes_the_formats_and_never_overwrites`
 
-**Result:** ✅ passed in 0.05 s · [line 535](../../tests/test_agent_cli.py#L535) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 535](../../tests/test_agent_cli.py#L535) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could hand the user a file in the wrong format, or overwrite one.
 
@@ -419,7 +419,7 @@ Two nested overrides of one setting: the inner value is read inside, the outer o
 
 ## `test_checkup_command_gives_the_verdicts_of_the_checkup_window`
 
-**Result:** ✅ passed in 0.04 s · [line 604](../../tests/test_agent_cli.py#L604) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 604](../../tests/test_agent_cli.py#L604) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could say a gene will be expressed when nothing drives it, or the reverse.
 

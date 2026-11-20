@@ -378,7 +378,8 @@ class Latest:
         self.asked, self.running, self.waiting = 0, False, None
 
     def run(self, work, take, now=False):
-        """`now`: on the GUI thread, at once (a short sequence: see SYNC_LIMIT). `work` must not read what an edit changes: give it copies."""
+        """`now`: on the GUI thread, at once (a short sequence: see SYNC_LIMIT). `work` must not read what an edit changes (give it copies), or
+        `take` must check that the document is the one it read (ToolDialog.compute)."""
         self.cancel()
         if now:
             take(work())

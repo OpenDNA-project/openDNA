@@ -892,6 +892,7 @@ class CheckupDialog(ToolDialog):
 
     Tables: the transcription units with the CDSs each one carries (verdict per host) and those no unit carries, the
     replication origins, and the elements used (library / predicted ones ticked, to add to the document)."""
+    follows_primers = False
     ORIGIN_COLUMNS = ["Origin", "Location", "Replicates in", "Copies", "Notes"]
     ELEMENT_COLUMNS = ["Element", "Type", "Location", "From", "Details"]
     NONE = "Not transcribed"

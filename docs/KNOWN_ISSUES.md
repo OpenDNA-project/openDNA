@@ -67,6 +67,8 @@ App (Python):
 ## 4. Interface (found by the 2026 UI passes, still present)
 
 - A click within 4 px of the red origin bar after the last base toggles endless scrolling instead of placing the cursor (deliberate in the code comment, but it was the original complaint).
+- On a sequence over 50 kb (`uikit.SYNC_LIMIT`) primer sites are found again in a background thread after an edit, and the old sites
+  stay drawn (and listed by the PCR panel) until the new ones arrive, a second or so on a genome (`app/editor.py` `match_primers`).
 - Tools opened from the Tools menu are modal `.exec()` dialogs while the same tools also exist as pane views.
 - Tool names differ between the setting and the window (`Detect Features` vs `Detect Common Features`); some titles are in sentence case.
 - About 56 "(s)" plurals remain where `uikit.plural()` exists (`app/assembly.py`, `cas9.py`, `enzymes.py`, `pcr.py`...).

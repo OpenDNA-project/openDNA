@@ -9,8 +9,8 @@ Built by `scripts/test_report.py` on 2026-11-20 from `tests.json` and the last r
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
 | Python | 159 | 159 | 0 | 99 | 57 | 3 | 0 | 126 |
-| Rust | 70 | 70 | 0 | 43 | 26 | 1 | 0 | 47 |
-| **All** | 229 | 229 | 0 | 142 | 83 | 4 | 0 | 173 |
+| Rust | 71 | 71 | 0 | 44 | 26 | 1 | 0 | 47 |
+| **All** | 230 | 230 | 0 | 143 | 83 | 4 | 0 | 173 |
 
 ## Weak or unreviewed tests
 
@@ -19,7 +19,7 @@ Built by `scripts/test_report.py` on 2026-11-20 from `tests.json` and the last r
 - `tests/test_synthesis_vendors.py::test_the_idt_login_and_screening_requests_have_the_shape_the_open_client_uses` (weak): The shape being checked is the one the open-source SBOL-utilities client is reported to use, not one read from IDT's documentation (behind a login) or seen on the live service: the first real call by someone with an IDT API account is the real test.
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 229 tests)
+## Gaps and proposed tests (3 of 230 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -487,7 +487,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `a_sequence_without_repeats_has_none` | A repeat-free sequence must not be flagged. | hand-computed | adequate | sound |  |
 | `a_gc_rich_stem_scores_one_and_a_poly_a_run_scores_zero` | The rule-based hairpin pass feeds richest_hairpin. | hand-computed | adequate | sound |  |
 
-### `core/src/search.rs` (7 tests)
+### `core/src/search.rs` (8 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -496,6 +496,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `allows_a_number_of_mismatches_and_reports_how_many` | Search with mismatches allowed could miss near-matches or report a wrong mismatch count. | hand-computed | strong | sound |  |
 | `a_hit_can_run_across_the_origin_of_a_circle` | A motif crossing the origin of a plasmid could be missed by the search. | hand-computed | strong | sound |  |
 | `many_motifs_in_one_pass_match_find_motif_one_by_one` | Restriction sites (map, sequence, Enzymes table, digests, cloning) could be missed or invented by the one-pass search that replaced the Python one. | independent implementation | strong | not checked | find_motif is the reference, so a bug both share (the IUPAC masks of pattern_mask) would not be seen; those are checked by iupac_letters_in_the_query_match_every_base_they_stand_for. |
+| `cuts_mirror_on_the_bottom_strand_wrap_on_a_circle_and_stop_at_linear_ends` | Enzyme cut positions (map, sequence, digests, cloning) could be wrong for Type IIS enzymes on the bottom strand, through the origin or at linear ends. | hand-computed | strong | not checked |  |
 | `stops_at_the_limit_and_handles_tiny_and_empty_inputs` | A search could run past its hit limit or crash on an empty or very short sequence or query. | hand-computed | adequate | sound | Limit test does not check that the first 3 hits (0, 2, 4) are the ones kept. |
 | `finds_a_protein_motif_in_all_six_frames` | Protein motif search could miss hits in some frames, report wrong DNA coordinates, or mishandle X wildcards and stops. | hand-computed | adequate | sound | Name says 'all six frames' but only the three forward frames are checked; the reverse-strand frame number is never asserted (line 309). |
 

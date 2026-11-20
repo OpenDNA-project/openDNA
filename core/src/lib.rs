@@ -444,8 +444,14 @@ impl Document {
         let primers = primers.map(|p| p.into_iter().map(to_gb).collect::<PyResult<Vec<_>>>()).transpose()?;
         let record = slf.borrow().inner.genbank_record(primers)?;
         slf.py().allow_threads(|| document::write_record(&record, &path))?;
-        slf.borrow_mut().inner.mark_saved();
-        Ok(())
+        // A repaint on the GUI thread may be reading the document with Python's lock released (gc_bins...): wait for it to finish.
+        loop {
+            if let Ok(mut doc) = slf.try_borrow_mut() {
+                doc.inner.mark_saved();
+                return Ok(());
+            }
+            slf.py().allow_threads(|| std::thread::sleep(std::time::Duration::from_millis(1)));
+        }
     }
 
     /// Write a GenBank copy without marking the document saved (autosave). Written from a copy taken now, with Python's lock

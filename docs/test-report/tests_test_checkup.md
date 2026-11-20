@@ -4,7 +4,7 @@
 
 ## `test_bacterial_cds_verdicts`
 
-**Result:** ✅ passed in 0.02 s · [line 77](../../tests/test_checkup.py#L77) · **Area:** Plasmid checkup (bacteria) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 77](../../tests/test_checkup.py#L77) · **Area:** Plasmid checkup (bacteria) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the Checkup could tell a user that a gene will be expressed in E. coli when a terminator blocks it, when it is on the wrong strand or when it has no RBS - or refuse to predict the parts a plain file does not annotate.
 
@@ -87,7 +87,7 @@ Checks that annotated rep_origin features are mapped to origin names, hosts and 
 
 ## `test_library_parts_on_a_real_plasmid`
 
-**Result:** ✅ passed in 0.06 s · [line 285](../../tests/test_checkup.py#L285) · **Area:** Plasmid checkup (parts library) · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.07 s · [line 285](../../tests/test_checkup.py#L285) · **Area:** Plasmid checkup (parts library) · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the built-in parts library could override a file's own annotations, or fail to supply the terminator a bare sequence needs, changing the verdicts on real plasmids.
 

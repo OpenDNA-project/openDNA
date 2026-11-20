@@ -173,7 +173,7 @@ pub fn find_motifs(seq: &[u8], motifs: &[&[u8]], circular: bool) -> Vec<Vec<Moti
     let mut patterns = Vec::new(); // (motif index, masks, forward)
     for (k, motif) in motifs.iter().enumerate() {
         let masks: Vec<u8> = motif.iter().map(|&c| pattern_mask(c, true)).collect();
-        if masks.is_empty() || masks.contains(&0) || masks.len() > n {
+        if masks.is_empty() || masks.contains(&0) || (!circular && masks.len() > n) {
             continue;
         }
         let reverse = reverse_masks(&masks);
@@ -199,7 +199,7 @@ pub fn find_motifs(seq: &[u8], motifs: &[&[u8]], circular: bool) -> Vec<Vec<Moti
     let all: Vec<usize> = (0..patterns.len()).collect();
     let wrapped: Vec<u8>;
     let text: &[u8] = if circular {
-        wrapped = seq.iter().chain(&seq[..longest - 1]).copied().collect();
+        wrapped = seq.iter().chain(&seq[..(longest - 1).min(n)]).copied().collect(); // (as find_motif reads a circle)
         &wrapped
     } else {
         seq
@@ -405,8 +405,26 @@ mod tests {
             }
         }
         assert_eq!(find_motifs(b"TTCAAAGAA", &[b"GAATTC"], true)[0].len(), 1, "a site across the origin");
-        assert!(find_motifs(b"GAA", &[b"GAATTC"], true)[0].is_empty(), "a site longer than the circle");
+        // A site longer than a (tiny) circle: read once round, as find_motif does.
+        let tiny = find_motifs(b"AATTCG", &[b"CGAATTC"], true);
+        assert_eq!(tiny[0], find_motif(b"AATTCG", b"CGAATTC", 0, true, true, true, usize::MAX));
+        assert!(!tiny[0].is_empty(), "a site longer than the circle");
         assert!(find_motifs(b"", &[b"GAATTC"], false)[0].is_empty());
+    }
+
+    #[test]
+    fn cuts_mirror_on_the_bottom_strand_wrap_on_a_circle_and_stop_at_linear_ends() {
+        let ecori: (&[u8], Vec<(i64, i64)>) = (b"GAATTC", vec![(1, 5)]);
+        let bsai: (&[u8], Vec<(i64, i64)>) = (b"GGTCTC", vec![(7, 11)]); // cuts outside its site, not its own reverse complement
+        // EcoRI at 2: cuts after G (3) and before the last C on the bottom strand (7).
+        assert_eq!(find_cuts(b"AAGAATTCAA", &[ecori.clone()], false), vec![vec![(3, 7)]]);
+        // BsaI forward at 0: (7, 11).
+        assert_eq!(find_cuts(b"GGTCTCAAAAAAAAAA", &[bsai.clone()], false), vec![vec![(7, 11)]]);
+        // BsaI on the bottom strand (GAGACC at 10): mirrored, (6 - 11, 6 - 7) from the site's start = (5, 9).
+        assert_eq!(find_cuts(b"AAAAAAAAAAGAGACCAAAA", &[bsai.clone()], false), vec![vec![(5, 9)]]);
+        // Linear: a cut past the end is no cut; circular: it is taken round the origin (11 % 8 = 3).
+        assert_eq!(find_cuts(b"GGTCTCAA", &[bsai.clone()], false), vec![vec![]]);
+        assert_eq!(find_cuts(b"GGTCTCAA", &[bsai, ecori], true), vec![vec![(7, 3)], vec![]]);
     }
 
     #[test]

@@ -1852,7 +1852,8 @@ class MainWindow(QMainWindow):
                 autosave.drop(target)
                 return
             if error is not None:
-                self.statusBar().showMessage(f"Autosave failed: {error}", 5000)
+                if ed.version == version:   # (else an edit tore what was written: the next autosave writes it again, unannounced)
+                    self.statusBar().showMessage(f"Autosave failed: {error}", 5000)
                 return
             autosave.remember_source(target, ed.path)
             if self.autosave_file not in (None, target):

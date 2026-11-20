@@ -73,16 +73,31 @@ find_motifs (all the enzymes' sites in one pass, used by every restriction-site 
 |---|---|---|
 | 1 | 3000 made-up bases (A C G T, lower case, N, X); GAATTC, GGTCTC, GCNNNNNNNGC, RGATCY, AC, CCWGG, GAAGAC, NNN, GAXTTC; linear and circular | each motif's hits == find_motif(seq, motif, 0, iupac, both strands, circular, no limit) |
 | 2 | 'TTCAAAGAA' circular, GAATTC | 1 hit (across the origin) |
-| 3 | 'GAA' circular, GAATTC | none (a site longer than the circle) |
+| 3 | 'AATTCG' circular, CGAATTC (longer than the circle) | == find_motif's answer, not empty (read once round) |
 | 4 | '' linear, GAATTC | none |
 
 **Review notes:**
 
 - find_motif is the reference, so a bug both share (the IUPAC masks of pattern_mask) would not be seen; those are checked by iupac_letters_in_the_query_match_every_base_they_stand_for.
 
+## `cuts_mirror_on_the_bottom_strand_wrap_on_a_circle_and_stop_at_linear_ends`
+
+**Result:** ✅ passed · [line 416](../../core/src/search.rs#L416) · **Area:** Restriction enzymes · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** Enzyme cut positions (map, sequence, digests, cloning) could be wrong for Type IIS enzymes on the bottom strand, through the origin or at linear ends.
+
+find_cuts turns site hits into (top, bottom) cut positions: as given on the top strand, mirrored for a site on the bottom strand (an enzyme that cuts outside its site), dropped past a linear end, taken round the origin on a circle.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | 'AAGAATTCAA' linear, EcoRI GAATTC (1, 5) | [(3, 7)] |
+| 2 | 'GGTCTCAAAAAAAAAA' linear, BsaI GGTCTC (7, 11) | [(7, 11)] |
+| 3 | 'AAAAAAAAAAGAGACCAAAA' linear, BsaI (site on the bottom strand at 10) | [(5, 9)] |
+| 4 | 'GGTCTCAA' linear / circular, BsaI and EcoRI | [] / [(7, 3)] and [] |
+
 ## `stops_at_the_limit_and_handles_tiny_and_empty_inputs`
 
-**Result:** ✅ passed · [line 413](../../core/src/search.rs#L413) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 431](../../core/src/search.rs#L431) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A search could run past its hit limit or crash on an empty or very short sequence or query.
 
@@ -100,7 +115,7 @@ The hit limit is honoured and empty or too-short inputs return nothing without p
 
 ## `finds_a_protein_motif_in_all_six_frames`
 
-**Result:** ✅ passed · [line 423](../../core/src/search.rs#L423) · **Area:** Sequence search (protein motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 441](../../core/src/search.rs#L441) · **Area:** Sequence search (protein motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Protein motif search could miss hits in some frames, report wrong DNA coordinates, or mishandle X wildcards and stops.
 

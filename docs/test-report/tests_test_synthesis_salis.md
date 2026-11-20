@@ -4,7 +4,7 @@
 
 ## `test_the_forest_gives_scikit_learns_answer_for_every_sequence_of_the_paper`
 
-**Result:** ✅ passed in 0.88 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.08 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** A mistake in reading the exported forest would make every synthesis verdict wrong without any error.
 
@@ -95,7 +95,7 @@ Whitespace and case are accepted; the first other base is named; an empty text i
 
 ## `test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the_paper`
 
-**Result:** ✅ passed in 2.95 s · [line 104](../../tests/test_synthesis_salis.py#L104) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.93 s · [line 104](../../tests/test_synthesis_salis.py#L104) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The folding, window and repeat parts together must reproduce the published model on real sequences.
 
@@ -162,7 +162,7 @@ From a PyPI file list, the wheel for this Python and system is chosen: Windows, 
 
 ## `test_installing_viennarna_checks_the_checksum_before_unpacking_anything`
 
-**Result:** ✅ passed in 0.01 s · [line 150](../../tests/test_synthesis_salis.py#L150) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 150](../../tests/test_synthesis_salis.py#L150) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A corrupted or swapped download could be unpacked into the data folder and imported.
 

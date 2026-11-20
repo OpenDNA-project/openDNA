@@ -13,11 +13,11 @@ them well. **[AUDIT.md](AUDIT.md) lists every test on one page with why it matte
 - **Input / Expected output**: the concrete cases, in the order the test runs them. Many tests are *topical*: one test function holds several sections, each a row.
 - **Review notes**: what the reviewer found could be stronger. **Fixed by the audit**: what was changed.
 
-## Totals (229 tests: 159 Python, 70 Rust)
+## Totals (230 tests: 159 Python, 71 Rust)
 
-Last run: ✅ 229 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
+Last run: ✅ 230 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
 
-Review: 🟡 adequate: 83 · 🟢 strong: 142 · 🔴 weak: 4
+Review: 🟡 adequate: 83 · 🟢 strong: 143 · 🔴 weak: 4
 
 ## Test files
 
@@ -67,7 +67,7 @@ Review: 🟡 adequate: 83 · 🟢 strong: 142 · 🔴 weak: 4
 | [`core/src/locations.rs`](core_src_locations.md) | 3 | 3 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 1 |
 | [`core/src/primers.rs`](core_src_primers.md) | 5 | 5 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 3 · 🔴 weak 1 |
 | [`core/src/salis.rs`](core_src_salis.md) | 3 | 3 | 0 | 0 | 0 | 🟡 adequate 3 |
-| [`core/src/search.rs`](core_src_search.md) | 7 | 7 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 5 |
+| [`core/src/search.rs`](core_src_search.md) | 8 | 8 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 6 |
 | [`core/src/tracks.rs`](core_src_tracks.md) | 1 | 1 | 0 | 0 | 0 | 🟡 adequate 1 |
 
 ## Rebuilding this report

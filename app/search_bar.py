@@ -259,7 +259,9 @@ class SearchBar(QWidget):
             opts, note = replace(opts, scope="sequence"), ("Searched the open sequence only (a file search looks for DNA)." if ed.fasta_record else "")
         # A long sequence is searched in a thread: an edit meanwhile clears the search (`clear`), and its answer is dropped.
         now = ed.length <= SYNC_LIMIT
-        if not now:
+        if not now:   # the hits of the last search go meanwhile: they are not those of this query
+            self.hits, self.index = [], -1
+            self._mark()
             self.counter.setText("Searching…")
         self.job.run(lambda: search.search_sequence(ed, query, opts),
                      lambda found: ed is self.editor and self._show_hits(query, note, *found, direction), now)
@@ -308,6 +310,9 @@ class SearchBar(QWidget):
                 _relay.done.emit(token)
             except RuntimeError:
                 pass   # the program is closing: the relay is already gone
+            except Exception:
+                _relay.done.emit(token)   # the count is not left at "Searching…"; the error is printed with the thread's
+                raise
         threading.Thread(target=work, daemon=True).start()
 
     def _found(self, token, name, hits):
