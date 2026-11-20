@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout,
+    QAbstractItemView, QDialog, QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QVBoxLayout, QWidget,
 )
 
 from opendna_core import Document, find_parts
@@ -296,13 +296,13 @@ class DetectDialog(ToolDialog):
         self.others = {}   # multi-record file: record name -> its Editor (the other chromosomes are searched too)
         self.columns = self.COLUMNS + (["Record"] if editor.multi_genbank else [])
         self.setWindowTitle("Detect Common Features")   # its name in the Tools menu
-        self.resize(820, 480)
+        self.resize(1300, 560)
         self.table = DataTable(self.columns, filtered=["Type", "Source", "Found by"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=0)
         self.table.currentCellChanged.connect(lambda row, *_: self._select(self.table.data_row(row)))
-        self.info = QLabel()
+        self.info = QLabel(wordWrap=True)   # (wrapped: the right half must be able to shrink to half the window)
         self.credit = QLabel(openExternalLinks=True)   # who made pLannotate, with the paper's DOI, while its features are listed
         self.credit.setStyleSheet('color: gray')
         self.credit.hide()
@@ -321,10 +321,25 @@ class DetectDialog(ToolDialog):
         row.addWidget(library)
         row.addWidget(settings)
         row.addWidget(add)
+        # Half and half: the sequence on the left (a click on a feature selects where it would be annotated, and this view goes
+        # there), the features found on the right.
+        from sequence_view import SequenceView
+        self.view = SequenceView(editor)
+        found = QWidget()
+        right = QVBoxLayout(found)
+        right.setContentsMargins(0, 0, 0, 0)
+        right.addWidget(self.table)
+        right.addWidget(self.credit)
+        right.addLayout(row)
+        split = QSplitter()
+        split.setChildrenCollapsible(False)
+        split.addWidget(self.view)
+        split.addWidget(found)
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 1)
+        split.setSizes([10000, 10000])   # (equal halves: before it is shown, the splitter keeps the ratio)
         layout = QVBoxLayout(self)
-        layout.addWidget(self.table)
-        layout.addWidget(self.credit)
-        layout.addLayout(row)
+        layout.addWidget(split)
         no_auto_default(self)   # Enter does not add every ticked feature
         # A bound method (not a lambda): Qt drops the connection when this dialog is deleted.
         tool_settings.notifier.changed.connect(self._settings_changed)
@@ -393,8 +408,9 @@ class DetectDialog(ToolDialog):
     def _select(self, i):
         if 0 <= i < len(self.hits) and not self.hits[i].record:   # (a hit on another record is not on this sequence)
             h = self.hits[i]
-            self.editor.select(h.start, min(h.end, self.editor.length))
-            self.editor.reveal.emit(h.start)
+            ed = self.editor
+            ed.select(h.start, h.end if ed.circular else min(h.end, ed.length))   # (a part through the origin of a circle: one selection that passes it)
+            ed.reveal.emit(h.start)
 
     def ticked(self):
         rows = range(self.table.rowCount())

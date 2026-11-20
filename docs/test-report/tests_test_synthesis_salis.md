@@ -4,7 +4,7 @@
 
 ## `test_the_forest_gives_scikit_learns_answer_for_every_sequence_of_the_paper`
 
-**Result:** ✅ passed in 0.84 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.81 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** A mistake in reading the exported forest would make every synthesis verdict wrong without any error.
 
@@ -54,13 +54,13 @@ The Rust port of the authors' maximal-repeat finder returns the same (length, ki
 
 **Why it matters:** The rule-based hairpin pass feeds the richest_hairpin feature.
 
-A GC-only 11 bp stem scores 1.0, poly-A scores 0, and a sequence shorter than any stem pair scores 0.
+A GC-only 11 bp stem scores 1.0, poly-A scores 0, and a sequence shorter than any stem pair scores 0. salis_hairpin_gc also says where that hairpin is (its stem-loop-stem), for the Synthesis view to highlight.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | GCGCGCGCGCG AAA CGCGCGCGCGC | 1.0 |
-| 2 | 80 x A | 0.0 |
-| 3 | ACGT | 0.0 |
+| 1 | GCGCGCGCGCGAAACGCGCGCGCGC | (1.0, (0, 25)) |
+| 2 | 80 A | (0.0, None) |
+| 3 | ACGT | (0.0, None) |
 
 **Review notes:**
 
@@ -72,16 +72,18 @@ A GC-only 11 bp stem scores 1.0, poly-A scores 0, and a sequence shorter than an
 
 **Why it matters:** The original code never reads the last 20-base window; a port that 'fixed' this would no longer be the published model.
 
-GC_short_l counts windows that start before size - 20 only.
+GC_short_l counts windows that start before size - 20 only. Also where the counts were made: the counted windows merged into stretches, and the copies of the longest repeat.
 
 | # | Input | Expected output |
 |---|---|---|
 | 1 | 40 C then 20 A | 4 (the all-A window at 40 is skipped) |
 | 2 | 40 A then 20 C | 25 |
+| 3 | 40 C + 20 A, places requested | GC_short_l stretches [(36, 59)]; total_GC [] |
+| 4 | GATTACAGGCTA + 20-base spacer + GATTACAGGCTA | longest_repeat 12 at [(0, 12), (32, 44)]; (0, 12) among the repeat_9_metric stretches |
 
 ## `test_clean_names_the_first_base_it_cannot_use`
 
-**Result:** ✅ passed in 0.00 s · [line 95](../../tests/test_synthesis_salis.py#L95) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 103](../../tests/test_synthesis_salis.py#L103) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A sequence with an N or a stray character must be refused with its position, never silently changed.
 
@@ -95,15 +97,15 @@ Whitespace and case are accepted; the first other base is named; an empty text i
 
 ## `test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the_paper`
 
-**Result:** ✅ passed in 2.90 s · [line 104](../../tests/test_synthesis_salis.py#L104) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.92 s · [line 112](../../tests/test_synthesis_salis.py#L112) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The folding, window and repeat parts together must reproduce the published model on real sequences.
 
-The nine features, the probability and the verdict of the 6 shortest paper sequences equal the authors' own table, the authors' repeat metric and scikit-learn's answer.
+The nine features, the probability and the verdict of the 6 shortest paper sequences equal the authors' own table, the authors' repeat metric and scikit-learn's answer. The places returned with them are consistent: every feature named, inside the sequence, one richest-hairpin stretch exactly when its value is above 0, longest-repeat copies at least that long.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | the 6 shortest of the 303 sequences (under 300 bp) | all nine features equal (richest_hairpin to the table's 9 decimals); probability within 1e-12 |
+| 1 | the 6 shortest of the 303 sequences (under 300 bp) | all nine features equal (richest_hairpin to the table's 9 decimals); probability within 1e-12; places consistent with the values (property) |
 
 **Review notes:**
 
@@ -111,7 +113,7 @@ The nine features, the probability and the verdict of the 6 shortest paper seque
 
 ## `test_a_fragment_shorter_than_one_folding_window_is_still_scored`
 
-**Result:** ✅ passed in 0.01 s · [line 114](../../tests/test_synthesis_salis.py#L114) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** smoke · **Strength:** 🔴 weak
+**Result:** ✅ passed in 0.01 s · [line 127](../../tests/test_synthesis_salis.py#L127) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** smoke · **Strength:** 🔴 weak
 
 **Why it matters:** A short fragment must give an answer, not an error.
 
@@ -127,7 +129,7 @@ A 29-base fragment (no 100-base window to fold) gives size 29 and a probability 
 
 ## `test_a_pasted_text_is_one_fasta_record_or_bare_bases`
 
-**Result:** ✅ passed in 0.00 s · [line 119](../../tests/test_synthesis_salis.py#L119) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 132](../../tests/test_synthesis_salis.py#L132) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A pasted FASTA header, a second record or a stray digit must never reach the calculator as bases.
 
@@ -142,7 +144,7 @@ The Synthesis tab box accepts bare bases or exactly one FASTA record and names w
 
 ## `test_the_viennarna_wheel_picked_fits_the_python_and_the_system`
 
-**Result:** ✅ passed in 0.00 s · [line 136](../../tests/test_synthesis_salis.py#L136) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 149](../../tests/test_synthesis_salis.py#L149) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** The first-use download of ViennaRNA could fetch a file that cannot load on the user's system, or a musl or source build.
 
@@ -162,7 +164,7 @@ From a PyPI file list, the wheel for this Python and system is chosen: Windows, 
 
 ## `test_installing_viennarna_checks_the_checksum_before_unpacking_anything`
 
-**Result:** ✅ passed in 0.01 s · [line 150](../../tests/test_synthesis_salis.py#L150) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 163](../../tests/test_synthesis_salis.py#L163) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A corrupted or swapped download could be unpacked into the data folder and imported.
 

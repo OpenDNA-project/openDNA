@@ -8744,19 +8744,19 @@
   {
    "id": "tests/test_synthesis_salis.py::test_the_rule_based_hairpin_best_gc_is_a_stem_fraction",
    "area": "Synthesis Success Calculator (Salis)",
-   "purpose": "A GC-only 11 bp stem scores 1.0, poly-A scores 0, and a sequence shorter than any stem pair scores 0.",
+   "purpose": "A GC-only 11 bp stem scores 1.0, poly-A scores 0, and a sequence shorter than any stem pair scores 0. salis_hairpin_gc also says where that hairpin is (its stem-loop-stem), for the Synthesis view to highlight.",
    "cases": [
     {
-     "input": "GCGCGCGCGCG AAA CGCGCGCGCGC",
-     "expected": "1.0"
+     "input": "GCGCGCGCGCGAAACGCGCGCGCGC",
+     "expected": "(1.0, (0, 25))"
     },
     {
-     "input": "80 x A",
-     "expected": "0.0"
+     "input": "80 A",
+     "expected": "(0.0, None)"
     },
     {
      "input": "ACGT",
-     "expected": "0.0"
+     "expected": "(0.0, None)"
     }
    ],
    "oracle": "hand-computed",
@@ -8773,7 +8773,7 @@
   {
    "id": "tests/test_synthesis_salis.py::test_a_window_starting_at_size_minus_20_is_never_counted_as_the_original_does",
    "area": "Synthesis Success Calculator (Salis)",
-   "purpose": "GC_short_l counts windows that start before size - 20 only.",
+   "purpose": "GC_short_l counts windows that start before size - 20 only. Also where the counts were made: the counted windows merged into stretches, and the copies of the longest repeat.",
    "cases": [
     {
      "input": "40 C then 20 A",
@@ -8782,6 +8782,14 @@
     {
      "input": "40 A then 20 C",
      "expected": "25"
+    },
+    {
+     "input": "40 C + 20 A, places requested",
+     "expected": "GC_short_l stretches [(36, 59)]; total_GC []"
+    },
+    {
+     "input": "GATTACAGGCTA + 20-base spacer + GATTACAGGCTA",
+     "expected": "longest_repeat 12 at [(0, 12), (32, 44)]; (0, 12) among the repeat_9_metric stretches"
     }
    ],
    "oracle": "hand-computed",
@@ -8823,11 +8831,11 @@
   {
    "id": "tests/test_synthesis_salis.py::test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the_paper",
    "area": "Synthesis Success Calculator (Salis)",
-   "purpose": "The nine features, the probability and the verdict of the 6 shortest paper sequences equal the authors' own table, the authors' repeat metric and scikit-learn's answer.",
+   "purpose": "The nine features, the probability and the verdict of the 6 shortest paper sequences equal the authors' own table, the authors' repeat metric and scikit-learn's answer. The places returned with them are consistent: every feature named, inside the sequence, one richest-hairpin stretch exactly when its value is above 0, longest-repeat copies at least that long.",
    "cases": [
     {
      "input": "the 6 shortest of the 303 sequences (under 300 bp)",
-     "expected": "all nine features equal (richest_hairpin to the table's 9 decimals); probability within 1e-12"
+     "expected": "all nine features equal (richest_hairpin to the table's 9 decimals); probability within 1e-12; places consistent with the values (property)"
     }
    ],
    "oracle": "independent implementation",
@@ -8865,11 +8873,11 @@
   {
    "id": "tests/test_agent_cli.py::test_synthesis_command_gives_what_the_synthesis_module_gives",
    "area": "Command line for agents",
-   "purpose": "The synthesis command returns the same probability, features and verdict as synthesis_salis.evaluate for the region, warns that a circular file is read straight, and refuses a backwards region.",
+   "purpose": "The synthesis command returns the same probability, features and verdict as synthesis_salis.evaluate for the region, warns that a circular file is read straight, and refuses a backwards region. Its places equal evaluate's, 1-based on the file.",
    "cases": [
     {
      "input": "random 260 bp circle, --region 1..200",
-     "expected": "equal to evaluate(seq[:200]); region {1, 200}"
+     "expected": "equal to evaluate(seq[:200]); region {1, 200}; places == evaluate's places + 1 (start)"
     },
     {
      "input": "whole circular file",
@@ -8938,7 +8946,7 @@
   {
    "id": "core/src/salis.rs::tests::a_gc_rich_stem_scores_one_and_a_poly_a_run_scores_zero",
    "area": "Synthesis Success Calculator (Salis)",
-   "purpose": "A GC-only 11 bp stem with a 3-base loop scores 1.0; 60 A score 0.0.",
+   "purpose": "A GC-only 11 bp stem with a 3-base loop scores 1.0; 60 A score 0.0. hairpin_rule_best also gives the place: (0, 25) for the stem-loop-stem, None for poly-A.",
    "cases": [
     {
      "input": "GCGCGCGCGCGAAACGCGCGCGCGC",
@@ -8947,6 +8955,14 @@
     {
      "input": "60 x A",
      "expected": "0.0"
+    },
+    {
+     "input": "the same stem-loop-stem, hairpin_rule_best",
+     "expected": "(1.0, Some((0, 25)))"
+    },
+    {
+     "input": "60 A, hairpin_rule_best",
+     "expected": "(0.0, None)"
     }
    ],
    "oracle": "hand-computed",

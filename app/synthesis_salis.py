@@ -58,7 +58,7 @@ def _model():
 
 
 def have_vienna():
-    """True when ViennaRNA can be imported: from the environment, or from the copy Tools > Synthesis installed in the data folder."""
+    """True when ViennaRNA can be imported: from the environment, or from the copy the Synthesis tab installed in the data folder."""
     import vienna_install
     vienna_install.activate()
     return importlib.util.find_spec("RNA") is not None
@@ -140,40 +140,55 @@ def tm_nn(seq):
 
 # ---- the nine features ----------------------------------------------------------------------------------
 
-def _repeat_features(seq):
+def _repeat_features(seq, places=None):
     """longest_repeat (longest repeat over 11 bases, else 0) and repeat_9_metric (9 per base beyond the 8th,
-    for every copy of every repeat of 9+ bases, over the size)."""
+    for every copy of every repeat of 9+ bases, over the size). `places` (a dict), when given, gets where each is."""
     longest, total = 0, 0
-    for length, _inverted, starts in opendna_core.salis_repeats(seq, 9):
+    repeats = opendna_core.salis_repeats(seq, 9)
+    for length, _inverted, starts in repeats:
         total += 9 * (length - 8) * len(starts)
         if length > 11 and length >= longest:
             longest = length
+    if places is not None:
+        places["repeat_9_metric"] = merged((s, s + length) for length, _i, starts in repeats for s in starts)
+        places["longest_repeat"] = merged((s, s + length) for length, _i, starts in repeats for s in starts if length == longest and longest)
     return longest, total / float(len(seq))
 
 
-def _window_features(seq):
-    """GC_short_l, GC_term_l, Tm_low, Tm_high, total_GC."""
+def _window_features(seq, places=None):
+    """GC_short_l, GC_term_l, Tm_low, Tm_high, total_GC. `places` (a dict), when given, gets the windows each counts."""
     size = len(seq)
     short_l = tm_low = tm_high = term_l = 0
+    at = {"GC_short_l": [], "GC_term_l": [], "Tm_low": [], "Tm_high": []}   # the 20-base windows counted, by feature
     for i in range(size - 20):
         w = seq[i:i + 20]
         if gc_fraction(w, 20) <= 0.20:
             short_l += 1
+            at["GC_short_l"].append(i)
         tm = tm_nn(w)
         if tm <= 40:
             tm_low += 1
+            at["Tm_low"].append(i)
         if tm >= 70:
             tm_high += 1
+            at["Tm_high"].append(i)
     if size > 50:
         for i in range(30):
             if gc_fraction(seq[i:i + 20], 20) < 0.30:
                 term_l += 1
+                at["GC_term_l"].append(i)
             if gc_fraction(seq[size - 50 + i:size - 50 + i + 20], 20) < 0.30:
                 term_l += 1
+                at["GC_term_l"].append(size - 50 + i)
     else:
         for i in range(size - 20):
             f = gc_fraction(seq[i:i + 20], 20)
             term_l += 2 * (f < 0.30)   # five- and three-prime windows are the same window here
+            if f < 0.30:
+                at["GC_term_l"].append(i)
+    if places is not None:
+        places.update({name: merged((i, i + 20) for i in starts) for name, starts in at.items()})
+        places["total_GC"] = places["size"] = []   # (the whole sequence: nothing to point at)
     return short_l, term_l, tm_low, tm_high, gc_fraction(seq, size)
 
 
@@ -194,7 +209,7 @@ def _fold_details(structure, energy, seq):
     while bp_x:
         n = bisect(bp_x, bp_y[0])
         lengths.append(n)
-        details.append((seq[bp_x[0] - 1:bp_y[0]], energy))
+        details.append((seq[bp_x[0] - 1:bp_y[0]], energy, bp_x[0] - 1))   # (the third: where the hairpin starts in `seq`)
         bp_x, bp_y = bp_x[n:], bp_y[n:]
     gquads = []
     if has_gquad:
@@ -223,10 +238,11 @@ def _fold_details(structure, energy, seq):
     return lengths, details, gquads
 
 
-def _vienna_richest(seq, progress=None, cancelled=None):
+def _vienna_richest(seq, progress=None, cancelled=None, places=None):
     """The highest GC fraction of a folded 'strong hairpin', as seq_eval.find_hairpins_windowed records it.
     The folds of every 100-base window (both strands, spans 50, 100 and 50) also fill the table of hairpin texts
-    already seen, and a text seen once is not counted again, so all three spans are walked as the original does."""
+    already seen, and a text seen once is not counted again, so all three spans are walked as the original does.
+    `places` (a dict), when given, gets "richest_hairpin": [(start, end)] of the first hairpin with that GC, on the top strand."""
     import RNA
     md = RNA.md()
     md.temperature, md.dangles, md.gquad, md.noGU, md.noLP = 37.0, 0, 1, 1, 0
@@ -235,7 +251,7 @@ def _vienna_richest(seq, progress=None, cancelled=None):
     RNA.params_load_DNA_Mathews2004()
     size = len(seq)
     reverse = reverse_complement(seq)
-    seen, richest = set(), 0
+    seen, richest, where = set(), 0, []
     spans, thresholds, mfes = (50, 100, 50), (11, 17, 21), (-10, -15, -20)
 
     def fold(window, span):
@@ -256,30 +272,51 @@ def _vienna_richest(seq, progress=None, cancelled=None):
                 if (window, span) not in cache:
                     cache[(window, span)] = fold(window, span)
                 lengths, details, gquads = cache[(window, span)]
-                for n, (hairpin, energy) in zip(lengths, details):
+                for n, (hairpin, energy, at) in zip(lengths, details):
                     if not (n > lt and energy < mfe):
                         continue
                     if lt < 16:
                         gc = gc_fraction(hairpin, len(hairpin))
                         if gc > 0.8 and hairpin not in seen:
                             seen.add(hairpin)
+                            if gc > richest:   # (the top strand: a hairpin of the reverse window lies mirrored in seq[j:j + 100])
+                                where = [(j + at, j + at + len(hairpin)) if window is windows[0] else (j + 100 - at - len(hairpin), j + 100 - at)]
                             richest = max(richest, gc)
                     else:
                         seen.add(hairpin)
                 seen.update(gquads)
     if progress:
         progress(total, total)
+    if places is not None:
+        places["richest_hairpin"] = where
     return richest
 
 
-def features(seq, progress=None, cancelled=None):
-    """The nine numbers of the model for `seq`. Needs ViennaRNA (see have_vienna)."""
+def merged(spans):
+    """(start, end) spans sorted, overlapping or touching ones joined."""
+    out = []
+    for a, b in sorted(spans):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def features(seq, progress=None, cancelled=None, places=None):
+    """The nine numbers of the model for `seq`. Needs ViennaRNA (see have_vienna). `places` (a dict), when given, gets for each
+    number the (start, end) stretches of `seq` it counted (merged; none for total_GC and size), for the window to point at."""
     seq = clean(seq)
     if not have_vienna():
         raise UserError(VIENNA_HELP)
-    longest, repeat9 = _repeat_features(seq)
-    short_l, term_l, tm_low, tm_high, total_gc = _window_features(seq)
-    richest = max(_vienna_richest(seq, progress, cancelled), opendna_core.salis_hairpin_gc(seq))
+    longest, repeat9 = _repeat_features(seq, places)
+    short_l, term_l, tm_low, tm_high, total_gc = _window_features(seq, places)
+    folded = {}
+    vienna = _vienna_richest(seq, progress, cancelled, folded)
+    rule, rule_at = opendna_core.salis_hairpin_gc(seq)
+    richest = max(vienna, rule)
+    if places is not None:   # (where the richest one is: the fold's, unless the rule-based one is richer)
+        places["richest_hairpin"] = folded["richest_hairpin"] if vienna >= rule else ([rule_at] if rule_at else [])
     return {"longest_repeat": longest, "repeat_9_metric": repeat9, "richest_hairpin": richest, "GC_short_l": short_l,
             "GC_term_l": term_l, "Tm_low": tm_low, "Tm_high": tm_high, "total_GC": total_gc, "size": len(seq)}
 
@@ -304,6 +341,7 @@ def predict(values):
 
 def evaluate(seq, progress=None, cancelled=None):
     """{'features': ..., 'probability': ..., 'outcome': True if the fragment is predicted to be synthesised quickly}."""
-    values = features(seq, progress, cancelled)
+    places = {}
+    values = features(seq, progress, cancelled, places)
     probability, outcome = predict(values)
-    return {"features": values, "probability": probability, "outcome": outcome}
+    return {"features": values, "probability": probability, "outcome": outcome, "places": places}

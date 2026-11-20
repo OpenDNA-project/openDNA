@@ -81,15 +81,23 @@ def test_the_rust_repeat_finder_agrees_with_the_rules_written_the_plain_way():
 
 
 def test_the_rule_based_hairpin_best_gc_is_a_stem_fraction():
-    assert salis_hairpin_gc("GCGCGCGCGCGAAACGCGCGCGCGC") == 1.0
-    assert salis_hairpin_gc("A" * 80) == 0.0
-    assert salis_hairpin_gc("ACGT") == 0.0   # shorter than any stem pair
+    assert salis_hairpin_gc("GCGCGCGCGCGAAACGCGCGCGCGC") == (1.0, (0, 25))   # (and where: the whole stem-loop-stem)
+    assert salis_hairpin_gc("A" * 80) == (0.0, None)
+    assert salis_hairpin_gc("ACGT") == (0.0, None)   # shorter than any stem pair
 
 
 def test_a_window_starting_at_size_minus_20_is_never_counted_as_the_original_does():
     # 40 C then 20 A: windows 36..39 hold at most 4 C (20% GC): GC_short_l is 4. The all-A window at 40 is the one skipped.
     assert S._window_features("C" * 40 + "A" * 20)[0] == 4
     assert S._window_features("A" * 40 + "C" * 20)[0] == 25   # windows 0..24 hold at most 4 C
+    # Where they are, for the Synthesis view to highlight: the counted windows, merged into one stretch.
+    places = {}
+    S._window_features("C" * 40 + "A" * 20, places)
+    assert places["GC_short_l"] == [(36, 59)] and places["total_GC"] == []
+    # and the two copies of the longest repeat (12 bases, 20 apart)
+    x, spacer = "GATTACAGGCTA", "CCTTGGAACCTTGGTTCCAA"
+    assert S._repeat_features(x + spacer + x, places)[0] == 12 and places["longest_repeat"] == [(0, 12), (32, 44)]
+    assert (0, 12) in places["repeat_9_metric"]   # (which also holds the spacer's inverted repeats of 9+ bases)
 
 
 def test_clean_names_the_first_base_it_cannot_use():
@@ -108,6 +116,11 @@ def test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the
         got = S.evaluate(row["sequence"])
         assert all(got["features"][k] == row["features"][k] or (k == "richest_hairpin" and abs(got["features"][k] - row["features"][k]) < 5e-9) for k in S.FEATURES), row["name"]   # (the table keeps 9 decimals)
         assert abs(got["probability"] - row["p1"]) <= 1e-12 and got["outcome"] == row["outcome"]
+        # The places the window highlights: inside the sequence, a richest hairpin only when there is one, the longest repeat's copies its length.
+        seq, at = row["sequence"], got["places"]
+        assert set(at) == set(S.FEATURES) and all(0 <= a < b <= len(seq) for spans in at.values() for a, b in spans), row["name"]
+        assert len(at["richest_hairpin"]) == (got["features"]["richest_hairpin"] > 0), row["name"]
+        assert all(b - a >= got["features"]["longest_repeat"] for a, b in at["longest_repeat"]), row["name"]
 
 
 @needs_vienna

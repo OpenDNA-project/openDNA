@@ -44,7 +44,7 @@ Seeds the fake registry with other programs' keys, registers then unregisters, a
 
 ## `test_startup_question_decision_table`
 
-**Result:** ✅ passed in 0.04 s · [line 242](../../tests/test_file_assoc.py#L242) · **Area:** Windows file associations: start-up question · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 242](../../tests/test_file_assoc.py#L242) · **Area:** Windows file associations: start-up question · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the app could nag users at every start about file associations, ask when running from source or off Windows, ignore 'don't ask again', or fail to repair the association after the exe was moved.
 

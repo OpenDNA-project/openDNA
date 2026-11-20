@@ -411,7 +411,6 @@ class MainWindow(QMainWindow):
         action(tools, "Detect Common &Features…", "Ctrl+Shift+A", lambda: DetectDialog(self, self.editor).exec())
         action(tools, "Detect &ORFs…", None, lambda: OrfDialog(self, self.editor).exec())
         action(tools, "Plasmid C&heckup (expression of each CDS)…", None, self.open_checkup)
-        tools.addAction(QAction("Sy&nthesis (can a company make it?)", self, triggered=lambda: self.show_synthesis()))
         tools.addSeparator()
         action(tools, "Recode CDS for a Codon &Usage Table…", None, lambda: RecodeDialog(self, self.editor).exec())
         action(tools, "Compare CDS Under Another &Genetic Code…", None, lambda: CompareDialog(self, self.editor).exec())
@@ -1219,7 +1218,7 @@ class MainWindow(QMainWindow):
         self.recombineering = self.show_tool_tab("Recombineering", lambda: RecombineeringPanel(self))
 
     def show_synthesis(self, sequence=None):
-        """Tools > Synthesis: the Synthesis tab; `sequence` (the bases selected when it was asked for on right-click) is put in its box, nothing is run."""
+        """The Synthesis tab (a pane's picker > Tools > Synthesis, or right-click > Test Synthesis…); `sequence` (the bases selected when it was asked for on right-click) is put in its box, nothing is run."""
         def make():
             from synthesis_panel import SynthesisPanel   # (keyring, IDT and the calculator load when the tab is first opened, not at start-up)
             return SynthesisPanel(self)

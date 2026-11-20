@@ -922,11 +922,11 @@ fn salis_repeats(py: Python<'_>, seq: &str, k_low: usize) -> Vec<(usize, bool, V
     py.allow_threads(|| salis::maximal_repeats(seq.as_bytes(), k_low).into_iter().map(|r| (r.len, r.invert, r.starts)).collect())
 }
 
-/// `opendna_core.salis_hairpin_gc(seq)`: highest stem GC fraction among the calculator's rule-based
-/// hairpins, 0.0 if none. `seq` must be upper-case A/C/G/T.
+/// `opendna_core.salis_hairpin_gc(seq)`: (highest stem GC fraction among the calculator's rule-based hairpins, 0.0 if
+/// none; (start, end) of that hairpin's stem-loop-stem, or None). `seq` must be upper-case A/C/G/T.
 #[pyfunction]
-fn salis_hairpin_gc(py: Python<'_>, seq: &str) -> f64 {
-    py.allow_threads(|| salis::hairpin_rule_best_gc(seq.as_bytes()))
+fn salis_hairpin_gc(py: Python<'_>, seq: &str) -> (f64, Option<(usize, usize)>) {
+    py.allow_threads(|| salis::hairpin_rule_best(seq.as_bytes()))
 }
 
 /// The module itself: `import opendna_core`. The function name must match the module name.

@@ -407,6 +407,7 @@ def test_synthesis_command_gives_what_the_synthesis_module_gives(tmp_path, capsy
     direct = synthesis_salis.evaluate(seq[:200])
     assert (res["probability"], res["features"], res["predicted_quick_synthesis"]) == (direct["probability"], direct["features"], direct["outcome"])
     assert res["region"] == {"start": 1, "end": 200} and res["bases"] == 200 and "Halper" in res["citation"]
+    assert res["places"] == {k: [{"start": x + 1, "end": y} for x, y in v] for k, v in direct["places"].items()}   # (1-based on the file)
     assert any("straight piece" in w for w in answer(capsys, "synthesis", gb)["warnings"])   # a circular file: the model reads it straight
     through = answer(capsys, "synthesis", gb, "--region", "250..10")   # through the origin of the circle: the piece is joined, read straight
     assert through["bases"] == 21 and through["region"] == {"start": 250, "end": 10, "crosses_origin": True} and through["features"] == synthesis_salis.evaluate(seq[249:] + seq[:10])["features"]

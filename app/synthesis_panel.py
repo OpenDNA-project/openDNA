@@ -1,4 +1,6 @@
-"""Tools > Synthesis: will a company make this DNA? The sequence goes in the box on top; below it, one section for each way of finding out.
+"""The Synthesis tab (a pane's picker > Tools > Synthesis): will a company make this DNA? The sequence is in a sequence view on top (a
+scratch sequence of its own, not the open file: type or paste in it); below it, one section for each way of finding out. Hovering a
+row of the calculator's table highlights the stretches that measure counted; a click keeps them highlighted and scrolls to the first.
 The Synthesis Success Calculator (Halper, Hossain & Salis 2020) runs on this computer and sends nothing anywhere. Each synthesis company's
 own check is a section of its own, started by its own button, which says what it sends (and the user is asked once more before it does).
 
@@ -6,13 +8,16 @@ All the figuring is in synthesis_salis.py, idt.py, vienna_install.py and secret_
 thread, so the rest of the plasmid can be worked on meanwhile."""
 import threading
 from html import escape
+from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QFontDatabase, QGuiApplication
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QProgressBar,
-    QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QProgressBar,
+    QPushButton, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
+
+from opendna_core import Document
 
 import idt
 import online
@@ -135,11 +140,18 @@ class SalisSection(Section):
         self.install_button.setToolTip(self.install_button.toolTip() + "\n\nThe hairpin folding of the calculator needs ViennaRNA (Lorenz et al., University of Vienna). "
                                        "openDNA does not ship it; this fetches the official package into openDNA's data folder.")
         self.install_button.hide()
+        self.places, self.pinned = {}, None   # where each measure was counted (from the last run); the row clicked
         self.table = QTableWidget(len(salis.FEATURES), 3)
         self.table.setHorizontalHeaderLabels(["Measured", "Value", "What it counts"])
         self.table.verticalHeader().hide()
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionMode(QTableWidget.NoSelection)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.setToolTip("Point at a measure to highlight where it was counted in the sequence above; click it to keep the highlight")
+        self.table.setMouseTracking(True)
+        self.table.cellEntered.connect(lambda row, _c: self.panel.highlight(self.spans(row)))
+        self.table.cellClicked.connect(self.pin)
+        self.table.viewport().installEventFilter(self)   # leaving the table: back to the row clicked
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.table.setMaximumHeight(32 * (len(salis.FEATURES) + 1))
         self.table.hide()
@@ -162,7 +174,30 @@ class SalisSection(Section):
 
     def busy(self, what, cancellable):
         self.table.hide()
+        self.forget_places()
         return super().busy(what, cancellable)
+
+    def spans(self, row):
+        """The stretches the measure of table row `row` counted, [] when it points at nothing (or the sequence changed since)."""
+        return self.places.get(salis.FEATURES[row], []) if 0 <= row < len(salis.FEATURES) else []
+
+    def pin(self, row, _column=0):
+        self.pinned = row
+        spans = self.spans(row)
+        self.panel.highlight(spans, reveal=True)
+        label = salis.FEATURE_HELP[salis.FEATURES[row]][0]
+        self.panel.info.setText(f"{label}: {plural(len(spans), 'stretch', 'stretches')} highlighted" if spans else f"{label}: concerns the whole sequence")
+
+    def forget_places(self):
+        """The sequence changed (or a new run starts): the stretches no longer fit it."""
+        self.places, self.pinned = {}, None
+        self.table.clearSelection()
+        self.panel.highlight([])
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Leave:
+            self.panel.highlight(self.spans(self.pinned) if self.pinned is not None else [])
+        return False
 
     def run(self):
         try:
@@ -189,6 +224,7 @@ class SalisSection(Section):
             self.run_button.setEnabled(True)
             self.status.setText(colored(f"ViennaRNA {result['version']} installed.", "status_ok"))
             return
+        self.places = result["places"]
         quick = result["outcome"]
         self.status.setText(f"{plural(result['features']['size'], 'base')} tested. The model's prediction, not a promise: a company's own check decides.")
         role = "status_ok" if quick else "status_bad"
@@ -324,41 +360,75 @@ class SynthesisPanel(QWidget):
     def __init__(self, window):
         super().__init__()
         self.window = window
-        intro = QLabel("Paste a DNA sequence (bases only, or one FASTA record) to see how likely a synthesis company is to make it quickly. "
-                       "Select bases in a sequence and choose Test Synthesis… on right-click to fill it in.", wordWrap=True)
-        self.box = QPlainTextEdit(placeholderText="ACGT… or >name followed by the bases")
-        self.box.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
-        self.box.setMaximumHeight(160)
-        self.box.textChanged.connect(self.count)
+        from editor import Editor
+        from sequence_view import SequenceView
+        intro = QLabel("Type or paste a DNA sequence (bases, or one FASTA record) in the sequence view to see how likely a synthesis company is to "
+                       "make it quickly. Select bases in a file and choose Test Synthesis… on right-click to fill it in. It is a scratch sequence: "
+                       "your files are not changed.", wordWrap=True)
+        # (a document of its own, linear, never saved: the calculator reads a straight piece)
+        self.editor = Editor(Document.new_sequence("Synthesis", "", False), Path("Synthesis.gb"))
+        self.view = SequenceView(self.editor)
+        self.editor.changed.connect(self.edited)
         self.info = QLabel(textFormat=Qt.RichText)
+        self.paste_button = QPushButton("Paste", clicked=lambda: self.set_text(QGuiApplication.clipboard().text()),
+                                        toolTip="Replace the sequence with the clipboard's bases (one FASTA record, or bases)")
         self.selection_button = QPushButton("Use selection", clicked=lambda: self.use(True))
         self.whole_button = QPushButton("Use whole sequence", clicked=lambda: self.use(False))
-        self.clear_button = QPushButton("Clear", clicked=self.box.clear)
+        self.clear_button = QPushButton("Clear", clicked=lambda: self.set_sequence(""))
         buttons = QHBoxLayout()
-        for b in (self.selection_button, self.whole_button, self.clear_button):
+        for b in (self.paste_button, self.selection_button, self.whole_button, self.clear_button):
             buttons.addWidget(b)
         buttons.addWidget(self.info, 1)
         self.salis = SalisSection(self)
         self.idt = IdtSection(self)
+        top = QWidget()
+        top_box = QVBoxLayout(top)
+        top_box.setContentsMargins(0, 0, 0, 0)
+        top_box.addWidget(intro)
+        top_box.addWidget(self.view, 1)
+        top_box.addLayout(buttons)
+        sections = QWidget()
+        below = QVBoxLayout(sections)
+        below.setContentsMargins(0, 0, 0, 0)
+        below.addWidget(self.salis)
+        below.addWidget(self.idt)   # (one section for each company, below the local one)
+        below.addStretch(1)
+        split = QSplitter(Qt.Vertical)
+        split.setChildrenCollapsible(False)
+        split.addWidget(top)
+        split.addWidget(sections)
+        split.setSizes([10000, 15000])
         layout = QVBoxLayout(self)
-        layout.addWidget(intro)
-        layout.addWidget(self.box)
-        layout.addLayout(buttons)
-        layout.addWidget(self.salis)
-        layout.addWidget(self.idt)   # (one section for each company, below the local one)
-        layout.addStretch(1)
+        layout.addWidget(split)
         no_auto_default(self)
         self.count()
 
     def sequence(self):
-        """The bases in the box, checked (UserError names the first base the calculator cannot read)."""
-        return salis.sequence_from_text(self.box.toPlainText())
+        """The bases of the sequence view, checked (UserError names the first base the calculator cannot read)."""
+        return salis.sequence_from_text(self.editor.doc.sequence())
+
+    def edited(self):
+        self.salis.forget_places()   # (the stretches of the last run no longer fit)
+        self.count()
 
     def count(self):
         try:
             self.info.setText(plural(len(self.sequence()), "base"))
         except UserError as e:
-            self.info.setText(colored(str(e), "status_bad") if self.box.toPlainText().strip() else "")
+            self.info.setText(colored(str(e), "status_bad") if self.editor.length else "")
+
+    def highlight(self, spans, reveal=False):
+        """Highlight `spans` [(start, end)] in the sequence view (the search marks of this scratch sequence); `reveal`: scroll to the first."""
+        self.editor.set_search_hits(spans)
+        if reveal and spans:
+            self.editor.reveal.emit(spans[0][0])
+
+    def set_text(self, text):
+        """Replace the sequence with the bases of a pasted text (one FASTA record, or bases); a message when it has none."""
+        try:
+            self.set_sequence(salis.sequence_from_text(text))
+        except UserError as e:
+            self.info.setText(colored(str(e), "status_bad"))
 
     def use(self, selection):
         editor = getattr(self.window, "editor", None)
@@ -370,5 +440,10 @@ class SynthesisPanel(QWidget):
             self.set_sequence(editor.selected_sequence() if selection else editor.doc.sequence(0, None))
 
     def set_sequence(self, seq):
-        """Put `seq` in the box (nothing runs: the user decides)."""
-        self.box.setPlainText(seq)
+        """Make `seq` the sequence of the view (nothing runs: the user decides)."""
+        ed = self.editor
+        ed.select(0, ed.length)
+        if seq:
+            ed.paste(seq)
+        elif ed.length:
+            ed.backspace()

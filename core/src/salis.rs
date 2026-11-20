@@ -117,8 +117,8 @@ fn is_gc(b: u8) -> bool {
 }
 
 /// One pass of `_is_hairpin_pass`: every stem/loop/stem window whose stem has at most `max_mismatch`
-/// mismatches; `best` rises to the highest GC fraction of a stem that reaches `gc_high`.
-fn hairpin_pass(seq: &[u8], stem: usize, loop_: usize, max_mismatch: usize, gc_high: f64, best: &mut f64) {
+/// mismatches; `best` rises to the highest GC fraction of a stem that reaches `gc_high`, with the window it is in.
+fn hairpin_pass(seq: &[u8], stem: usize, loop_: usize, max_mismatch: usize, gc_high: f64, best: &mut (f64, Option<(usize, usize)>)) {
     let total = stem + loop_ + stem;
     if seq.len() < total {
         return;
@@ -142,8 +142,8 @@ fn hairpin_pass(seq: &[u8], stem: usize, loop_: usize, max_mismatch: usize, gc_h
         }
         if j == stem {
             let content = (gc / 2.0) / stem as f64;
-            if content >= gc_high && content > *best {
-                *best = content;
+            if content >= gc_high && content > best.0 {
+                *best = (content, Some((i, i + total)));
             }
         }
     }
@@ -153,7 +153,13 @@ fn hairpin_pass(seq: &[u8], stem: usize, loop_: usize, max_mismatch: usize, gc_h
 /// mismatches and GC >= 0.8, 17 bp with up to 3, 22 bp with up to 5 for sequences over 500 bp, and
 /// 11 bp palindromes with up to 1), or 0.0 when there is none.
 pub fn hairpin_rule_best_gc(seq: &[u8]) -> f64 {
-    let mut best = 0.0;
+    hairpin_rule_best(seq).0
+}
+
+/// `hairpin_rule_best_gc` and where that hairpin is: (start, end) of its stem-loop-stem, None when there is none.
+/// The first window that reaches the best value is kept (the value is the original's; the place is openDNA's addition).
+pub fn hairpin_rule_best(seq: &[u8]) -> (f64, Option<(usize, usize)>) {
+    let mut best = (0.0, None);
     for loop_ in 3..=48 {
         hairpin_pass(seq, 11, loop_, 2, 0.80, &mut best);
     }
@@ -197,5 +203,8 @@ mod tests {
         let seq = "GCGCGCGCGCGAAACGCGCGCGCGC";
         assert_eq!(hairpin_rule_best_gc(seq.as_bytes()), 1.0);
         assert_eq!(hairpin_rule_best_gc("A".repeat(60).as_bytes()), 0.0);
+        // Where: the whole 11 + 3 + 11 stem-loop-stem; none for poly-A.
+        assert_eq!(hairpin_rule_best(seq.as_bytes()), (1.0, Some((0, 25))));
+        assert_eq!(hairpin_rule_best("A".repeat(60).as_bytes()), (0.0, None));
     }
 }

@@ -153,7 +153,9 @@ def cmd_synthesis(args):
                               "region": {"value": args.region or "whole sequence", "source": "command line" if args.region else "default"}}}
     circle = "The file is a circular sequence, but the model reads it as a straight piece, as published." if doc.circular and not args.region else ""
     return answer(settings, caps=[circle], citation=synthesis_salis.CITATION, bases=len(seq), region=C.span_fields(doc, a + 1, b),   # (a region through the origin: end below start, crosses_origin)
-                  predicted_quick_synthesis=result["outcome"], probability=result["probability"], features=result["features"])
+                  predicted_quick_synthesis=result["outcome"], probability=result["probability"], features=result["features"],
+                  # where each measure was counted, on the file (1-based; a stretch through the origin ends below its start)
+                  places={name: [{"start": (a + x) % doc.length + 1, "end": end1(a + y, doc.length)} for x, y in spans] for name, spans in result["places"].items()})
 
 
 # ---- search: the search bar's engine -----------------------------------------------------------------------------------------------

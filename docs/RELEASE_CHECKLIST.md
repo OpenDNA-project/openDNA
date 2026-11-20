@@ -1,7 +1,7 @@
 # Release 0.8.5: changelog and what to try by hand
 
-State when this was written (2026-11-20, `main` at 961fd53, not pushed): 159 Python + 71 Rust tests pass, pyflakes clean, test report rebuilt
-(230 tests, all described). **No window was opened for any change below**: every GUI line was checked by reading the code only (no widget tests exist).
+State when this was written (2026-11-20, `main`, not pushed; updated after your first round of feedback): 159 Python + 71 Rust tests pass, pyflakes clean,
+test report rebuilt (230 tests, all described). **No window was opened for any change below**: every GUI line was checked by reading the code only (no widget tests exist).
 Open problems are in `docs/KNOWN_ISSUES.md`.
 
 ## Changelog (since 0.8.4)
@@ -22,14 +22,25 @@ Open problems are in `docs/KNOWN_ISSUES.md`.
 - Every other search limit is said in the status line instead of silently cutting the answer.
 - A difference in the last few bases of a query is now listed as a mismatch instead of being trimmed off the hit.
 - Folder Search says which files had more than 5 hits; Copy results lists every note.
+- An "Aligned (bp)" column: how many bases of the query each piece covers (`aligned_bp` on the command line).
+
+### Digest
+- Above 1,000 cuts in the shown digest, the cuts are not drawn and only the 1,000 largest fragments are listed, with a warning that says why
+  (AciI on the 4.6 Mb genome: 57,000 cuts froze openDNA for about a minute; now 0.6 s). Big tables refill faster everywhere.
+
+### Synthesis and Detect Common Features
+- Synthesis: the sequence is a real sequence view (a scratch sequence: type, paste, use the selection). Point at a row of the calculator's table to
+  highlight where that measure was counted (repeat copies, the richest hairpin, GC-poor, cold or hot windows); click it to keep the highlight.
+  Synthesis moved from the Tools menu to the tools of every pane's picker. `oDNA-cli synthesis` gives the same places.
+- Detect Common Features is split in half: the sequence on the left, the features found on the right; a click selects where a feature would go.
 
 ### CPU cores and setup
 - New setting Tools > Settings > General > Performance: the CPU cores openDNA may use (default: all but one, at most 8). The installer asks for it.
 - Help > Run Setup Again: the installer's choices for an existing install (openDNA in "Open with", CPU cores, pLannotate and the Terminal's tools
-  in WSL), shown with their current state; nothing changes until OK.
+  in WSL, and ViennaRNA for the Synthesis calculator), shown with their current state; nothing changes until OK.
 
 ### New tools (from the pre-release work)
-- **Synthesis tab** (Tools, or right-click "Test Synthesis..."): the Synthesis Success Calculator (Salis lab model; needs ViennaRNA, with an install
+- **Synthesis tab** (a pane's picker > Tools > Synthesis, or right-click "Test Synthesis..."): the Synthesis Success Calculator (Salis lab model; needs ViennaRNA, with an install
   helper) and an IDT complexity check (login kept in the system's secure store only if you tick Remember).
 - **pLannotate** in Detect Common Features: a "Found by" column, an install dialog, a credit line, and the "Also search with pLannotate" setting.
 - **Tables** (Detect, Checkup, Local Align, Folder Search and others): sort by any column, filter by value, right-click a cell to show only / hide.
@@ -50,7 +61,8 @@ For the GitHub draft, above the **Downloads.** line:
 > - The window no longer freezes: analyses run in the background, and the status bar says what is running. Restriction sites now show on whole genomes.
 > - Local Align aligns every candidate place on several CPU cores and finds hits it used to miss; an optional time limit warns when it cuts the search.
 > - New setting for the CPU cores openDNA may use (the installer asks), and Help > Run Setup Again for the installer's choices.
-> - New Synthesis tab (synthesis success check, IDT complexity), pLannotate in Detect Common Features, sortable and filterable tables.
+> - New Synthesis tool (synthesis success check that highlights the problem stretches, IDT complexity), pLannotate in Detect Common Features (now with the sequence beside the list), sortable and filterable tables.
+> - A digest with more than 1,000 cuts no longer freezes openDNA; Local Align shows the bases each piece aligns.
 > - Sequences that cross the origin of a plasmid are handled everywhere (variants, assembly, find, repeats).
 > - `oDNA-cli`: new `split`, `merge`, `synthesis` and `wsltools` commands; every limit reached is reported.
 
@@ -73,6 +85,14 @@ feature across base 1 (`demo/pFG051_Chlor.gb`, then Edit > Set Origin to Selecti
    Its text should be clear to you; set it back to 0.
 8. Query with one base changed among its last 3 bases: the hit still covers the whole query and the mismatch is listed in Differences.
 9. Folder Search on `demo/` with a short repeated query: the status line names files with more than 5 hits; Copy results ends with "Note: ..." lines.
+
+### Your first round of feedback
+- Digest on the genome: tick AciI. The warning line appears at once, no cut is drawn, the table lists 1,000 fragments; untick it: back to normal.
+- Local Align: the "Aligned (bp)" column matches Query end - start + 1.
+- Synthesis: open it from a pane's picker (Tools > Synthesis; it is no longer in the Tools menu). Paste a FASTA record, run the calculator, point at
+  each row of its table: the stretches light up in the sequence view; click a row: they stay and the view scrolls there; edit a base: they go.
+- Detect Common Features: the window is half sequence, half list; click a feature: the left view jumps to it and selects it.
+- Help > Run Setup Again: a ViennaRNA row says whether it is installed; ticking it downloads it (needs the internet).
 
 ### Settings and setup
 10. Settings > General > Performance shows "CPU cores openDNA may use" with your core count; change it, close, reopen: kept.
