@@ -82,7 +82,7 @@ class _Fitter(QObject):
             quiet = getattr(self.view.model(), "fit_quiet", False)
         except RuntimeError:   # the table is being deleted: its own model (a QTableWidget's) clears its rows on the way out
             return
-        if not quiet:
+        if not quiet and not self.timer.isActive():   # (restarting it for every cell of a big refill cost seconds: one fit follows anyway)
             self.timer.start()
 
     def _names(self):

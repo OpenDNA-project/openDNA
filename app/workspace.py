@@ -66,7 +66,8 @@ GROUPS = [("Views", ["Alignment", "Map", "Protein", "Sequence"]),
           ("Annotations", ["Features", "Primers", SEPARATOR, "Detect Features", "Detect ORFs"])]
 # Tools that are tabs, not panes: choosing one in a picker opens (or shows) its tab and leaves the pane as it was.
 TAB_TOOLS = {"Assembly": lambda window, sub=None: window.show_assembly(sub),
-             "Recombineering": lambda window, sub=None: window.show_recombineering()}
+             "Recombineering": lambda window, sub=None: window.show_recombineering(),
+             "Synthesis": lambda window, sub=None: window.show_synthesis()}
 # Views whose picker entry opens a side column on hover; a choice there arrives as "view: label" (see open_tool).
 SUBMENUS = {"Assembly": AssemblyPanel.METHODS}
 

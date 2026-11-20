@@ -189,7 +189,7 @@ def summarize(hits, n, circular):
 
 
 class LocalAlignDialog(ToolDialog):
-    COLUMNS = ["#", "Query", "Template", "Strand", "Identity", "Score", "Differences", "Before this piece"]
+    COLUMNS = ["#", "Query", "Template", "Aligned (bp)", "Strand", "Identity", "Score", "Differences", "Before this piece"]
 
     def __init__(self, parent, editor):
         super().__init__(parent)
@@ -212,7 +212,7 @@ class LocalAlignDialog(ToolDialog):
         self.table = DataTable(self.COLUMNS, filtered=["Strand"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        fit_columns(self.table, stretch=7)   # one number column: "#" (Qt's own row numbers are hidden)
+        fit_columns(self.table, stretch=8)   # one number column: "#" (Qt's own row numbers are hidden)
         self.table.setWordWrap(False)
         empty_hint(self.table, "Paste a query and press Align")
         self.table.currentCellChanged.connect(lambda row, *_: self._select(self.table.data_row(row)))
@@ -431,12 +431,12 @@ class LocalAlignDialog(ToolDialog):
         with self.table.refilling(len(self.hits)):
             for i, h in enumerate(self.hits):
                 before = junction_text(self.hits[i - 1], h, n, circular) if i else "start of the query"
-                values = [str(i + 1), f"{h.qstart + 1:,}–{h.qend:,}", f"{h.start + 1:,}–{(h.end - 1) % n + 1:,}",
+                values = [str(i + 1), f"{h.qstart + 1:,}–{h.qend:,}", f"{h.start + 1:,}–{(h.end - 1) % n + 1:,}", f"{h.qend - h.qstart:,}",
                           strand_text(h.strand), f"{h.identity:.1%}", str(h.score),
                           f"{plural(len(h.mismatches), 'mismatch')}, {len(h.insertions)} ins, {len(h.deletions)} del", before]
                 for c, v in enumerate(values):
-                    item = self.table.put(i, c, v, right=c in (0, 4, 5))
-                    if h.strand < 0 and c in (0, 3):  # the inverted pieces stand out
+                    item = self.table.put(i, c, v, right=c in (0, 3, 5, 6))
+                    if h.strand < 0 and c in (0, 4):  # the inverted pieces stand out
                         item.setBackground(inverted_brush)
                         item.setForeground(QBrush(QColor("white")))
                         item.setFont(bold)

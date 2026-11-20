@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from editor import protein_field, reverse_complement, site_location
 from cut_sites import enzyme_mark_tip
 import inventory
+import theme
 from enzymes import COMMON, EnzymeFilter, describe, find_cuts, is_owned, wanted
 import genetic_code
 from sequence_view import cds_codons, codons
@@ -457,6 +458,9 @@ class LaneBar(QTabBar):
         return hint.expandedTo(self.add.sizeHint())
 
 
+# Above this many cuts in the shown digest, drawing them and listing every fragment froze openDNA (AciI on a 4.6 Mb genome:
+# 57,000 cuts, about a minute): the cuts are not drawn and only the largest fragments are listed, and a warning says so.
+MAX_DRAWN_CUTS = 1000
 DIGEST_FILTER = EnzymeFilter(1, None, 1)   # the Digest lists every enzyme that cuts, whatever its site, to start with
 
 
@@ -594,6 +598,8 @@ class DigestDialog(ToolDialog):
         editor.selection_changed.connect(self._selection_moved)
         self.gel = GelView()
         self.gel.setToolTip("Click the ladder's lane to choose another ladder")
+        self.crowded = QLabel(wordWrap=True, visible=False)   # the warning when a digest has too many cuts to draw
+        self.crowded.setStyleSheet(f"color:{theme.hex('status_warn')}")
         bar = QWidget()
         left = QVBoxLayout(bar)
         left.setContentsMargins(0, 0, 4, 0)
@@ -612,6 +618,7 @@ class DigestDialog(ToolDialog):
         self.split = split
         layout = QVBoxLayout(self)
         layout.addWidget(self.tabs)
+        layout.addWidget(self.crowded)
         layout.addWidget(split, 1)  # the lists and gel take all the height
         self.destroyed.connect(lambda _=None, ed=editor: (ed.set_cut_marks("digest", []), ed.set_cut_marks("digest_ends", [])))   # the cuts go with the tool
         no_auto_default(self)   # Enter in the name box does not add a lane
@@ -712,7 +719,14 @@ class DigestDialog(ToolDialog):
         digests = [self.digest(t) for t in self.lanes]
         here = self.tabs.currentIndex()
         names, frags = digests[here]
-        shown = frags if names else []   # nothing ticked: the hint, not one "fragment" that is the whole sequence uncut
+        cuts = sum(len(self.cuts[name]) for name in names)
+        crowded = cuts > MAX_DRAWN_CUTS
+        self.crowded.setVisible(crowded)
+        if crowded:
+            self.crowded.setText(f"{'+'.join(names)} cuts this sequence {cuts:,} times: too many to draw without slowing openDNA down. The cut sites "
+                                 f"are not shown on the sequence, map and genome view, and only the {MAX_DRAWN_CUTS:,} largest of the "
+                                 f"{len(frags):,} fragments are listed (the gel shows them all). Untick enzymes to see their cuts again.")
+        shown = (frags if names else [])[:MAX_DRAWN_CUTS]   # nothing ticked: the hint, not one "fragment" that is the whole sequence uncut
         self.table.blockSignals(True)   # (the old rows go: no fragment is selected any more)
         with self.table.refilling(len(shown)):
             for i, (size, a, b, left, right) in enumerate(shown):
@@ -722,8 +736,8 @@ class DigestDialog(ToolDialog):
         self.table.blockSignals(False)
         self._clear_fragment()
         # The selected digest's cuts on the sequence, on both strands.
-        self.editor.set_cut_marks("digest", [(top, bottom, name, self._tip(name, top, bottom))
-                                             for name in names for top, bottom in self.cuts[name]])
+        self.editor.set_cut_marks("digest", [] if crowded else [(top, bottom, name, self._tip(name, top, bottom))
+                                                                 for name in names for top, bottom in self.cuts[name]])
         lanes = []
         for k, (n, fr) in enumerate(digests):
             label = "+".join(n) or f"Digest {self.numbers[k]}"

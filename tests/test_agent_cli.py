@@ -443,6 +443,7 @@ def test_align_command_finds_pieces_and_structural_changes_like_local_align(tmp_
     gb, seq = planted(tmp_path)
     one = answer(capsys, "align", gb, seq[100:160])
     assert [(p["query_start"], p["query_end"], p["start"], p["end"], p["strand"], p["identity"]) for p in one["pieces"]] == [(1, 60, 101, 160, 1, 1.0)]
+    assert one["pieces"][0]["aligned_bp"] == 60   # (the window's "Aligned (bp)" column: query bases in the piece)
     rev = answer(capsys, "align", gb, mutation.reverse_complement(seq[100:160]))
     assert [(p["start"], p["end"], p["strand"]) for p in rev["pieces"]] == [(101, 160, -1)]
     gap = seq[100:130] + seq[160:190]   # 30 bp of the template skipped between the two pieces

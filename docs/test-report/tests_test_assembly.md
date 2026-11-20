@@ -29,7 +29,7 @@ Checks that a fragment behaves as a PCR product (tails, core, flipping swaps the
 
 ## `test_golden_gate_products_and_overhang_checks`
 
-**Result:** ✅ passed in 0.05 s · [line 166](../../tests/test_assembly.py#L166) · **Area:** Golden Gate assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 166](../../tests/test_assembly.py#L166) · **Area:** Golden Gate assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a Golden Gate design could produce a circle with the wrong overhangs, accept overhangs that cross-ligate or repeat, or fail to warn about leftover enzyme sites, so the cloning would not work at the bench.
 
@@ -54,7 +54,7 @@ Checks a vector-plus-inserts assembly end to end (primer design skips the vector
 
 ## `test_sidewinder_oligos_toeholds_and_barcodes`
 
-**Result:** ✅ passed in 0.06 s · [line 266](../../tests/test_assembly.py#L266) · **Area:** Sidewinder assembly · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 266](../../tests/test_assembly.py#L266) · **Area:** Sidewinder assembly · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the ordered oligos could fail to tile the intended product, repeat a toehold so the assembly joins in the wrong place, or reuse barcodes, and the user would only discover it after paying for synthesis.
 

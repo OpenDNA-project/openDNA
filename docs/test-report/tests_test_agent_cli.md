@@ -22,7 +22,7 @@ inspect, feature and region give what the GenBank file says: length, topology, f
 
 ## `test_agent_mistakes_are_one_error_line`
 
-**Result:** ✅ passed in 0.01 s · [line 65](../../tests/test_agent_cli.py#L65) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 65](../../tests/test_agent_cli.py#L65) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A mistake in the agent's input could end as a traceback or silent output that the agent cannot read or pass to the user.
 
@@ -34,7 +34,7 @@ Each user mistake gives exit code 1, nothing on stdout and exactly one `ERROR:` 
 
 ## `test_every_recipe_example_still_runs`
 
-**Result:** ✅ passed in 4.29 s · [line 73](../../tests/test_agent_cli.py#L73) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 4.28 s · [line 73](../../tests/test_agent_cli.py#L73) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** A recipe could keep telling agents to run a command that no longer exists or whose arguments changed.
 
@@ -121,7 +121,7 @@ A 4-row table (substitution, reverse-strand substitution, deletion, wrong refere
 
 ## `test_pcr_batch_gives_the_pairs_the_panel_gives`
 
-**Result:** ✅ passed in 2.20 s · [line 201](../../tests/test_agent_cli.py#L201) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.18 s · [line 201](../../tests/test_agent_cli.py#L201) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results.
 
@@ -237,7 +237,7 @@ A 30 bp stretch planted twice (21..50 and 221..250) is reported as one direct re
 
 ## `test_synthesis_command_gives_what_the_synthesis_module_gives`
 
-**Result:** ✅ passed in 3.34 s · [line 404](../../tests/test_agent_cli.py#L404) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 3.28 s · [line 404](../../tests/test_agent_cli.py#L404) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** The command line and the Synthesis tab could drift apart if the command had its own copy of the logic.
 
@@ -286,7 +286,7 @@ Every command of the parser except the four that read a file has a runnable exam
 
 ## `test_align_command_finds_pieces_and_structural_changes_like_local_align`
 
-**Result:** ✅ passed in 0.05 s · [line 442](../../tests/test_agent_cli.py#L442) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 442](../../tests/test_agent_cli.py#L442) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could report a read as matching where it does not, or miss that a query has a deletion or is inverted.
 
@@ -294,7 +294,7 @@ A 60 bp piece of a 400 bp plasmid is found at 101..160 with identity 1.0; its re
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | seq[100:160] | one piece, query 1..60, plasmid 101..160, strand +, identity 1.0 |
+| 1 | seq[100:160] | one piece, query 1..60, plasmid 101..160, strand +, identity 1.0; aligned_bp 60 |
 | 2 | reverse complement of it | 101..160, strand -1 |
 | 3 | seq[100:130] + seq[160:190] | two pieces from 101..130 to ..190, 28 to 30 bases apart, 'deletion from the query' |
 | 4 | MKLVPQ | ERROR |
@@ -310,7 +310,7 @@ A 60 bp piece of a 400 bp plasmid is found at 101..160 with identity 1.0; its re
 
 ## `test_msa_command_aligns_the_files_and_never_overwrites`
 
-**Result:** ✅ passed in 0.09 s · [line 476](../../tests/test_agent_cli.py#L476) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.09 s · [line 477](../../tests/test_agent_cli.py#L477) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could report a wrong identity between two variants, or overwrite an alignment file.
 
@@ -330,7 +330,7 @@ A 200 bp sequence and a copy with 10 bases deleted are aligned: removing the gap
 
 ## `test_codon_batch_recodes_in_place_keeping_the_protein`
 
-**Result:** ✅ passed in 0.05 s · [line 499](../../tests/test_agent_cli.py#L499) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 500](../../tests/test_agent_cli.py#L500) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could write a recoded plasmid whose protein changed, whose reverse-strand gene was written the wrong way round, or whose bases differ from what the Recode window gives.
 
@@ -350,7 +350,7 @@ With the Highest frequency method each codon of the planted CDS becomes the most
 
 ## `test_export_command_writes_the_formats_and_never_overwrites`
 
-**Result:** ✅ passed in 0.04 s · [line 535](../../tests/test_agent_cli.py#L535) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.08 s · [line 536](../../tests/test_agent_cli.py#L536) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could hand the user a file in the wrong format, or overwrite one.
 
@@ -369,7 +369,7 @@ Each format is written and equals the text the Export menu's functions give (fas
 
 ## `test_order_command_writes_the_supplier_file_or_nothing`
 
-**Result:** ✅ passed in 0.02 s · [line 551](../../tests/test_agent_cli.py#L551) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 552](../../tests/test_agent_cli.py#L552) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could order a primer with a typo, or write half an order.
 
@@ -383,7 +383,7 @@ Two primers become an IDT plate file (wells A1, B1, scale and purification as as
 
 ## `test_variants_command_finds_what_the_simulated_reads_were_given`
 
-**Result:** ✅ passed in 0.04 s · [line 568](../../tests/test_agent_cli.py#L568) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 569](../../tests/test_agent_cli.py#L569) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could tell a user that a mutation is in their plasmid when it is not, or miss one that is.
 
@@ -402,7 +402,7 @@ On reads simulated from the demo plasmid with known changes (truth.tsv): the 100
 
 ## `test_tool_settings_override_restores_the_outer_value_and_is_never_saved`
 
-**Result:** ✅ passed in 0.00 s · [line 593](../../tests/test_agent_cli.py#L593) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 594](../../tests/test_agent_cli.py#L594) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A value given on the command line could stay in force after its command, or a nested override could lose the one around it.
 
@@ -419,7 +419,7 @@ Two nested overrides of one setting: the inner value is read inside, the outer o
 
 ## `test_checkup_command_gives_the_verdicts_of_the_checkup_window`
 
-**Result:** ✅ passed in 0.03 s · [line 604](../../tests/test_agent_cli.py#L604) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 605](../../tests/test_agent_cli.py#L605) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could say a gene will be expressed when nothing drives it, or the reverse.
 
@@ -438,7 +438,7 @@ On a plasmid with two CDS and nothing else both are 'Not expressed' (no bacteria
 
 ## `test_annotate_command_finds_library_parts_and_adds_only_new_ones`
 
-**Result:** ✅ passed in 0.05 s · [line 631](../../tests/test_agent_cli.py#L631) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.05 s · [line 632](../../tests/test_agent_cli.py#L632) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could annotate a plasmid twice, or with parts that are not in it.
 
@@ -457,7 +457,7 @@ The longest bundled terminator planted into a random 600 bp sequence is found at
 
 ## `test_annotate_command_lists_plannotate_hits_beside_the_library_and_says_who_found_each`
 
-**Result:** ✅ passed in 0.04 s · [line 663](../../tests/test_agent_cli.py#L663) · **Area:** Command line for agents · **Checked against:** in-test reference model · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 664](../../tests/test_agent_cli.py#L664) · **Area:** Command line for agents · **Checked against:** in-test reference model · **Strength:** 🟡 adequate
 
 **Why it matters:** A user could be shown pLannotate's features as openDNA's own, lose one of the two tools' hits in the merge, or get a feature added with no trace of who found it.
 
@@ -476,7 +476,7 @@ Canned pLannotate rows stand in for the search: one on exactly the planted termi
 
 ## `test_detect_features_merges_only_the_same_thing_in_the_same_place`
 
-**Result:** ✅ passed in 0.00 s · [line 694](../../tests/test_agent_cli.py#L694) · **Area:** Detect features · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 695](../../tests/test_agent_cli.py#L695) · **Area:** Detect features · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Two different features could be fused into one row (a gene and its antisense neighbour), or one thing listed twice, in the merged list of the two tools.
 
@@ -491,7 +491,7 @@ annotation.merge on hand-made hits: a terminator on the other strand with the sa
 
 ## `test_plannotate_rows_become_positions_the_way_the_windows_draw_them`
 
-**Result:** ✅ passed in 0.00 s · [line 708](../../tests/test_agent_cli.py#L708) · **Area:** Detect features · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 709](../../tests/test_agent_cli.py#L709) · **Area:** Detect features · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A pLannotate feature across the origin, or on the minus strand, could be drawn in the wrong place.
 
@@ -508,7 +508,7 @@ plannotate_run.rows_from on two rows in pLannotate's columns: a plain CDS, and a
 
 ## `test_wsltools_command_says_what_is_missing_and_never_installs_wsl`
 
-**Result:** ✅ passed in 0.02 s · [line 717](../../tests/test_agent_cli.py#L717) · **Area:** Command line for agents · **Checked against:** property/invariant · **Strength:** 🔴 weak
+**Result:** ✅ passed in 0.01 s · [line 718](../../tests/test_agent_cli.py#L718) · **Area:** Command line for agents · **Checked against:** property/invariant · **Strength:** 🔴 weak
 
 **Why it matters:** The installer's optional step, or an agent, could try to install WSL itself, or fail with a traceback where WSL is missing; or the install could leave out pLannotate's databases or a Terminal tool; or the status (also shown by Help > Run Setup Again) could report the wrong tools as installed.
 
@@ -528,7 +528,7 @@ With every call into WSL failing, `wsltools status` reports wsl false and the Te
 
 ## `test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases`
 
-**Result:** ✅ passed in 0.00 s · [line 736](../../tests/test_agent_cli.py#L736) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 737](../../tests/test_agent_cli.py#L737) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A part could be reported as already annotated just because another feature overlaps it, hiding a real missing part.
 
@@ -546,7 +546,7 @@ A stub editor with one terminator feature: the same bases (either strand for a t
 
 ## `test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds`
 
-**Result:** ✅ passed in 0.08 s · [line 746](../../tests/test_agent_cli.py#L746) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.07 s · [line 747](../../tests/test_agent_cli.py#L747) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could give primers whose overlaps do not join the fragments, or a product that is not what the Assembly panel makes.
 
@@ -567,7 +567,7 @@ Two unrelated 300 bp fragments (the second cut to 11..290) become a 580 bp circl
 
 ## `test_ncbi_command_searches_and_fetches_through_the_import_dialogs_functions`
 
-**Result:** ✅ passed in 0.03 s · [line 783](../../tests/test_agent_cli.py#L783) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 784](../../tests/test_agent_cli.py#L784) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could send more than the user's words to NCBI, fetch a record other than the one named, or overwrite a file.
 
@@ -586,7 +586,7 @@ With the one network call replaced by canned replies: a search lists the record 
 
 ## `test_split_command_writes_one_file_per_record_and_file_hash_name_reads_one`
 
-**Result:** ✅ passed in 0.06 s · [line 825](../../tests/test_agent_cli.py#L825) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.06 s · [line 826](../../tests/test_agent_cli.py#L826) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could be unable to use one chromosome of a multi-record file, or split a file into files that lose bases or have clashing names.
 
@@ -606,7 +606,7 @@ A two-record GenBank file is refused by a bare name with the record names and th
 
 ## `test_merge_command_joins_files_and_records_and_keeps_what_the_format_keeps`
 
-**Result:** ✅ passed in 0.08 s · [line 848](../../tests/test_agent_cli.py#L848) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.08 s · [line 849](../../tests/test_agent_cli.py#L849) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could merge files into a multi-record file that loses a sequence, overwrites a file, or silently drops features or topology.
 
@@ -627,7 +627,7 @@ Three GenBank inputs (one repeated) are joined in order into a multi-record file
 
 ## `test_circular_tools_give_the_same_answers_on_a_plasmid_turned_round_the_origin`
 
-**Result:** ✅ passed in 1.07 s · [line 871](../../tests/test_agent_cli.py#L871) · **Area:** Command line for agents · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.02 s · [line 872](../../tests/test_agent_cli.py#L872) · **Area:** Command line for agents · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** A restriction site, guide, repeat or gene that straddles the origin of a plasmid could be missed or misplaced by a tool, while the same plasmid cut elsewhere is fine.
 
@@ -649,7 +649,7 @@ A 900 bp circle holds EcoRI, a guide with its PAM, a 30 bp repeat in two copies 
 
 ## `test_a_limit_that_is_reached_is_always_a_warning`
 
-**Result:** ✅ passed in 0.03 s · [line 931](../../tests/test_agent_cli.py#L931) · **Area:** Command line for agents · **Checked against:** in-test reference model · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 932](../../tests/test_agent_cli.py#L932) · **Area:** Command line for agents · **Checked against:** in-test reference model · **Strength:** 🟡 adequate
 
 **Why it matters:** A list cut short or a search stopped at its limit could be taken for the complete answer.
 
@@ -668,7 +668,7 @@ Each limit is lowered to 1 (guides --top 1, search hits, repeats listed, align p
 
 ## `test_variants_command_sees_changes_on_both_sides_of_the_origin_and_apply_writes_them`
 
-**Result:** ✅ passed in 0.06 s · [line 953](../../tests/test_agent_cli.py#L953) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 954](../../tests/test_agent_cli.py#L954) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A change at the first or last base of a plasmid, or a deletion across the origin, could be missed or mistaken for a break, because reads over the origin are mapped as two clipped pieces.
 

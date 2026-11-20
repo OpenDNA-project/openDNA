@@ -193,7 +193,7 @@ def cmd_align(args):
         hits, notes = local_align.find_hits(doc.sequence(0, None), query, doc.circular)
     n = doc.length
     top = doc.sequence(0, None)
-    rows = [{"piece": i + 1, "query_start": h.qstart + 1, "query_end": h.qend, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "identity": round(h.identity, 4),
+    rows = [{"piece": i + 1, "query_start": h.qstart + 1, "query_end": h.qend, "aligned_bp": h.qend - h.qstart, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "identity": round(h.identity, 4),
              "score": h.score, "mismatches": len(h.mismatches), "insertions": len(h.insertions), "deletions": len(h.deletions),
              # (bases as on the plasmid's top strand; a piece across the origin has positions past n: wrapped)
              "mismatch_list": [{"position": p % n + 1, "plasmid_base": top[p % n], "query_base": q} for p, q in h.mismatches],

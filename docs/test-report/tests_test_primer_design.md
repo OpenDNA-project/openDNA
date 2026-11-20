@@ -48,7 +48,7 @@ Checks the flags, colour and display-filter behaviour of the four primer origins
 
 ## `test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.03 s · [line 220](../../tests/test_primer_design.py#L220) · **Area:** Primer design on circular DNA · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 220](../../tests/test_primer_design.py#L220) · **Area:** Primer design on circular DNA · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, designing primers for a target at or across a plasmid's origin could return nothing, or primers whose bases are not actually on the template or whose product does not contain the target.
 

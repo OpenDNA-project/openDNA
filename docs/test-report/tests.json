@@ -7903,7 +7903,7 @@
    "cases": [
     {
      "input": "seq[100:160]",
-     "expected": "one piece, query 1..60, plasmid 101..160, strand +, identity 1.0"
+     "expected": "one piece, query 1..60, plasmid 101..160, strand +, identity 1.0; aligned_bp 60"
     },
     {
      "input": "reverse complement of it",

@@ -130,6 +130,12 @@ HELP = {
         "Design primers gives the cassette the genome's homologies as 5' tails.",
         "Right-click the cassette to reverse complement it. Perform assembly opens the new genome.",
     ],
+    "Synthesis": [
+        "Will a synthesis company make this DNA quickly? Paste bases, or use the selection or the whole sequence.",
+        "The Synthesis Success Calculator (Salis lab model) runs on this computer and needs ViennaRNA (Install ViennaRNA…).",
+        "Each measure in its table says what it counts: long repeats, hairpins, GC-poor or GC-rich stretches, extreme melting temperatures.",
+        "IDT's own complexity screen sends the sequence to idtdna.com, only when you press its button and confirm.",
+    ],
 }
 
 
