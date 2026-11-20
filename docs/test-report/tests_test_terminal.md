@@ -4,7 +4,7 @@
 
 ## `test_pipelines_build_valid_bash`
 
-**Result:** ✅ passed in 0.25 s · [line 25](../../tests/test_terminal.py#L25) · **Area:** Terminal and pipelines · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.27 s · [line 25](../../tests/test_terminal.py#L25) · **Area:** Terminal and pipelines · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** A pipeline could type broken or wrong bash into the Terminal (an unfilled option, an unquoted path with a space, a tool it does not check), so a run fails or maps with the wrong settings.
 

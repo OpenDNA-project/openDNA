@@ -721,6 +721,12 @@ def test_wsltools_command_says_what_is_missing_and_never_installs_wsl(capsys, mo
     assert status["wsl"] is False and status["plannotate"] == {"state": "no_wsl"} and set(status["terminal_tools"]) == set(runner.terminal_tools())
     code, out, err = run(capsys, "wsltools", "install")
     assert code == 1 and err.startswith("ERROR: ") and "wsl --install" in err
+    scripts = []   # WSL works: one start answers both, the status line then the installed tools after the mark
+    monkeypatch.setattr(plannotate_tool, "_run", lambda script, timeout=None: scripts.append(script) or
+                        SimpleNamespace(stdout=f"ready 2.0.0\n{plannotate_tool.TOOLS_MARK}\nfastp\nsamtools\n", returncode=0))
+    status = answer(capsys, "wsltools", "status")
+    assert len(scripts) == 1 and status["wsl"] is True and status["plannotate"] == {"state": "ready", "version": "2.0.0"}
+    assert status["terminal_tools"] == {t: t in ("fastp", "samtools") for t in runner.terminal_tools()}
     both = plannotate_tool.install_script()
     assert "opendna-plannotate" in both and 'plannotate" setupdb' in both and all(t in both for t in runner.terminal_tools()) and both.endswith("exit $r")
     only = plannotate_tool.install_script(plannotate=True, terminal=False)

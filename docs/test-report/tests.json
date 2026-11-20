@@ -8238,8 +8238,8 @@
   {
    "id": "tests/test_agent_cli.py::test_wsltools_command_says_what_is_missing_and_never_installs_wsl",
    "area": "Command line for agents",
-   "role": "The installer's optional step, or an agent, could try to install WSL itself, or fail with a traceback where WSL is missing; or the install could leave out pLannotate's databases or a Terminal tool.",
-   "purpose": "With every call into WSL failing, `wsltools status` reports wsl false and the Terminal's tools, and `wsltools install` is one ERROR line that tells the user to run `wsl --install` themselves. The install script names the pLannotate environment, runs `plannotate setupdb`, lists every tool the pipelines need, ends with the combined exit status; pLannotate alone leaves the Terminal's environment out.",
+   "role": "The installer's optional step, or an agent, could try to install WSL itself, or fail with a traceback where WSL is missing; or the install could leave out pLannotate's databases or a Terminal tool; or the status (also shown by Help > Run Setup Again) could report the wrong tools as installed.",
+   "purpose": "With every call into WSL failing, `wsltools status` reports wsl false and the Terminal's tools, and `wsltools install` is one ERROR line that tells the user to run `wsl --install` themselves. With WSL working, one WSL start answers both the pLannotate status and the installed tools (the list after the mark), each tool true only when listed. The install script names the pLannotate environment, runs `plannotate setupdb`, lists every tool the pipelines need, ends with the combined exit status; pLannotate alone leaves the Terminal's environment out.",
    "cases": [
     {
      "input": "wsltools status (no WSL)",
@@ -8248,6 +8248,10 @@
     {
      "input": "wsltools install (no WSL)",
      "expected": "exit 1, 'ERROR: ... wsl --install'"
+    },
+    {
+     "input": "wsltools status, WSL answering 'ready 2.0.0', the mark, 'fastp', 'samtools'",
+     "expected": "one WSL call; wsl true, plannotate ready 2.0.0; fastp and samtools true, every other tool false"
     },
     {
      "input": "install_script()",

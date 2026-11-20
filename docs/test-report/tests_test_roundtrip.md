@@ -4,7 +4,7 @@
 
 ## `test_real_files_round_trip_and_agree_with_biopython`
 
-**Result:** ✅ passed in 1.99 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.14 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a real plasmid or genome could silently drop or alter features, qualifiers or bases, or write a file other tools read differently.
 
@@ -105,7 +105,7 @@ Checks primer_bind features passed to save_genbank are written with name and ful
 
 ## `test_fasta_files_are_read_like_biopython`
 
-**Result:** ✅ passed in 0.04 s · [line 484](../../tests/test_roundtrip.py#L484) · **Area:** FASTA reading · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 484](../../tests/test_roundtrip.py#L484) · **Area:** FASTA reading · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a multi-sequence FASTA (genomes, Windows line endings, BOM, lower case) could return wrong bases at line breaks or include stray characters, corrupting what the user sees and edits.
 

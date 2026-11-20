@@ -59,15 +59,23 @@ def env_lookup():
             '[ -n "$E" ] && export PATH="$E/bin:$PATH"; ')
 
 
+def _status_script():
+    return env_lookup() + f'[ -n "$E" ] && python {shlex.quote(runner.shell_path(HELPER))} --status || echo missing'
+
+
 def status():
     """SimpleNamespace(state, version, text). state: "ready"; "no_database" (installed, `plannotate setupdb` not run);
     "missing" (WSL works, pLannotate is not installed); "no_wsl". Takes a second or two (it starts WSL)."""
     try:
-        done = _run(env_lookup() + f'[ -n "$E" ] && python {shlex.quote(runner.shell_path(HELPER))} --status || echo missing', timeout=120)
+        done = _run(_status_script(), timeout=120)
     except PlannotateError:
-        return SimpleNamespace(state="no_wsl", version="", text=WSL_HELP)
-    out = done.stdout.strip().splitlines()[-1:] if done.returncode == 0 else []
-    word, _, version = (out[0] if out else "").partition(" ")
+        return _state_from("")
+    return _state_from(done.stdout if done.returncode == 0 else "")
+
+
+def _state_from(out):
+    """status() from the text the status script printed (its last line); "" (nothing ran) is no_wsl."""
+    word, _, version = (out.strip().splitlines() or [""])[-1].partition(" ")
     if word == "ready":
         return SimpleNamespace(state="ready", version=version, text=f"{NAME} {version}")
     if word == "nodb":
@@ -77,12 +85,20 @@ def status():
     return SimpleNamespace(state="no_wsl", version="", text=WSL_HELP)
 
 
+TOOLS_MARK = "__opendna_tools__"   # between the status line and the list of installed tools in tools_state's output
+
+
 def tools_state():
-    """(status(), {tool: installed}) of pLannotate and the Terminal's tools (oDNA-cli wsltools, Help > Run Setup Again). Without WSL
-    every tool is False and WSL is not started a second time to ask."""
-    state, tools = status(), runner.terminal_tools()
-    have = set(runner.installed_tools(tools)) if state.state != "no_wsl" else set()
-    return state, {t: t in have for t in tools}
+    """(status(), {tool: installed}) of pLannotate and the Terminal's tools (oDNA-cli wsltools, Help > Run Setup Again), asked in one
+    WSL start. Without WSL every tool is False."""
+    tools = runner.terminal_tools()
+    try:
+        out = _run(f"({_status_script()}); echo {TOOLS_MARK}; {runner.installed_tools_script(tools)}", timeout=120).stdout
+    except PlannotateError:
+        out = ""
+    before, mark, after = out.partition(TOOLS_MARK)
+    have = set(after.split())
+    return _state_from(before if mark else ""), {t: t in have for t in tools}
 
 
 def install_script(plannotate=True, terminal=True):

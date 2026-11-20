@@ -92,4 +92,3 @@ App (Python):
 
 ## Found by agents (add new ones here, newest first)
 
-- 2026-11-20, `app/cli_tools.py` `cmd_wsltools`: `P.status()` and `runner.installed_tools()` each start WSL (1 to 2 s each), a third time after an install.

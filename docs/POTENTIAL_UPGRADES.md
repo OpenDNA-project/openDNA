@@ -17,9 +17,8 @@ catalogue, recombineering spec, synthesis research) were read point by point and
 - One `mutation.span(feature_or_range, doc)` returning `{start, end, crosses_origin}` for every CLI row and window location string.
 - `variants`: a separate `wraps` flag instead of the text "across the origin" stored in `alt`.
 - `annotation.note_for`: keep the Features Database's own source on the hit instead of undoing a string concatenation.
-- One `runner.run_bash(script, timeout)` for `plannotate_tool._run` and `runner.installed_tools`; one `uikit.Job` (token, cancel, progress) for the background
+- One `uikit.Job` (token, cancel, progress) for the background
   jobs of `synthesis_panel`, `ncbi_dialog`, `cas9`, `folder_search`, `structure_dialog`; one `DataTable.add_filter_actions` for the context menus.
-- `cmd_wsltools`: one WSL start for the pLannotate status and the Terminal tools.
 - `annotate --no-plannotate`: express as an inverted flag in `tool_settings_block` instead of `use_plannotate = None`.
 - `synthesis`: ViennaRNA install route for the command line like `wsltools install`; move the region-to-sequence orchestration into `synthesis_salis`.
 

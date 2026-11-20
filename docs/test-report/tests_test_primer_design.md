@@ -4,7 +4,7 @@
 
 ## `test_primer_check_levels_follow_their_limits`
 
-**Result:** ✅ passed in 0.02 s · [line 75](../../tests/test_primer_design.py#L75) · **Area:** Primer quality checks · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 75](../../tests/test_primer_design.py#L75) · **Area:** Primer quality checks · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the green/orange/red verdicts on a primer could fire at the wrong value or ignore the user's own limits, so primers that will not work would look fine (or vice versa) before they are ordered.
 

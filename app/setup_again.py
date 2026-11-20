@@ -3,7 +3,9 @@ without reinstalling. Each row shows the current state; nothing changes until OK
 lines run: file_assoc.register (--register-file-types), the Performance setting `cores` (--set-cores), and the install of
 pLannotate and the Terminal's tools (oDNA-cli wsltools install, offered only when WSL works, as the installer's WslReady)."""
 import sys
+import threading
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QLabel
 
 import file_assoc
@@ -11,11 +13,9 @@ import plannotate_tool
 import runner
 import tool_settings
 from annotation import InstallDialog
-from uikit import run_busy
 
 
 def run(parent):
-    state, tools = run_busy(parent, "Checking pLannotate and the Terminal's tools…", plannotate_tool.tools_state)   # (it starts WSL: a few seconds)
     dialog = QDialog(parent)
     dialog.setWindowTitle("Run Setup Again")
     form = QFormLayout(dialog)
@@ -35,30 +35,46 @@ def run(parent):
         form.addRow("", QLabel(note))
 
     param = next(p for p in tool_settings.TOOLS[tool_settings.PERFORMANCE] if p.key == "cores")
-    cores = tool_settings.SettingsDialog._widget(param, tool_settings.cores())   # the Settings page's own spinbox: same limits and suffix
+    cores = tool_settings.SettingsDialog.param_widget(param, tool_settings.cores())   # its maximum is this PC's number of cores
+    shown_cores = cores.value()   # (a saved value above the maximum shows as the maximum: OK alone must not save it)
     form.addRow(param.label + ":", cores)
     form.addRow("", QLabel(f"Default {param.default}; also in Settings > General > Performance.", toolTip=param.tip))
 
-    install = None
-    if state.state == "no_wsl":
-        form.addRow(QLabel(f"pLannotate and the Terminal's tools: {plannotate_tool.WSL_HELP}", wordWrap=True))
-    else:
-        missing_plannotate, missing_tools = state.state != "ready", not all(tools.values())
-        install = QCheckBox("Set up pLannotate and the Terminal's tools" + (" in WSL2" if runner.use_wsl() else "")
-                            + " now (several hundred MB, a few minutes)", enabled=missing_plannotate or missing_tools)
-        form.addRow(install)
-        form.addRow("", QLabel(f"Now: {state.text}; Terminal tools: {sum(tools.values())} of {len(tools)} installed."))
+    # The tools are asked in a thread (it starts WSL: seconds, or up to the timeout if WSL hangs): the dialog is usable meanwhile.
+    install = QCheckBox("Set up pLannotate and the Terminal's tools" + (" in WSL2" if runner.use_wsl() else "")
+                        + " now (several hundred MB, a few minutes)", enabled=False)
+    tools_note = QLabel("Now: checking…", wordWrap=True)
+    form.addRow(install)
+    form.addRow("", tools_note)
+    answer, missing = [], {}
+    threading.Thread(target=lambda: answer.append(plannotate_tool.tools_state()), daemon=True).start()
+
+    def show_tools():
+        if not answer:
+            return
+        poll.stop()
+        state, tools = answer[0]
+        if state.state == "no_wsl":
+            install.setVisible(False)
+            tools_note.setText(f"pLannotate and the Terminal's tools: {plannotate_tool.WSL_HELP}")
+            return
+        missing.update(plannotate=state.state != "ready", terminal=not all(tools.values()))
+        install.setEnabled(any(missing.values()))
+        tools_note.setText(f"Now: {state.text}; Terminal tools: {sum(tools.values())} of {len(tools)} installed.")
+    poll = QTimer(dialog, interval=100, timeout=show_tools)   # the thread only appends; the widgets are touched here, in the window's thread
+    poll.start()
 
     form.addRow(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, accepted=dialog.accept, rejected=dialog.reject))
     accepted = dialog.exec() == QDialog.Accepted
-    n, register, setup = cores.value(), assoc is not None and assoc.isChecked() != offered, install is not None and install.isChecked()
+    n, register, setup = cores.value(), assoc is not None and assoc.isChecked() != offered, install.isEnabled() and install.isChecked()
+    poll.stop()
     dialog.deleteLater()   # (a child of the window: it would stay until the window closes)
     if not accepted:
         return
-    if n != tool_settings.cores():
+    if n != shown_cores:
         tool_settings.set_value(tool_settings.PERFORMANCE, "cores", n)
     if setup:   # before the "Open with" notice, which does not block: the two would be on screen together
-        InstallDialog(parent, plannotate=missing_plannotate, terminal=missing_tools).exec()
+        InstallDialog(parent, **missing).exec()
         plannotate_tool.forget()
     if register:
         (file_assoc.unregister_now if offered else file_assoc.register_now)(parent)

@@ -11,7 +11,6 @@ Each pipeline run gets a folder next to its output (<out>_run/) with its inputs,
 import json
 import re
 import shlex
-import subprocess
 import sys
 import tomllib
 from datetime import datetime
@@ -162,16 +161,10 @@ def terminal_tools():
     return sorted({tool for p in pipelines().values() for tool in p.get("needs", [])})
 
 
-def installed_tools(tools):
-    """Which of `tools` the opendna-tools environment has (a look into its bin folder; WSL is started for it). [] when WSL cannot be run."""
+def installed_tools_script(tools):
+    """bash that prints, one per line, which of `tools` the opendna-tools environment has (a look into its bin folder)."""
     dirs = " ".join(f'"{d}"' for d in TOOL_DIRS)
-    script = f'for t in {" ".join(tools)}; do for d in {dirs}; do [ -x "$d/$t" ] && {{ echo $t; break; }}; done; done'
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if use_wsl() else 0
-    try:
-        done = subprocess.run(command_line(["-lc", script]), capture_output=True, text=True, timeout=120, creationflags=flags)
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    return done.stdout.split() if done.returncode == 0 else []
+    return f'for t in {" ".join(tools)}; do for d in {dirs}; do [ -x "$d/$t" ] && {{ echo $t; break; }}; done; done'
 
 
 def session_setup(folder):

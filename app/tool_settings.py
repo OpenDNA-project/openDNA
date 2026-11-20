@@ -238,7 +238,7 @@ class SettingsDialog(QDialog):
             form = QFormLayout()
             form.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)   # a number box as wide as a number, not the whole page
             for p in TOOLS[name]:
-                w = self._widget(p, value(name, p.key))
+                w = self.param_widget(p, value(name, p.key))
                 w.setToolTip(p.tip)
                 self.widgets[(name, p.key)] = (p, w)
                 form.addRow(p.label, w)
@@ -267,7 +267,8 @@ class SettingsDialog(QDialog):
         return scroll
 
     @staticmethod
-    def _widget(p, v):
+    def param_widget(p, v):
+        """The Settings page's box for the Param `p` showing `v` (also Help > Run Setup Again's cores box): its limits, steps and suffix."""
         if isinstance(p.default, bool):
             w = QCheckBox()
             w.setChecked(v)
