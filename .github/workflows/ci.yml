@@ -30,9 +30,9 @@ jobs:
         with:
           workspaces: core
 
-      # Not PyInstaller (only the exe build needs it): faster.
+      # PyInstaller: the spec test (test_project) runs the spec's data section, which imports its hooks.
       - name: Install Python packages
-        run: pip install -r requirements.txt pytest biopython pyflakes ViennaRNA
+        run: pip install -r requirements.txt pytest biopython pyflakes ViennaRNA pyinstaller
 
       - name: Build the Rust core and install it
         run: |
