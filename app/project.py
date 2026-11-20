@@ -20,6 +20,10 @@ LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO}/releases/latest"
 UPDATES_ENABLED = True
 # What changed in each version, newest first: the start page shows the lines of VERSION once, at the first start after an update.
 WHATS_NEW = {
+    "0.8.5": ["The window no longer freezes: analyses run in the background and the status bar says what is running. Restriction sites now show on whole genomes.",
+              "Local Align aligns every candidate place on several CPU cores and finds hits it used to miss; an optional time limit (Settings > Local Align) warns when it cuts the search.",
+              "Settings > General > Performance sets the CPU cores openDNA may use (the installer asks too); Help > Run Setup Again offers the installer's choices.",
+              "New Synthesis tab (synthesis success check, IDT complexity), pLannotate in Detect Common Features, and tables you can sort and filter by value."],
     "0.8.4": ["About 250 restriction enzymes instead of 47 (commercially sold ones; isoschizomers such as MunI are found under the name shown, MfeI), with a filter for enzymes that cut only methylated DNA (DpnI).",
               "File tabs keep at least 12 letters of a name and go on a second row when they do not fit; the search box sits against the range boxes.",
               "The circular map's title shrinks and wraps to fit inside the circle. A slider under the zoom adds space between the letters of the sequence view.",

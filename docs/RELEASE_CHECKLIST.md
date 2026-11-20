@@ -1,74 +1,94 @@
-# Release checklist: changes since 0.8.4 and what to test by hand
+# Release 0.8.5: changelog and what to try by hand
 
-Automated state when this was written: 159 Python + 68 Rust tests pass, pyflakes clean, test report rebuilt (227 described).
-Nothing is committed. No window was opened for any change below: **every GUI line is checked by reading only** (no widget tests exist).
-Open problems are in `docs/KNOWN_ISSUES.md`. Rebuild the core first (`maturin develop`), then restart the app.
+State when this was written (2026-11-20, `main` at 961fd53, not pushed): 159 Python + 71 Rust tests pass, pyflakes clean, test report rebuilt
+(230 tests, all described). **No window was opened for any change below**: every GUI line was checked by reading the code only (no widget tests exist).
+Open problems are in `docs/KNOWN_ISSUES.md`.
 
-## What changed
+## Changelog (since 0.8.4)
 
-### 1. Command line for agents (`oDNA-cli`)
-- New commands: `split` and `merge` (multi-FASTA / multi-record GenBank; `FILE#NAME` picks one record; `--names`, a clash uses the file name),
-  `synthesis`, `wsltools` (pLannotate and Terminal tools in WSL).
-- `msa` takes a multi-record file. `pcr` stays at window 0 unless asked; bad primers give a warning that proposes a wider window and never applies it.
-- Every limit reached is a warning in every command (`answer(caps=...)`): guides `--top`, repeats, align pieces, search hits, NCBI, PCR pairs.
-- `checkup` origins are structured fields (no leak of internal text). `codon` works for a CDS across the origin. `annotate` has `--no-plannotate`.
-- Agent docs: `app/agent/index.md` (new rules), recipes updated, new `split.md`, `synthesis.md`, `wsltools.md`; user guide `docs/AGENT_GUIDE.md`.
+### The window never freezes
+- No analysis runs on the window's own thread any more. After an edit on a sequence over 50 kb, enzyme sites, primer sites, the Plasmid Checkup
+  and the Enzymes/Digest table are computed in the background; until they arrive the sites are not drawn and the tool is greyed (nothing stale is shown).
+- The status bar says "Running in the background: ..." for any job that takes over a second.
+- Restriction sites are found in the Rust core, all enzymes in one pass: a 4.6 Mb genome takes 1.2 s instead of 7.8 s, and the 250 kb limit is gone
+  (sites are shown on whole genomes). An N in the sequence now fits an N of a site, as in the search bar.
+- The search bar searches long sequences in the background; autosave writes in the background; saving a large GenBank no longer blocks edits.
 
-### 2. Circular origin and "never ignore a location"
-- `variants` (Rust core + Python): nothing near an end is dropped; clips continuing the circle are reads over the origin; a deletion through the
-  origin is one deletion; an uncovered start and end are one gap; hard-clipped reads near an end are reported as "could not be checked". `--apply` writes it.
-- Golden Gate closing junction on a circle; recombineering left homology through the origin and exact amplicon site; PCR narrowed window said;
-  DNA find and "selection" search scope through the origin; protein motif through the origin; repeats (2.5 copies, palindromes, cut repeats counted);
-  guides over N counted; a residue range split by the origin is an error; protein motif list cap said.
-- Per-tool detail: `docs/audit-ignored-locations.md`.
+### Local Align and Folder Search
+- Every candidate place is aligned, on several CPU cores. Before, only the 200 places with most seeds were, which lost real hits on a genome
+  (a 5 kb query: 15 hits instead of 3). A 5 kb query on a 4.6 Mb genome takes 0.7 s on 8 cores.
+- Optional time limit (Tools > Settings > Local Align, default 0 = none). When it is reached, a warning box says how many places were left out
+  and where to change the limit.
+- Every other search limit is said in the status line instead of silently cutting the answer.
+- A difference in the last few bases of a query is now listed as a mismatch instead of being trimmed off the hit.
+- Folder Search says which files had more than 5 hits; Copy results lists every note.
 
-### 3. New features (from other work in the tree; read-only reviewed)
-- **Synthesis tab** (Tools menu, right-click "Test Synthesis…"): Synthesis Success Calculator (Rust `salis.rs`, forest `app/salis_forest.json.gz`,
-  ViennaRNA install helper) and an IDT complexity check with credentials in the system keyring (`secret_store.py`; IDT code is unverified against the live service).
-- **pLannotate** in Detect Common Features: "Found by" column, install dialog, credit line, `Also search with pLannotate` setting.
-- **Tables**: shared `DataTable` (sort, filter by value, right-click a cell: show only / hide) in Detect, Checkup, Local Align, Folder Search and more.
-- Welcome page: up to 4 slots, slots that expire (`until`), a heading, tips in the status bar every 5 minutes.
-- Other: NCBI "more results" note, structure dialog and citations edits, CI and packaging files.
+### CPU cores and setup
+- New setting Tools > Settings > General > Performance: the CPU cores openDNA may use (default: all but one, at most 8). The installer asks for it.
+- Help > Run Setup Again: the installer's choices for an existing install (openDNA in "Open with", CPU cores, pLannotate and the Terminal's tools
+  in WSL), shown with their current state; nothing changes until OK.
 
-### 4. Cleanup from this review
-- One origin-wrap helper reused, shared complement functions, `secret_store.save` keeps a copy in memory only without a secure store, the Synthesis
-  tab imports lazily, `salis_repeats` and `salis_hairpin_gc` release the GIL.
-- Code review found 10 items, **not fixed**: checkup `cds` start/end across the origin (`cli_tools.py:562`), `synthesis` region end across the origin,
-  `sponsors.load` with a non-string `until`, plus efficiency items (`maximal_repeats`, per-read clip vector, sequential ViennaRNA folds, rescans per record).
+### New tools (from the pre-release work)
+- **Synthesis tab** (Tools, or right-click "Test Synthesis..."): the Synthesis Success Calculator (Salis lab model; needs ViennaRNA, with an install
+  helper) and an IDT complexity check (login kept in the system's secure store only if you tick Remember).
+- **pLannotate** in Detect Common Features: a "Found by" column, an install dialog, a credit line, and the "Also search with pLannotate" setting.
+- **Tables** (Detect, Checkup, Local Align, Folder Search and others): sort by any column, filter by value, right-click a cell to show only / hide.
+- Welcome page: up to 4 slots that can expire, a heading, a tip in the status bar every 5 minutes.
 
-## Test by hand before release
+### Circular sequences: nothing near the origin is ignored
+- Variants: clips that continue the circle are reads over the origin; a deletion through the origin is one deletion; nothing near an end is dropped.
+- Golden Gate closing junction on a circle, recombineering homology through the origin, DNA and protein find through the origin, repeats across it.
 
-Setup: `demo/BW25113_2026.gb` plus a plasmid turned round the origin (File: rotate, or any GenBank with a feature across base 1).
+### Command line for agents (`oDNA-cli`)
+- New commands: `split`, `merge`, `synthesis`, `wsltools`. `align` has `--time-limit` and `--threads` and no longer crashes on a mismatch just past
+  the origin. Every limit reached is a warning in every command. `msa` takes a multi-record file; `annotate` has `--no-plannotate`.
 
-### Window (nothing here has been run in a window)
-1. **Start-up**: app opens, no import error (Synthesis, plannotate and data_table now load lazily or new). Status bar shows a small grey tip; welcome page shows slots.
-2. **Tables** (Detect Common Features, Plasmid Checkup, Local Align, Folder Search): click a header to sort, then click a row: the selection must land on the
-   *right* feature (rows are mapped by data number). Tick boxes in Detect and Checkup after sorting: "Add ticked features" must add the ticked ones.
-   Right-click a header and a cell: show only / hide / show all rows. Local Align: click a row, the Alignment view follows, and back.
-3. **Detect Common Features**: without pLannotate, "Install pLannotate…" appears and the info line says it is not installed; with it, "Found by" shows
-   openDNA / pLannotate / both, the credit line shows, added features carry the right /note. Close the install dialog with Escape mid-run: the install stops.
-4. **Synthesis tab**: open from Tools and from the right-click menu with a selection (bases land in the box, nothing runs). Run the calculator on a 500 bp and a
-   2 kb piece: the window stays responsive (GIL fix), verdict and feature table show. Without ViennaRNA: a clear message and the install route works.
-   IDT section: untick "Remember", enter fake credentials, the call fails with a readable error (the real service is untested); with a secure store the
-   "Remember" box restores them next time.
-5. **Circular origin in the window**: Find (Ctrl+F) a DNA query that runs through base 1; search scope "selection" over a selection through the origin;
-   protein motif through the origin. Recode CDS across the origin: it works, and Undo takes **two** steps (known).
-6. **Variants pane** with a BAM across a circular plasmid (demo BAM): a deletion through the origin is one row; "could not be checked" clips at the ends are listed.
-7. **PCR panel** on a circular plasmid with a large window: "Search window narrowed…" line; more than the shown pairs: "Only the best N pairs are listed".
-8. **Welcome page**: edit `sponsors.json` with an `until` in the past: the slot disappears; with a number instead of a date: **currently crashes** (review finding).
+## Text for the release (in-app "What's new" is `WHATS_NEW["0.8.5"]` in `app/project.py`)
 
-### Command line
-9. Run every recipe example once on a turned plasmid: `skills show index`, then `inspect`, `region 900..50`, `sites`, `guides --top 1`, `repeats`, `search`, `align`,
-   `pcr check/run` (window 0, then a bad pair: warning only), `kld`, `recombineering`, `gibson`, `codon` (CDS across origin), `variants --apply`, `checkup`
-   (check the `cds` rows across the origin: known wrong), `split` then `merge` (names, clash), `msa` on a multi-FASTA, `synthesis --region 900..50` (end wrong: known),
-   `wsltools` (with and without WSL), `ncbi` (network).
-10. A cap warning shows in each command that has one (`--top 1`, a tiny `--max-hits`, NCBI more results).
+For the GitHub draft, above the **Downloads.** line:
 
-### Core and packaging
-11. `maturin develop --release`, restart: `import opendna_core` and `opendna_core.salis_repeats` exist. Build the installer/spec: `salis_forest.json.gz` (1.2 MB) and
-    `sponsors.json` are bundled; `oDNA-cli.exe` runs `synthesis` on a fresh machine (ViennaRNA message, not a traceback).
-12. Windows installer's optional WSL task runs `oDNA-cli wsltools install` (not exercised here).
+> - The window no longer freezes: analyses run in the background, and the status bar says what is running. Restriction sites now show on whole genomes.
+> - Local Align aligns every candidate place on several CPU cores and finds hits it used to miss; an optional time limit warns when it cuts the search.
+> - New setting for the CPU cores openDNA may use (the installer asks), and Help > Run Setup Again for the installer's choices.
+> - New Synthesis tab (synthesis success check, IDT complexity), pLannotate in Detect Common Features, sortable and filterable tables.
+> - Sequences that cross the origin of a plasmid are handled everywhere (variants, assembly, find, repeats).
+> - `oDNA-cli`: new `split`, `merge`, `synthesis` and `wsltools` commands; every limit reached is reported.
 
-## Before tagging
-- Decide on the 10 open review findings (at least the three correctness ones), run `/simplify` again if code changes, rebuild the report, commit with `tests.json` and generated files (not `junit.xml`, `cargo.txt`).
-- Version bump and release notes (`whats_new`), `THIRD_PARTY_NOTICES.md` for ViennaRNA, pLannotate, the Salis model; `PRIVACY.md` already edited: reread for IDT (credentials, network).
+## Try by hand before publishing
+
+Setup: rebuild the core and start from source (`D:\GitHub_Projects\openDNA-test.bat` does both, on `demo/BW25113_2026.gb`). Also have a plasmid with a
+feature across base 1 (`demo/pFG051_Chlor.gb`, then Edit > Set Origin to Selection Start in the middle of a feature).
+
+### The window never freezes (genome open)
+1. Type a few bases in the genome. The window stays responsive; enzyme and primer sites disappear for a moment, then come back. The status bar shows
+   "Running in the background: ..." if it takes over a second.
+2. Show enzyme sites (Display) on the genome: sites appear on the whole 4.6 Mb (before: none above 250 kb). Open the Enzymes/Digest table: greyed while it computes, then filled.
+3. Open the Plasmid Checkup on the genome, then edit: it greys and refreshes without freezing.
+4. Search bar: search a 10-base motif in the genome; the window stays usable while it searches. Edit during a search: the old answer is dropped.
+5. Save the genome (Ctrl+S) and keep scrolling while it writes. Close the file right after an edit: no error, no stray recovery copy at the next start.
+
+### Local Align and Folder Search
+6. Local Align on the genome with a 1-2 kb piece of pFG051 as query: hits listed, no note. Then a 5 kb query: more hits than in 0.8.4, under about a second.
+7. Settings > Local Align > Time limit = 0.1 s, align the 5 kb query again: the **warning box** says how many places were left out and names the setting.
+   Its text should be clear to you; set it back to 0.
+8. Query with one base changed among its last 3 bases: the hit still covers the whole query and the mismatch is listed in Differences.
+9. Folder Search on `demo/` with a short repeated query: the status line names files with more than 5 hits; Copy results ends with "Note: ..." lines.
+
+### Settings and setup
+10. Settings > General > Performance shows "CPU cores openDNA may use" with your core count; change it, close, reopen: kept.
+11. Help > Run Setup Again: the dialog shows the current state of each choice; Cancel changes nothing; tick "Open with" and press OK (from the installed
+    copy only: from source it says it does not apply).
+12. **Installer** (after the build, step 2 of the release): install over 0.8.4. The new "CPU cores" page appears with min(8, cores - 1), or your saved value;
+    a number outside 1..cores is refused. After the install, Settings shows that value. Let the 0.8.4 copy update itself to 0.8.5 instead: no page, your value kept.
+
+### Earlier pre-release work (unchanged from the last checklist, still untried)
+13. Start-up: no import error; status bar tip; welcome page slots.
+14. Tables in Detect / Checkup / Local Align / Folder Search: sort a column, then click a row: the right feature is selected; ticked boxes after a sort add the right features.
+15. Detect Common Features with and without pLannotate (install button, "Found by", credit line).
+16. Synthesis tab on a 500 bp and a 2 kb piece (window stays responsive); without ViennaRNA a clear message. IDT with fake credentials: a readable error.
+17. Circular origin: Find a query through base 1; protein motif through the origin; Variants pane with a deletion through the origin is one row.
+18. Command line: run each recipe example once (`oDNA-cli skills show index`, then the examples); `align` with `--time-limit 0.001` gives a warning.
+
+## Publish (when you give the go)
+Version bump to 0.8.5 in `app/project.py`, `core/Cargo.toml`, `core/pyproject.toml` (+ `Cargo.lock`), tests, commit, push `main`, wait for CI, tag
+`v0.8.5`, push the tag, wait for the release workflow, put the text above in the draft, check the files, publish (docs/PUBLISHING.md section 8).
