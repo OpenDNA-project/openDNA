@@ -141,19 +141,19 @@ class SalisSection(Section):
                                        "openDNA does not ship it; this fetches the official package into openDNA's data folder.")
         self.install_button.hide()
         self.places, self.pinned = {}, None   # where each measure was counted (from the last run); the row clicked
-        self.table = QTableWidget(len(salis.FEATURES), 3)
-        self.table.setHorizontalHeaderLabels(["Measured", "Value", "What it counts"])
+        # The nine measures side by side, ROWS to a column of (Measured, Value) pairs, so all show at once; what each counts is its tooltip.
+        self.table = QTableWidget(self.ROWS, 2 * -(-len(salis.FEATURES) // self.ROWS))
+        self.table.setHorizontalHeaderLabels(["Measured", "Value"] * (self.table.columnCount() // 2))
         self.table.verticalHeader().hide()
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
-        self.table.setToolTip("Point at a measure to highlight where it was counted in the sequence above; click it to keep the highlight")
+        self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.setMouseTracking(True)
-        self.table.cellEntered.connect(lambda row, _c: self.panel.highlight(self.spans(row)))
-        self.table.cellClicked.connect(self.pin)
-        self.table.viewport().installEventFilter(self)   # leaving the table: back to the row clicked
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.table.setMaximumHeight(32 * (len(salis.FEATURES) + 1))
+        self.table.cellEntered.connect(lambda row, column: self.panel.highlight(self.spans(self.index(row, column))))
+        self.table.cellClicked.connect(lambda row, column: self.pin(self.index(row, column)))
+        self.table.viewport().installEventFilter(self)   # leaving the table: back to the measure clicked
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setStretchLastSection(True)
         self.table.hide()
         row = QHBoxLayout()
         for w in (self.run_button, self.cancel_button, self.install_button):
@@ -177,15 +177,24 @@ class SalisSection(Section):
         self.forget_places()
         return super().busy(what, cancellable)
 
-    def spans(self, row):
-        """The stretches the measure of table row `row` counted, [] when it points at nothing (or the sequence changed since)."""
-        return self.places.get(salis.FEATURES[row], []) if 0 <= row < len(salis.FEATURES) else []
+    ROWS = 3   # measures per column of the table
 
-    def pin(self, row, _column=0):
-        self.pinned = row
-        spans = self.spans(row)
+    def index(self, row, column):
+        """The measure (its place in salis.FEATURES) shown in that cell, or -1 for an empty cell."""
+        i = column // 2 * self.ROWS + row
+        return i if i < len(salis.FEATURES) else -1
+
+    def spans(self, i):
+        """The stretches measure `i` counted, [] when it points at nothing (or the sequence changed since)."""
+        return self.places.get(salis.FEATURES[i], []) if 0 <= i < len(salis.FEATURES) else []
+
+    def pin(self, i):
+        if i < 0:
+            return
+        self.pinned = i
+        spans = self.spans(i)
         self.panel.highlight(spans, reveal=True)
-        label = salis.FEATURE_HELP[salis.FEATURES[row]][0]
+        label = salis.FEATURE_HELP[salis.FEATURES[i]][0]
         self.panel.info.setText(f"{label}: {plural(len(spans), 'stretch', 'stretches')} highlighted" if spans else f"{label}: concerns the whole sequence")
 
     def forget_places(self):
@@ -234,12 +243,18 @@ class SalisSection(Section):
             label, meaning = salis.FEATURE_HELP[name]
             value = result["features"][name]
             text = f"{value:,}" if isinstance(value, int) else f"{value:.3f}"
-            for col, cell in enumerate((label, text, meaning)):
+            tip = f"{label}: {meaning}. Point at it to highlight where it was counted in the sequence above; click to keep the highlight."
+            for k, cell in enumerate((label, text)):
                 item = QTableWidgetItem(cell)
-                if col == 1:
+                item.setToolTip(tip)
+                if k == 1:
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                self.table.setItem(i, col, item)
+                self.table.setItem(i % self.ROWS, 2 * (i // self.ROWS) + k, item)
         self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
+        # Exactly as tall as its rows: nothing to scroll.
+        self.table.setFixedHeight(self.table.horizontalHeader().height() + sum(self.table.rowHeight(r) for r in range(self.ROWS))
+                                  + 2 * self.table.frameWidth())
         self.table.show()
 
 

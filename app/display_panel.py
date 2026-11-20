@@ -19,7 +19,7 @@ import icons
 from uikit import plural
 import theme
 import tool_settings
-from enzymes import PRESETS, EnzymeFilter
+from enzymes import MAX_DRAWN_CUTS, PRESETS, EnzymeFilter
 from sequence_view import primer_color
 
 
@@ -293,6 +293,9 @@ class DisplayPanel(QScrollArea):
         self.expander.setFixedWidth(max(8, self.expander.sizeHint().width() // 2))   # half the usual width: just an arrow
         self.enzymes = self._switch("Restriction sites", editor.show_enzymes, lambda on: editor.set_display(enzymes=on),
                                     icon="enzymes", trailing=self.expander)
+        self.sites_warning = QLabel(wordWrap=True, visible=False)   # the filter lets through too many sites to draw
+        self.sites_warning.setStyleSheet(f"color:{theme.hex('status_warn')}")
+        self.box.addWidget(self.sites_warning)
         self._enzyme_criteria()   # folded away until the arrow opens it: the annotation types matter more
         self._rule()
         self.cds = self._switch("CDS translations", editor.show_cds_translation,
@@ -424,6 +427,11 @@ class DisplayPanel(QScrollArea):
             box.blockSignals(True)  # mirror the state without sending it back
             box.setChecked(on)
             box.blockSignals(False)
+        withheld = ed.withheld_sites()
+        self.sites_warning.setVisible(bool(withheld))
+        if withheld:
+            self.sites_warning.setText(f"{withheld:,} sites match these criteria: too many to draw without slowing openDNA down, so none are drawn. "
+                                       f"Narrow the criteria (the arrow beside the switch, e.g. at most a few sites per enzyme) to {MAX_DRAWN_CUTS:,} or fewer.")
         self.criteria_form.set_filter(ed.enzyme_filter)   # mirrored, not sent back
         self.criteria_form.setEnabled(ed.show_enzymes)
         # always there (appearing and vanishing, it pushed the list of types below up and down): greyed with nothing hidden

@@ -27,10 +27,13 @@ Open problems are in `docs/KNOWN_ISSUES.md`.
 ### Digest
 - Above 1,000 cuts in the shown digest, the cuts are not drawn and only the 1,000 largest fragments are listed, with a warning that says why
   (AciI on the 4.6 Mb genome: 57,000 cuts froze openDNA for about a minute; now 0.6 s). Big tables refill faster everywhere.
+- The same limit for the restriction sites the Display panel draws: a filter that lets through more than 1,000 sites draws none, and
+  the panel says how many and how to narrow the criteria.
 
 ### Synthesis and Detect Common Features
 - Synthesis: the sequence is a real sequence view (a scratch sequence: type, paste, use the selection). Point at a row of the calculator's table to
   highlight where that measure was counted (repeat copies, the richest hairpin, GC-poor, cold or hot windows); click it to keep the highlight.
+  The nine measures sit side by side in three columns, all visible without scrolling; what each counts is in its tooltip.
   Synthesis moved from the Tools menu to the tools of every pane's picker. `oDNA-cli synthesis` gives the same places.
 - Detect Common Features is split in half: the sequence on the left, the features found on the right; a click selects where a feature would go.
 
@@ -93,6 +96,8 @@ feature across base 1 (`demo/pFG051_Chlor.gb`, then Edit > Set Origin to Selecti
   each row of its table: the stretches light up in the sequence view; click a row: they stay and the view scrolls there; edit a base: they go.
 - Detect Common Features: the window is half sequence, half list; click a feature: the left view jumps to it and selects it.
 - Help > Run Setup Again: a ViennaRNA row says whether it is installed; ticking it downloads it (needs the internet).
+- Display panel on the genome: open the criteria arrow, set every enzyme and every number of sites: the orange warning appears and no site is drawn;
+  set them back: sites return. The Synthesis table: three columns, no scrollbar, tooltips say what each counts.
 
 ### Settings and setup
 10. Settings > General > Performance shows "CPU cores openDNA may use" with your core count; change it, close, reopen: kept.

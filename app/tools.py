@@ -13,7 +13,7 @@ from editor import protein_field, reverse_complement, site_location
 from cut_sites import enzyme_mark_tip
 import inventory
 import theme
-from enzymes import COMMON, EnzymeFilter, describe, find_cuts, is_owned, wanted
+from enzymes import COMMON, MAX_DRAWN_CUTS, EnzymeFilter, describe, find_cuts, is_owned, wanted
 import genetic_code
 from sequence_view import cds_codons, codons
 from data_table import DataTable
@@ -458,9 +458,6 @@ class LaneBar(QTabBar):
         return hint.expandedTo(self.add.sizeHint())
 
 
-# Above this many cuts in the shown digest, drawing them and listing every fragment froze openDNA (AciI on a 4.6 Mb genome:
-# 57,000 cuts, about a minute): the cuts are not drawn and only the largest fragments are listed, and a warning says so.
-MAX_DRAWN_CUTS = 1000
 DIGEST_FILTER = EnzymeFilter(1, None, 1)   # the Digest lists every enzyme that cuts, whatever its site, to start with
 
 

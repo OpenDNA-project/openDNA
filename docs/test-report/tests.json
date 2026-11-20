@@ -3282,7 +3282,7 @@
    "id": "tests/test_enzymes_and_guides.py::test_cut_finder_the_common_list_and_the_filter",
    "area": "Restriction site finding",
    "role": "Without it, the program could report cut positions at the wrong base (or miss sites on the bottom strand, across the origin, or with IUPAC codes), so every digest, map and cloning plan built on them would be wrong.",
-   "purpose": "Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both sides, bottom-strand sites and sites spanning a circle's origin; that the shipped enzyme list (the 47 hand-written ones and the generated commercial ones) has the right cut offsets and supplier-style descriptions; and that the enzyme filter only keeps an enzyme when every selected criterion holds.",
+   "purpose": "Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both sides, bottom-strand sites and sites spanning a circle's origin; that the shipped enzyme list (the 47 hand-written ones and the generated commercial ones) has the right cut offsets and supplier-style descriptions; and that the enzyme filter only keeps an enzyme when every selected criterion holds. The Display filter's sites are drawn only up to enzymes.MAX_DRAWN_CUTS: beyond, none, and Editor.withheld_sites says how many.",
    "cases": [
     {
      "input": "AccI (GTMKAC) on AAA GTAGAC TTT GTCTAC AAA GTGGAC",
@@ -3327,6 +3327,10 @@
     {
      "input": "combined filter (palindromic + 5' + 6 bp) and a count filter (2-3 sites, <=4 bp)",
      "expected": "EcoRI kept, KpnI and EcoRV rejected; AluI kept at 3 sites, rejected at 1; EcoRI rejected at 2 sites"
+    },
+    {
+     "input": "random 8 kb (seed 17), Display filter every enzyme, every site",
+     "expected": "shown_sites() == [], withheld_sites() > 1000; the default unique 6+ cutters: 1..1000 drawn, 0 withheld"
     }
    ],
    "oracle": "hand-computed",

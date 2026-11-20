@@ -79,7 +79,7 @@ Checks that Sidewinder's toeholds are taken from the product itself (scarless), 
 
 ## `test_products_keep_every_orf_on_its_own_bases`
 
-**Result:** ✅ passed in 0.25 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.24 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an assembled product could annotate a CDS a few bases off, so the user reads a shifted frame and the wrong protein without any error being shown.
 
@@ -100,7 +100,7 @@ Builds fragments that are each a single ORF with the CDS annotated over all of i
 
 ## `test_the_product_carries_the_features_and_the_primers_of_its_fragments`
 
-**Result:** ✅ passed in 0.06 s · [line 464](../../tests/test_assembly.py#L464) · **Area:** Assembly product annotation · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 464](../../tests/test_assembly.py#L464) · **Area:** Assembly product annotation · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the simulated product could lose or duplicate the fragments' features and primer_bind annotations, or credit bases to a primer tail that the fragments already shared, misleading the user about what the design actually adds.
 
@@ -126,7 +126,7 @@ Checks that features inside an overlap are annotated once and at the right place
 
 ## `test_restriction_ligation_products`
 
-**Result:** ✅ passed in 0.01 s · [line 587](../../tests/test_assembly.py#L587) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 587](../../tests/test_assembly.py#L587) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the predicted ligation product could be the wrong arc of the vector or have the insert at the wrong place, so the user would clone a construct different from the one shown.
 

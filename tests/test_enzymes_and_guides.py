@@ -126,6 +126,14 @@ def test_cut_finder_the_common_list_and_the_filter():
     # How often it cuts is a criterion too: 2 to 3 sites of at most 4 bp.
     narrow = EnzymeFilter(2, 3, 1, 4)
     assert wanted(narrow, ENZ["AluI"], 3) and not wanted(narrow, ENZ["AluI"], 1) and not wanted(narrow, ENZ["EcoRI"], 2)
+    # --- what the Display filter lets through is drawn only up to MAX_DRAWN_CUTS sites: beyond, none, and how many were held back ---
+    rng = random.Random(17)
+    bases = "".join(rng.choice("ACGT") for _ in range(8000))
+    ed = Editor(Document.new_sequence("x", bases, False), Path("x.gb"))
+    ed.set_display(enzymes=True, enzyme_filter=EnzymeFilter(1, None, 1))   # every enzyme, every site (thousands on 8 kb)
+    assert ed.shown_sites() == [] and ed.withheld_sites() > enzymes.MAX_DRAWN_CUTS
+    ed.set_display(enzyme_filter=EnzymeFilter())   # the unique cutters of 6+ bp: drawn
+    assert 0 < len(ed.shown_sites()) <= enzymes.MAX_DRAWN_CUTS and ed.withheld_sites() == 0
 
 
 def test_what_a_cut_says_about_itself():

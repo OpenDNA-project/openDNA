@@ -42,6 +42,9 @@ ENZYMES = [
 _IUPAC_COMPLEMENT = str.maketrans("ACGTRYSWKMBDHVN", "TGCAYRSWMKVHDBN")
 _IUPAC = {"A": "A", "C": "C", "G": "G", "T": "T", "R": "AG", "Y": "CT", "S": "CG", "W": "AT", "K": "GT", "M": "AC", "B": "CGT",
           "D": "AGT", "H": "ACT", "V": "ACG", "N": "ACGT"}
+# Above this many cuts to draw (the Digest's ticked enzymes, or the sites the Display filter shows), drawing them froze openDNA (AciI on a
+# 4.6 Mb genome: 57,000 cuts, about a minute): none are drawn, and a warning says how many and how to narrow them.
+MAX_DRAWN_CUTS = 1000
 COMMON = [Enzyme(name, site, cuts, len(cuts) == 1 and cuts[0][0] == cuts[0][1], ALIASES.get(name, ()), name in METHYLATED)
           for name, site, cuts in ([(n, s, ((t, b),)) for n, s, t, b in ENZYMES] + MORE)]
 

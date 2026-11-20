@@ -22,7 +22,7 @@ import multigb
 
 import genetic_code
 import inventory
-from enzymes import COMMON, EnzymeFilter, find_sites, is_owned, wanted
+from enzymes import COMMON, MAX_DRAWN_CUTS, EnzymeFilter, find_sites, is_owned, wanted
 from genes import GENE, compute_groups, fitted_master, retag, span_of
 from perf import timed
 from uikit import SYNC_LIMIT, Latest
@@ -786,14 +786,22 @@ class Editor(QObject):
         return out
 
     def shown_sites(self):
-        """[(cut position, enzyme name)] to draw (the display filter's choice of enzymes), sorted by position."""
+        """[(cut position, enzyme name)] to draw (the display filter's choice of enzymes), sorted by position. None when the filter
+        lets through more than MAX_DRAWN_CUTS (drawing them froze the window): `withheld_sites` says how many."""
+        return self._sites()[0]
+
+    def withheld_sites(self):
+        """How many sites the display filter lets through but are not drawn (more than MAX_DRAWN_CUTS), 0 when they all are."""
+        return self._sites()[1]
+
+    def _sites(self):
         if not self.show_enzymes:
-            return []
+            return [], 0
         if self.enzyme_filter not in self._shown_sites:
             enzymes, mine = {e.name: e for e in COMMON}, inventory.owned()
-            self._shown_sites[self.enzyme_filter] = sorted(
-                (pos, name) for name, cuts in self.site_cuts.items()
-                if wanted(self.enzyme_filter, enzymes[name], len(cuts), is_owned(enzymes[name], mine)) for pos in cuts)
+            sites = sorted((pos, name) for name, cuts in self.site_cuts.items()
+                           if wanted(self.enzyme_filter, enzymes[name], len(cuts), is_owned(enzymes[name], mine)) for pos in cuts)
+            self._shown_sites[self.enzyme_filter] = ([], len(sites)) if len(sites) > MAX_DRAWN_CUTS else (sites, 0)
         return self._shown_sites[self.enzyme_filter]
 
     def _inventory_changed(self):

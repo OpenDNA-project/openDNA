@@ -51,7 +51,7 @@ Checks copy_old_data copies the old-name data folder to the new location when th
 
 ## `test_welcome_slots_hold_four_and_expire`
 
-**Result:** ✅ passed in 0.01 s · [line 108](../../tests/test_project.py#L108) · **Area:** Welcome page · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 108](../../tests/test_project.py#L108) · **Area:** Welcome page · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date.
 
