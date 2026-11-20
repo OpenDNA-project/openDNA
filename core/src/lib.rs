@@ -14,6 +14,7 @@ pub mod embl;
 pub mod fasta;
 pub mod locations;
 pub mod primers;
+pub mod salis;
 pub mod search;
 pub mod dna_file;
 pub mod tracks;
@@ -614,9 +615,11 @@ impl Bam {
         Ok(py.allow_threads(|| inner.pileup(seq, start, end, min_baseq, min_mapq))?)
     }
 
-    /// [(pos, kind "snp"/"del"/"ins", reference bases, alt bases, reads, depth)] where at
-    /// least `min_fraction` of `min_depth`+ reads differ from `reference` (the whole sequence).
-    #[pyo3(signature = (seq, reference, min_depth=5, min_fraction=0.2, min_baseq=0, min_mapq=0))]
+    /// [(pos, kind "snp"/"del"/"ins"/"clip"/"gap", reference bases, alt bases, reads, depth)] where at
+    /// least `min_fraction` of `min_depth`+ reads differ from `reference` (the whole sequence). `circular`: the
+    /// reference is a circle (reads over the origin are not breaks; a deletion or a gap through it is one change,
+    /// its alt "across the origin"). See alignments.rs.
+    #[pyo3(signature = (seq, reference, min_depth=5, min_fraction=0.2, min_baseq=0, min_mapq=0, circular=false))]
     fn variants(
         &self,
         py: Python<'_>,
@@ -626,9 +629,10 @@ impl Bam {
         min_fraction: f32,
         min_baseq: u8,
         min_mapq: u8,
+        circular: bool,
     ) -> PyResult<Vec<(u64, String, String, String, u32, u32)>> {
         let inner = &self.inner;
-        let found = py.allow_threads(|| inner.variants(seq, reference.as_bytes(), min_depth, min_fraction, min_baseq, min_mapq))?;
+        let found = py.allow_threads(|| inner.variants(seq, reference.as_bytes(), min_depth, min_fraction, min_baseq, min_mapq, circular))?;
         Ok(found.into_iter().map(|v| (v.pos, v.kind.to_string(), v.reference, v.alt, v.count, v.depth)).collect())
     }
 
@@ -673,21 +677,23 @@ fn to_gb((kind, location, qualifiers): FeatureTuple) -> PyResult<gb_io::seq::Fea
 /// on the template, 0-based; they may pass its length for a hit across the origin.
 type AlignTuple = (usize, usize, i8, i32, f32, usize, usize, Vec<(usize, char)>, Vec<(usize, usize)>, Vec<(usize, usize)>);
 
-/// `align(template, query, circular, max_hits=10)`: the best non-overlapping local
-/// alignments of `query` on `template`, either strand (strand -1: the query's reverse
-/// complement matches the top strand), best first. See align.rs.
+/// `align(template, query, circular, max_hits=10, time_limit=0, threads=0)`: (hits, notes). The hits are the
+/// best non-overlapping local alignments of `query` on `template`, either strand (strand -1: the query's
+/// reverse complement matches the top strand), best first; the notes say what a search limit left out.
+/// `time_limit` in seconds (0 = none); `threads` (0 = every CPU core). See align.rs.
 #[pyfunction]
 #[pyo3(name = "align")]
-#[pyo3(signature = (template, query, circular=false, max_hits=10))]
-fn quick_align(py: Python<'_>, template: &str, query: &str, circular: bool, max_hits: usize) -> Vec<AlignTuple> {
+#[pyo3(signature = (template, query, circular=false, max_hits=10, time_limit=0.0, threads=0))]
+fn quick_align(py: Python<'_>, template: &str, query: &str, circular: bool, max_hits: usize, time_limit: f64, threads: usize) -> (Vec<AlignTuple>, Vec<String>) {
     // allow_threads releases Python's lock: scanning a genome must not freeze the GUI.
-    let hits = py.allow_threads(|| align::align(template.as_bytes(), query.as_bytes(), circular, max_hits));
-    hits.into_iter()
+    let (hits, notes) = py.allow_threads(|| align::align(template.as_bytes(), query.as_bytes(), circular, max_hits, time_limit, threads));
+    let hits = hits.into_iter()
         .map(|h| {
             let mism = h.mismatches.into_iter().map(|(p, b)| (p, b as char)).collect();
             (h.start, h.end, if h.forward { 1 } else { -1 }, h.score, h.identity, h.qstart, h.qend, mism, h.insertions, h.deletions)
         })
-        .collect()
+        .collect();
+    (hits, notes)
 }
 
 /// `opendna_core.tm("ACGT...")`: melting temperature in °C (None if not plain ACGT).
@@ -865,6 +871,20 @@ fn hairpin(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64) -> (f64, f64) {
     primers::hairpin_dg(seq.as_bytes(), &c)
 }
 
+/// `opendna_core.salis_repeats(seq, k_low)`: the Synthesis Success Calculator's maximal repeats as
+/// (length, found_as_inverted, sorted 0-based starts). `seq` must be upper-case A/C/G/T.
+#[pyfunction]
+fn salis_repeats(py: Python<'_>, seq: &str, k_low: usize) -> Vec<(usize, bool, Vec<usize>)> {
+    py.allow_threads(|| salis::maximal_repeats(seq.as_bytes(), k_low).into_iter().map(|r| (r.len, r.invert, r.starts)).collect())
+}
+
+/// `opendna_core.salis_hairpin_gc(seq)`: highest stem GC fraction among the calculator's rule-based
+/// hairpins, 0.0 if none. `seq` must be upper-case A/C/G/T.
+#[pyfunction]
+fn salis_hairpin_gc(py: Python<'_>, seq: &str) -> f64 {
+    py.allow_threads(|| salis::hairpin_rule_best_gc(seq.as_bytes()))
+}
+
 /// The module itself: `import opendna_core`. The function name must match the module name.
 #[pymodule]
 fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -881,6 +901,8 @@ fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(translate, m)?)?;
     m.add_function(wrap_pyfunction!(dimer, m)?)?;
     m.add_function(wrap_pyfunction!(hairpin, m)?)?;
+    m.add_function(wrap_pyfunction!(salis_repeats, m)?)?;
+    m.add_function(wrap_pyfunction!(salis_hairpin_gc, m)?)?;
     m.add_class::<Fasta>()?;
     m.add_class::<Document>()?;
     m.add_class::<Feature>()?;

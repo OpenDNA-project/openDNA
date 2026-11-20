@@ -8,10 +8,10 @@ import threading
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, Qt, Signal
+from PySide6.QtCore import QObject, QSettings, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressBar,
-    QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QPushButton, QVBoxLayout,
 )
 
 import ncbi
@@ -19,8 +19,8 @@ import online
 import validate
 from primer_db import data_dir, notifier
 from structure_dialog import StructureDialog
-from uikit import fit_columns, no_auto_default, plural, right_aligned
-import value_filter
+from data_table import DataTable
+from uikit import fit_columns, no_auto_default, plural
 import theme
 
 COLUMNS = ["Accession", "Title", "Length", "Organism", "Updated"]
@@ -58,9 +58,7 @@ class NcbiDialog(QDialog):
         self.query.returnPressed.connect(self.search)   # the one way Enter searches (a default button too made it search twice)
         self.find = QPushButton("Search", clicked=self.search)
         online.mark(self.find, "your search words (or accession) to NCBI (eutils.ncbi.nlm.nih.gov)")
-        self.table = QTableWidget(0, len(COLUMNS))
-        self.table.setHorizontalHeaderLabels(COLUMNS)
-        value_filter.install(self.table, ["Organism"])   # right-click a header: filter by values
+        self.table = DataTable(COLUMNS, filtered=["Organism"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -153,23 +151,18 @@ class NcbiDialog(QDialog):
 
     def _show(self, records):
         self.records = records
-        self.table.setRowCount(len(records))
-        for i, r in enumerate(records):
-            unit = "aa" if r.db == "protein" else "bp"
-            for c, v in enumerate([r.accession, r.title, f"{r.length:,} {unit}", r.organism, r.updated]):
-                item = QTableWidgetItem(v)
-                if c == 2:
-                    right_aligned(item)
-                if c == 1:
-                    item.setToolTip(v)   # (elided when long)
-                self.table.setItem(i, c, item)
-        self.status.setText(f"{plural(len(records), 'record')}." if records else "Nothing found: try other words or the exact accession.")
+        with self.table.refilling(len(records)):
+            for i, r in enumerate(records):
+                unit = "aa" if r.db == "protein" else "bp"
+                for c, v in enumerate([r.accession, r.title, f"{r.length:,} {unit}", r.organism, r.updated]):
+                    self.table.put(i, c, v, key=r.length if c == 2 else None, right=c == 2, tip=v if c == 1 else None)   # (a title is elided when long)
+        self.status.setText((f"{plural(len(records), 'record')}. " + ncbi.more_note(records, ncbi.MAX_RESULTS)).strip() if records else "Nothing found: try other words or the exact accession.")
         if records:
-            self.table.selectRow(0)
+            self.table.select_data_row(0)   # the first result, wherever the user's sort has put it
         self._selected()
 
     def current(self):
-        row = self.table.currentRow()
+        row = self.table.current_data_row()
         return self.records[row] if 0 <= row < len(self.records) else None
 
     def _selected(self):
@@ -252,9 +245,7 @@ class GenomeDialog(QDialog):
         self.reference_only = QCheckBox("NCBI reference genomes only", checked=True,
                                         toolTip="Only the assembly NCBI picked as the reference of each species")
         self.find = QPushButton("Search", clicked=self.search)
-        self.table = QTableWidget(0, len(GENOME_COLUMNS))
-        self.table.setHorizontalHeaderLabels(GENOME_COLUMNS)
-        value_filter.install(self.table, ["Organism", "Assembly", "Level"])   # right-click a header: filter by values
+        self.table = DataTable(GENOME_COLUMNS, filtered=["Organism", "Assembly", "Level"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -364,25 +355,20 @@ class GenomeDialog(QDialog):
 
     def _show(self, assemblies):
         self.assemblies = assemblies
-        self.table.setRowCount(len(assemblies))
-        for i, a in enumerate(assemblies):
-            values = [a.accession, a.organism, a.name, a.level, f"{a.length / 1e6:,.2f} Mb", f"{a.sequences:,}", a.released]
-            for c, v in enumerate(values):
-                item = QTableWidgetItem(v)
-                if c in (4, 5):
-                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                if a.category:
-                    item.setToolTip(a.category)
-                self.table.setItem(i, c, item)
+        with self.table.refilling(len(assemblies)):
+            for i, a in enumerate(assemblies):
+                values = [a.accession, a.organism, a.name, a.level, f"{a.length / 1e6:,.2f} Mb", f"{a.sequences:,}", a.released]
+                for c, v in enumerate(values):
+                    self.table.put(i, c, v, key={4: a.length, 5: a.sequences}.get(c), right=c in (4, 5), tip=a.category or None)
         hint = " Untick “NCBI reference genomes only” to see every assembly." if self.reference_only.isChecked() else ""
         self.status.setText(f"{plural(len(assemblies), 'assembly')}." if assemblies
                             else "Nothing found: check the spelling, or try the taxonomy number." + hint)
         if assemblies:
-            self.table.selectRow(0)
+            self.table.select_data_row(0)
         self._selected()
 
     def current(self):
-        row = self.table.currentRow()
+        row = self.table.current_data_row()
         return self.assemblies[row] if 0 <= row < len(self.assemblies) else None
 
     def _selected(self):

@@ -2,21 +2,24 @@
 
 [← unit-test report](README.md)
 
-Built by `scripts/test_report.py` on 2026-11-19 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
+Built by `scripts/test_report.py` on 2026-11-20 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
 
 ## Totals
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 128 | 128 | 0 | 85 | 43 | 0 | 0 | 101 |
-| Rust | 65 | 65 | 0 | 42 | 22 | 1 | 0 | 44 |
-| **All** | 193 | 193 | 0 | 127 | 65 | 1 | 0 | 145 |
+| Python | 159 | 159 | 0 | 99 | 57 | 3 | 0 | 126 |
+| Rust | 69 | 69 | 0 | 42 | 26 | 1 | 0 | 46 |
+| **All** | 228 | 228 | 0 | 141 | 83 | 4 | 0 | 172 |
 
 ## Weak or unreviewed tests
 
+- `tests/test_agent_cli.py::test_wsltools_command_says_what_is_missing_and_never_installs_wsl` (weak): The script text is checked, not run: running it downloads hundreds of MB. It was run for real by hand (pLannotate 2.0.0 and its databases installed, `wsltools status` ready) but nothing in the suite does.
+- `tests/test_synthesis_salis.py::test_a_fragment_shorter_than_one_folding_window_is_still_scored` (weak): Checks that it runs and the numbers are in range, not that they are right.
+- `tests/test_synthesis_vendors.py::test_the_idt_login_and_screening_requests_have_the_shape_the_open_client_uses` (weak): The shape being checked is the one the open-source SBOL-utilities client is reported to use, not one read from IDT's documentation (behind a login) or seen on the live service: the first real call by someone with an IDT API account is the real test.
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 193 tests)
+## Gaps and proposed tests (3 of 228 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -43,7 +46,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 ## Every test, by file
 
-### `tests/test_agent_cli.py` (27 tests)
+### `tests/test_agent_cli.py` (37 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -60,6 +63,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_sites_command_gives_the_cuts_and_fragments_of_the_windows` | An agent could be told an enzyme cuts at the wrong base, or get fragment sizes that differ from the Digest tool's. | hand-computed | strong | sound | The enzyme list is openDNA's 52 common enzymes: an enzyme outside it is an error, not a search. |
 | `test_guides_command_gives_the_guides_and_marks_of_the_spacer_finder` | An agent could report a guide at the wrong place, or a different list or mark from the Spacer Finder window's. | independent implementation | strong | sound | The background-genome counts are not compared (the test runs --no-genome); they come from the same cas9.scan. |
 | `test_repeats_command_gives_the_stretches_the_compare_view_gives` | An agent could miss a repeat that can recombine in the cell, or place it wrongly. | hand-computed | strong | sound | Inverted repeats are not planted here; they are covered by the repeats module's own tests. |
+| `test_synthesis_command_gives_what_the_synthesis_module_gives` | The command line and the Synthesis tab could drift apart if the command had its own copy of the logic. | round-trip/self-consistency | adequate | sound | Compares with the module, not with an external value: the module is checked in test_synthesis_salis.py. |
 | `test_search_command_finds_dna_on_both_strands_and_names` | An agent could say a sequence is absent when it is on the other strand, or give a position that is off by one. | hand-computed | strong | sound |  |
 | `test_every_command_has_a_recipe_example_and_a_test_that_compares_it_with_the_window` | A command could be added with no recipe for agents, an example that never runs, or no test that holds it to the window's function. | property/invariant | adequate | sound | Checks that a test exists by name, not that it compares the command with the window: that is for the review of each test. |
 | `test_align_command_finds_pieces_and_structural_changes_like_local_align` | An agent could report a read as matching where it does not, or miss that a query has a deletion or is inverted. | hand-computed | strong | sound | The second piece may start a base or two early (bases next to a junction can match by chance): the test allows 28 to 30. |
@@ -71,9 +75,18 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_tool_settings_override_restores_the_outer_value_and_is_never_saved` | A value given on the command line could stay in force after its command, or a nested override could lose the one around it. | hand-computed | adequate | not checked | Single-threaded only: the overrides are process-wide (the command line runs one command at a time). |
 | `test_checkup_command_gives_the_verdicts_of_the_checkup_window` | An agent could say a gene will be expressed when nothing drives it, or the reverse. | independent implementation | adequate | sound | The verdict logic belongs to the checkup module and its own tests; this test only shows the command reports it and leaves the user's saved settings alone. |
 | `test_annotate_command_finds_library_parts_and_adds_only_new_ones` | An agent could annotate a plasmid twice, or with parts that are not in it. | independent implementation | adequate | sound | The part used is whichever bundled terminator is longest: if the library changes, the test follows it. |
+| `test_annotate_command_lists_plannotate_hits_beside_the_library_and_says_who_found_each` | A user could be shown pLannotate's features as openDNA's own, lose one of the two tools' hits in the merge, or get a feature added with no trace of who found it. | in-test reference model | adequate | sound | pLannotate itself is not run (its rows are canned): the real search was tried by hand on demo/pBAD30_eilR.gb, 21 rows, 3 of the 7 library hits found by both. The rows' format is checked in test_plannotate_rows_become_positions_the_way_the_windows_draw_them. |
+| `test_detect_features_merges_only_the_same_thing_in_the_same_place` | Two different features could be fused into one row (a gene and its antisense neighbour), or one thing listed twice, in the merged list of the two tools. | hand-computed | strong | sound |  |
+| `test_plannotate_rows_become_positions_the_way_the_windows_draw_them` | A pLannotate feature across the origin, or on the minus strand, could be drawn in the wrong place. | hand-computed | adequate | sound | Only the conversion is tested; the column names are those of pLannotate 2.0.0 (checked by running it), and a later pLannotate could rename them. |
+| `test_wsltools_command_says_what_is_missing_and_never_installs_wsl` | The installer's optional step, or an agent, could try to install WSL itself, or fail with a traceback where WSL is missing; or the install could leave out pLannotate's databases or a Terminal tool. | property/invariant | weak | sound | The script text is checked, not run: running it downloads hundreds of MB. It was run for real by hand (pLannotate 2.0.0 and its databases installed, `wsltools status` ready) but nothing in the suite does. |
 | `test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases` | A part could be reported as already annotated just because another feature overlaps it, hiding a real missing part. | hand-computed | adequate | not checked | Uses a stand-in editor, not a real one; Detect Features' window itself has no widget test. |
 | `test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds` | An agent could give primers whose overlaps do not join the fragments, or a product that is not what the Assembly panel makes. | independent implementation | adequate | sound | Only Gibson is covered: Golden Gate, Sidewinder and restriction/ligation have no command yet.<br>The product's origin is the window's (a few bases before fragment 1): the test compares it as a circle. |
 | `test_ncbi_command_searches_and_fetches_through_the_import_dialogs_functions` | An agent could send more than the user's words to NCBI, fetch a record other than the one named, or overwrite a file. | hand-computed | adequate | sound | The real service is never called by the tests: an NCBI change in its answers is not caught here. |
+| `test_split_command_writes_one_file_per_record_and_file_hash_name_reads_one` | An agent could be unable to use one chromosome of a multi-record file, or split a file into files that lose bases or have clashing names. | round-trip/self-consistency | adequate | sound | Sequences are random and short; a real GenBank file with features is only covered by the demo recipes' examples. |
+| `test_merge_command_joins_files_and_records_and_keeps_what_the_format_keeps` | An agent could merge files into a multi-record file that loses a sequence, overwrites a file, or silently drops features or topology. | round-trip/self-consistency | adequate | sound | Sequences are random and short; a real GenBank file with features is only covered by the demo recipes' examples. |
+| `test_circular_tools_give_the_same_answers_on_a_plasmid_turned_round_the_origin` | A restriction site, guide, repeat or gene that straddles the origin of a plasmid could be missed or misplaced by a tool, while the same plasmid cut elsewhere is fine. | property/invariant | strong | sound | Variants have their own test (they need a BAM).<br>Random sequence: a stretch of 30 bases that repeats by chance next to the planted one would change a length (the check allows 30 to 32). |
+| `test_a_limit_that_is_reached_is_always_a_warning` | A list cut short or a search stopped at its limit could be taken for the complete answer. | in-test reference model | adequate | sound | The limits are monkeypatched down, so it shows each command reports a reached limit, not that the real limits (500, 20,000, 30) are the right ones. |
+| `test_variants_command_sees_changes_on_both_sides_of_the_origin_and_apply_writes_them` | A change at the first or last base of a plasmid, or a deletion across the origin, could be missed or mistaken for a break, because reads over the origin are mapped as two clipped pieces. | hand-computed | strong | sound | The reads are error-free and evenly spaced; real reads would add noise (the thresholds are tested in test_core_formats). |
 
 ### `tests/test_assembly.py` (10 tests)
 
@@ -119,7 +132,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_local_align_query_cleaning_and_junction_texts` | Without it, pasting a FASTA, GenBank ORIGIN or RNA query could be rejected or mangled, and the junction descriptions (insertion, deletion, inversion) in the Local Align report could be wrong. | hand-computed | adequate | sound | Junction texts are checked with startswith only, so the rest of each message (sizes, positions) is not verified.<br>Duplication wording is mentioned in the docstring but no duplication junction is tested. |
 | `test_folder_search_finds_a_query_in_its_file_record_place_and_strand` | Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file. | hand-computed | adequate | sound | The cancellation check is weak: the query ACGTACGTACGT would almost certainly not be found in that folder anyway, so a search that ignores cancelled() would still pass.<br>'files >= 5' depends on the contents of demo/. |
 
-### `tests/test_core_formats.py` (4 tests)
+### `tests/test_core_formats.py` (5 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -127,6 +140,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_tracks_gff_bed_parsing_query_density_and_search` | Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, or miss features when zooming and searching. | in-test reference model | strong | sound |  |
 | `test_feature_locations_round_trip` | Without it, opening and saving a GenBank file could silently change or drop complex feature locations (joins, complement, fuzzy ends, between-base sites, remote references). | round-trip/self-consistency | strong | sound |  |
 | `test_genome_fasta_fetch_and_search_match_slicing_and_brute_force` | Without it, a reference genome opened from a FASTA file could return wrong bases at line breaks or ends, and motif/sequence search on it could miss hits or report wrong strands. | in-test reference model | strong | sound | Overlaps a little with the FASTA genome part of test_primer_binding.py::test_binding_agrees_with_the_documented_rules_written_in_python and the file-scope part of test_search.py. |
+| `test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle` | A break, a gap or a deletion near an end of the reference, or through the origin of a plasmid, could be hidden or mistaken for something else. | hand-computed | strong | sound | The reads are error-free; the edit-distance tolerance is checked only with one missing base. |
 
 ### `tests/test_core_sequence.py` (6 tests)
 
@@ -139,7 +153,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_restriction_cuts_and_digests_match_biopython` | Without it, enzyme cut sites, overhangs and digest fragment sizes shown on the map could be wrong (strand, Type IIS offsets, origin-spanning sites, degenerate sites) and cloning plans built on them would fail. | independent implementation | strong | sound | The real-plasmid part silently does nothing if the sample file is missing (no skip reported).<br>Picks EcoRI/BsaI by index COMMON[14]/COMMON[9]; guarded by a name assertion, but will fail if the enzyme list is reordered.<br>A cut on or past the end of a linear sequence is no cut (as Biopython): the generated enzymes cut often enough to hit that case in the random circles. |
 | `test_find_parts_identity_coding_and_repeated_parts` | Without it, automatic annotation of known parts could miss mutated or recoded copies, ignore identity thresholds, or report duplicated/overlapping hits. | hand-computed | strong | sound |  |
 
-### `tests/test_documents.py` (8 tests)
+### `tests/test_documents.py` (10 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -151,6 +165,8 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_copy_reverse_complement_keeps_annotations_flipped` | Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin. | hand-computed | adequate | sound | Only 'top' gets an exact location check; 'bottom' and the join's parts are checked by strand or prefix only.<br>Across-origin case checks the bases but not that features are carried across the origin.<br>The RC helper is the app's own reverse_complement, so a bug shared by both would not be caught (it is simple enough that this is minor).<br>Its older sequence is built with a new random.Random(N) per base, so it is one letter repeated; the sections added on 13 Nov 2026 build varied sequences, the older ones still use it. |
 | `test_text_exports_and_the_project_file` | Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock. | hand-computed | adequate | sound | GFF3, BED and proteins_fasta checks on the demo vector are shallow (line counts, prefix, one strand column); a wrong coordinate would pass.<br>Project round trip compares only sequence and feature count, not feature contents.<br>Exports and the project file are two topics merged into one test. |
 | `test_gene_groups_and_display_switches` | Without it, gene + CDS pairs might not group by locus_tag, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits. | hand-computed | adequate | sound | Docstring says the switch 'also dropped the Local Align hits' while the test asserts they are kept; it refers to an old bug and reads backwards.<br>Group T_F expects 2 parts although gene F has a gene, a CDS and a misc_feature; the intent (the gene feature is the group head, not a part) is not explained in the test.<br>Does not check collapse_genes actually changes what is shown. |
+| `test_label_text_is_black_or_white_by_contrast_and_always_readable` | Feature names drawn on a light or mid-tone colour could be hard or impossible to read. | independent implementation | strong | sound | Only the choice is tested; whether a given label is drawn on the colour it was measured on is by reading the drawing code (11 call sites use text_color_on). |
+| `test_table_sort_key_puts_numbers_in_order_before_words` | A click on a table header could put 1,200 before 95, or scatter a column of locations, sizes and dates. | hand-computed | adequate | sound | The key only: the table itself (sorting, filter, the row to its thing) was checked by hand offscreen on the Detect, Spacer Finder, ORF, Checkup and other tables, because the suite builds no widgets. |
 
 ### `tests/test_enzymes_and_guides.py` (5 tests)
 
@@ -248,12 +264,13 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_primers_are_designed_for_a_target_at_or_across_the_origin_of_a_circle` | Without it, designing primers for a target at or across a plasmid's origin could return nothing, or primers whose bases are not actually on the template or whose product does not contain the target. | property/invariant | adequate | sound | Only checks that pairs exist and are self-consistent; nothing here checks that the chosen primers are good ones (Tm, specificity), so a designer returning poor pairs would pass. |
 | `test_the_files_written_for_ordering` | Without it, the plate file sent to a synthesis company could put oligos in the wrong wells, overflow past well 96, drop the scale or purification, or corrupt names and sequences - a real-money error. | hand-computed | strong | sound |  |
 
-### `tests/test_project.py` (2 tests)
+### `tests/test_project.py` (3 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
 | `test_release_metadata_and_exe_recipe_are_consistent` | Without it, a release could ship with mismatched version numbers (breaking the updater) or a Windows exe missing data files the app needs (parts library, tool settings, 3D viewer), which only shows up for users of the frozen build. | property/invariant | adequate | sound | Not a test of DNA editing; it is a release-hygiene check. Relevant for packaging but could be marked as such.<br>The bundling check is text matching on the spec ('"name"' appears anywhere), so a name mentioned but not actually bundled would pass.<br>Only catches data files reached through the exact with_name("...") pattern. |
 | `test_old_data_folder_is_copied_once` | Without it, users upgrading from the program's old name could lose their primers and settings, or a later start could overwrite their new data with the old copy. | hand-computed | adequate | sound | Lives in test_project.py (release metadata) though it is about primer_db's data migration.<br>The copy-error path (half copy returns False) is not tested. |
+| `test_welcome_slots_hold_four_and_expire` | Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date. | hand-computed | adequate | sound | Does not check the card drawing or the click on the picture (no widget tests); the page was only rendered once offscreen by hand.<br>Does not detect a placeholder form link (FORM_ID) left in sponsors.json. |
 
 ### `tests/test_protein.py` (1 test)
 
@@ -268,12 +285,13 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_off_target_search_covers_every_record` | Without it, the primer and guide off-target checks could miss copies on the second or later chromosome, report the open sequence as its own off-target, show green after a search that timed out, or lose/double hits at window edges. | hand-computed | strong | sound | The time-out section injects a result into the private _cache dict, coupling the test to implementation details.<br>Random 'dna' filler uses a module-level RNG, so sequence content depends on the order tests run in that module (a chance extra match is unlikely but possible). |
 | `test_ncbi_genome_search_and_download` | Without it, searching NCBI for a reference genome could build wrong URLs, and downloading one could produce a broken FASTA (records joined without newlines), leave partial files, or download the same genome repeatedly. | hand-computed | adequate | sound | Network is faked at ncbi.fetch/open_url, so a change in NCBI's real API or response format would not be caught.<br>Unrelated to the multi-record off-target search that names this file; could live with other NCBI tests. |
 
-### `tests/test_repeats_msa.py` (2 tests)
+### `tests/test_repeats_msa.py` (3 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
 | `test_repeats_are_found_where_planted_and_not_in_random_dna` | Without it, the repeat finder could miss planted direct, inverted or tandem repeats, flood random DNA with chance hits, or hang on long low-complexity input. | hand-computed | adequate | sound | Positions are checked within 2 bases and lengths within a range, so small off-by-one errors pass.<br>pair_dots is checked only for being non-empty.<br>In the two-sequence check `near` uses zip without a length check. |
 | `test_multiple_alignment_consensus_identity_and_parsing` | Without it, the built-in multiple aligner could lose bases, misplace a gap, or give wrong consensus, identity and column/position mapping in the alignment view. | hand-computed | adequate | sound | identity(1) for sub120 (row 2) is not checked.<br>Parsing accepts rows of different widths (5 and 6) without comment; the test does not say whether that should be refused. |
+| `test_repeats_left_out_are_said_and_a_unit_repeated_twice_and_a_half_is_found` | A repeat that is dropped by every branch of the search, or a stretch skipped as a palindrome, could vanish without a word. | hand-computed | adequate | sound | Only one case of each; the cut of a repeat at 1,000 bp past the origin is not covered here. |
 
 ### `tests/test_roundtrip.py` (6 tests)
 
@@ -298,6 +316,32 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 |---|---|---|---|---|---|
 | `test_every_selftest_check_passes` | Without it the Help > Troubleshooting > Self-Test checks could start failing in a release without anyone noticing before a user runs them. | property/invariant | adequate | sound | The real checks live in app/selftest.py; this test's strength is theirs and cannot be judged from the test file.<br>Overlap: tests/test_documents.py::test_random_edits_keep_bases_and_features_then_undo_redo_exactly runs the same selftest.run_random_edits machinery with 500 edits; this test re-runs the short in-app versions. Still worth keeping as the guard that the in-app self-test itself passes. |
 
+### `tests/test_synthesis_salis.py` (11 tests)
+
+| Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
+|---|---|---|---|---|---|
+| `test_the_forest_gives_scikit_learns_answer_for_every_sequence_of_the_paper` | A mistake in reading the exported forest would make every synthesis verdict wrong without any error. | independent implementation | strong | sound | The agreement with the paper's labels is a sanity check only: the model has an F1 of 0.93 on held-out data and some of these fragments trained it. |
+| `test_melting_temperature_equals_biopythons_nearest_neighbour_value` | A wrong melting temperature changes how many windows count as too cold or too hot, and so the verdict. | independent implementation | strong | sound |  |
+| `test_the_rust_repeat_finder_agrees_with_the_rules_written_the_plain_way` | A repeat missed or invented by the fast repeat finder changes two of the nine features. | in-test reference model | strong | sound | The reference model is the same rules transcribed by us, not the authors' program: the check against the authors' own numbers is the feature test below and scripts/salis_verify.py. |
+| `test_the_rule_based_hairpin_best_gc_is_a_stem_fraction` | The rule-based hairpin pass feeds the richest_hairpin feature. | hand-computed | adequate | sound | Three cases only; the full rule set is checked on the paper's sequences by the feature test and scripts/salis_verify.py. |
+| `test_a_window_starting_at_size_minus_20_is_never_counted_as_the_original_does` | The original code never reads the last 20-base window; a port that 'fixed' this would no longer be the published model. | hand-computed | strong | sound |  |
+| `test_clean_names_the_first_base_it_cannot_use` | A sequence with an N or a stray character must be refused with its position, never silently changed. | hand-computed | adequate | sound |  |
+| `test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the_paper` | The folding, window and repeat parts together must reproduce the published model on real sequences. | independent implementation | strong | sound | Only 6 of the 303 sequences run here (the whole set takes about 80 CPU-minutes): scripts/salis_verify.py runs all of them. Needs ViennaRNA (skipped without it; CI installs it). |
+| `test_a_fragment_shorter_than_one_folding_window_is_still_scored` | A short fragment must give an answer, not an error. | smoke | weak | sound | Checks that it runs and the numbers are in range, not that they are right. |
+| `test_a_pasted_text_is_one_fasta_record_or_bare_bases` | A pasted FASTA header, a second record or a stray digit must never reach the calculator as bases. | hand-computed | adequate | sound |  |
+| `test_the_viennarna_wheel_picked_fits_the_python_and_the_system` | The first-use download of ViennaRNA could fetch a file that cannot load on the user's system, or a musl or source build. | hand-computed | strong | sound | Uses the file names of the real 2.8.0 listing, written out here; a new naming scheme on PyPI would not be noticed. |
+| `test_installing_viennarna_checks_the_checksum_before_unpacking_anything` | A corrupted or swapped download could be unpacked into the data folder and imported. | hand-computed | strong | sound | No real download is made (fetch is replaced), so the real PyPI answer format is only as good as the fake: the key names used are the documented ones. |
+
+### `tests/test_synthesis_vendors.py` (5 tests)
+
+| Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
+|---|---|---|---|---|---|
+| `test_the_idt_login_and_screening_requests_have_the_shape_the_open_client_uses` | A wrong login or screening request would send credentials to IDT in a form it rejects, or read the score from the wrong place. | hand-computed | weak | sound | The shape being checked is the one the open-source SBOL-utilities client is reported to use, not one read from IDT's documentation (behind a login) or seen on the live service: the first real call by someone with an IDT API account is the real test. |
+| `test_an_idt_answer_is_read_whatever_its_nesting_and_a_missing_score_is_said` | An answer in an unexpected shape must not be shown as a good score. | hand-computed | adequate | sound | The shape being checked is the one the open-source SBOL-utilities client is reported to use, not one read from IDT's documentation (behind a login) or seen on the live service: the first real call by someone with an IDT API account is the real test. |
+| `test_a_length_idt_does_not_cover_is_refused_before_anything_is_sent` | IDT answers 0 outside its length range, which would read as an excellent score. | hand-computed | strong | sound | The range itself (125 to 3000) is as reported by the SBOL-utilities documentation, not read from IDT. |
+| `test_idt_errors_say_what_happened_without_repeating_the_login` | An error message could leak the password or client secret into a screenshot, a log or a bug report. | hand-computed | strong | sound |  |
+| `test_logins_go_to_the_systems_secure_store_or_stay_in_memory_never_in_a_file` | A password written to a file, or lost silently, or a remembered login that cannot be forgotten. | hand-computed | adequate | sound | Uses a fake keyring: the real Windows, macOS and Linux stores are not exercised, and neither is the frozen build's backend discovery. |
+
 ### `tests/test_terminal.py` (2 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
@@ -321,14 +365,15 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 |---|---|---|---|---|---|
 | `test_variants_are_written_into_the_bases_or_annotated_beside_them` | Without it, applying variants found in sequencing reads could corrupt the user's sequence - wrong base, shifted indel, several edits interfering - and the damage would be hard to undo. | in-test reference model | strong | sound | One long function covering apply, ordering, locking and annotation; splitting it would make failures easier to read. |
 
-### `core/src/align.rs` (12 tests)
+### `core/src/align.rs` (13 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
 | `exact_hit_forward_and_reverse` | Quick Align (local alignment) could report a perfectly matching query at the wrong place, strand or identity and nobody would notice. | hand-computed | strong | sound | Forward case (line 502-505) does not assert hits.len()==1, so spurious extra hits would pass; the reverse case does (line 509). |
 | `mismatch_insertion_and_deletion` | A query carrying a SNP and small indels could be split, truncated or reported with the wrong mismatch, so sequencing-read or clone checks against a plasmid would show false differences. | hand-computed | adequate | sound | Positions of the insertion (template 1150) and deletion (1250..1255) are never asserted, only their total sizes (lines 525-526); a misplaced indel would pass.<br>Reverse-strand case (line 530) checks only strand and span, not the mismatch/indel reports. |
-| `a_mismatch_near_either_end_of_a_long_query_is_reported_not_trimmed_away` | A mismatch in the last few bases of a query (a typical mutation near a read or primer end) could be silently clipped off the hit, so the user would see a 'perfect' shorter match and miss the difference. | hand-computed | strong | sound | Forward strand only; the end-trimming rule on a reverse-complement query is not checked.<br>Does not assert hits.len()==1 (indexes [0] directly); an extra spurious hit would pass. |
+| `a_mismatch_near_either_end_of_a_long_query_is_reported_not_trimmed_away` | A mismatch in the last few bases of a query (a typical mutation near a read or primer end) could be silently clipped off the hit, so the user would see a 'perfect' shorter match and miss the difference. | hand-computed | strong | sound | Forward strand only; the end rule on a reverse-complement query is not checked.<br>Does not assert hits.len()==1 (indexes [0] directly); an extra spurious hit would pass. |
 | `a_short_query_with_mismatches_near_both_ends_is_still_one_whole_hit` | A short (45 bp, oligo-sized) query with a few mismatches near its ends could come back as a trimmed or broken hit, hiding the mismatches from the user. | hand-computed | adequate | sound | Mismatch positions and qstart/qend are not asserted, only the count 3; nor is hits.len()==1, despite the name 'one whole hit'.<br>The mismatch at 35 is 10 bases from the end, so only one end (base 9) is really 'near' an end. |
+| `every_limit_reached_is_a_note` | A search limit (query longer than the circle, a query k-mer repeated over 100 times, the seed limit, the time limit) could leave hits out with nothing telling the user, who would take a partial answer for the whole one. | hand-computed | adequate | not checked | The 64-pieces-per-place note is not triggered (it needs a very repetitive query); only its text is shared with the others.<br>Notes are matched on part of their text. |
 | `no_hit_for_random_query` | Quick Align could start reporting chance matches for an unrelated query, so users would trust false hits. | property/invariant | adequate | sound | Single seed pair only; a threshold regression that lets chance hits through on other seeds could pass. |
 | `query_hanging_off_the_template_end_aligns_only_the_overlap` | A query running past the end of a linear sequence could be reported with invented bases or wrong query/template coordinates beyond the end. | hand-computed | strong | sound |  |
 | `overhanging_query_wraps_on_a_circle_and_a_tiny_overlap_is_no_hit` | A read spanning the origin of a plasmid could be shown as two pieces (or as one on a linear sequence), and a tiny chance overlap at the end could appear as a hit. | hand-computed | strong | sound | Linear case (line 587) checks only the count 2, not the coordinates of the two halves. |
@@ -433,6 +478,14 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `annealing_extends_across_a_lone_mismatch` | A primer's displayed binding site could stop at a lone mismatch (showing too much tail) or run on past two mismatches, on either strand. | hand-computed | strong | sound |  |
 | `finds_sites_on_both_strands_with_tails_and_mismatches` | Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding. | hand-computed | strong | sound |  |
 | `site_across_the_origin` | A primer binding across the origin of a plasmid could be missed. | hand-computed | strong | sound | No linear counterpart (that the site is not found / is shorter on a linear template). |
+
+### `core/src/salis.rs` (3 tests)
+
+| Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
+|---|---|---|---|---|---|
+| `a_direct_repeat_is_found_once_at_its_full_length_with_both_starts` | The repeat finder could report a copy at the wrong place or twice. | hand-computed | adequate | sound | The spacer has repeats of its own (9 bases), so only the 12-mer is asserted exactly. |
+| `a_sequence_without_repeats_has_none` | A repeat-free sequence must not be flagged. | hand-computed | adequate | sound |  |
+| `a_gc_rich_stem_scores_one_and_a_poly_a_run_scores_zero` | The rule-based hairpin pass feeds richest_hairpin. | hand-computed | adequate | sound |  |
 
 ### `core/src/search.rs` (6 tests)
 

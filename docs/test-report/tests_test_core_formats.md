@@ -30,7 +30,7 @@ Writes BAM files with the standard library (hand-designed reads, 300 random read
 
 ## `test_tracks_gff_bed_parsing_query_density_and_search`
 
-**Result:** ✅ passed in 0.06 s · [line 426](../../tests/test_core_formats.py#L426) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, or miss features when zooming and searching.
 
@@ -50,7 +50,7 @@ Parses GFF3/GTF/BED files written in the test and checks names, coordinates, str
 
 ## `test_feature_locations_round_trip`
 
-**Result:** ✅ passed in 0.01 s · [line 588](../../tests/test_core_formats.py#L588) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 589](../../tests/test_core_formats.py#L589) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a GenBank file could silently change or drop complex feature locations (joins, complement, fuzzy ends, between-base sites, remote references).
 
@@ -67,7 +67,7 @@ Adds each of 20 GenBank location forms to a document and checks the written text
 
 ## `test_genome_fasta_fetch_and_search_match_slicing_and_brute_force`
 
-**Result:** ✅ passed in 0.01 s · [line 659](../../tests/test_core_formats.py#L659) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 660](../../tests/test_core_formats.py#L660) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a reference genome opened from a FASTA file could return wrong bases at line breaks or ends, and motif/sequence search on it could miss hits or report wrong strands.
 
@@ -90,3 +90,24 @@ Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python
 **Review notes:**
 
 - Overlaps a little with the FASTA genome part of test_primer_binding.py::test_binding_agrees_with_the_documented_rules_written_in_python and the file-scope part of test_search.py.
+
+## `test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle`
+
+**Result:** ✅ passed in 0.03 s · [line 733](../../tests/test_core_formats.py#L733) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
+
+**Why it matters:** A break, a gap or a deletion near an end of the reference, or through the origin of a plasmid, could be hidden or mistaken for something else.
+
+On a 2000 bp reference: linear, uncovered ends are gaps and a clip at the very end is a break; circular, reads over the origin (also with a missing base in the clip) are not breaks, a clip that is something else is, hard-clipped reads are reported with a note, reads that jump over the origin are one deletion through it, an uncovered start and end are one gap through it.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | linear: reads over 100..199 and three clipped at the very end | gaps (0,100), (200,1750) and a clip at 1999 |
+| 2 | circular: three reads over the origin (primary + supplementary), the clip lacking a base | no break at all; read as linear, breaks at 0 and 1999 |
+| 3 | circular: the same reads with a clip that is not the circle | a break at 1999 |
+| 4 | circular: supplementary pieces hard-clipped | a clip at 0 saying it could not be checked |
+| 5 | circular: 80 bases (1961..2000 and 1..40) missing | one 'del' of 80 bases at 1960, alt 'across the origin'; no clip and no gap |
+| 6 | circular: nothing over the first and the last 100 bases | one gap of 200 bases at 1900 through the origin |
+
+**Review notes:**
+
+- The reads are error-free; the edit-distance tolerance is checked only with one missing base.

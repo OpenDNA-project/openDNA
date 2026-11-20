@@ -47,27 +47,43 @@ def cds_source(editor):
     doc = editor.doc
     f = editor.feature_by_index(editor.current_feature) if editor.current_feature is not None else None
     if f is not None and f.kind == "CDS":
-        return feature_source(doc, f, editor.wraps)
+        return feature_source(doc, f)
     if editor.end > editor.start and not editor.wraps:
         return stretch_source(doc, editor.start, editor.end, 1, "Selection", genetic_code.table_id(), 0)
     return "Select a CDS feature, or a stretch of DNA that is a whole number of codons."
 
 
-def feature_source(doc, f, wraps=False):
-    """`cds_source` for the CDS feature `f` of `doc` (`wraps`: it crosses the origin), read as annotated (its table, /codon_start)."""
-    if len(f.spans) != 1 or wraps:
-        return "This CDS is made of several parts (a join, or it crosses the origin): select one piece of DNA to work on instead."
+def feature_source(doc, f):
+    """`cds_source` for the CDS feature `f` of `doc`, read as annotated (its table, /codon_start). One that runs through the origin of a circular
+    sequence is read as the stretch from its start round to its end (`end` above the length); any other join is refused."""
+    from mutation import arc
+    first, last = arc(f, doc.length, doc.circular)
+    if len(f.spans) != 1 and (last <= doc.length or sum(e - s for s, e in f.spans) != last - first + 1):
+        return "This CDS is made of several parts (a join): select one piece of DNA to work on instead."
     plan = genetic_code.cds_plan(doc, f)
     if plan.exceptions or plan.why:
         return "This CDS has a /transl_except or an annotation openDNA cannot follow in full (see its tooltip)."
-    (start, end), = f.spans
-    return stretch_source(doc, start, end, f.strand, f.label, plan.table, plan.frame)
+    return stretch_source(doc, first - 1, last, f.strand, f.label, plan.table, plan.frame)
+
+
+def circular_bases(doc, a, b):
+    """The bases a..b (0-based, end exclusive) of `doc`; on a circular sequence a or b may lie outside it (the bases wrap round the origin)."""
+    n = doc.length
+    if not doc.circular:
+        return doc.sequence(max(0, a), min(b, n))
+    out = ""
+    while a < b:
+        s = a % n
+        e = min(n, s + b - a)
+        out += doc.sequence(s, e)
+        a += e - s
+    return out
 
 
 def stretch_source(doc, start, end, strand, label, table, frame):
-    length = doc.length
-    seq = doc.sequence(start, end)
-    left, right = doc.sequence(max(0, start - CONTEXT), start), doc.sequence(end, min(length, end + CONTEXT))
+    """The CDS source for the bases start..end (0-based; on a circular sequence `end` may pass the length: the stretch runs through the origin)."""
+    seq = circular_bases(doc, start, end)
+    left, right = circular_bases(doc, start - CONTEXT, start), circular_bases(doc, end, end + CONTEXT)
     if strand < 0:
         seq, left, right = reverse_complement(seq), reverse_complement(right), reverse_complement(left)
     seq = seq[frame:]
@@ -159,6 +175,16 @@ def recode_tries(s, usage, tries=1, seed=1, **rules):
         if not best.unmet:
             break
     return best
+
+
+def write_recoded(doc, s, r):
+    """Write the recoded bases of `r` over the CDS `s` in `doc` (same length: nothing moves); in two pieces when it runs through the origin."""
+    bases, n = recoded_bases(s, r), doc.length
+    if s.end <= n:
+        doc.overwrite(s.start, bases)
+    else:
+        doc.overwrite(s.start, bases[:n - s.start])
+        doc.overwrite(0, bases[n - s.start:])
 
 
 def recoded_bases(s, r):

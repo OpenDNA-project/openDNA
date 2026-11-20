@@ -10,14 +10,13 @@ Not a trained model: the score is a plain checklist (GC content, no TTTT, no lon
 """
 import re
 import threading
-import value_filter
 from collections import namedtuple
 
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QMenu, QProgressBar, QPushButton, QSizePolicy, QSpinBox, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QComboBox, QHBoxLayout, QLabel, QMenu, QProgressBar, QPushButton, QSizePolicy, QSpinBox,
+    QVBoxLayout, QWidget,
 )
 
 import opendna_core as core
@@ -27,7 +26,8 @@ from editor import gc_percent, reverse_complement, site_location
 from primer_panel import MARKS, genome, genome_label_text, open_options
 from reference import as_reference
 from tools import ToolDialog
-from uikit import fit_columns, no_auto_default, plural, right_aligned, run_busy
+from data_table import DataTable
+from uikit import fit_columns, no_auto_default, plural, run_busy
 
 # Nuclease and NUCLEASES (and cut_places) live in cut_sites.py (the view and the tooltips need them without this tool)
 IUPAC = {"A": "A", "C": "C", "G": "G", "T": "T", "N": "[ACGT]", "R": "[AG]", "Y": "[CT]", "S": "[CG]", "W": "[AT]",
@@ -38,7 +38,6 @@ SEED = 12                      # bases next to the PAM where a mismatch matters 
 DEFAULT_MAX_MM, MAX_MM_LIMITS = 3, (1, 4)   # "Count sites up to N mismatches"
 AUTO_CHECK = 100               # the first guides of the list are checked against the reference without being asked
 CHUNK = 10                     # guides scanned per step of that check: a result lands in the table (and a cancel is seen) at each
-INDEX = Qt.UserRole + 1        # item data: which guide (index in Cas9Dialog.guides) a table row shows (rows may be sorted)
 
 # One guide: where it sits, how it reads, where the nuclease cuts it (the top-strand base the cut falls before; `bottom`: the same
 # for the bottom strand, which differs from `cut` for Cas12a) and its score.
@@ -99,12 +98,20 @@ def candidates(seq, circular, nuclease, offset=0, wrap=False):
     return out
 
 
+def ambiguity_note(seq):
+    """"" or the words saying the sequence holds bases that are not A, C, G or T: no guide is listed over them (a site needs real bases)."""
+    k = len(seq) - sum(map(seq.count, "ACGTacgt"))
+    return f"{k:,} base(s) are N or an ambiguity code: no guide is listed over them." if k else ""
+
+
 def stretch(doc, selection=None):
     """(offset, sequence, whole circular sequence?, error text) the guides are looked for in: the `selection` (start, end; 0-based, end
     exclusive) when it holds bases, else the whole sequence (refused above MAX_REGION bp)."""
     if selection and selection[1] > selection[0]:
-        a, b = selection[0], min(selection[1], doc.length)
-        return a, doc.sequence(a, b), False, ""
+        a = selection[0]
+        b = min(selection[1], a + doc.length if doc.circular else doc.length)   # (a selection may run through the origin)
+        from codon_tools import circular_bases
+        return a, circular_bases(doc, a, b), False, ""
     if doc.length > MAX_REGION:
         return 0, "", False, f"This sequence is {doc.length:,} bp: select a region first (up to {MAX_REGION:,} bp)."
     return 0, doc.sequence(0, None), doc.circular, ""
@@ -217,14 +224,6 @@ class _Done(QObject):
     ended = Signal(int, object)           # the automatic check is over: "" (complete), "cancelled" or an error text
 
 
-class _Item(QTableWidgetItem):
-    """A cell that sorts by a key (a number, a tuple) kept in its UserRole data instead of by its text."""
-
-    def __lt__(self, other):
-        a, b = self.data(Qt.UserRole), other.data(Qt.UserRole)
-        return a < b if a is not None and b is not None else super().__lt__(other)
-
-
 def counts_key(counts):
     """Sort key of a column of site counts: unchecked first, then by perfect sites, then by the near ones."""
     return (-1, 0) if counts is None else (counts[0], sum(counts[1:]))
@@ -256,9 +255,8 @@ class Cas9Dialog(ToolDialog):
         genome_row = QHBoxLayout()
         genome_row.addWidget(self.genome_label, 1)
         genome_row.addWidget(options)
-        self.table = QTableWidget(0, 9)
-        self.table.setHorizontalHeaderLabels(["Position", "Strand", "PAM and guide 5′→3′", "Cuts after base", "GC", "Score", "Here", "Genome", "Verdict"])
-        value_filter.install(self.table, ["Strand", "Here", "Genome", "Verdict"])   # right-click a header: filter by values
+        self.table = DataTable(["Position", "Strand", "PAM and guide 5′→3′", "Cuts after base", "GC", "Score", "Here", "Genome", "Verdict"],
+                               filtered=["Strand", "Here", "Genome", "Verdict"], cell_menu=False)   # (its own right-click menu adds the filter's)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=8)
@@ -266,7 +264,6 @@ class Cas9Dialog(ToolDialog):
             "A rule-of-thumb checklist, not a measured activity. Starts at 100; minus 40 if GC is under 25 % or over 80 %, "
             "or minus 15 if it is outside 40-70 %; minus 40 for TTTT (stops transcription from a U6 promoter); "
             "minus 15 for a run of 5 identical bases. 70 or more passes the verdict.")
-        self.table.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)   # unsorted until a header is clicked
         self.table.currentCellChanged.connect(lambda row, *_: self._select(self._index(row)))
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu)
@@ -358,6 +355,8 @@ class Cas9Dialog(ToolDialog):
         self.guides, self.specs = found[:MAX_CANDIDATES], [None] * min(len(found), MAX_CANDIDATES)
         self._fill()
         base = error or f"{plural(len(found), 'guide')} in {len(seq):,} bp" + (f"; the best {MAX_CANDIDATES} are listed" if len(found) > MAX_CANDIDATES else "")
+        if note := ambiguity_note(seq):
+            base += f". {note}"
         self.status.setText(base + ".")
         if self.guides and not error:
             self._auto_check(base)
@@ -380,38 +379,23 @@ class Cas9Dialog(ToolDialog):
         nuc, n, g, spec = NUCLEASES[self.nuclease.currentText()], self.editor.length, self.guides[i], self.specs[i]
         level = verdict(spec, g)[0]
         for c, (v, key) in enumerate(self._cells(g, spec, nuc, n)):
-            item = self.table.item(r, c)
-            if item is None:
-                item = _Item()
-                self.table.setItem(r, c, item)
-            item.setText(v)
-            if c in (0, 3, 4, 5):
-                right_aligned(item)
-            item.setData(Qt.UserRole, key)
-            item.setToolTip(f"Sites by number of mismatches: 0/1/2/…; {nuc.name} {cut_text(nuc, g, n)}" if c in (6, 7) else "; ".join(g.notes))
+            item = self.table.put(r, c, v, key=key, right=c in (0, 3, 4, 5), number=i,
+                                  tip=f"Sites by number of mismatches: 0/1/2/…; {nuc.name} {cut_text(nuc, g, n)}" if c in (6, 7) else "; ".join(g.notes))
             if c == 8:
                 item.setForeground(QColor(MARKS[level][1]))
-        self.table.item(r, 0).setData(INDEX, i)
 
     def _fill(self):
-        header = self.table.horizontalHeader()
-        section, order = header.sortIndicatorSection(), header.sortIndicatorOrder()   # a clicked header's order is kept
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(0)
-        self.table.setRowCount(len(self.guides))
-        for r in range(len(self.guides)):
-            self._set_row(r, r)
-        header.setSortIndicator(section, order)
-        self.table.setSortingEnabled(section >= 0)
+        with self.table.refilling(len(self.guides)):
+            for r in range(len(self.guides)):
+                self._set_row(r, r)
 
     def _index(self, row):
         """The guide (index into self.guides) shown in table row `row`, or None."""
-        item = self.table.item(row, 0) if row >= 0 else None
-        i = item.data(INDEX) if item is not None else None
-        return i if i is not None and 0 <= i < len(self.guides) else None
+        i = self.table.data_row(row)
+        return i if 0 <= i < len(self.guides) else None
 
     def _row_of(self, i):
-        return next((r for r in range(self.table.rowCount()) if self._index(r) == i), None)
+        return self.table.row_of(i)
 
     def _select(self, i):
         if i is not None:
@@ -577,6 +561,7 @@ class Cas9Dialog(ToolDialog):
         menu = QMenu(self.table)
         menu.addAction("Add as feature" if len(chosen) == 1 else f"Add selected as features ({len(chosen)})",
                        lambda chosen=chosen: self.add(chosen))
+        self.table.value_filter.cell_actions(menu, pos)   # show only / hide the value of the cell, as in the other tables
         return menu
 
     def _menu(self, pos):

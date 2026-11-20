@@ -2,6 +2,7 @@
 pytest
 biopython  # independent GenBank parser used only to check our output in tests
 pyflakes
+ViennaRNA   # optional at run time (hairpin folding of the Synthesis tab's Salis row); the tests of the exact port need it
 pyinstaller
 pytest-xdist   # run test files in parallel: scripts/test_changed.py
 pytest-timeout

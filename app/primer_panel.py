@@ -1221,6 +1221,7 @@ class PrimerPanel(QWidget):
         if item is not None and self.database:
             menu = QMenu(self)
             self.database.menu(menu, self, self.chosen() or [primer_item(item).data(0, Qt.UserRole)])
+            self.tree.value_filter.cell_actions(menu, pos)   # show only / hide the value of the cell
             menu.exec(self.tree.viewport().mapToGlobal(pos))
         elif item is not None:   # the same menu as on a primer in the sequence view
             from feature_table import primer_actions, primers_actions  # here: feature_table imports the tools
@@ -1231,6 +1232,7 @@ class PrimerPanel(QWidget):
                 primers_actions(menu, self.editor, chosen)
             else:
                 primer_actions(menu, self.editor, name)
+            self.tree.value_filter.cell_actions(menu, pos)   # show only / hide the value of the cell
             menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     def edit(self, item):

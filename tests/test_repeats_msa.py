@@ -137,3 +137,19 @@ def test_multiple_alignment_consensus_identity_and_parsing():
         msa.align(["a"], ["ACGT"])
     with pytest.raises(ValueError):
         msa.align(["a", "b"], ["A" * (msa.MAX_BUILTIN + 1), "A"])
+
+
+def test_repeats_left_out_are_said_and_a_unit_repeated_twice_and_a_half_is_found():
+    """A unit that repeats 2.5 times is a direct repeat of its unit (it was dropped: neither a pair nor an array of three), and a palindrome,
+    which is not listed as a hairpin, is counted in the note instead of vanishing."""
+    import random
+    rng = random.Random(8)
+    rand = lambda k: "".join(rng.choice("ACGT") for _ in range(k))
+    unit = rand(100)
+    seq = rand(200) + unit + unit + unit[:50] + rand(200)
+    found = repeats.find_repeats(seq, False, 20, 12, 20, 0)
+    assert any(r.kind == "direct" and r.length == 100 for r in found.repeats)
+    arm = rand(20)
+    palindrome = arm + repeats.reverse_complement(arm)   # reads the same on both strands: nothing between its two arms
+    found = repeats.find_repeats(rand(150) + palindrome + rand(150), False, 20, 12, 20, 0)
+    assert "self-complementary" in found.capped

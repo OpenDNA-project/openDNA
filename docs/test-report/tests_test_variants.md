@@ -4,7 +4,7 @@
 
 ## `test_variants_are_written_into_the_bases_or_annotated_beside_them`
 
-**Result:** ✅ passed in 0.03 s · [line 39](../../tests/test_variants.py#L39) · **Area:** Read variants applied to the sequence · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 39](../../tests/test_variants.py#L39) · **Area:** Read variants applied to the sequence · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, applying variants found in sequencing reads could corrupt the user's sequence - wrong base, shifted indel, several edits interfering - and the damage would be hard to undo.
 

@@ -4,7 +4,7 @@
 
 ## `test_repeats_are_found_where_planted_and_not_in_random_dna`
 
-**Result:** ✅ passed in 0.61 s · [line 36](../../tests/test_repeats_msa.py#L36) · **Area:** Repeat finder · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.59 s · [line 36](../../tests/test_repeats_msa.py#L36) · **Area:** Repeat finder · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the repeat finder could miss planted direct, inverted or tandem repeats, flood random DNA with chance hits, or hang on long low-complexity input.
 
@@ -55,3 +55,20 @@ Aligns four copies of a 200 bp sequence (two substitutions, one 3-base deletion)
 
 - identity(1) for sub120 (row 2) is not checked.
 - Parsing accepts rows of different widths (5 and 6) without comment; the test does not say whether that should be refused.
+
+## `test_repeats_left_out_are_said_and_a_unit_repeated_twice_and_a_half_is_found`
+
+**Result:** ✅ passed in 0.00 s · [line 142](../../tests/test_repeats_msa.py#L142) · **Area:** Repeats · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** A repeat that is dropped by every branch of the search, or a stretch skipped as a palindrome, could vanish without a word.
+
+A 100 bp unit repeated 2.5 times is listed as a direct repeat of the unit; a perfect palindrome is counted in the note (self-complementary stretches).
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | 200 random + unit + unit + half a unit + 200 random | a direct repeat of 100 bp |
+| 2 | a 40 bp palindrome in random DNA | the note says self-complementary stretches are not listed as inverted repeats |
+
+**Review notes:**
+
+- Only one case of each; the cut of a repeat at 1,000 bp past the origin is not covered here.

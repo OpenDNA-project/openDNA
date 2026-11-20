@@ -35,15 +35,18 @@ DATA = [
     (APP / "parts", "parts"),                  # parts_library.py: the bundled collections (one file per source)
     (APP / "tools.toml", "."),                 # runner.py: recipes for external tools
     (APP / "sponsors.json", "."),              # sponsors.py: startup page
+    (APP / "salis_forest.json.gz", "."),       # synthesis_salis.py: the Synthesis Success Calculator's trained forest
     (ROOT / "demo" / "pBAD30_eilR.gb", "demo"),   # sponsors.py: DEMO, "Open the Demo Plasmid" on the startup page
     (APP / "vendor" / "3Dmol-min.js", "vendor"),   # structure.py: VENDOR, the protein viewer's library
     (APP / "vendor" / "3Dmol.LICENSE", "vendor"),  # BSD-3-Clause: must travel with the library
     (APP / "agent", "agent"),                  # cli.py: the recipes for agents (skills show)
+    (APP / "plannotate_run.py", "."),          # plannotate_tool.py: the half that runs inside pLannotate's own conda environment (data, not an import)
     (ROOT / "LICENSE", "."),                   # AGPL-3.0
 ]
 # main.py: window icon (all sizes); sponsors.py: the wordmark on the welcome page. Drawn by packaging/make_icon.py.
 DATA += [(APP / "logo" / f"icon_{size}.png", "logo") for size in (16, 24, 32, 48, 64, 128, 256)]
 DATA += [(APP / "logo" / "wordmark.png", "logo"), (APP / "logo" / "wordmark_dark.png", "logo")]
+DATA += [(p, ".") for p in sorted(APP.glob("contest_*.png"))]   # sponsors.json: the naming vote's pictures
 # Optional files: bundled when present (a notice file written later must not break an older checkout).
 for name in ("THIRD_PARTY_NOTICES.md", "TRADEMARKS.md"):   # (Help > About names both)
     if (ROOT / name).exists():
@@ -52,6 +55,11 @@ missing = [str(src) for src, _ in DATA if not src.exists()]
 if missing:
     raise SystemExit("openDNA.spec: missing data file(s): " + ", ".join(missing))
 datas = [(str(src), dest) for src, dest in DATA]
+# keyring (the IDT login of the Synthesis tab) finds its system backends through the package's entry points: the metadata and the backend modules
+# must travel with the exe, or it falls back to keeping the login in memory only.
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+datas += copy_metadata("keyring")
+KEYRING_BACKENDS = collect_submodules("keyring.backends")
 
 # Windows "Details" tab of the exe: file version 0.1.0.0 from VERSION "0.1.0". (Windows only: macOS has the Info.plist below.)
 parts = [int(x) for x in project.VERSION.split(".")[:3]]
@@ -83,7 +91,7 @@ a = Analysis(
     pathex=[str(APP)],                          # the app's modules import each other by flat name (from editor import ...)
     binaries=[],
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=KEYRING_BACKENDS,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

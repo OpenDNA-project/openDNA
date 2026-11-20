@@ -16,7 +16,7 @@ insert,demo_insert.gb,,forward
 
 - `id`: the fragment's name (it names its primers, `backbone-F`, `backbone-R`); different for every row.
 - `source`: a GenBank or FASTA file (a relative path is read from the table's folder).
-- `region`: `START..END` (1-based, inclusive, START smaller than END) or a feature name or `#INDEX`; empty = the whole file.
+- `region`: `START..END` (1-based, inclusive, START smaller than END; on a circular source START > END is a stretch through its origin, so a backbone that crosses the origin is one row) or a feature name or `#INDEX`; empty = the whole file.
 - `orientation`: `forward` (default) or `reverse`: the fragment is used as the reverse complement of that stretch.
 - Columns are exactly these (`region`, `orientation` optional). **One bad row stops the command** (unlike the batch commands: an assembly needs every fragment); the message names the rows.
 - The last fragment joins the first (circular product). `--linear` for a linear one.

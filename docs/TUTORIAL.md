@@ -40,7 +40,7 @@ feature table show the same thing. Click a feature to select it, or drag across 
 
 > The rule for inserts, so nothing surprises you: bases typed **strictly inside** a feature join it; bases typed
 > at its very first or last base stay outside. It is tested hundreds of times at random: see
-> [TESTING.md](TESTING.md) section 2.
+> [test-report/README.md](test-report/README.md) (the tests of editing and annotation drift).
 
 ## 3. Add a feature
 
@@ -146,4 +146,4 @@ and shows ✓/✗ with times. If any fails, please report it with the message sh
 ## Where next
 
 - [USER_GUIDE.md](USER_GUIDE.md): everything else (genome view and tracks, read mapping, variants, Local Align, the Python API).
-- [TESTING.md](TESTING.md): what is tested and what is not.
+- [test-report/README.md](test-report/README.md): what is tested, test by test.

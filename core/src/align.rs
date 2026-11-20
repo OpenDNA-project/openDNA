@@ -26,6 +26,8 @@
 //! bridged; very repetitive queries skip their most repeated k-mers.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use crate::primers::{clean, revcomp};
 
@@ -36,8 +38,6 @@ const GAP_OPEN: i32 = -5;
 const GAP_EXTEND: i32 = -2;
 /// Diagonals searched on each side of a seed cluster.
 const BAND: i64 = 16;
-/// Clusters aligned per strand (the ones with most seeds).
-const MAX_CLUSTERS: usize = 200;
 /// Separate pieces reported from one cluster of diagonals (keeps a repetitive query fast).
 const MAX_PIECES_PER_CLUSTER: usize = 64;
 /// A hit is never allowed to cross a stretch where its running score falls this many points below
@@ -58,6 +58,8 @@ const TRIM_RUN: usize = 12;
 const KEEP_RUN: usize = 5;
 /// Safety stop for degenerate input (e.g. poly-A query on a poly-A template).
 const MAX_SEEDS: usize = 5_000_000;
+/// A query k-mer present more often than this in the query is not used as a seed.
+const MAX_KMER_COPIES: usize = 100;
 /// "Minus infinity" that cannot overflow when a gap penalty is added.
 const NEG: i32 = i32::MIN / 2;
 
@@ -92,8 +94,9 @@ fn code(b: u8) -> Option<u32> {
     }
 }
 
-/// Seeds as (diagonal, template position) for one strand of the query.
-fn seeds(text: &[u8], query: &[u8], k: usize) -> Vec<(i64, usize)> {
+/// Seeds as (diagonal, template position) for one strand of the query, the number of query k-mers
+/// left out as too repeated, and the template position where the seed limit stopped the scan (if it did).
+fn seeds(text: &[u8], query: &[u8], k: usize) -> (Vec<(i64, usize)>, usize, Option<usize>) {
     // k-mer (2 bits per base) -> positions in the query.
     let mut index: HashMap<u32, Vec<usize>> = HashMap::new();
     let mask: u32 = if k >= 16 { u32::MAX } else { (1u32 << (2 * k)) - 1 };
@@ -107,8 +110,10 @@ fn seeds(text: &[u8], query: &[u8], k: usize) -> Vec<(i64, usize)> {
             index.entry(word).or_default().push(i + 1 - k);
         }
     }
-    // Very repeated k-mers would flood the seed list: ignore them.
-    index.retain(|_, v| v.len() <= 100);
+    // Very repeated k-mers would flood the seed list: leave them out (and say so).
+    let distinct = index.len();
+    index.retain(|_, v| v.len() <= MAX_KMER_COPIES);
+    let repeated = distinct - index.len();
     // Bit filter: one bit per possible k-mer, so almost every template position is
     // rejected by a single memory read instead of a hash lookup.
     let mut filter = vec![0u64; ((mask as usize) >> 6) + 1];
@@ -128,14 +133,45 @@ fn seeds(text: &[u8], query: &[u8], k: usize) -> Vec<(i64, usize)> {
                 out.push((t as i64 - q as i64, t));
             }
             if out.len() > MAX_SEEDS {
-                break;
+                return (out, repeated, Some(t));
             }
         }
+    }
+    (out, repeated, None)
+}
+
+/// `work(i)` for every i in 0..count, spread over `threads` threads (0 = every CPU core); the results come back
+/// in index order, so the answer is the same as on one thread. Tasks are started in index order; one not yet
+/// started when `deadline` passes is not run (None).
+fn on_cores<T: Send>(threads: usize, count: usize, deadline: Option<Instant>, work: impl Fn(usize) -> T + Sync) -> Vec<Option<T>> {
+    let next = AtomicUsize::new(0);
+    let all = std::thread::available_parallelism().map_or(1, |n| n.get());
+    let threads = if threads == 0 { all } else { threads }.min(count.max(1));
+    let done: Vec<Vec<(usize, T)>> = std::thread::scope(|s| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut mine = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        if i >= count || deadline.is_some_and(|d| Instant::now() >= d) {
+                            return mine;
+                        }
+                        mine.push((i, work(i)));
+                    }
+                })
+            })
+            .collect();
+        workers.into_iter().map(|w| w.join().expect("an alignment thread panicked")).collect()
+    });
+    let mut out: Vec<Option<T>> = (0..count).map(|_| None).collect();
+    for (i, t) in done.into_iter().flatten() {
+        out[i] = Some(t);
     }
     out
 }
 
-/// Groups seeds on nearby diagonals: (lowest diagonal, highest diagonal, number of seeds).
+/// Groups seeds on nearby diagonals: (lowest diagonal, highest diagonal, number of seeds), most seeds first.
 fn clusters(mut seeds: Vec<(i64, usize)>, min_seeds: usize) -> Vec<(i64, i64, usize)> {
     seeds.sort_unstable();
     let mut out: Vec<(i64, i64, usize)> = Vec::new();
@@ -151,7 +187,6 @@ fn clusters(mut seeds: Vec<(i64, usize)>, min_seeds: usize) -> Vec<(i64, i64, us
     out.extend(cur);
     out.retain(|c| c.2 >= min_seeds);
     out.sort_unstable_by(|a, b| b.2.cmp(&a.2));
-    out.truncate(MAX_CLUSTERS);
     out
 }
 
@@ -315,20 +350,40 @@ fn smith_waterman(text: &[u8], query: &[u8], lo: i64, hi: i64) -> Option<(Hit, O
     // Cutting can stop one base short when a gap sat just before the last exact bases (a gap
     // inside a run of equal bases can slide either way, e.g. "GGT" against "GGTT"). So grow the
     // alignment again, without gaps, over query bases that equal the template bases next to it.
-    // `extra` counts these added exact columns (they all match).
-    let mut extra = 0usize;
-    while qend < m && end < text.len() && query[qend] == text[end] && code(query[qend]).is_some() {
-        end += 1; qend += 1; extra += 1;
+    let col = |q: usize, t: usize| if query[q] == text[t] && code(query[q]).is_some() { Op::Match } else { Op::Mismatch(t, query[q]) };
+    let one_mismatch = |ops: &[Op]| ops.iter().filter(|o| matches!(o, Op::Mismatch(..))).count() == 1;
+    while qend < m && end < text.len() && matches!(col(qend, end), Op::Match) {
+        ops.push(Op::Match); end += 1; qend += 1;
     }
-    while qstart > 0 && start > 0 && query[qstart - 1] == text[start - 1] && code(query[qstart - 1]).is_some() {
-        start -= 1; qstart -= 1; extra += 1;
+    // A lone SNP in the query's last few bases (too few exact bases beyond it for the trimming to keep it):
+    // take the query to its end and report the SNP, rather than end the hit short of it.
+    if qend < m && m - qend <= KEEP_RUN + 1 && end + (m - qend) <= text.len() {
+        let tail: Vec<Op> = (0..m - qend).map(|k| col(qend + k, end + k)).collect();
+        if one_mismatch(&tail) {
+            (end, qend) = (end + tail.len(), m);
+            ops.extend(tail);
+        }
     }
+    let mut head = Vec::new(); // columns added before the start, nearest first
+    while qstart > 0 && start > 0 && matches!(col(qstart - 1, start - 1), Op::Match) {
+        head.push(Op::Match); start -= 1; qstart -= 1;
+    }
+    if qstart > 0 && qstart <= KEEP_RUN + 1 && start >= qstart {
+        let lead: Vec<Op> = (0..qstart).map(|k| col(k, start - qstart + k)).collect();
+        if one_mismatch(&lead) {
+            start -= qstart;
+            qstart = 0;
+            head.extend(lead.into_iter().rev());
+        }
+    }
+    head.reverse();
+    ops.splice(0..0, head);
     let (mut mismatches, mut insertions, mut deletions) = (Vec::new(), Vec::new(), Vec::new());
     let (mut matches, mut columns) = (0usize, 0usize);
     // Running score along the alignment, its best value so far, the query position reached, and
     // what the previous column was (0 = match/mismatch, 1 = deletion, 2 = insertion: a gap column
     // right after a gap column of the same kind is a cheap "extend", otherwise a dear "open").
-    let (mut running, mut peak, mut qpos, mut prev) = (0i32, 0i32, i, 0u8);
+    let (mut running, mut peak, mut qpos, mut prev) = (0i32, 0i32, qstart, 0u8);
     let mut split: Option<usize> = None;
     let mut after: Vec<usize> = Vec::with_capacity(ops.len()); // query position after each column
     for op in &ops {
@@ -384,8 +439,8 @@ fn smith_waterman(text: &[u8], query: &[u8], lo: i64, hi: i64) -> Option<(Hit, O
         start,
         end,
         forward: true,
-        score: running + MATCH * extra as i32, // the score of the (possibly trimmed) alignment
-        identity: (matches + extra) as f32 / (columns + extra).max(1) as f32,
+        score: running, // the score of the (possibly trimmed) alignment
+        identity: matches as f32 / columns.max(1) as f32,
         qstart,
         qend,
         mismatches,
@@ -406,13 +461,17 @@ fn smith_waterman(text: &[u8], query: &[u8], lo: i64, hi: i64) -> Option<(Hit, O
 /// Two pieces on the same diagonal separated by a long run of mismatches (a 200 base insert
 /// in the query, say) stay two pieces: bridging 200 mismatching bases costs far more than the
 /// pieces earn, so the best alignment is one of them and the other is found in the next round.
-fn pieces_of_cluster(text: &[u8], query: &[u8], lo: i64, hi: i64, min_score: i32) -> Vec<Hit> {
+/// The bool is true when MAX_PIECES_PER_CLUSTER stopped the search.
+fn pieces_of_cluster(text: &[u8], query: &[u8], lo: i64, hi: i64, min_score: i32) -> (Vec<Hit>, bool) {
     let mut found: Vec<Hit> = Vec::new();
     // A to-do list of query ranges (from, to) still to be searched. `vec![(0, query.len())]`
     // builds a Vec holding that one tuple; `pop()` takes the last item (or None when empty).
     let mut todo = vec![(0usize, query.len())];
     while let Some((from, to)) = todo.pop() {
-        if to - from < 4 || found.len() >= MAX_PIECES_PER_CLUSTER {
+        if found.len() >= MAX_PIECES_PER_CLUSTER {
+            return (found, true);
+        }
+        if to - from < 4 {
             continue; // nothing worth aligning in so little query
         }
         // Aligning the slice query[from..to] instead of the whole query shifts every diagonal by
@@ -438,7 +497,7 @@ fn pieces_of_cluster(text: &[u8], query: &[u8], lo: i64, hi: i64, min_score: i32
         todo.push((hit.qend, to)); // and right of it
         found.push(hit);
     }
-    found
+    (found, false)
 }
 
 /// True when `a` and `b` are the same piece found twice: they overlap on the template (a circular
@@ -454,11 +513,19 @@ fn redundant(a: &Hit, b: &Hit, n: usize) -> bool {
 /// The best `max_hits` local alignments of `query` on `template` (either strand), best first.
 /// A query that is a patchwork gives one hit per matching piece. `forward == false` hits are the
 /// reverse complement of the query; their `qstart..qend` is still counted in the query as given.
-pub fn align(template: &[u8], query: &[u8], circular: bool, max_hits: usize) -> Vec<Hit> {
+/// The notes say what a limit left out (never silently); the caller shows them with the hits.
+/// `time_limit` (seconds, 0 = none): candidate places not yet aligned when it runs out are left out, the
+/// ones with fewest seeds. The places are aligned on `threads` threads (0 = every CPU core).
+pub fn align(template: &[u8], query: &[u8], circular: bool, max_hits: usize, time_limit: f64, threads: usize) -> (Vec<Hit>, Vec<String>) {
+    let deadline = (time_limit > 0.0).then(|| Instant::now() + Duration::from_secs_f64(time_limit));
     let (template, query) = (clean(template), clean(query));
     let (n, m) = (template.len(), query.len());
+    let mut notes = Vec::new();
     if n == 0 || m < 4 || max_hits == 0 {
-        return Vec::new();
+        return (Vec::new(), notes);
+    }
+    if circular && m > n {
+        notes.push(format!("The query ({m} bp) is longer than the circular template ({n} bp): it is matched at most once round the circle."));
     }
     // Circular: append the start of the template so hits can run through the origin.
     let mut text = template;
@@ -468,22 +535,50 @@ pub fn align(template: &[u8], query: &[u8], circular: bool, max_hits: usize) -> 
     // Short queries get short k-mers: a 60-mer with 3 mismatches often has no two shared 11-mers.
     let k = if m >= 200 { 11 } else { (m / 4).clamp(4, 9) };
     let min_score = (m as i32 * 6 / 5).min(40); // random matches score ~20-30 on long queries
-    let mut hits: Vec<Hit> = Vec::new();
+    // Every candidate place of both strands: (strand, lowest diagonal, highest diagonal, seeds).
+    let mut places: Vec<(bool, i64, i64, usize)> = Vec::new();
+    let strands = [query.clone(), revcomp(&query)];
     for forward in [true, false] {
-        let q = if forward { query.clone() } else { revcomp(&query) };
-        for (lo, hi, _) in clusters(seeds(&text, &q, k), 2) {
-            for mut hit in pieces_of_cluster(&text, &q, lo - BAND, hi + BAND, min_score) {
-                if hit.start >= n {
-                    continue; // a repeat of a hit at the start of the template
-                }
-                hit.forward = forward;
-                if !forward {
-                    // Report the query part in the query's own orientation.
-                    (hit.qstart, hit.qend) = (m - hit.qend, m - hit.qstart);
-                }
-                hits.push(hit);
-            }
+        let q = &strands[!forward as usize];
+        let strand = if forward { "forward" } else { "reverse" };
+        let (seeds, repeated, stopped) = seeds(&text, q, k);
+        if forward && repeated > 0 {
+            notes.push(format!("{repeated} query {k}-mers occur more than {MAX_KMER_COPIES} times in the query and were not used as seeds: a match made only of that repeat can be missed."));
         }
+        if let Some(t) = stopped {
+            notes.push(format!("The seed limit ({MAX_SEEDS}) was reached on the {strand} strand at template base {}: the template after it was not searched on that strand (the query is too repetitive for this template).", t % n + 1));
+        }
+        places.extend(clusters(seeds, 2).into_iter().map(|(lo, hi, s)| (forward, lo, hi, s)));
+    }
+    // Most seeds first (both strands mixed), so a time limit leaves out the weakest places. A stable sort keeps
+    // each strand's own order among equals: the answer does not depend on the number of cores.
+    places.sort_by(|a, b| b.3.cmp(&a.3));
+    let done = on_cores(threads, places.len(), deadline, |i| {
+        let (forward, lo, hi, _) = places[i];
+        pieces_of_cluster(&text, &strands[!forward as usize], lo - BAND, hi + BAND, min_score)
+    });
+    let skipped = done.iter().filter(|d| d.is_none()).count();
+    if skipped > 0 {
+        notes.push(format!("The time limit ({time_limit} s) was reached: {skipped} of {} candidate places (those with fewest seeds) were not aligned, so hits may be missing. Raise or clear the time limit to align them all.", places.len()));
+    }
+    let mut hits: Vec<Hit> = Vec::new();
+    let mut capped = 0;
+    for (&(forward, ..), (pieces, full)) in places.iter().zip(done).filter_map(|(p, d)| d.map(|d| (p, d))) {
+        capped += full as usize;
+        for mut hit in pieces {
+            if hit.start >= n {
+                continue; // a repeat of a hit at the start of the template
+            }
+            hit.forward = forward;
+            if !forward {
+                // Report the query part in the query's own orientation.
+                (hit.qstart, hit.qend) = (m - hit.qend, m - hit.qstart);
+            }
+            hits.push(hit);
+        }
+    }
+    if capped > 0 {
+        notes.push(format!("{capped} places hold more than {MAX_PIECES_PER_CLUSTER} matching pieces of the query: only the first {MAX_PIECES_PER_CLUSTER} of each were listed."));
     }
     hits.sort_by(|a, b| b.score.cmp(&a.score));
     let mut kept: Vec<Hit> = Vec::new();
@@ -492,12 +587,17 @@ pub fn align(template: &[u8], query: &[u8], circular: bool, max_hits: usize) -> 
             kept.push(h);
         }
     }
-    kept
+    (kept, notes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The hits alone (the notes are checked in `every_limit_reached_is_a_note`).
+    fn align(t: &[u8], q: &[u8], circular: bool, max_hits: usize) -> Vec<Hit> {
+        super::align(t, q, circular, max_hits, 0.0, 0).0
+    }
 
     /// Reproducible pseudo-random DNA (no `rand` crate needed).
     fn random_dna(len: usize, mut seed: u64) -> Vec<u8> {
@@ -558,7 +658,7 @@ mod tests {
     #[test]
     fn a_mismatch_near_either_end_of_a_long_query_is_reported_not_trimmed_away() {
         let t = random_dna(3000, 12);
-        for at in [6, 11, 288, 293] {
+        for at in [0, 3, 6, 11, 288, 293, 296, 299] {
             let mut q = t[1000..1300].to_vec();
             let wrong = if q[at] == b'A' { b'C' } else { b'A' };
             q[at] = wrong;
@@ -577,6 +677,37 @@ mod tests {
         }
         let hits = align(&t, &q, false, 10);
         assert_eq!((hits[0].start, hits[0].end, hits[0].mismatches.len()), (1000, 1045, 3), "{hits:?}");
+    }
+
+    #[test]
+    fn every_limit_reached_is_a_note() {
+        let notes = |t: &[u8], q: &[u8], circular: bool| super::align(t, q, circular, 10, 0.0, 0).1.join(" ");
+        let t = random_dna(1000, 30);
+        assert_eq!(notes(&t, &t[200..500], true), "", "an ordinary query: no note");
+        // A query longer than the circle.
+        let mut q = t.clone();
+        q.extend_from_slice(&t[..200]);
+        assert!(notes(&t, &q, true).contains("longer than the circular template (1000 bp)"));
+        // A query k-mer repeated more than 100 times in the query.
+        let mut q = vec![b'A'; 300];
+        q.extend_from_slice(&t[0..100]);
+        assert!(notes(&t, &q, false).contains("more than 100 times in the query"));
+        // 300 copies of a unit, each its own place: all aligned and found (a fixed cap of 200 places used to cut them), no note.
+        let unit = random_dna(50, 31);
+        let mut many = Vec::new();
+        for i in 0..300 {
+            many.extend_from_slice(&unit);
+            many.extend(random_dna(100, 100 + i));
+        }
+        let (hits, n) = super::align(&many, &unit, false, 1000, 0.0, 0);
+        assert_eq!((hits.len(), n.len()), (300, 0), "{n:?}");
+        assert_eq!(super::align(&many, &unit, false, 1000, 0.0, 1).0, hits, "one thread or all: the same answer");
+        // A time limit already over when the places are ready: none is aligned, and the note says how many were left out.
+        let (hits, n) = super::align(&many, &unit, false, 1000, 1e-9, 0);
+        assert!(hits.is_empty() && n[0].contains("were not aligned, so hits may be missing"), "{n:?}");
+        // Seed limit: 96 copies of the 9-mer AAAAAAAAA in the query times 60,000 template places.
+        let n = notes(&vec![b'A'; 60_000], &vec![b'A'; 104], false);
+        assert!(n.contains("seed limit (5000000) was reached on the forward strand at template base"), "{n}");
     }
 
     #[test]

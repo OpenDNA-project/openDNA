@@ -18,7 +18,7 @@ from PySide6.QtCore import QObject, QThreadPool, Signal
 
 import tool_settings
 from tool_settings import Param
-from variants import change_text
+from variants import ORIGIN, change_text
 
 TOOL = "Alignments"
 COLOR_MODES = ["Pair orientation & insert size", "Strand", "None"]
@@ -118,27 +118,32 @@ class _Relay(QObject):
 relay = _Relay()
 
 
-def describe(pos, kind, ref, alt, count, depth):
+def describe(pos, kind, ref, alt, count, depth, length=None):
+    """The line of a variant; `length`: the sequence's length, to write where a change through the origin ends."""
     pct = f"{100 * count / max(1, depth):.0f} % of {depth}"
+    last = (pos + len(ref) - 1) % length + 1 if length else pos + len(ref)   # (a change through the origin ends before it starts)
     if kind == "snp":
         return f"{pos + 1:,} {ref}>{alt}  {pct}"
     if kind == "del":
-        return f"{pos + 1:,} deletion of {len(ref)} bp ({ref if len(ref) <= 12 else ref[:12] + '…'})  {pct}"
+        through = " through the origin" if alt == ORIGIN else ""
+        return f"{pos + 1:,}–{last:,} deletion of {len(ref)} bp{through} ({ref if len(ref) <= 12 else ref[:12] + '…'})  {pct}" if through else \
+               f"{pos + 1:,} deletion of {len(ref)} bp ({ref if len(ref) <= 12 else ref[:12] + '…'})  {pct}"
     if kind in ("clip", "gap"):
-        where = f"{pos + 1:,}–{pos + len(ref):,}" if kind == "gap" else f"{pos + 1:,}"
-        return f"{where} " + change_text(SimpleNamespace(kind=kind, ref=ref, count=count))
+        where = f"{pos + 1:,}–{last:,}" if kind == "gap" else f"{pos + 1:,}"
+        return f"{where} " + change_text(SimpleNamespace(kind=kind, ref=ref, count=count, alt=alt))
     return f"{pos + 1:,} insertion of {alt or '?'}  {pct}"
 
 
-def scan_variants(bam, seqid, reference, settings):
+def scan_variants(bam, seqid, reference, settings, circular=False):
     """The positions where the reads of `bam` (sequence `seqid`) differ from `reference` (the bases): [SimpleNamespace(pos, kind, ref, alt,
-    count, depth, level, text)], `settings` as `_scan_settings` gives them. Raises OSError when the reads cannot be read."""
+    count, depth, level, text)], `settings` as `_scan_settings` gives them. `circular`: the sequence is a circle (see `Bam.variants`: reads over
+    the origin are not breaks, nothing near an end is left out, a deletion through the origin is one deletion). Raises OSError when the reads cannot be read."""
     min_depth, variant_pct, consensus_pct, min_baseq, min_mapq = settings
-    found = bam.variants(seqid, reference, min_depth, variant_pct / 100, min_baseq, min_mapq)
+    found = bam.variants(seqid, reference, min_depth, variant_pct / 100, min_baseq, min_mapq, circular)
     return [SimpleNamespace(pos=pos, kind=kind, ref=ref, alt=alt, count=n, depth=d,
                             # breaks and gaps are already filtered by the scan: always flagged
                             level="consensus" if kind in ("clip", "gap") else flag_level(n, d, (min_depth, variant_pct, consensus_pct)) or "variant",
-                            text=describe(pos, kind, ref, alt, n, d))
+                            text=describe(pos, kind, ref, alt, n, d, len(reference)))
             for pos, kind, ref, alt, n, d in found]
 
 
@@ -151,12 +156,12 @@ def start_scan(entry, editor):
         return
     entry.scan_token = getattr(entry, "scan_token", 0) + 1
     entry.scanning, entry.scan_settings = True, _scan_settings()
-    token, reference = entry.scan_token, editor.doc.sequence()
+    token, reference, circular = entry.scan_token, editor.doc.sequence(), editor.doc.circular
     bam, seqid = entry.bam, entry.seqid
 
     def work():  # pool thread; Rust releases Python's lock
         try:
-            result = scan_variants(bam, seqid, reference, entry.scan_settings)
+            result = scan_variants(bam, seqid, reference, entry.scan_settings, circular)
         except OSError as e:
             result, entry.error = [], str(e)
         if token == entry.scan_token:

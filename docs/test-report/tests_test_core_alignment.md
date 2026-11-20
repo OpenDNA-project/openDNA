@@ -4,7 +4,7 @@
 
 ## `test_align_single_queries_coordinates_indels_and_overhangs`
 
-**Result:** ✅ passed in 0.01 s · [line 52](../../tests/test_core_alignment.py#L52) · **Area:** Local alignment (core.align) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 58](../../tests/test_core_alignment.py#L58) · **Area:** Local alignment (core.align) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Local Align could report wrong coordinates, strands, indel positions or invented alignments when a user maps a read or construct onto a sequence.
 
@@ -25,6 +25,7 @@ Checks core.align with planted queries in random templates and exact expected hi
 | 11 | end40+start60 on line vs circle | line: two hits (0,60) and (960,1000); circle: one hit (960,1060) |
 | 12 | ends match, middle 150 random / 10 random / 60 random | two hits / one bridged hit identity < 0.97 / two hits |
 | 13 | 5, 10, 15 base end overlaps; 20 base overlap | no hit; exactly 20 bases (score 40) is reported |
+| 14 | 80 bp unit placed fwd, fwd, rc; core.align(t, unit) | notes == [] (no limit reached) |
 
 **Review notes:**
 
@@ -37,7 +38,7 @@ Checks core.align with planted queries in random templates and exact expected hi
 
 ## `test_align_finds_every_piece_of_a_structural_variant_query`
 
-**Result:** ✅ passed in 0.07 s · [line 303](../../tests/test_core_alignment.py#L303) · **Area:** Local alignment, structural variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 310](../../tests/test_core_alignment.py#L310) · **Area:** Local alignment, structural variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Local Align could merge, drop or misplace pieces of a rearranged construct (insertion, inversion, shuffled or duplicated segments), which is what users rely on to diagnose structural variants.
 
@@ -58,7 +59,7 @@ Builds A-gap-B-C(inverted)-D queries for six template layouts, on lines and circ
 
 ## `test_local_align_query_cleaning_and_junction_texts`
 
-**Result:** ✅ passed in 0.03 s · [line 360](../../tests/test_core_alignment.py#L360) · **Area:** Local Align query input and report text · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 367](../../tests/test_core_alignment.py#L367) · **Area:** Local Align query input and report text · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, pasting a FASTA, GenBank ORIGIN or RNA query could be rejected or mangled, and the junction descriptions (insertion, deletion, inversion) in the Local Align report could be wrong.
 
@@ -87,19 +88,20 @@ Checks local_align.clean_query on accepted formats and on errors with their mess
 
 ## `test_folder_search_finds_a_query_in_its_file_record_place_and_strand`
 
-**Result:** ✅ passed in 1.38 s · [line 414](../../tests/test_core_alignment.py#L414) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.26 s · [line 421](../../tests/test_core_alignment.py#L421) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file.
 
-Searches the demo folder and a temporary folder with search_folder and checks the hit location, strand, the skipped-file count, the multi-record name, the tab-separated hits text and cancellation.
+Searches the demo folder and a temporary folder with search_folder and checks the hit location, strand, the skipped-file count, the multi-record name, the tab-separated hits text and cancellation. Also: a file with more hits than PER_FILE lists the best PER_FILE and says so (notes, status line, Copy).
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | pFG051_Chlor.gb bases 1000..1060 searched in demo/ | hit in that file at (1000,1060,+1), identity 1.0; nothing skipped; >= 5 files |
+| 1 | pFG051_Chlor.gb bases 1000..1060 searched in demo/ | hit in that file at (1000,1060,+1), identity 1.0; nothing skipped; >= 5 files; no note |
 | 2 | its reverse complement | (1000,1060,-1) |
 | 3 | random 60 bp (seed 4171) | no hits |
 | 4 | many.fa with records first/second + broken.gb, query second[500:560] | files 2, skipped 1; one hit ('second',500,560,+1); text line 'many.fa\tsecond\t501-560\tforward\t100.0%\t60' |
 | 5 | cancelled=lambda: True | no hits |
+| 6 | repeats.fa: 7 copies of second[500:560] separated by 100 bases, the same query | 5 hits from repeats.fa; notes == ['repeats.fa: more than 5 hits, only the 5 best are listed ...']; status text starts '; 1 file reached a search limit'; hits_text ends with the note |
 
 **Review notes:**
 

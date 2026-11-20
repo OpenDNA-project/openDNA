@@ -103,3 +103,21 @@ def test_old_data_folder_is_copied_once(tmp_path):
     (new / "primers.tsv").write_text("changed", encoding="utf-8")
     assert copy_old_data(new) is False and (new / "primers.tsv").read_text(encoding="utf-8") == "changed", "never copies over the new folder"
     assert copy_old_data(tmp_path / "elsewhere" / "openDNA") is False, "nothing to copy when there is no old folder"
+
+
+def test_welcome_slots_hold_four_and_expire(tmp_path, monkeypatch):
+    """The welcome page's slots (the naming vote is the first user) show up to four, and a slot with an "until" date is empty after it."""
+    from datetime import date
+    import json
+    import sponsors
+    slots, _, heading = sponsors.load(date(2026, 12, 31))
+    assert len(slots) == 4 and heading and all(s.get("name") for s in slots)
+    for s in slots:
+        assert s["url"].startswith("https://") and " " not in s["url"] and s["button"] and s["sends"]
+        for key in ("image", "image_dark"):
+            assert key not in s or (sponsors.FILE.parent / s[key]).is_file(), s[key]
+    assert sponsors.load(date(2027, 1, 1))[0] == [{}, {}, {}, {}]   # one day after the last "until"
+    f = tmp_path / "s.json"
+    f.write_text(json.dumps({"slots": [{"name": "A"}]}), encoding="utf-8")
+    monkeypatch.setattr(sponsors, "FILE", f)
+    assert sponsors.load() == ([{"name": "A"}, {}, {}], "", "SPONSORED")   # no "until": never expires; padded to three, old default

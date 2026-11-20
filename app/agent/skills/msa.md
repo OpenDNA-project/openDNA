@@ -6,9 +6,10 @@
 
 ```
 msa A.gb B.gb [C.gb ...] [--out ALIGNED.fa]
+msa MULTI.fasta [--out ALIGNED.fa]
 ```
 
-One sequence per file (FASTA or GenBank), named by the record's name; duplicate names get a number. The first is the reference of `identity_to_first` (a gap counts as a difference). `--out` writes the alignment as FASTA to a **new** file (an existing file is an error: nothing is overwritten).
+Each argument is a file with one sequence, or a file of several records (a multi-FASTA, a GenBank file of several LOCUS records): all its records are aligned, so `msa reads.fasta` is enough. `FILE#NAME` picks one record of such a file. Sequences are named by the record's name; duplicate names get a number. The first is the reference of `identity_to_first` (a gap counts as a difference). `--out` writes the alignment as FASTA to a **new** file (an existing file is an error: nothing is overwritten).
 
 JSON: `width`, `consensus`, and per sequence `name`, `file`, `length`, `identity_to_first` (percent) and `aligned` (with `-` for gaps).
 
@@ -20,4 +21,5 @@ The built-in aligner is a small progressive one: sequences up to 20,000 bp each,
 
 ```
 msa demo/pBAD30_eilR.gb demo/pBAD30_RC.gb
+msa demo/msa_demo.fasta
 ```

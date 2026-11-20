@@ -539,7 +539,7 @@ def design_golden_gate(frags, circular, enzyme, target=60.0):
         if d.vectors[i]:
             continue
         has_l, has_r = i > 0 or circular, i < njunc
-        lt = starts[i] - chosen[i - 1][0] if has_l else 0   # neighbour bases before this fragment
+        lt = (starts[i] - chosen[i - 1][0]) % N if has_l else 0   # neighbour bases before this fragment (the first one's neighbour is at the other end of the loop)
         rt = chosen[i][0] + k - ends[i] if has_r else 0     # ... and after it
         left = "".join(at(starts[i] - lt + x) for x in range(lt))
         right = "".join(at(ends[i] + x) for x in range(rt))

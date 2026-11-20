@@ -363,7 +363,7 @@ def test_bam_reads_pileup_coverage_and_variants_match_a_model(hand_bam, random_b
     assert [v for v in found if v[0] in (120, 125, 130)] == [(120, "snp", ref_a[120], alt(120), 5, 10), (130, "snp", ref_a[130], alt(130), 3, 10)]
     assert not [v for v in found if v[0] == 125], "1 of 10 reads is 10 %: below the default 20 %"
     # the fraction: 50 % passes at 0.5, not at 0.6; 30 % passes at 0.3 and 0.2, not at 0.4
-    at = lambda **kw: {v[0] for v in bam.variants("chrA", ref_a, **kw)}
+    at = lambda **kw: {v[0] for v in bam.variants("chrA", ref_a, **kw) if v[1] == "snp"}
     assert at(min_depth=5, min_fraction=0.5) == {120}
     assert at(min_depth=5, min_fraction=0.6) == set()
     assert at(min_depth=5, min_fraction=0.4) == {120}
@@ -372,8 +372,9 @@ def test_bam_reads_pileup_coverage_and_variants_match_a_model(hand_bam, random_b
     assert at(min_depth=10, min_fraction=0.5) == {120}
     assert at(min_depth=11, min_fraction=0.5) == set()
     # filters: with every base quality 40, min_baseq 41 leaves no depth at all
-    assert bam.variants("chrA", ref_a, 1, 0.1, min_baseq=41) == []
-    assert bam.variants("chrA", ref_a, 1, 0.1, min_mapq=61) == []
+    snps = lambda found: [v for v in found if v[1] == "snp"]   # (the uncovered start and end are gaps: nothing near an end is left out)
+    assert snps(bam.variants("chrA", ref_a, 1, 0.1, min_baseq=41)) == []
+    assert snps(bam.variants("chrA", ref_a, 1, 0.1, min_mapq=61)) == []
     # all of it equals the model, every position
     brief = [(p, r, n, d) for p, k, r, a, n, d in bam.variants("chrA", ref_a, min_depth=1, min_fraction=0.1) if k == "snp"]
     assert brief == model_snps(reads, ref_a, 1, 0.1)
@@ -727,3 +728,53 @@ def test_genome_fasta_fetch_and_search_match_slicing_and_brute_force(genome, tmp
                 expect.append((i, -1))
         assert fa.search("s", m) == expect, m
     assert fa.search("s", "") == [] and fa.search("s", "G" * 500) == []
+
+
+def test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle(tmp_path, ref_a):
+    """Nothing is dropped for being near an end of the reference. Linear: uncovered ends are gaps and a clip at the very end is a break. Circular: reads
+    that run over the origin (their clip continues the circle, even with a missing base) are not breaks; a clip that does not continue it is reported at
+    the end; hard-clipped reads, whose bases cannot be compared, are reported and say so; reads that jump over the origin make one deletion through it
+    (the uncovered stretch is that deletion, not a second finding); an uncovered start and end are one gap through the origin."""
+    n, rng = len(ref_a), random.Random(5)
+    other = lambda text: "".join(rng.choice([c for c in "ACGT" if c != b]) for b in text)   # bases that all differ from `text`
+
+    def bam_of(name, reads):
+        path = tmp_path / f"{name}.bam"
+        write_bam(path, [("chrA", n)], reads)
+        return core.Bam(str(path))
+
+    view = lambda found: [(v[0], v[1], len(v[2]), v[3]) for v in found if v[1] in ("clip", "gap", "del")]
+    tiles = [read(f"t{i}", p, [(100, "M")], ref_a[p:p + 100]) for i, p in enumerate(range(0, n - 99, 50))]   # (every base covered)
+    # linear: reads over bases 100..199 and three clipped at the very end
+    ends = [read(f"a{i}", 100, [(100, "M")], ref_a[100:200]) for i in range(10)] + [read(f"e{i}", 1950, [(50, "M"), (30, "S")], ref_a[1950:] + "A" * 30) for i in range(3)]
+    got = bam_of("linear", ends).variants("chrA", ref_a, 3, 0.2, 0, 0, False)
+    assert view(got) == [(0, "gap", 100, ""), (200, "gap", 1750, ""), (1999, "clip", 0, "")]
+    # circular: three reads over the origin, as the primary piece and the supplementary one; the clip lacks a base (one missing in the read)
+    clip = ref_a[:12] + ref_a[13:31]
+    over = [read(f"p{i}", 1950, [(50, "M"), (30, "S")], ref_a[1950:] + clip) for i in range(3)] + \
+           [read(f"s{i}", 0, [(50, "S"), (30, "M")], ref_a[1950:] + ref_a[:30], flag=2048) for i in range(3)]
+    circle = bam_of("circle", tiles + over)
+    assert view(circle.variants("chrA", ref_a, 3, 0.2, 0, 0, True)) == []
+    assert [x[:2] for x in view(circle.variants("chrA", ref_a, 3, 0.2, 0, 0, False))] == [(0, "clip"), (1999, "clip")]   # a line has no origin: both are breaks
+    # circular: the same three reads whose clip is something else: a break at the end
+    junk = [read(f"j{i}", 1950, [(50, "M"), (30, "S")], ref_a[1950:] + other(ref_a[:30])) for i in range(3)]
+    assert [x[:2] for x in view(bam_of("junk", tiles + junk).variants("chrA", ref_a, 3, 0.2, 0, 0, True))] == [(1999, "clip")]
+    # circular: hard-clipped supplementary pieces have no bases to compare: reported at the start, with that said
+    hard = [read(f"h{i}", 0, [(50, "H"), (30, "M")], ref_a[:30], flag=2048) for i in range(3)]
+    noted = [v for v in bam_of("hard", tiles + hard).variants("chrA", ref_a, 3, 0.2, 0, 0, True) if v[1] == "clip"]
+    assert [v[0] for v in noted] == [0] and "could not be checked" in noted[0][3]
+    # circular: 80 bases (ref 1961..2000 and 1..40) missing from the sample: reads over the join are two pieces (clipped each side of it)
+    sample = ref_a[40:1960]
+    m, jump = len(sample), []
+    for i, st in enumerate(range(0, m, 10)):
+        seq, a = (sample + sample)[st:st + 100], min(100, m - st)
+        if st + 100 <= m:
+            jump.append(read(f"d{i}", 40 + st, [(100, "M")], seq))
+        else:
+            jump += [read(f"d{i}", 40 + st, [(a, "M"), (100 - a, "S")], seq), read(f"d{i}", 40, [(a, "S"), (100 - a, "M")], seq, flag=2048)]
+    found = bam_of("jump", jump).variants("chrA", ref_a, 3, 0.2, 0, 0, True)
+    assert [(v[0], v[1], v[2], v[3]) for v in found if v[1] in ("clip", "gap", "del")] == [(1960, "del", ref_a[1960:] + ref_a[:40], "across the origin")]
+    # circular: nothing covers the first 100 or the last 100 bases: one gap through the origin, not two at the ends
+    middle = [read(f"m{i}", p, [(100, "M")], ref_a[p:p + 100]) for i, p in enumerate(range(100, n - 199, 50))] + [read("last", n - 200, [(100, "M")], ref_a[n - 200:n - 100])]
+    through = [v for v in bam_of("through", middle).variants("chrA", ref_a, 3, 0.2, 0, 0, True) if v[1] == "gap"]
+    assert [(v[0], len(v[2]), v[3]) for v in through] == [(n - 100, 200, "across the origin")]

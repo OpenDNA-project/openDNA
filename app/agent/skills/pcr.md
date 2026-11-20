@@ -19,13 +19,15 @@ ori_region,2839..3384
 ```
 
 - `id`: a name for the row (no file is named after it); choose one that suits the user.
-- `target`: a feature name (or `#INDEX` when several share a name), or `START..END`, 1-based and inclusive, along the plasmid (START smaller than END). A region across the origin is not accepted: ask for it in two parts, or ask the user.
+- `target`: a feature name (or `#INDEX` when several share a name), or `START..END`, 1-based and inclusive, along the plasmid (START smaller than END). On a circular plasmid a target through the origin is written START > END (`880..39`), and a feature that crosses the origin is used as it is (the `start`/`end` of the answer then has `end` below `start`, with `crosses_origin`).
 - Primers sit exactly on the two ends of the target (`--window 0`, the default), so the product is the target. A primer needs a product at least as long as itself, so a target of about 25 bases or fewer gives no pair: widen it or say so.
 - Anything else in the user's table you translate yourself when the meaning is clear (for example a start and an end in two columns become `START..END`), and ask when it is not. Other columns are an error.
 
 ## 2b. Options (all optional)
 
 `--tm` (target Tm in deg C, default 60), `--min-len` (18) and `--max-len` (25) for the primer length, `--window` (default 0: how many bases before the start and after the end a primer may begin; above 0 the product may be longer than the target and only primers within 5 deg C of the target Tm are used).
+
+**The window is the user's choice.** Leave it at 0 unless they ask for another value. If a row's pairs are all marked `bad` the row carries a warning: tell the user which problem the checks name, **offer** a wider window (for example `--window 30`; the product is then longer than the target), and run it only if they accept. Never widen it on your own to get a better-looking result.
 
 ## 3. Check
 

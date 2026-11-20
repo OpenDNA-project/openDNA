@@ -4,9 +4,8 @@ Hand-off note for whoever works on `app/parts/` next. It covers the data model, 
 methods used so far, an audit of what they actually produced (the bad parts are listed by name),
 and the rules that should govern what gets in from now on.
 
-Status at the time of writing: `app/parts/ncbi_vectors.tsv` (94 rows) and
-`app/parts/engineering_proteins.tsv` (47 rows). Neither has been curated against the rules below.
-**The first job is to apply them**, not to add more sources.
+Status: `app/parts/ncbi_vectors.tsv` (31 rows) and `app/parts/engineering_proteins.tsv` (46 rows) have been curated against the rules
+below (sections 7 and 9). Added parts must follow them; the worklist at the end lists what is still to add.
 
 
 ## 1. What the library is for
@@ -306,18 +305,14 @@ Record the alternatives nowhere — the matcher's protein mode and 95 % threshol
 ### How to verify any change
 
 ```bash
-# every CDS really is one
-python scratchpad/verify_parts.py
-
 # nothing is duplicated within or across collections, and no row breaks the floors
 python -m pytest tests/test_parts_library.py -q
 ```
 
 `tests/test_parts_library.py` checks the format and the per-source switch, and now also holds the
-curation line against the files that actually ship: `test_no_part_is_junk` (the `NEVER` patterns, and
-no `misc_feature`/`regulatory`/`sig_peptide`), `test_every_part_clears_the_floor_for_its_type`,
-`test_one_part_one_row` (no repeated name, no sequence stored twice in or across collections) and
-`test_every_part_says_where_it_came_from`. They import the rules from `scripts/build_parts.py`, so
+curation line against the files that actually ship: `test_shipped_parts_meet_the_data_quality_rules` (the `NEVER` patterns, no
+`misc_feature`/`regulatory`/`sig_peptide`, the floor for each type, no repeated name, no sequence stored twice in or across collections, and
+a source for every part). They import the rules from `scripts/build_parts.py`, so
 there is one source of truth. **Adding a part that breaks a rule now fails the suite.**
 
 

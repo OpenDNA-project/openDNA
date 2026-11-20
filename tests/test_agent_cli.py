@@ -30,6 +30,7 @@ import primer_design
 import recombineering
 import repeats
 import search
+import synthesis_salis
 import tools
 from cut_sites import NUCLEASES
 from opendna_core import Document
@@ -76,8 +77,10 @@ def test_every_recipe_example_still_runs(capsys, tmp_path, monkeypatch):
     fake_ncbi(monkeypatch)        # (and none of them reaches the network)
     code, out, _ = run(capsys, "skills", "list")
     names = [line.split(":")[0] for line in out.splitlines()]
-    assert code == 0 and {"index", "inspect", "kld", "pcr", "recombineering", "sites", "guides", "repeats", "search", "align", "msa", "codon", "export", "order", "variants", "checkup", "annotate", "gibson", "ncbi"} <= set(names)
+    assert code == 0 and {"index", "inspect", "kld", "pcr", "recombineering", "sites", "guides", "repeats", "search", "align", "msa", "codon", "export", "order", "variants", "checkup", "annotate", "gibson", "ncbi", "synthesis"} <= set(names)
     for name in names:
+        if name == "synthesis" and not synthesis_salis.have_vienna():
+            continue   # (needs ViennaRNA, which is optional)
         code, text, _ = run(capsys, "skills", "show", name)
         assert code == 0
         for block in re.findall(r"## Example.*?```\n(.*?)```", text, re.S):
@@ -195,7 +198,7 @@ def test_kld_batch_gives_the_files_and_primers_the_panel_gives(tmp_path, capsys)
 
 
 
-def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys):
+def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys, monkeypatch):
     doc, seq = plasmid()
     gb = tmp_path / "t.gb"
     doc.write_genbank(str(gb), None)
@@ -228,6 +231,17 @@ def test_pcr_batch_gives_the_pairs_the_panel_gives(tmp_path, capsys):
     saved = json.loads((out / "report.jsonl").read_text(encoding="utf-8").splitlines()[0])["pairs"][0]["fwd"]
     full = json.loads(run(capsys, "pcr", "check", gb, table, "--tm", 62, "--full")[1])["rows"][0]["pairs"][0]["fwd"]
     assert len(saved["checks"]) == len(full["checks"]) == 8 and "issues" not in full and [c for c in saved["checks"] if c["level"] != "ok"] == first["issues"]
+    # every pair bad: the row warns and offers a wider window, and the window itself stays at 0 (the user's choice)
+    import primer_panel
+    monkeypatch.setattr(primer_panel, "worst", lambda checks: "bad")
+    table.write_text("id,target\na,150..400\n", encoding="utf-8")
+    row = json.loads(run(capsys, "pcr", "check", gb, table)[1])
+    warns = row["rows"][0]["warnings"]
+    assert any("--window 0" in w and "offer" in w for w in warns) and row["settings"]["pcr_design"]["window"]["value"] == 0
+    assert any("Only the best 5 pairs are listed" in w for w in warns)   # (a cut list is a warning, never silent)
+    # on a circle a window wider than half of what is left would make the two sides meet: it is narrowed, and said
+    wide = json.loads(run(capsys, "pcr", "check", gb, table, "--window", 150)[1])["rows"][0]["warnings"]
+    assert any("narrowed to 135 bases" in w for w in wide)
 
 
 # ---- recombineering ------------------------------------------------------------------------------------------------------------
@@ -386,6 +400,21 @@ def test_repeats_command_gives_the_stretches_the_compare_view_gives(tmp_path, ca
     assert "identical" in same["note"] and not answer(capsys, "repeats", gb, "--min-len", "20")["compared"]["identical_sequences"]
 
 
+@pytest.mark.skipif(not synthesis_salis.have_vienna(), reason="needs ViennaRNA (pip install ViennaRNA)")
+def test_synthesis_command_gives_what_the_synthesis_module_gives(tmp_path, capsys):
+    gb, seq = planted(tmp_path, n=260)
+    res = answer(capsys, "synthesis", gb, "--region", "1..200")
+    direct = synthesis_salis.evaluate(seq[:200])
+    assert (res["probability"], res["features"], res["predicted_quick_synthesis"]) == (direct["probability"], direct["features"], direct["outcome"])
+    assert res["region"] == {"start": 1, "end": 200} and res["bases"] == 200 and "Halper" in res["citation"]
+    assert any("straight piece" in w for w in answer(capsys, "synthesis", gb)["warnings"])   # a circular file: the model reads it straight
+    through = answer(capsys, "synthesis", gb, "--region", "250..10")   # through the origin of the circle: the piece is joined, read straight
+    assert through["bases"] == 21 and through["region"] == {"start": 250, "end": 10, "crosses_origin": True} and through["features"] == synthesis_salis.evaluate(seq[249:] + seq[:10])["features"]
+    linear = tmp_path / "linear.gb"
+    Document.new_sequence("l", seq, False).write_genbank(str(linear), None)
+    assert run(capsys, "synthesis", linear, "--region", "200..100")[2].startswith("ERROR: ")
+
+
 def test_search_command_finds_dna_on_both_strands_and_names(tmp_path, capsys):
     site = "TTGACAGCTAGCTCAGTCC"
     gb, seq = planted(tmp_path, (50, site))
@@ -427,7 +456,18 @@ def test_align_command_finds_pieces_and_structural_changes_like_local_align(tmp_
         assert piece["strand"] == strand and [(m["position"], m["plasmid_base"].upper(), m["query_base"].upper()) for m in piece["mismatch_list"]] == [(131, seq[130].upper(), base)]
     cut = answer(capsys, "align", gb, seq[100:130] + seq[135:165])["pieces"][0]     # 5 bases of the plasmid missing from the query (found as one gapped piece or two)
     assert cut["deletion_list"] == [{"start": 131, "end": 135}] or len(answer(capsys, "align", gb, seq[100:130] + seq[135:165])["pieces"]) == 2
-    direct = local_align.find_hits(seq, gap, True)    # the window's own function
+    direct, notes = local_align.find_hits(seq, gap, True)    # the window's own function
+    assert notes == [] and two["warnings"] == []
+    # a changed base just past the origin of the circle is named at its own place (it used to crash the command)
+    other = "A" if seq[1].upper() != "A" else "C"
+    over = answer(capsys, "align", gb, seq[-30:] + seq[0] + other + seq[2:30])["pieces"][0]
+    assert [(m["position"], m["query_base"].upper()) for m in over["mismatch_list"]] == [(2, other)]
+    # a query longer than the circle: matched once round, and the answer says so
+    assert any("longer than the circular template" in w for w in answer(capsys, "align", gb, seq + seq[:100])["warnings"])
+    # a time limit already over: no place aligned, the warning says so and how to search everything; --threads is shown, never saved
+    cut = answer(capsys, "align", gb, seq[100:160], "--time-limit", "0.000000001", "--threads", "2")
+    assert cut["pieces"] == [] and any(w.startswith("The time limit") for w in cut["warnings"]) and any("--time-limit 0" in w for w in cut["warnings"])
+    assert (cut["settings"]["align"]["time_limit"]["value"], cut["settings"]["align"]["cores"]["value"]) == (1e-09, 2)
     assert [(h.start + 1, h.end) for h in direct] == [(p["start"], p["end"]) for p in two["pieces"]]
     err = run(capsys, "align", gb, "MKLVPQ")[2]
     assert err.startswith("ERROR: ") and "protein" in err
@@ -448,6 +488,12 @@ def test_msa_command_aligns_the_files_and_never_overwrites(tmp_path, capsys):
     code, text, err = run(capsys, "msa", tmp_path / "a.gb", tmp_path / "b.gb", "--out", out)
     assert code == 1 and "already exists" in err
     assert "at least two" in run(capsys, "msa", tmp_path / "a.gb")[2]
+    # a multi-FASTA is aligned whole (no splitting), the same as its records given one by one
+    fa = tmp_path / "both.fasta"
+    fa.write_text(f">a\n{a}\n>b\n{b}\n", encoding="utf-8")
+    whole = answer(capsys, "msa", fa)
+    assert [(s["name"], s["file"], s["aligned"]) for s in whole["sequences"]] == [("a", f"{fa}#a", ra), ("b", f"{fa}#b", rb)]
+    assert answer(capsys, "msa", f"{fa}#a", f"{fa}#b")["sequences"][1]["aligned"] == rb
 
 
 def test_codon_batch_recodes_in_place_keeping_the_protein(tmp_path, capsys):
@@ -531,7 +577,7 @@ def test_variants_command_finds_what_the_simulated_reads_were_given(tmp_path, ca
     # the Variants pane's own scan gives the same list
     import alignments
     from opendna_core import Bam
-    direct = alignments.scan_variants(Bam(str(READS)), "pBAD30_eilR", Document(DEMO).sequence(0, None), (5, 20, 80, 13, 0))
+    direct = alignments.scan_variants(Bam(str(READS)), "pBAD30_eilR", Document(DEMO).sequence(0, None), (5, 20, 80, 13, 0), True)
     assert [(v.pos + 1, v.kind, v.count) for v in direct] == [(v["position"], v["kind"], v["reads"]) for v in res["variants"]]
     # --apply writes the consensus changes into a copy: 1 base inserted, 3 + 1 deleted, the substitution at 4000 made
     out = tmp_path / "fixed.gb"
@@ -576,6 +622,10 @@ def test_checkup_command_gives_the_verdicts_of_the_checkup_window(tmp_path, caps
         direct = checkup.run(cli_tools.doc_editor(Document(str(tmp_path / "full.gb"))))
     assert [c.verdict for c in direct.cds] == [c["verdict"] for c in full["cds"]]
     assert "responsibility" in answer(capsys, "checkup", gb, "--min-promoter", "99")["warnings"][0]
+    doc.add_features([("rep_origin", "200..400", [("label", "p15A")])])   # an origin comes out as fields, not as a Python object's text
+    doc.write_genbank(str(tmp_path / "ori.gb"), None)
+    origin = answer(capsys, "checkup", tmp_path / "ori.gb", "--no-predict", "--no-library")["origins"][0]
+    assert (origin["label"], origin["start"], origin["end"], origin["name"], origin["incompatibility_group"]) == ("p15A", 200, 400, "p15A", "p15A")
 
 
 def test_annotate_command_finds_library_parts_and_adds_only_new_ones(tmp_path, capsys):
@@ -594,6 +644,87 @@ def test_annotate_command_finds_library_parts_and_adds_only_new_ones(tmp_path, c
     again = tmp_path / "again.gb"      # a second pass over the annotated copy finds the same parts, already annotated, and adds nothing
     assert answer(capsys, "annotate", out, "--kinds", "terminator", "--add", again)["added"]["features"] == 0
     assert "responsibility" in answer(capsys, "annotate", gb, "--min-dna", "10")["warnings"][0]
+
+
+@pytest.fixture(autouse=True)
+def no_wsl(monkeypatch):
+    """No test in this file reaches the real WSL or a real pLannotate (the answer would depend on the machine): every call into WSL fails
+    as if it were not installed. A test of the merge puts canned rows in place of the search itself."""
+    import plannotate_tool
+
+    def gone(*args, **kwargs):
+        raise plannotate_tool.PlannotateError(plannotate_tool.WSL_HELP)
+    monkeypatch.setattr(plannotate_tool, "_run", gone)
+    plannotate_tool.forget()
+    yield
+    plannotate_tool.forget()
+
+
+def test_annotate_command_lists_plannotate_hits_beside_the_library_and_says_who_found_each(tmp_path, capsys, monkeypatch):
+    import annotation
+    import plannotate_tool
+    part = max((p for p in annotation.load_parts() if p.kind == "terminator" and set(p.sequence.upper()) <= set("ACGT")), key=lambda p: len(p.sequence))
+    gb, seq = planted(tmp_path, (100, part.sequence.upper()), n=600)
+    n = len(part.sequence)
+    rows = [{"name": "rrnB T1", "kind": "terminator", "start": 100, "end": 100 + n, "strand": 1, "identity": 0.99, "match": 1.0, "database": "snapgene", "fragment": False, "note": ""},
+            {"name": "AmpR", "kind": "CDS", "start": 300, "end": 420, "strand": -1, "identity": 0.9, "match": 0.8, "database": "swissprot", "fragment": True, "note": "beta-lactamase"}]
+    monkeypatch.setattr(plannotate_tool, "_search", lambda sequence, circular: rows)
+    res = answer(capsys, "annotate", gb, "--kinds", "terminator,CDS")
+    by = {h["found_by"]: h for h in res["hits"]}
+    assert "doi:10.1093/nar/gkab374" in res["plannotate_citation"]
+    assert res["plannotate"] == "ran" and len(res["hits"]) == 2 and set(by) == {"openDNA + pLannotate", "pLannotate"}   # nothing dropped, nothing doubled
+    both, theirs = by["openDNA + pLannotate"], by["pLannotate"]
+    assert (both["name"], both["start"], both["end"]) == (part.name, 101, 100 + n) and both["plannotate"] == {"name": "rrnB T1", "database": "snapgene", "identity": 0.99}
+    assert "pLannotate: snapgene" in both["source"] and part.source in both["source"]
+    assert (theirs["name"], theirs["kind"], theirs["start"], theirs["end"], theirs["strand"], theirs["protein_match"], theirs["source"]) == (
+        "AmpR (fragment)", "CDS", 301, 420, -1, True, "pLannotate: swissprot")
+    off = answer(capsys, "annotate", gb, "--kinds", "terminator,CDS", "--no-plannotate")
+    assert off["plannotate"] == "off" and {h["found_by"] for h in off["hits"]} == {"openDNA"} and off["settings"]["detect_features"]["use_plannotate"]["value"] is False
+    out = tmp_path / "annotated.gb"
+    answer(capsys, "annotate", gb, "--kinds", "terminator,CDS", "--add", out)
+    notes = {f.label: dict(f.qualifiers)["note"] for f in Document(str(out)).features() if f.label}
+    assert notes["AmpR (fragment)"].startswith("detected by pLannotate (database swissprot): 90 % identity") and "beta-lactamase" in notes["AmpR (fragment)"]
+    assert "also found by pLannotate as rrnB T1 (database snapgene, 99 % identity)" in notes[part.name]
+    monkeypatch.setattr(plannotate_tool, "_search", lambda sequence, circular: (_ for _ in ()).throw(plannotate_tool.NotInstalled("pLannotate is not installed.")))
+    plannotate_tool.forget()
+    missing = answer(capsys, "annotate", gb, "--kinds", "terminator,CDS")
+    assert missing["plannotate"] == "missing" and "wsltools install" in missing["warnings"][-1] and {h["found_by"] for h in missing["hits"]} == {"openDNA"}
+
+
+def test_detect_features_merges_only_the_same_thing_in_the_same_place():
+    import annotation
+    hit = lambda kind, s, e, strand, origin: SimpleNamespace(name=kind, kind=kind, start=s, end=e, strand=strand, origin=origin, also=None, source=origin)
+    own = [hit("terminator", 100, 200, 1, "openDNA"), hit("CDS", 300, 600, 1, "openDNA"), hit("promoter", 700, 760, 1, "openDNA")]
+    theirs = [hit("terminator", 105, 200, -1, "pLannotate"),   # same bases, other strand: a terminator is annotated on either
+              hit("CDS", 300, 600, -1, "pLannotate"),          # same bases but a coding sequence on the other strand: another gene
+              hit("misc_feature", 700, 760, 1, "pLannotate"),  # only says misc_feature: the same thing
+              hit("terminator", 1000, 1050, 1, "pLannotate")]
+    merged = annotation.merge(own, theirs)
+    assert [(h.kind, h.start, h.origin) for h in merged] == [("terminator", 100, annotation.BOTH), ("CDS", 300, "openDNA"), ("CDS", 300, "pLannotate"),
+                                                              ("promoter", 700, annotation.BOTH), ("terminator", 1000, "pLannotate")]
+    assert merged[0].also is theirs[0] and merged[0].source == "openDNA + pLannotate"
+
+
+def test_plannotate_rows_become_positions_the_way_the_windows_draw_them():
+    import plannotate_run
+    rows = plannotate_run.rows_from([
+        {"name": "AmpR", "type": "CDS", "qstart": 520, "qend": 1381, "sframe": 1, "pident": 100.0, "abs percmatch": 100.0, "db": "snapgene", "fragment": False, "blurb": None},
+        {"name": "f1 ori", "type": "origin of replication", "qstart": 5900, "qend": 40, "sframe": -1, "pident": 99.34, "abs percmatch": 96.67, "db": "snapgene", "fragment": True, "blurb": "x"}], 5936)
+    assert [(r["start"], r["end"], r["strand"], r["kind"], r["identity"], r["fragment"]) for r in rows] == [
+        (520, 1381, 1, "CDS", 1.0, False), (5900, 5976, -1, "rep_origin", 0.9934, True)]   # across the origin: the end runs past the length, like a library hit
+
+
+def test_wsltools_command_says_what_is_missing_and_never_installs_wsl(capsys, monkeypatch):
+    import plannotate_tool
+    import runner
+    status = answer(capsys, "wsltools", "status")
+    assert status["wsl"] is False and status["plannotate"] == {"state": "no_wsl"} and set(status["terminal_tools"]) == set(runner.terminal_tools())
+    code, out, err = run(capsys, "wsltools", "install")
+    assert code == 1 and err.startswith("ERROR: ") and "wsl --install" in err
+    both = plannotate_tool.install_script()
+    assert "opendna-plannotate" in both and 'plannotate" setupdb' in both and all(t in both for t in runner.terminal_tools()) and both.endswith("exit $r")
+    only = plannotate_tool.install_script(plannotate=True, terminal=False)
+    assert "fastp" not in only and "opendna-tools" not in only
 
 
 def test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases():
@@ -683,3 +814,175 @@ def fake_ncbi(monkeypatch):
     monkeypatch.setattr(ncbi.time, "sleep", lambda s: None)
     monkeypatch.setattr(ncbi, "path_of", lambda record: Path(tempfile.mkdtemp()) / "cache.gb")   # (never a file left by an earlier test)
     return asked
+
+
+def test_split_command_writes_one_file_per_record_and_file_hash_name_reads_one(tmp_path, capsys):
+    a, b = dna(120, 21), dna(90, 22)
+    for name, seq, circ in (("p one", a, True), ("p/two", b, False)):
+        Document.new_sequence(name.replace(" ", "_").replace("/", "_"), seq, circ).write_genbank(str(tmp_path / f"{name[-3:]}.gb"), None)
+    import multigb
+    multi = tmp_path / "multi.gb"
+    multi.write_text("".join((tmp_path / f"{n}.gb").read_text(encoding="utf-8").rstrip("\n") + "\n" for n in ("one", "two")), encoding="utf-8")
+    assert [n for n, *_ in multigb.records(multi)] == ["p_one", "p_two"]
+    err = run(capsys, "inspect", multi)[2]   # a bare name is refused with the names, and the way out
+    assert err.startswith("ERROR: ") and "p_one, p_two" in err and "split" in err
+    assert answer(capsys, "region", f"{multi}#p_two", 1, 10)["sequence"] == b[:10]
+    assert "no record called" in run(capsys, "region", f"{multi}#nope", 1, 10)[2]
+    res = answer(capsys, "split", multi, "--out", tmp_path / "parts")
+    assert [(f["record"], f["file"], f["length"], f["circular"]) for f in res["files"]] == [("p_one", "p_one.gb", 120, True), ("p_two", "p_two.gb", 90, False)]
+    assert Document(str(tmp_path / "parts" / "p_two.gb")).sequence(0, 90) == b
+    assert "not empty" in run(capsys, "split", multi, "--out", tmp_path / "parts")[2] and "one record" in run(capsys, "split", tmp_path / "one.gb")[2]
+    # a multi-FASTA gives FASTA files; two records with one name are told apart, with a warning
+    fa = tmp_path / "m.fasta"
+    fa.write_text(f">x\n{a}\n>X\n{b}\n", encoding="utf-8")
+    res = answer(capsys, "split", fa, "--out", tmp_path / "fparts")
+    assert [f["file"] for f in res["files"]] == ["x.fasta", "X_2.fasta"] and res["warnings"] and Document.from_fasta(str(tmp_path / "fparts" / "X_2.fasta"), "X").sequence(0, 90) == b
+
+
+def test_merge_command_joins_files_and_records_and_keeps_what_the_format_keeps(tmp_path, capsys):
+    a, b = dna(120, 31), dna(90, 32)
+    Document.new_sequence("pa", a, True).write_genbank(str(tmp_path / "a.gb"), None)
+    Document.new_sequence("pb", b, False).write_genbank(str(tmp_path / "b.gb"), None)
+    out = tmp_path / "all.gb"
+    res = answer(capsys, "merge", tmp_path / "a.gb", tmp_path / "b.gb", tmp_path / "a.gb", "--out", out)
+    assert [(r["name"], r["length"], r["circular"]) for r in res["records"]] == [("pa", 120, True), ("pb", 90, False), ("a", 120, True)] and res["warnings"]
+    assert answer(capsys, "region", f"{out}#pb", 1, 90)["sequence"] == b and answer(capsys, "region", f"{out}#a", 1, 120)["sequence"] == a   # round trip
+    assert "already exists" in run(capsys, "merge", tmp_path / "a.gb", tmp_path / "b.gb", "--out", out)[2]
+    # two records with one name: the second takes its file's name; --names sets them all (one each)
+    Document.new_sequence("pa", b, False).write_genbank(str(tmp_path / "other.gb"), None)
+    clash = answer(capsys, "merge", tmp_path / "a.gb", tmp_path / "other.gb", "--out", tmp_path / "clash.gb")
+    assert [r["name"] for r in clash["records"]] == ["pa", "other"] and clash["warnings"]
+    named = answer(capsys, "merge", tmp_path / "a.gb", tmp_path / "other.gb", "--names", "x,y", "--out", tmp_path / "named.gb")
+    assert [r["name"] for r in named["records"]] == ["x", "y"] and named["warnings"] == []
+    assert "one name each" in run(capsys, "merge", tmp_path / "a.gb", tmp_path / "other.gb", "--names", "x", "--out", tmp_path / "bad.gb")[2]
+    assert "two or more" in run(capsys, "merge", tmp_path / "a.gb", "--out", tmp_path / "x.gb")[2]
+    # a record picked with FILE#NAME; a .fasta name writes only the bases and says so
+    fa = answer(capsys, "merge", f"{out}#pb", tmp_path / "a.gb", "--out", tmp_path / "two.fasta")
+    assert [r["name"] for r in fa["records"]] == ["pb", "pa"] and any("FASTA keeps only the bases" in w for w in fa["warnings"])
+    assert (tmp_path / "two.fasta").read_text(encoding="utf-8").split(">")[1:] and answer(capsys, "region", f"{tmp_path / 'two.fasta'}#pa", 1, 5)["sequence"] == a[:5]
+
+
+def test_circular_tools_give_the_same_answers_on_a_plasmid_turned_round_the_origin(tmp_path, capsys):
+    """A circle turned by k bases is the same molecule. With a restriction site, a guide, a repeat and a CDS each made to cross the origin in
+    turn, sites, guides, repeats, DNA and protein search, feature, region, pcr and kld find the same things as on the unturned plasmid."""
+    guide = "GACTCGTACGTAGCATCGAT"
+    rep, cds = dna(30, 41), "ATGGCTAAAGACGCTCATCATCACTTTGAAGCGGGTAATTGGCATTTAACCTAGGGTTAA"[:57] + "TAA"
+    n = 900
+    gb, seq = planted(tmp_path, (299, "GAATTC"), (99, guide + "TGG"), (49, rep), (599, rep), (699, cds), n=n)
+    doc = Document(str(gb))
+    doc.add_features([("CDS", "700..759", [("label", "wrapCDS")])])
+    doc.write_genbank(str(gb), None)
+    pcr_table, kld_table, codon_table = tmp_path / "p.csv", tmp_path / "k.csv", tmp_path / "c.csv"
+    codon_table.write_text("id,feature" + chr(10) + "c,wrapCDS" + chr(10), encoding="utf-8")
+    usage = ROOT / "app" / "agent" / "examples" / "codon_usage_ecoli.csv"
+    pcr_table.write_text("id,target" + chr(10) + "w,wrapCDS" + chr(10), encoding="utf-8")
+    kld_table.write_text("id,mutation" + chr(10) + "m,wrapCDS:p.Ala2Gly" + chr(10), encoding="utf-8")
+
+    def signature(path, k):
+        back = lambda p: (p - 1 + k) % n + 1   # (a position on the turned plasmid, on the original)
+        sites = sorted(back(h["start"]) for e in answer(capsys, "sites", path, "--enzymes", "EcoRI")["enzymes"] for h in e["sites"])
+        guides = [(g["guide"], g["strand"]) for g in answer(capsys, "guides", path, "--no-genome", "--top", 5000)["guides"] if g["guide"] == guide]
+        reps = [(r["kind"], r["length"]) for r in answer(capsys, "repeats", path, "--min-len", 25)["repeats"]]
+        found = sorted(back(h["start"]) for h in answer(capsys, "search", path, "GAATTC")["hits"])
+        prot = [back(h["start"]) for h in answer(capsys, "search", path, "MAKDAHHHF", "--protein")["hits"] if h["kind"] == "protein"]
+        feat = answer(capsys, "feature", path, "wrapCDS")
+        row = json.loads(run(capsys, "pcr", "check", path, pcr_table)[1])["rows"][0]["pairs"][0]
+        kld = json.loads(run(capsys, "kld", "check", path, kld_table)[1])["rows"][0]
+        codon = json.loads(run(capsys, "codon", "check", path, codon_table, "--usage", usage)[1])["rows"][0]
+        return (sites, guides, reps, found, prot, feat["length"], feat["protein"]["sequence"], row["product_size"], row["fwd"]["sequence"], kld["hgvs_protein"], kld["effect"],
+                codon["codons_changed"], codon["sequence"])
+
+    base = signature(gb, 0)
+    assert 300 in base[0] and base[1] == [(guide, 1)] and [r[0] for r in base[2]] == ["direct"] and 30 <= base[2][0][1] <= 32 and base[4] == [700] and base[9] == "p.(Ala2Gly)"
+    for k in (302, 110, 64, 614, 720):   # the site, the guide, each copy of the repeat, the CDS: the origin falls inside it
+        turned = Document(str(gb))
+        turned.rotate(k)
+        path = tmp_path / f"turned{k}.gb"
+        turned.write_genbank(str(path), None)
+        assert signature(path, k) == base, k
+    # a region through the origin, in both commands that take one
+    turned = tmp_path / "turned720.gb"
+    start = (700 - 1 - 720) % n + 1
+    assert answer(capsys, "region", turned, start, start + 59 - n)["sequence"] == cds
+    assert answer(capsys, "inspect", turned)["features"][0]["crosses_origin"] is True
+    wrapped = [c for c in answer(capsys, "checkup", turned, "--no-predict", "--no-library")["cds"] if c["cds"] == "wrapCDS"][0]   # (the checkup says where a CDS across the origin is)
+    assert (wrapped["start"], wrapped["end"], wrapped["crosses_origin"]) == (start, start + 59 - n, True)
+    # a residue that is split by the origin cannot be one block of bases: said, not turned into a change over the whole plasmid
+    split = Document(str(gb))
+    split.rotate(721)
+    split.write_genbank(str(tmp_path / "split.gb"), None)
+    kld_table.write_text("id,mutation" + chr(10) + "m,wrapCDS:p.His8Ala" + chr(10), encoding="utf-8")
+    assert "cross the origin" in json.loads(run(capsys, "kld", "check", tmp_path / "split.gb", kld_table)[1])["rows"][0]["error"]
+    # the recoded plasmid keeps the protein, the gene's place and every base outside it
+    answer(capsys, "codon", "run", turned, codon_table, "--usage", usage, "--out", tmp_path / "recoded")
+    before, after = Document(str(turned)), Document(str(tmp_path / "recoded" / "c.gb"))
+    cds_places = set(range(880, 901)) | set(range(1, 40))
+    changed = [i + 1 for i in range(n) if before.sequence(i, i + 1) != after.sequence(i, i + 1)]
+    assert changed and set(changed) <= cds_places
+    assert answer(capsys, "feature", tmp_path / "recoded" / "c.gb", "wrapCDS")["protein"]["sequence"] == answer(capsys, "feature", turned, "wrapCDS")["protein"]["sequence"]
+
+
+def test_a_limit_that_is_reached_is_always_a_warning(tmp_path, capsys, monkeypatch):
+    """A list cut short, a search stopped or a query not read in full is never silent: each says so in `warnings`, in every command."""
+    import ncbi
+    import search
+    gb, seq = planted(tmp_path, (20, "GAATTC"), (60, "GAATTC"), (120, dna(30, 9)), (220, dna(30, 9)), (160, dna(30, 10)), (260, dna(30, 10)))
+    assert any("Only the best 1 of the" in w for w in answer(capsys, "guides", gb, "--no-genome", "--top", 1)["warnings"])
+    (tmp_path / "n").mkdir()
+    holes, _ = planted(tmp_path / "n", (150, "NNNN"), n=400)   # (bases that are N: no guide over them)
+    assert any("4 base(s) are N" in w for w in answer(capsys, "guides", holes, "--no-genome")["warnings"])
+    monkeypatch.setattr(search, "MAX_HITS", 1)
+    assert any("stopped at" in w for w in answer(capsys, "search", gb, "GAATTC")["warnings"])
+    monkeypatch.setattr(repeats, "MAX_REPEATS", 1)
+    assert any("only the longest 1 of" in w for w in answer(capsys, "repeats", gb, "--min-len", "20")["warnings"])
+    monkeypatch.setattr(local_align, "MAX_HITS", 1)
+    assert any("Only 1 pieces are listed" in w for w in answer(capsys, "align", gb, seq[10:40] + seq[100:130])["warnings"])
+    asked = fake_ncbi(monkeypatch)
+    plain = ncbi.fetch
+    monkeypatch.setattr(ncbi, "fetch", lambda url, timeout=60: plain(url).replace('"idlist"', '"count": "40", "idlist"') if "esearch" in url else plain(url))
+    words = answer(capsys, "ncbi", "search", "pUC19", "--limit", 1)["warnings"]
+    assert any("40 matches; only the first 1 are shown" in w for w in words) and asked
+
+
+def test_variants_command_sees_changes_on_both_sides_of_the_origin_and_apply_writes_them(tmp_path, capsys):
+    """Reads of a circular plasmid that run over the origin are mapped as two pieces (one clipped at each end of the reference): SNPs at bases 1, 5 and
+    the last base are found with their full depth and written by --apply, the clips at the ends are not reported as breaks, and a deletion across the origin
+    is called as one deletion through the origin."""
+    from test_core_formats import read, write_bam
+    n = 600
+    gb, ref = planted(tmp_path, n=n)
+    other = lambda p: "A" if ref[p - 1] != "A" else "C"
+
+    def reads_of(sample, first=0):
+        """Reads of 100 bases every 10 along the circle `sample` (whose base 0 is reference base `first`); one over its end is two pieces."""
+        m, out = len(sample), []
+        for i, s in enumerate(range(0, len(sample), 10)):
+            seq, a = (sample + sample)[s:s + 100], min(100, m - s)
+            if s + 100 <= m:
+                out.append(read(f"r{i}", first + s, [(100, "M")], seq))
+            else:
+                out += [read(f"r{i}", first + s, [(a, "M"), (100 - a, "S")], seq), read(f"r{i}", first, [(a, "S"), (100 - a, "M")], seq, flag=2048)]
+        return out
+
+    snps = {1: other(1), 5: other(5), n: other(n)}
+    sample = "".join(snps.get(p, c) for p, c in enumerate(ref, 1))
+    bam = tmp_path / "s.bam"
+    write_bam(bam, [("p", n)], reads_of(sample))
+    fixed = tmp_path / "fixed.gb"
+    res = answer(capsys, "variants", gb, bam, "--min-depth", 3, "--apply", fixed)
+    assert [(v["position"], v["kind"], v["alternative"], v["reads"], v["depth"], v["level"]) for v in res["variants"]] == \
+           [(p, "snp", snps[p], 10, 10, "consensus") for p in (1, 5, n)]
+    corrected = Document(str(fixed))
+    assert corrected.sequence(0, None) == sample and corrected.circular
+    # 80 bases deleted across the origin (reference bases 561..600 and 1..40): one deletion, not two breaks and a gap, and --apply writes it
+    deleted = ref[40:560]
+    write_bam(bam.with_name("d.bam"), [("p", n)], reads_of(deleted, first=40))
+    cut = tmp_path / "cut.gb"
+    found = answer(capsys, "variants", gb, bam.with_name("d.bam"), "--min-depth", 3, "--apply", cut)["variants"]
+    assert [(v["position"], v["kind"], len(v["reference"]), v["level"]) for v in found] == [(561, "del", 80, "consensus")] and "through the origin" in found[0]["change"]
+    assert Document(str(cut)).sequence(0, None) == deleted
+    # reads hard-clipped at the origin hold no bases to compare with the circle: reported at the start, with that said (never dropped)
+    hard = [r if not r["flag"] else read(r["name"], 0, [(r["cigar"][0][0], "H"), r["cigar"][1]], r["seq"][r["cigar"][0][0]:], flag=2048) for r in reads_of(ref)]
+    write_bam(bam.with_name("h.bam"), [("p", n)], hard)
+    notes = answer(capsys, "variants", gb, bam.with_name("h.bam"), "--min-depth", 3)["variants"]
+    assert [(v["position"], v["kind"]) for v in notes] == [(1, "clip")] and "could not be checked" in notes[0]["change"]

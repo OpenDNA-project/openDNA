@@ -44,6 +44,19 @@ def hull(f):
     return min(s for s, _ in f.spans) + 1, max(e for _, e in f.spans)
 
 
+def arc(f, n, circular):
+    """(first, last) of a feature on the molecule, 1-based inclusive, `last` above `n` when a circular feature runs through the origin:
+    the arc from the part after the largest gap between parts (the wrap-around gap included) round to the part before it."""
+    parts = sorted(f.spans)
+    if not circular or len(parts) < 2:
+        return hull(f)
+    gaps = [(parts[i + 1][0] - parts[i][1], i + 1) for i in range(len(parts) - 1)] + [(parts[0][0] + n - parts[-1][1], 0)]
+    _, i = max(gaps)
+    if i == 0:
+        return hull(f)
+    return parts[i][0] + 1, parts[i - 1][1] + n
+
+
 def find_feature(doc, name):
     """The one feature called `name` (its label, case ignored, or #INDEX). A gene and its CDS share a label: the CDS is the one meant."""
     if name.startswith("#") and name[1:].isdigit():
@@ -239,6 +252,8 @@ def _protein_change(doc, f, seq, kind, g, usage, warnings, spec):
         raise UserError(f"{spec!r}: the first residue is after the last one.")
     span = idx[3 * (a - 1):3 * b]
     lo, hi = min(span), max(span) + 1
+    if hi - lo != len(span):
+        raise UserError(f"{spec!r}: those residues cross the origin or a gap of the feature: write the change with o. positions.")
     out = reverse_complement if f.strand < 0 else str
     if kind == "sub":
         new = one(g["alt"])
@@ -319,7 +334,9 @@ def effect(doc, seq, start, end, text, warnings):
     """(HGVS protein text of the CDS the change falls in, effect word); ("", "non-coding") outside every CDS."""
     delta = len(text) - (end - start)
     cds = [f for f in doc.features() if f.kind == "CDS"]
-    hits = [f for f in cds if len(f.spans) == 1 and f.spans[0][0] <= start and end <= f.spans[0][1] and not (start == end and start in f.spans[0])]
+    def part_of(f):   # the part of the CDS (a join, or one through the origin, has several) that holds the whole change
+        return next((k for k, (s, e) in enumerate(f.spans) if s <= start and end <= e and not (start == end and start in (s, e))), None)
+    hits = [f for f in cds if part_of(f) is not None]
     if not hits:
         touched = [f for f in cds if any(s < end and start < e for s, e in f.spans)]
         if touched:
@@ -327,10 +344,13 @@ def effect(doc, seq, start, end, text, warnings):
             return "", "overlaps CDS edge"
         return "", "non-coding"
     f = hits[0]
-    s, e = f.spans[0]
+    k = part_of(f)
     plan = genetic_code.cds_plan(doc, f)
     code = genetic_code.codon_map(plan.table)
-    old_cds, new_cds = seq[s:e], seq[s:start] + text + seq[end:e]   # (only the CDS: the rest of the plasmid does not matter)
+    changed = seq[:start] + text + seq[end:]
+    parts = [(s, e + delta) if i == k else ((s + delta, e + delta) if s >= end else (s, e)) for i, (s, e) in enumerate(f.spans)]   # (the parts after the change move)
+    old_cds = "".join(seq[s:e] for s, e in f.spans)   # (the parts in the order the feature reads them: only the CDS, the rest does not matter)
+    new_cds = "".join(changed[s:e] for s, e in parts)
     if f.strand < 0:
         old_cds, new_cds = reverse_complement(old_cds), reverse_complement(new_cds)
     old_p, new_p = to_stop(translate(old_cds[plan.frame:], code)), to_stop(translate(new_cds[plan.frame:], code))

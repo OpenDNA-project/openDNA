@@ -26,6 +26,7 @@ A **modified version you share** (a fork, a rebuilt exe with changes, a hosted c
 - change what the program shows as its own name: the window title, Help > About, the Welcome page, the update check and the
   "official download" address, which must not send its users to this project for support or updates;
 - keep the copyright and licence notices (the AGPL asks for that anyway), and say that it is a modified version.
+- mention the original project by name with a link to the GitHub page of the project. 
 
 Selling a copy, paid support, or a service built on the code are allowed by the licence; using the names or the logo to
 present it as the official project is not.

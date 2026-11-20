@@ -10,7 +10,7 @@
 //!
 //! Reads that are unmapped, duplicates or failed QC are ignored (IGV's defaults).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -52,6 +52,91 @@ pub const INS: usize = 6;
 pub const MIN_CLIP: usize = 10;
 /// Clipped reads this close (bp) are counted as one junction.
 pub const CLIP_GROUP: u64 = 10;
+/// Bases of a clip kept to say where the rest of the read came from, and how many reads of one place are kept.
+const TAIL: usize = 24;
+const MAX_SAMPLES: usize = 32;
+
+/// What a pileup of a window gathers besides the counts.
+struct Piled {
+    counts: Vec<Counts>,
+    inserted: HashMap<u64, HashMap<Vec<u8>, u32>>,
+    clipped: HashMap<u64, u32>,
+    covered: Vec<bool>,
+    /// (where the aligned part starts or ends, clip on the right of it?) -> the TAIL bases of the clip next to the aligned part.
+    samples: HashMap<(u64, bool), Vec<Vec<u8>>>,
+    /// Clip positions where a hard clip (bases not in the file) was counted near an end of a circular reference.
+    unchecked: HashSet<u64>,
+}
+
+/// True when the clipped bases `clip` continue the circle `reference` from where the aligned part ended (`right`) or started: a read
+/// that runs over the origin, not a break. Reads have errors, mostly missing or extra bases, so the TAIL bases next to the aligned part
+/// are compared by edit distance (a quarter of them may differ), not base by base.
+fn continues_circle(reference: &[u8], r: u64, right: bool, clip: &[u8]) -> bool {
+    let (n, m) = (reference.len(), clip.len().min(TAIL));
+    if n == 0 || m == 0 {
+        return false;
+    }
+    // both read away from the aligned part's edge: the clip, and the circle from where the aligned part stopped (or started)
+    let read: Vec<u8> = if right { clip[..m].to_vec() } else { clip[clip.len() - m..].iter().rev().cloned().collect() };
+    let width = m + 4;
+    let circle: Vec<u8> = (0..width)
+        .map(|i| if right { reference[(r as usize + i) % n] } else { reference[(r as usize + n * (1 + width / n) - 1 - i) % n] })
+        .collect();
+    let mut prev: Vec<usize> = (0..=width).collect();
+    for i in 1..=m {
+        let mut cur = vec![i; width + 1];
+        for j in 1..=width {
+            let cost = (!read[i - 1].eq_ignore_ascii_case(&circle[j - 1])) as usize;
+            cur[j] = (prev[j - 1] + cost).min(prev[j] + 1).min(cur[j - 1] + 1);
+        }
+        prev = cur;
+    }
+    prev.iter().min().is_some_and(|&d| d <= (m / 4).max(2))
+}
+
+/// The base at each of the TAIL places where at least 60 percent of at least 3 `samples` agree; None when they do not.
+fn consensus(samples: &[Vec<u8>]) -> Option<Vec<u8>> {
+    let good: Vec<&Vec<u8>> = samples.iter().filter(|s| s.len() == TAIL).collect();
+    if good.len() < 3 {
+        return None;
+    }
+    (0..TAIL)
+        .map(|i| {
+            let mut tally = [0usize; 4];
+            for s in &good {
+                tally[base_slot(s[i]).min(3)] += (base_slot(s[i]) < 4) as usize;
+            }
+            let (best, &n) = tally.iter().enumerate().max_by_key(|(_, n)| **n).unwrap();
+            (n * 10 >= good.len() * 6).then_some(b"ACGT"[best])
+        })
+        .collect()
+}
+
+/// Where on the circle `reference` the bases `t` lie (start of the best place, at most 2 bases different), None when no place or
+/// two places are equally good.
+fn find_on_circle(reference: &[u8], t: &[u8]) -> Option<usize> {
+    let (n, k) = (reference.len(), t.len());
+    let (mut best, mut at, mut tied) = (3usize, 0usize, false);
+    for start in 0..n {
+        let mut bad = 0;
+        for (i, b) in t.iter().enumerate() {
+            if !reference[(start + i) % n].eq_ignore_ascii_case(b) {
+                bad += 1;
+                if bad > 2 {
+                    break;
+                }
+            }
+        }
+        if bad <= 2 && k > 0 {
+            if bad < best {
+                (best, at, tied) = (bad, start, false);
+            } else if bad == best {
+                tied = true;
+            }
+        }
+    }
+    (best <= 2 && !tied).then_some(at)
+}
 
 /// A position where enough reads disagree with the reference.
 #[derive(Clone, Debug, PartialEq)]
@@ -189,8 +274,8 @@ impl Bam {
     /// Base counts per position of [start, end) (see `Counts`). Bases below `min_baseq`
     /// and reads below `min_mapq` are not counted.
     pub fn pileup(&self, seq: &str, start: u64, end: u64, min_baseq: u8, min_mapq: u8) -> io::Result<Vec<Counts>> {
-        let (counts, _, _, _) = self.pile(&mut self.reader.lock().unwrap(), seq, start, end, min_baseq, min_mapq, false)?;
-        Ok(counts)
+        let piled = self.pile(&mut self.reader.lock().unwrap(), seq, start, end, min_baseq, min_mapq, false, None)?;
+        Ok(piled.counts)
     }
 
     /// Positions of `seq` where at least `min_fraction` of at least `min_depth` reads
@@ -198,10 +283,19 @@ impl Bam {
     /// (consecutive deleted bases merged into one) and insertions (the most frequent
     /// inserted bases), plus two signs of larger changes the reads cannot spell out: "clip", where
     /// reads are clipped by at least MIN_CLIP bases (a junction: the edge of a large insertion, an
-    /// inversion or a rearrangement), and "gap", a stretch no read covers between covered ones (a
-    /// deletion longer than the reads can span). Streams the reads 1 Mb at a time with its own file handle.
-    pub fn variants(&self, seq: &str, reference: &[u8], min_depth: u32, min_fraction: f32, min_baseq: u8, min_mapq: u8) -> io::Result<Vec<Variant>> {
+    /// inversion or a rearrangement), and "gap", a stretch no read covers (a deletion longer than the reads
+    /// can span, or an uncovered end). Streams the reads 1 Mb at a time with its own file handle.
+    ///
+    /// `circular`: the reference is a circle. A read that runs over the origin (its clipped bases continue the
+    /// circle) is not a break; a break anywhere, the ends included, is reported. Reads that jump forward over the origin
+    /// (their clip is found again on the circle, fewer than half a circle on) are one "del" across the origin: its `alt` is
+    /// "across the origin" and its `reference` the deleted bases, from `pos` to the end and on from the start. A gap at both
+    /// ends is one gap through the origin in the same way. Nothing is dropped for being near an end.
+    #[allow(clippy::too_many_arguments)]
+    pub fn variants(&self, seq: &str, reference: &[u8], min_depth: u32, min_fraction: f32, min_baseq: u8, min_mapq: u8, circular: bool) -> io::Result<Vec<Variant>> {
         let len = self.length(seq).ok_or_else(|| unknown(seq))?.min(reference.len() as u64);
+        let reference = &reference[..len as usize];
+        let circle = circular.then_some(reference);
         let (mut reader, _) = open_reader(&self.path)?;
         let mut out: Vec<Variant> = Vec::new();
         // Clipped reads within CLIP_GROUP bp are one junction (both sides of a breakpoint, a target-site duplication):
@@ -209,6 +303,8 @@ impl Bam {
         let mut group: Option<(u64, u32, u32, u32, u64)> = None;
         // Kept apart from `out` until the end: a junction pushed there would split a gap still being extended.
         let mut junctions: Vec<Variant> = Vec::new();
+        let mut samples: HashMap<(u64, bool), Vec<Vec<u8>>> = HashMap::new();
+        let mut unchecked: HashSet<u64> = HashSet::new();
         // Reads crossing a junction split their evidence between its two sides: half the variant share is enough.
         let flush = |g: Option<(u64, u32, u32, u32, u64)>, out: &mut Vec<Variant>| {
             if let Some((pos, _, n, depth, _)) = g {
@@ -221,7 +317,12 @@ impl Bam {
         let mut start = 0;
         while start < len {
             let end = (start + WINDOW).min(len);
-            let (counts, inserted, clipped, covered) = self.pile(&mut reader, seq, start, end, min_baseq, min_mapq, true)?;
+            let Piled { counts, inserted, clipped, covered, samples: found, unchecked: hard } = self.pile(&mut reader, seq, start, end, min_baseq, min_mapq, true, circle)?;
+            for (key, list) in found {
+                let kept = samples.entry(key).or_default();
+                kept.extend(list.into_iter().take(MAX_SAMPLES.saturating_sub(kept.len())));
+            }
+            unchecked.extend(hard);
             for (i, c) in counts.iter().enumerate() {
                 let pos = start + i as u64;
                 let depth: u32 = c[..6].iter().sum();
@@ -270,11 +371,66 @@ impl Bam {
             start = end;
         }
         flush(group, &mut junctions);
-        // Near the ends of the sequence, clipped reads are reads running past it (over the origin of a circular
-        // plasmid; telling them by clip length fails: a whole-plasmid read ending at a break carries the rest of the
-        // plasmid as its clip), and a gap there is not between covered stretches.
-        junctions.retain(|v| v.pos >= CLIP_GROUP && v.pos + CLIP_GROUP < len);
-        out.retain(|v| v.kind != "gap" || (v.pos > 0 && v.pos + (v.reference.len() as u64) < len));
+        if let Some(rf) = circle {
+            let n = rf.len() as u64;
+            // A hard clip has no bases in the file: near an end of a circle it cannot be told from a read running over the origin.
+            // It is reported, with that said, never dropped.
+            for j in junctions.iter_mut() {
+                if unchecked.iter().any(|&u| u.abs_diff(j.pos) <= CLIP_GROUP) {
+                    j.alt = "hard-clipped reads near an end of a circular sequence: they may be reads running over the origin (their bases are not in the file, so this could not be checked)".into();
+                }
+            }
+            // Reads that leave the reference at p1 and go on at q < p1 jumped forward over the origin: a deletion across it,
+            // when that is the shorter reading (the other is a duplication of q..p1).
+            let near = |r: u64, p: u64| r.min(n - 1).abs_diff(p) <= CLIP_GROUP;
+            let mut consumed = vec![false; junctions.len()];
+            let mut crossing: Vec<Variant> = Vec::new();
+            for i in 0..junctions.len() {
+                if consumed[i] {
+                    continue;
+                }
+                let p = junctions[i].pos;
+                let gather = |right: bool| -> Vec<Vec<u8>> {
+                    samples.iter().filter(|((r, side), _)| *side == right && near(*r, p)).flat_map(|(_, v)| v.iter().cloned()).collect()
+                };
+                let jump = match consensus(&gather(true)) {
+                    Some(t) => find_on_circle(rf, &t).map(|q| (p, q as u64)),
+                    None => consensus(&gather(false)).and_then(|h| find_on_circle(rf, &h)).map(|s| ((s as u64 + TAIL as u64) % n, p)),
+                };
+                if let Some((p1, q)) = jump {
+                    if q < p1 && ((n - p1) + q) * 2 < n {
+                        let deleted: String = rf[p1 as usize..].iter().chain(&rf[..q as usize]).map(|b| b.to_ascii_uppercase() as char).collect();
+                        let (count, depth) = (junctions[i].count, junctions[i].depth);
+                        crossing.push(Variant { pos: p1, kind: "del", reference: deleted, alt: "across the origin".into(), count, depth });
+                        consumed[i] = true;
+                        for k in 0..junctions.len() {
+                            if !consumed[k] && (junctions[k].pos.abs_diff(q) <= CLIP_GROUP || junctions[k].pos.abs_diff(p1) <= CLIP_GROUP) {
+                                consumed[k] = true;
+                            }
+                        }
+                    }
+                }
+            }
+            junctions = junctions.into_iter().zip(consumed).filter(|(_, gone)| !gone).map(|(j, _)| j).collect();
+            let deleted: Vec<(u64, u64)> = crossing.iter().map(|d| (d.pos, d.pos + d.reference.len() as u64)).collect();
+            out.extend(crossing);
+            // An uncovered stretch at the start and at the end of a circle is one stretch through the origin.
+            let first = out.iter().position(|v| v.kind == "gap" && v.pos == 0);
+            let last = out.iter().rposition(|v| v.kind == "gap" && v.pos + v.reference.len() as u64 == n);
+            if let (Some(f), Some(l)) = (first, last) {
+                if f != l {
+                    let head = out.remove(f);
+                    let l = if l > f { l - 1 } else { l };
+                    out[l].reference.push_str(&head.reference);
+                    out[l].alt = "across the origin".into();
+                }
+            }
+            // The uncovered stretch of a deletion through the origin is that deletion, not a second finding.
+            out.retain(|v| {
+                let (gs, ge) = (v.pos, v.pos + v.reference.len() as u64);
+                v.kind != "gap" || !deleted.iter().any(|&(ds, de)| [0, n].iter().any(|&shift| gs + shift + CLIP_GROUP >= ds && ge + shift <= de + CLIP_GROUP))
+            });
+        }
         out.extend(junctions);
         out.sort_by_key(|v| v.pos); // stable: the order of variants at one position is kept
         Ok(out)
@@ -284,13 +440,17 @@ impl Bam {
     /// bases seen before each position ({position: {bases: reads}}) and how many reads are
     /// clipped (soft or hard, at least MIN_CLIP bases) at each position ({position: reads}), and
     /// which positions any read spans, whatever its base or mapping quality (for gaps).
-    #[allow(clippy::type_complexity)]
-    fn pile(&self, reader: &mut Reader, seq: &str, start: u64, end: u64, min_baseq: u8, min_mapq: u8, with_ins: bool) -> io::Result<(Vec<Counts>, HashMap<u64, HashMap<Vec<u8>, u32>>, HashMap<u64, u32>, Vec<bool>)> {
+    /// `circle`: the reference when it is circular: a clip near an end whose bases continue the circle is a read over the
+    /// origin, and is not counted.
+    #[allow(clippy::too_many_arguments)]
+    fn pile(&self, reader: &mut Reader, seq: &str, start: u64, end: u64, min_baseq: u8, min_mapq: u8, with_ins: bool, circle: Option<&[u8]>) -> io::Result<Piled> {
         let len = self.length(seq).ok_or_else(|| unknown(seq))?;
         let end = end.min(len);
         let mut counts = vec![[0u32; 7]; end.saturating_sub(start) as usize];
         let mut inserted: HashMap<u64, HashMap<Vec<u8>, u32>> = HashMap::new();
         let mut clipped: HashMap<u64, u32> = HashMap::new();
+        let mut samples: HashMap<(u64, bool), Vec<Vec<u8>>> = HashMap::new();
+        let mut unchecked: HashSet<u64> = HashSet::new();
         let mut covered = vec![false; if with_ins { counts.len() } else { 0 }];
         let inside = |p: u64| p >= start && p < end;
         self.for_each_record(reader, seq, start, end, |record, rstart| {
@@ -316,11 +476,13 @@ impl Bam {
             let quals = quals.as_bytes();
             let (mut r, mut q) = (rstart, 0usize);
             let mut clip_counted_at = None;
+            let mut aligned = false;   // (a clip before any aligned base is on the left of the read's alignment)
             for op in record.cigar().iter() {
                 let op = op?;
                 let n = op.len();
                 match op.kind() {
                     Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch => {
+                        aligned = true;
                         for k in 0..n {
                             let pos = r + k as u64;
                             // 255 = "no qualities stored": counted.
@@ -333,6 +495,7 @@ impl Bam {
                         q += n;
                     }
                     Kind::Insertion => {
+                        aligned = true;
                         if inside(r) {
                             counts[(r - start) as usize][INS] += 1;
                             if with_ins {
@@ -343,6 +506,7 @@ impl Bam {
                         q += n;
                     }
                     Kind::Deletion => {
+                        aligned = true;
                         for k in 0..n as u64 {
                             if inside(r + k) {
                                 counts[(r + k - start) as usize][DEL] += 1;
@@ -350,11 +514,34 @@ impl Bam {
                         }
                         r += n as u64;
                     }
-                    Kind::Skip => r += n as u64,
+                    Kind::Skip => {
+                        aligned = true;
+                        r += n as u64;
+                    }
                     Kind::SoftClip | Kind::HardClip => {
-                        if with_ins && n >= MIN_CLIP && inside(r) && clip_counted_at != Some(r) {
-                            *clipped.entry(r).or_default() += 1;   // r: where the aligned part starts (or ended)
-                            clip_counted_at = Some(r);
+                        // a clip at the very end of the reference (r == len) is a break there too: counted at the last base
+                        let at_end = aligned && r == len && end == len;
+                        if with_ins && n >= MIN_CLIP && (inside(r) || at_end) && clip_counted_at != Some(r) {
+                            let clip: Vec<u8> = if op.kind() == Kind::SoftClip { (q..q + n).map(|i| bases.get(i).unwrap_or(b'N')).collect() } else { Vec::new() };
+                            let near_end = if aligned { r + CLIP_GROUP >= len } else { r <= CLIP_GROUP };
+                            let mut counted = true;
+                            if let (Some(rf), true) = (circle, near_end) {
+                                if op.kind() == Kind::HardClip {
+                                    unchecked.insert(r.min(len - 1));
+                                } else if continues_circle(rf, r, aligned, &clip) {
+                                    counted = false;   // a read running over the origin
+                                }
+                            }
+                            if counted {
+                                *clipped.entry(r.min(len - 1)).or_default() += 1;   // r: where the aligned part starts (or ended)
+                                clip_counted_at = Some(r);
+                                if clip.len() >= TAIL {
+                                    let kept = samples.entry((r, aligned)).or_default();
+                                    if kept.len() < MAX_SAMPLES {
+                                        kept.push(if aligned { clip[..TAIL].to_vec() } else { clip[clip.len() - TAIL..].to_vec() });
+                                    }
+                                }
+                            }
                         }
                         if op.kind() == Kind::SoftClip {
                             q += n;
@@ -365,7 +552,7 @@ impl Bam {
             }
             Ok(true)
         })?;
-        Ok((counts, inserted, clipped, covered))
+        Ok(Piled { counts, inserted, clipped, covered, samples, unchecked })
     }
 
     /// True once the block totals of `seq` are computed (wide coverage is then instant).
@@ -655,18 +842,29 @@ mod tests {
 
         // Variants against an all-A reference: the G (half of 2 reads), the TT insertion and
         // the 3-base deletion merged into one; nothing from the soft-clipped CC (under MIN_CLIP).
-        let found = bam.variants("ref", &vec![b'A'; 1000], 1, 0.5, 0, 0).unwrap();
+        let found = bam.variants("ref", &vec![b'A'; 1000], 1, 0.5, 0, 0, false).unwrap();
         let small = |kind: &str| ["snp", "ins", "del"].contains(&kind);
         let brief: Vec<_> = found.iter().filter(|v| small(v.kind)).map(|v| (v.pos, v.kind, v.reference.as_str(), v.alt.as_str(), v.count, v.depth)).collect();
         assert_eq!(brief, vec![(17, "snp", "A", "G", 1, 2), (35, "ins", "", "TT", 1, 1), (55, "del", "AAA", "", 1, 1)]);
-        // The 12-base clips at 700 are a junction; stretches no read covers between reads are gaps (not those at the ends).
+        // The 12-base clips at 700 are a junction, and so are the three at 995 (this reference is linear: nothing is dropped for being near
+        // an end); stretches no read covers are gaps, the ends included.
         let big: Vec<_> = found.iter().filter(|v| !small(v.kind)).map(|v| (v.pos, v.kind, v.reference.len(), v.count)).collect();
-        assert_eq!(big, vec![(25, "gap", 5, 0), (40, "gap", 10, 0), (63, "gap", 637, 0), (700, "clip", 0, 4), (708, "gap", 192, 0), (908, "gap", 77, 0)]);
+        assert_eq!(big, vec![(0, "gap", 10, 0), (25, "gap", 5, 0), (40, "gap", 10, 0), (63, "gap", 637, 0), (700, "clip", 0, 4), (708, "gap", 192, 0), (908, "gap", 77, 0), (995, "gap", 5, 0), (995, "clip", 0, 3)]);
+        // The same reads on a circle whose first 12 bases and last 5 are the three reads clip: they run over the origin (no break there), and the
+        // uncovered start and end are one gap through the origin; the clips at 700 are still a break.
+        let mut circle = vec![b'A'; 1000];
+        circle[..12].copy_from_slice(b"CCCCCCCCCCCC");
+        circle[995..].copy_from_slice(b"CCCCC");
+        let round: Vec<_> = bam.variants("ref", &circle, 1, 0.5, 0, 0, true).unwrap().iter().filter(|v| !small(v.kind)).map(|v| (v.pos, v.kind, v.reference.len(), v.alt.clone(), v.count)).collect();
+        assert_eq!(round[0], (25, "gap", 5, String::new(), 0));
+        assert!(round.contains(&(700, "clip", 0, String::new(), 4)) && !round.iter().any(|v| v.1 == "clip" && v.0 > 900), "{round:?}");
+        assert!(round.contains(&(995, "gap", 15, "across the origin".to_string(), 0)), "{round:?}");
+        assert!(!round.iter().any(|v| v.1 == "gap" && v.0 == 0));
         // Gaps are where no read is, whatever the quality filters: none extra when every read is below min_mapq.
-        let filtered = bam.variants("ref", &vec![b'A'; 1000], 1, 0.5, 0, 61).unwrap();
+        let filtered = bam.variants("ref", &vec![b'A'; 1000], 1, 0.5, 0, 61, false).unwrap();
         let gaps = |vs: &[Variant]| vs.iter().filter(|v| v.kind == "gap").map(|v| (v.pos, v.reference.len())).collect::<Vec<_>>();
         assert_eq!(gaps(&filtered), gaps(&found));
         // depth < 3: no small variants (the clip has its 3 reads, gaps need none)
-        assert!(!bam.variants("ref", &vec![b'A'; 1000], 3, 0.5, 0, 0).unwrap().iter().any(|v| small(v.kind)));
+        assert!(!bam.variants("ref", &vec![b'A'; 1000], 3, 0.5, 0, 0, false).unwrap().iter().any(|v| small(v.kind)));
     }
 }

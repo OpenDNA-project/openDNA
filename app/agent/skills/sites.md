@@ -16,7 +16,7 @@ JSON: `enzymes` with, for each, `site`, `notation` (`G^AATTC`; a Type IIS enzyme
 
 ## What to tell the user
 
-The enzymes and where they cut, in plain words; for a digest the fragment sizes. An enzyme that cuts more than once is not suitable to linearise. Enzymes outside openDNA's list (about 50 common ones) are not searched: say so if the user names one it does not know.
+The enzymes and where they cut, in plain words; for a digest the fragment sizes. An enzyme that cuts more than once is not suitable to linearise. Four- and five-base cutters are not in the default list, and there is no option for the length: name them with `--enzymes` when the user wants one. Enzymes outside openDNA's list (about 50 common ones) are not searched: say so if the user names one it does not know.
 
 ## Errors you may see
 

@@ -18,7 +18,7 @@ KLD-R1,TTAGCGGCATCGATCGAA
 order PRIMERS.csv NEW_FILE [--format idt|plain] [--scale 25nm] [--purification STD]
 ```
 
-`idt` (default): `Well Position,Name,Sequence,Scale,Purification`, 96 primers per file (`NEW_FILE_plate2.csv` ... for more). `plain`: name,sequence. Scales: 25nm, 100nm, 250nm, 1um, 2um, 5um, 10um; purifications: STD, PAGE, HPLC, IEHPLC, RNASE, PAGE_HPLC. The user decides the scale and purification: **ask, do not assume.** `NEW_FILE` must not exist.
+`idt` (default): `Well Position,Name,Sequence,Scale,Purification`, 96 primers per file (`NEW_FILE_plate2.csv` ... for more). `plain`: name,sequence. Scales: 25nm, 100nm, 250nm, 1um, 2um, 5um, 10um; purifications: STD, PAGE, HPLC, IEHPLC, RNASE, PAGE_HPLC. The user decides the scale and purification: **ask, do not assume.** `NEW_FILE` must not exist. The file is always CSV text, whatever its extension: name it `.csv` (an `.xlsx` name would not open in Excel).
 
 ## Example
 

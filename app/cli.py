@@ -5,7 +5,7 @@
 
 Commands: `skills list|show NAME` (the recipes in app/agent/), `inspect FILE`, `feature FILE NAME`, `region FILE START END`;
 batches with a table, `check` then `run`: `kld`, `pcr`, `recombineering`, `codon`, `gibson`; read-only analyses (app/cli_tools.py): `sites`, `guides`,
-`repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`; files: `export`, `order`; network: `ncbi`.
+`repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`, `synthesis`; files: `export`, `order`; network: `ncbi`; optional tools beside openDNA (pLannotate, the Terminal's): `wsltools`.
 Everything prints JSON (skills print Markdown). An error is one line `ERROR: ...` on stderr and exit code 1, never a traceback.
 Positions are 1-based and inclusive, as in the GenBank file and HGVS (`region f.gb 10 20` is bases 10 to 20).
 """
@@ -33,14 +33,46 @@ def qt_setup():
     return app
 
 
+def file_records(path):
+    """[name] of the records of a FASTA file or of a GenBank file with several LOCUS lines; None for an ordinary one-record file."""
+    from opendna_core import Fasta
+    import multigb
+    from reference import is_fasta_file
+    if is_fasta_file(path):
+        return [n for n, _ in Fasta(str(path)).sequences()]
+    return [n for n, *_ in multigb.records(path)] if multigb.is_multi_genbank(path) else None
+
+
 def load(path):
+    """The Document of a file. A file of several records (multi-FASTA, multi-record GenBank) is read one record at a time: `FILE#NAME`
+    (the file need not be split); a bare file name is accepted when it holds exactly one record."""
     from opendna_core import Document
+    import multigb
+    from reference import is_fasta_file
+    path = str(path)
+    record = None
+    if not Path(path).is_file() and "#" in path:
+        path, record = path.rsplit("#", 1)
     if not Path(path).is_file():
         raise UserError(f"File not found: {path}")
     try:
-        return Document(str(path))
+        names = file_records(path)
+        if names is None:
+            if record is not None:
+                raise UserError(f"{path} holds one record: write the file name without #{record}.")
+            return Document(path)
+        listed = ", ".join(names[:8]) + (", ..." if len(names) > 8 else "")
+        if record is None:
+            if len(names) != 1:
+                raise UserError(f"{path} holds {len(names)} records ({listed}): name one as {path}#NAME, or write one file per record with `split`.")
+            record = names[0]
+        if record not in names:
+            raise UserError(f"{path} has no record called {record!r}. Its records: {listed}.")
+        return Document.from_fasta(path, record) if is_fasta_file(path) else multigb.read_record(path, record)
+    except UserError:
+        raise
     except Exception as e:   # the core raises ValueError / OSError with its own words
-        raise UserError(f"Cannot read {path} as GenBank: {e}")
+        raise UserError(f"Cannot read {path}: {e}")
 
 
 def feature_dna(doc, f):
@@ -65,12 +97,11 @@ def protein(doc, f):
 
 
 def cmd_inspect(args):
-    from mutation import hull
+    from mutation import arc
     doc = load(args.file)
     out = {"file": str(args.file), "name": doc.name, "length": doc.length, "circular": doc.circular, "features": []}
     for f in doc.features():
-        start, end = hull(f)
-        item = {"index": f.index, "kind": f.kind, "label": f.label, "start": start, "end": end, "strand": f.strand, "location": f.location}
+        item = {"index": f.index, "kind": f.kind, "label": f.label, **span_fields(doc, *arc(f, doc.length, doc.circular)), "strand": f.strand, "location": f.location}
         if f.kind == "CDS":
             item["protein"] = protein(doc, f)
         out["features"].append(item)
@@ -78,14 +109,13 @@ def cmd_inspect(args):
 
 
 def cmd_feature(args):
-    from mutation import find_feature, hull
+    from mutation import arc, find_feature
     doc = load(args.file)
     f = find_feature(doc, args.name)
-    start, end = hull(f)
     dna = feature_dna(doc, f)
     if dna is None:
-        raise UserError(f"{args.name!r} crosses the origin of the plasmid: read it with `region` in two parts.")
-    out = {"index": f.index, "kind": f.kind, "label": f.label, "start": start, "end": end, "strand": f.strand, "length": len(dna), "sequence": dna}
+        raise UserError(f"{args.name!r} has a part outside the sequence.")
+    out = {"index": f.index, "kind": f.kind, "label": f.label, **span_fields(doc, *arc(f, doc.length, doc.circular)), "strand": f.strand, "length": len(dna), "sequence": dna}
     if f.kind == "CDS":
         out["protein"] = protein(doc, f)
     return out
@@ -93,8 +123,12 @@ def cmd_feature(args):
 
 def cmd_region(args):
     doc = load(args.file)
-    if not 1 <= args.start <= args.end <= doc.length:
-        raise UserError(f"Positions must satisfy 1 <= START <= END <= {doc.length} (a region across the origin: ask for it in two parts).")
+    n = doc.length
+    if doc.circular and 1 <= args.end < args.start <= n:   # across the origin: START..N then 1..END
+        return {"start": args.start, "end": args.end, "length": n - args.start + 1 + args.end, "crosses_origin": True,
+                "sequence": doc.sequence(args.start - 1, n) + doc.sequence(0, args.end)}
+    if not 1 <= args.start <= args.end <= n:
+        raise UserError(f"Positions must satisfy 1 <= START <= END <= {n}" + (" (or START > END across the origin of a circular sequence)." if doc.circular else " (this sequence is linear)."))
     return {"start": args.start, "end": args.end, "length": args.end - args.start + 1, "sequence": doc.sequence(args.start - 1, args.end)}
 
 
@@ -327,16 +361,25 @@ def cmd_kld(args):
 
 
 def target_range(doc, text):
-    """(first, last), 1-based inclusive, of a feature (name or #INDEX) or of START..END."""
+    """(first, last), 1-based inclusive, of a feature (name or #INDEX) or of START..END. On a circular sequence a target through the origin has
+    `last` above the length (START..END with START > END, or a feature that crosses it): the bases first..length then 1..last - length."""
     import re
-    from mutation import find_feature, hull
+    from mutation import arc, find_feature
     m = re.fullmatch(r"(\d+)\.\.(\d+)", text)
     if not m:
-        return hull(find_feature(doc, text))
+        return arc(find_feature(doc, text), doc.length, doc.circular)
     first, last = int(m.group(1)), int(m.group(2))
+    if doc.circular and 1 <= last < first <= doc.length:
+        return first, last + doc.length
     if not 1 <= first < last <= doc.length:
-        raise UserError(f"{text!r}: positions must satisfy 1 <= START < END <= {doc.length}.")
+        raise UserError(f"{text!r}: positions must satisfy 1 <= START < END <= {doc.length}" + (" (or START > END across the origin)." if doc.circular else " (this sequence is linear)."))
     return first, last
+
+
+def span_fields(doc, first, last):
+    """The `start`, `end` (1-based, `end` below `start` when the target runs through the origin) of a target from `target_range`."""
+    n = doc.length
+    return {"start": first, "end": last - n if last > n else last, **({"crosses_origin": True} if last > n else {})}
 
 
 def pcr_row(doc, row, args):
@@ -362,7 +405,16 @@ def pcr_row(doc, row, args):
                     "mark": primer_panel.worst(checks["fwd"] + checks["rev"]),
                     **{k: {"sequence": p[k]["seq"], "tm": round(p[k]["tm"], 1), "gc": round(p[k]["gc"]), "start": p[k]["start"] + 1, "end": p[k]["end"],
                            "checks": [{"check": n, "level": lv, "text": t} for n, lv, t in checks[k]]} for k in ("fwd", "rev")}})
-    rec.update(status="ok", start=first, end=last, pairs=out)
+    rec.update(status="ok", **span_fields(doc, first, last), pairs=out)
+    if pairs.more:
+        rec["warnings"] = [f"Only the best {len(pairs)} pairs are listed: other pairs were found."]
+    if pairs.window is not None:
+        rec.setdefault("warnings", []).append(f"The search window was narrowed to {pairs.window} bases on each side: on this circular plasmid a wider one would make the two sides meet.")
+    if all(p["mark"] == "bad" for p in out):   # (the window is the user's choice: only offer a wider one)
+        window = opts.get("window", primer_design.DEFAULT_WINDOW)
+        rec.setdefault("warnings", []).append(f"Every pair is marked bad with --window {window}. Tell the user, and offer to try a wider search window"
+                           f"{' (for example --window 30)' if window < 30 else ''}: the primers may then start or end outside the target, so the product is longer than the target. "
+                           f"Do not widen it without their OK.")
     return rec
 
 
@@ -419,14 +471,15 @@ def rec_row(genome, row, args, folder, cassettes, out_dir):
         rec["error"] = str(e)
         return rec
     warnings = []
+    covered = [(first - 1, min(last, genome.length))] + ([(0, last - genome.length)] if last > genome.length else [])   # (a region through the origin is two pieces)
     for f in genome.features():   # (by the parts of a feature: one that joins the two ends of the plasmid is not "all of it")
-        if f.kind == "source" or not any(s < last and first - 1 < e for s, e in f.spans):
+        if f.kind == "source" or not any(s < b and a < e for s, e in f.spans for a, b in covered):
             continue
-        if all(first - 1 <= s and e <= last for s, e in f.spans):
+        if all(any(a <= s and e <= b for a, b in covered) for s, e in f.spans):
             warnings.append(f"The region removes the {f.kind} {f.label!r} ({f.location}).")
         else:
             warnings.append(f"The region cuts the {f.kind} {f.label!r} ({f.location}): only part of it is replaced.")
-    rec.update(status="ok", start=first, end=last, replaced_bp=last - first + 1, cassette_bp=cassette.length, orientation=orientation,
+    rec.update(status="ok", **span_fields(genome, first, last), replaced_bp=last - first + 1, cassette_bp=cassette.length, orientation=orientation,
                left_homology=d.left, right_homology=d.right, warnings=warnings, primers=primer_records(d.rows))
     if writing:
         if d.rows:

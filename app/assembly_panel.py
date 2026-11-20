@@ -1461,7 +1461,7 @@ class AssemblyPanel(QWidget):
 
 
 class RecombineeringPanel(AssemblyPanel):
-    """Tools > Recombineering: the assembly panel with its one method, for a genome and a cassette (see docs/specs/recombineering.md)."""
+    """Tools > Recombineering: the assembly panel with its one method, for a genome and a cassette."""
     METHODS = AssemblyPanel.METHODS[:4] + ["Recombineering"]
     KLD = False
     WIP = [None, "golden_gate", "sidewinder", None, "recombineering"]

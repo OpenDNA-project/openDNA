@@ -1,4 +1,4 @@
-"""Primer binding (docs/TESTING.md section 3): where a primer anneals, with mismatches, tails, both strands, circular
+"""Primer binding: where a primer anneals, with mismatches, tails, both strands, circular
 templates, the annealing extension, primer pairs and their product, the non-specific priming report, a FASTA genome.
 
 The rules, from core/src/primers.rs (what these tests pin down):

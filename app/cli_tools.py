@@ -18,8 +18,10 @@ def csv_list(text):
     return [t.strip() for t in (text or "").split(",") if t.strip()]
 
 
-def answer(settings, **fields):
-    return {"settings": settings, "warnings": C.setting_warnings(settings), **fields}
+def answer(settings, caps=(), **fields):
+    """The JSON of an analysis. `caps`: a text for every limit the run reached (a list cut short, a search stopped, a sequence not read in
+    full): each is a warning, so a cut answer is never taken for the whole one."""
+    return {"settings": settings, "warnings": C.setting_warnings(settings) + [c for c in caps if c], **fields}
 
 
 def pick_enzymes(names):
@@ -112,8 +114,8 @@ def cmd_guides(args):
     settings = {"cas9": {"nuclease": {"value": nuc.name, "source": "command line"}, "max_mismatches": max_mm,
                          "region": {"value": args.region or "whole sequence", "source": "command line" if args.region else "default"}},
                 "background_genome": {"value": genome_name, "source": "none: --no-genome" if args.no_genome else "openDNA settings (Primers > Options)" if ref else "none set: no genome check"}}
-    note = f"the best {len(shown)} of {len(found)} are listed (--top)" if len(found) > len(shown) else ""
-    return answer(settings, guides_found=len(found), note=note, guides=guides)
+    cap = f"Only the best {len(shown)} of the {len(found)} guides found are listed and checked (--top N lists more)." if len(found) > len(shown) else ""
+    return answer(settings, caps=[cap, cas9.ambiguity_note(seq)], guides_found=len(found), guides=guides)
 
 
 # ---- repeats: what two sequences share (the Compare view of Local Align) -----------------------------------------------------------
@@ -128,12 +130,30 @@ def cmd_repeats(args):
     sa = a.sequence(0, None)
     same = b is a
     sb = sa if same else b.sequence(0, None)
-    res = repeats.pair_repeats(sa, sb, settings["repeats"]["min_length"]["value"], settings["repeats"]["mismatches"]["value"], same=same)
+    circular = a.circular and b.circular   # (a stretch may run through the origin when both are circles)
+    res = repeats.pair_repeats(sa, sb, settings["repeats"]["min_length"]["value"], settings["repeats"]["mismatches"]["value"], same=same, circular=circular)
     identical = not same and sa.upper() == sb.upper()
-    note = "; ".join(n for n in (res.capped, "the two sequences are identical: they share their whole length (listed first)" if identical else "") if n)
-    return answer(settings, compared={"a": Path(args.file).name, "b": Path(args.other or args.file).name, "same_file": same, "identical_sequences": identical},
+    mixed = "One sequence is circular and the other linear: stretches through an origin are not looked for." if a.circular != b.circular else ""
+    note = "the two sequences are identical: they share their whole length (listed first)" if identical else ""
+    return answer(settings, caps=[res.capped, mixed], compared={"a": Path(args.file).name, "b": Path(args.other or args.file).name, "same_file": same, "identical_sequences": identical},
                   repeats=[{"kind": k, "start_in_a": i + 1, "end_in_a": i + n, "start_in_b": j + 1, "end_in_b": j + n, "length": n, "differences": d}
                            for k, i, j, n, d in res.repeats], note=note)
+
+
+# ---- synthesis: will a synthesis company make this fragment quickly? (the Synthesis tab's local row) --------------------------------
+
+def cmd_synthesis(args):
+    import synthesis_salis
+    from codon_tools import circular_bases
+    doc = C.load(args.file)
+    a, b = region_bounds(doc, args.region)
+    seq = circular_bases(doc, a, b)   # (a region through the origin is joined into one straight piece)
+    result = synthesis_salis.evaluate(seq)
+    settings = {"synthesis": {"model": {"value": "Synthesis Success Calculator (random forest, 9 features)", "source": "fixed"},
+                              "region": {"value": args.region or "whole sequence", "source": "command line" if args.region else "default"}}}
+    circle = "The file is a circular sequence, but the model reads it as a straight piece, as published." if doc.circular and not args.region else ""
+    return answer(settings, caps=[circle], citation=synthesis_salis.CITATION, bases=len(seq), region=C.span_fields(doc, a + 1, b),   # (a region through the origin: end below start, crosses_origin)
+                  predicted_quick_synthesis=result["outcome"], probability=result["probability"], features=result["features"])
 
 
 # ---- search: the search bar's engine -----------------------------------------------------------------------------------------------
@@ -147,7 +167,7 @@ def cmd_search(args):
     n = doc.length
     return answer({"search": {"both_strands": {"value": opts.both}, "fuzzy_mismatches": {"value": opts.fuzzy}, "protein_motif_in_translations": {"value": opts.translations},
                               "feature_details": {"value": opts.details}, "enzyme_names": {"value": opts.enzymes}}},
-                  query=args.query, note=note, hits=[{"kind": h.kind, "label": h.label, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "mismatches": h.mismatches,
+                  caps=[note], query=args.query, hits=[{"kind": h.kind, "label": h.label, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "mismatches": h.mismatches,
                                                       **({"feature_index": h.feature} if h.feature is not None else {})} for h in hits])
 
 
@@ -168,18 +188,23 @@ def cmd_align(args):
     import local_align
     doc = C.load(args.file)
     query = query_bases(args.query)
-    hits = local_align.find_hits(doc.sequence(0, None), query, doc.circular)
+    import tool_settings
+    with tool_settings_block(local_align.TOOL, {"time_limit": "--time-limit"}, args) as limit,             tool_settings_block(tool_settings.PERFORMANCE, {"cores": "--threads"}, args) as cores:
+        hits, notes = local_align.find_hits(doc.sequence(0, None), query, doc.circular)
     n = doc.length
     top = doc.sequence(0, None)
     rows = [{"piece": i + 1, "query_start": h.qstart + 1, "query_end": h.qend, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "identity": round(h.identity, 4),
              "score": h.score, "mismatches": len(h.mismatches), "insertions": len(h.insertions), "deletions": len(h.deletions),
-             "mismatch_list": [{"position": p + 1, "plasmid_base": top[p], "query_base": q} for p, q in h.mismatches],   # (bases as on the plasmid's top strand)
-             "insertion_list": [{"after_plasmid_base": p, "extra_bases_in_query": k} for p, k in h.insertions],
-             "deletion_list": [{"start": a + 1, "end": b} for a, b in h.deletions],   # (plasmid bases the query lacks)
+             # (bases as on the plasmid's top strand; a piece across the origin has positions past n: wrapped)
+             "mismatch_list": [{"position": p % n + 1, "plasmid_base": top[p % n], "query_base": q} for p, q in h.mismatches],
+             "insertion_list": [{"after_plasmid_base": end1(p, n), "extra_bases_in_query": k} for p, k in h.insertions],
+             "deletion_list": [{"start": a % n + 1, "end": end1(b, n)} for a, b in h.deletions],   # (plasmid bases the query lacks)
              "before": local_align.junction_text(hits[i - 1], h, n, doc.circular) if i else "start of the query"} for i, h in enumerate(hits)]
-    note = f"at most {local_align.MAX_HITS} pieces are listed" if len(hits) >= local_align.MAX_HITS else ""
-    return answer({"align": {"query_bp": {"value": len(query)}, "max_pieces": {"value": local_align.MAX_HITS}}}, summary=local_align.summarize(hits, n, doc.circular) or "No hit",
-                  note=note, pieces=rows)
+    cap = f"Only {local_align.MAX_HITS} pieces are listed (the limit): weaker ones are left out." if len(hits) >= local_align.MAX_HITS else ""
+    if local_align.time_limit_note(notes):
+        notes.append(f"To search every candidate place, run again with --time-limit 0 (or a larger value); the window's setting is {local_align.WHERE_TIME_LIMIT}.")
+    return answer({"align": {"query_bp": {"value": len(query)}, "max_pieces": {"value": local_align.MAX_HITS}, **limit, **cores}}, caps=[cap, *notes],
+                  summary=local_align.summarize(hits, n, doc.circular) or "No hit", pieces=rows)
 
 
 # ---- msa: several sequences aligned (the Multiple alignment tab) --------------------------------------------------------------------
@@ -191,9 +216,21 @@ def new_path(path):
     return Path(path)
 
 
+def records_of(files):
+    """[(label, Document)] for the files given: a file of several records gives all of them (label FILE#NAME), `FILE#NAME` gives that one."""
+    out = []
+    for f in files:
+        names = C.file_records(f) if Path(f).is_file() else None
+        if names is None or len(names) == 1:
+            out.append((f, C.load(f)))
+        else:
+            out += [(f"{f}#{n}", C.load(f"{f}#{n}")) for n in names]
+    return out
+
+
 def cmd_msa(args):
     import msa
-    docs = [C.load(f) for f in args.files]
+    labels, docs = zip(*records_of(args.files)) if args.files else ((), ())
     names = msa.unique_names([d.name for d in docs])
     out = new_path(args.out) if args.out else None
     try:
@@ -205,7 +242,85 @@ def cmd_msa(args):
     return answer({"msa": {"aligner": {"value": f"built-in progressive aligner (up to {msa.MAX_BUILTIN} bp each)"}, "identity_against": {"value": names[0]}}},
                   width=aln.width, consensus=aln.consensus(),
                   sequences=[{"name": nm, "file": str(f), "length": d.length, "identity_to_first": round(aln.identity(i), 2), "aligned": row}
-                             for i, (nm, f, d, row) in enumerate(zip(aln.names, args.files, docs, aln.rows))], **({"file": str(out)} if out else {}))
+                             for i, (nm, f, d, row) in enumerate(zip(aln.names, labels, docs, aln.rows))], **({"file": str(out)} if out else {}))
+
+
+# ---- split / merge: files of several records (a multi-FASTA, a GenBank file of several LOCUS records) ------------------------------------
+
+def file_stem(name, taken):
+    """A file name (no extension) for a record name: safe characters, and not one of `taken` (letter case ignored, as a Windows disk does)."""
+    base = re.sub(r"[^\w.-]", "_", name) or "sequence"
+    out, n = base, 1
+    while out.lower() in taken:
+        n += 1
+        out = f"{base}_{n}"
+    taken.add(out.lower())
+    return out
+
+
+def write_records(path, records, fasta):
+    """A new file `path` with [(name, Document)] as records: GenBank (features and topology kept) or FASTA (only the bases)."""
+    import multigb
+    Path(path).write_bytes(b"")
+    if fasta:
+        multigb.append_fasta(path, records)
+    else:
+        multigb.append_genbank(path, [multigb.renamed_genbank(d, n) for n, d in records])
+
+
+def cmd_split(args):
+    from reference import is_fasta_file
+    names = C.file_records(args.file) if Path(args.file).is_file() else None
+    if names is None:
+        raise UserError(f"{args.file} holds one record (or is not found): nothing to split.")
+    fasta = is_fasta_file(args.file)
+    out = Path(args.out) if args.out else Path(args.file).with_name(Path(args.file).stem + "_split")
+    if out.exists() and any(out.iterdir()):
+        raise UserError(f"The output folder {out} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
+    out.mkdir(parents=True, exist_ok=True)
+    taken, files, warnings = set(), [], []
+    for name in names:
+        doc = C.load(f"{args.file}#{name}")
+        stem = file_stem(name, taken)
+        if stem != name:
+            warnings.append(f"record {name!r} was written as {stem}{'.fasta' if fasta else '.gb'} (a file name cannot hold some characters, or two records would share it)")
+        write_records(out / (stem + (".fasta" if fasta else ".gb")), [(name, doc)], fasta)
+        files.append({"record": name, "file": f"{stem}{'.fasta' if fasta else '.gb'}", "length": doc.length, "circular": doc.circular})
+    result = answer({"split": {"format": {"value": "fasta" if fasta else "genbank"}}}, out=str(out), files=files)
+    result["warnings"] += warnings
+    return result
+
+
+def cmd_merge(args):
+    from sourcefiles import FASTA_EXT
+    out = new_path(args.out)
+    fasta = out.suffix.lower() in FASTA_EXT
+    taken, records, warnings = set(), [], []
+    sources, given = records_of(args.files), csv_list(args.names)
+    if given and len(given) != len(sources):
+        raise UserError(f"--names gives {len(given)} names for {len(sources)} sequences: one name each, in the order of the files.")
+    for k, (label, doc) in enumerate(sources):
+        name = given[k] if given else re.sub(r"\s+", "_", doc.name or Path(label).stem) or "sequence"
+        stem = re.sub(r"\s+", "_", Path(label.split("#")[0]).stem)
+        if not given and name.lower() in taken and stem and stem.lower() not in taken:
+            name = stem   # (two records with one name: the file's own name tells them apart)
+        base, n = name, 1
+        while name.lower() in taken:   # (a name two records share gets _2, _3...)
+            n += 1
+            name = f"{base}_{n}"
+        taken.add(name.lower())
+        if name != doc.name and not (given and name == given[k]):
+            warnings.append(f"{label}: the record is called {name} in the merged file (its name was empty, had spaces, or another record has it)")
+        records.append((name, doc, label))
+    if len(records) < 2:
+        raise UserError("merge needs two or more sequences: give several files (a file of several records counts for all of them).")
+    write_records(out, [(n, d) for n, d, _ in records], fasta)
+    if fasta:
+        warnings.append("FASTA keeps only the bases: features and circular topology are not written (use a .gb file name to keep them).")
+    result = answer({"merge": {"format": {"value": "fasta" if fasta else "genbank"}}}, file=str(out), bytes=out.stat().st_size,
+                    records=[{"name": n, "source": lb, "length": d.length, "circular": d.circular} for n, d, lb in records])
+    result["warnings"] += warnings
+    return result
 
 
 # ---- codon: recode a CDS for a codon usage table (the Recode window) --------------------------------------------------------------
@@ -232,11 +347,11 @@ def codon_row(doc, row, args, usage, avoid, out_dir):
     except (UserError, ValueError, RuntimeError) as e:
         rec["error"] = str(e)
         return rec
-    rec.update(status="ok", start=s.start + 1, end=s.end, strand=s.strand, genetic_code=s.table, codons=r.codons, codons_changed=r.changed, seed_used=r.seed, gc_before=round(r.gc_before, 1),
+    rec.update(status="ok", **C.span_fields(doc, s.start + 1, s.end), strand=s.strand, genetic_code=s.table, codons=r.codons, codons_changed=r.changed, seed_used=r.seed, gc_before=round(r.gc_before, 1),
                gc_after=round(r.gc_after, 1), warnings=[f"Could not be met: {u}" for u in r.unmet], sequence=r.seq)
     if out_dir is not None:
         made = snapshot(doc, doc.name)
-        made.replace(s.start, s.end, CT.recoded_bases(s, r))
+        CT.write_recoded(made, s, r)
         made.write_genbank(str(out_dir / f"{row['file_stem']}.gb"), None)
         rec["file"] = f"{row['file_stem']}.gb"
     return rec
@@ -350,7 +465,7 @@ def cmd_variants(args):
     with tool_settings_block(alignments.TOOL, VARIANT_FLAGS, args) as settings:
         values = tuple(settings[k]["value"] for k in ("min_depth", "variant_pct", "consensus_pct", "min_baseq", "min_mapq"))
         try:
-            found = alignments.scan_variants(bam, seqid, doc.sequence(0, None), values)
+            found = alignments.scan_variants(bam, seqid, doc.sequence(0, None), values, doc.circular)
         except OSError as e:
             raise UserError(f"Cannot read the reads of {args.reads}: {e}")
     out = answer({"variants": settings}, reads=str(args.reads), sequence=seqid, reference_length=lengths[seqid], variants=[
@@ -399,19 +514,32 @@ def tool_settings_block(tool, flags, args):
         yield out
 
 
-ANNOTATE_FLAGS = {"min_dna": "--min-dna", "min_protein": "--min-protein", "min_length": "--min-length"}
+ANNOTATE_FLAGS = {"min_dna": "--min-dna", "min_protein": "--min-protein", "min_length": "--min-length", "use_plannotate": "--no-plannotate"}
+
+
+def hit_fields(h, n):
+    """One hit of the Detect Features list as the command line prints it. `found_by`: openDNA, pLannotate or both (then `plannotate` is its own hit)."""
+    out = {"name": h.name, "kind": h.kind, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "identity": round(h.identity, 4), "protein_match": bool(h.protein),
+           "already_annotated": h.known, "found_by": h.origin, "source": h.source, "strength": h.measured}
+    if h.also:
+        out["plannotate"] = {"name": h.also.name, "database": h.also.database, "identity": round(h.also.identity, 4)}
+    return out
 
 
 def cmd_annotate(args):
     import annotation
+    import plannotate_tool
     doc = C.load(args.file)
     ed = doc_editor(doc)
+    args.use_plannotate = False if args.no_plannotate else None   # (a switch left alone keeps the saved value)
     with tool_settings_block(annotation.TOOL, ANNOTATE_FLAGS, args) as settings:
-        hits = annotation.detect(ed, set(csv_list(args.kinds)) or None)
+        hits, plannotate = annotation.detect_all(ed, set(csv_list(args.kinds)) or None)
     n = doc.length
-    out = answer({"detect_features": settings}, parts_in_library=len(annotation.load_parts()), hits=[
-        {"name": h.name, "kind": h.kind, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "identity": round(h.identity, 4), "protein_match": bool(h.protein),
-         "already_annotated": h.known, "source": h.source, "strength": h.measured} for h in hits])
+    out = answer({"detect_features": settings}, parts_in_library=len(annotation.load_parts()), plannotate=plannotate.name, hits=[hit_fields(h, n) for h in hits])
+    if plannotate.name == "ran":
+        out["plannotate_citation"] = f"{plannotate_tool.CITATION} doi:{plannotate_tool.DOI}"   # the user who publishes a result cites it
+    if plannotate.text:
+        out["warnings"].append(f"pLannotate was not used: {plannotate.text}" + (" Install it with: oDNA-cli wsltools install --only plannotate" if plannotate.name == "missing" else ""))
     if args.add:
         target = new_path(args.add)
         fresh = [h for h in hits if not h.known]
@@ -431,17 +559,18 @@ def cmd_checkup(args):
     args.predict, args.library = (False if args.no_predict else None), (False if args.no_library else None)   # (a switch left alone keeps the saved value)
     with tool_settings_block(checkup.TOOL, {**CHECKUP_FLAGS, "predict": "--no-predict", "library": "--no-library"}, args) as settings:
         res = checkup.run(doc_editor(doc))
+    from mutation import arc
     n = doc.length
     span = lambda el: {"start": el.start + 1, "end": end1(el.end, n), "strand": el.strand}
     cds = []
     for c in res.cds:
         f = c.feature
-        cds.append({"cds": f.label, "start": f.spans[0][0] + 1, "end": f.spans[-1][1], "strand": f.strand, "verdict": c.verdict, "best_host": c.host, "reasons": c.reasons,
+        cds.append({"cds": f.label, **C.span_fields(doc, *arc(f, n, doc.circular)), "strand": f.strand, "verdict": c.verdict, "best_host": c.host, "reasons": c.reasons,
                     "hosts": {h: {"verdict": r.verdict, "promoter": r.unit.promoter.label if r.unit else None, "terminator": r.unit.terminator.label if r.unit and r.unit.terminator else None,
                                   "rbs": r.rbs.element.label if r.rbs else None, "reasons": r.reasons} for h, r in c.hosts.items()}})
     return answer({"checkup": settings}, note=res.note, hosts=list(res.hosts), cds=cds,
                   elements=[{"kind": e.kind, "label": e.label, "origin": e.origin, "detail": e.detail, **span(e)} for e in res.elements],
-                  origins=[str(o) for o in res.origins], origin_notes=list(res.origin_notes))
+                  origins=[{"label": o.element.label, **span(o.element), "name": o.name, "host": o.host, "copies_per_cell": o.copies, "incompatibility_group": o.group, "note": o.note} for o in res.origins], origin_notes=list(res.origin_notes))
 
 
 # ---- gibson: Gibson / HiFi assembly of fragments (the Assembly panel's Gibson method) -------------------------------------------------
@@ -537,7 +666,7 @@ def cmd_ncbi(args):
         records = [{"accession": r.accession, "title": r.title, "length": r.length, "organism": r.organism, "updated": r.updated, "topology": r.topology, "source": r.source}
                    for r in found]
         if args.action == "search":
-            return answer(settings, records=records)
+            return answer(settings, caps=[ncbi.more_note(found, ncbi.MAX_RESULTS if args.limit is None else args.limit)], records=records)
         q = args.query.strip().lower()
         wanted = [r for r in found if r.accession.lower() == q or ("." not in q and r.accession.lower().split(".")[0] == q)]
         if not wanted:
@@ -550,6 +679,25 @@ def cmd_ncbi(args):
     except ncbi.NcbiError as e:
         raise UserError(str(e))
     return answer(settings, record=records[found.index(record)], file=str(out), bytes=out.stat().st_size, from_cache=cached)
+
+
+def cmd_wsltools(args):
+    """The tools that run beside openDNA (inside WSL on Windows): pLannotate and the Terminal's. `install` is what the Windows installer's
+    optional task runs; it installs WSL itself never (that needs an administrator and a restart: the user does it)."""
+    import plannotate_tool as P
+    import runner
+    state = P.status()
+    if state.state == "no_wsl":
+        if args.action == "install":
+            raise UserError(P.WSL_HELP)
+        return answer({}, wsl=False, plannotate={"state": "no_wsl"}, terminal_tools={t: False for t in runner.terminal_tools()}, note=P.WSL_HELP)
+    if args.action == "install":
+        code = P.install(plannotate=args.only != "terminal", terminal=args.only != "plannotate")
+        if code != 0:
+            raise UserError(f"The install did not finish (exit code {code}); the text above says why. It is safe to run it again.")
+        state = P.status()
+    have = set(runner.installed_tools(runner.terminal_tools()))
+    return answer({}, wsl=True, plannotate={"state": state.state, "version": state.version}, terminal_tools={t: t in have for t in runner.terminal_tools()})
 
 
 def register(sub, cli):
@@ -577,6 +725,10 @@ def register(sub, cli):
     s.add_argument("--min-len", type=int, help="shortest shared stretch in bp (default 12)")
     s.add_argument("--mismatches", type=int, help="differences allowed inside a stretch (default 0)")
     s.set_defaults(run=cmd_repeats)
+    s = sub.add_parser("synthesis", help="Synthesis Success Calculator (Halper, Hossain & Salis 2020): will a synthesis company make this fragment quickly? Needs ViennaRNA")
+    s.add_argument("file")
+    s.add_argument("--region", help="START..END (1-based) to test (default: the whole sequence)")
+    s.set_defaults(run=cmd_synthesis)
     s = sub.add_parser("search", help="a DNA sequence (with IUPAC codes), a protein motif or a name, in the sequence and its features")
     s.add_argument("file")
     s.add_argument("query")
@@ -589,8 +741,19 @@ def register(sub, cli):
     s = sub.add_parser("align", help="where a query (bases, or a file) matches the plasmid: pieces, strands, mismatches, structural changes (Local Align)")
     s.add_argument("file")
     s.add_argument("query", help="DNA text, or a GenBank/FASTA file")
+    s.add_argument("--time-limit", type=float, help="seconds for the search, 0 = none (default: the window's setting, Local Align > Time limit)")
+    s.add_argument("--threads", type=int, dest="cores", help="CPU cores to use (default: the window's setting, General > Performance)")
     s.set_defaults(run=cmd_align)
-    s = sub.add_parser("msa", help="multiple alignment of two or more sequences (one per file), with identity and consensus")
+    s = sub.add_parser("split", help="write one file per record of a multi-FASTA or multi-record GenBank file (new folder)")
+    s.add_argument("file")
+    s.add_argument("--out", help="the new folder (default: next to the file, FILE_split)")
+    s.set_defaults(run=cmd_split)
+    s = sub.add_parser("merge", help="join sequences (files, or FILE#NAME records) into one multi-FASTA (.fasta) or multi-record GenBank (.gb) file")
+    s.add_argument("files", nargs="+")
+    s.add_argument("--names", help="the record names, comma separated, one per sequence in order (default: the record's own name; on a clash, the file's name)")
+    s.add_argument("--out", required=True, help="the new file; its extension picks the format (.fasta/.fa keeps only the bases, anything else is GenBank)")
+    s.set_defaults(run=cmd_merge)
+    s = sub.add_parser("msa", help="multiple alignment of two or more sequences (files, or one file of several records), with identity and consensus")
     s.add_argument("files", nargs="+")
     s.add_argument("--out", help="also write the alignment as FASTA to this new file")
     s.set_defaults(run=cmd_msa)
@@ -640,8 +803,13 @@ def register(sub, cli):
     s.add_argument("--min-dna", dest="min_dna", type=int, help="minimum DNA identity in percent (the Detect Features setting, 95)")
     s.add_argument("--min-protein", dest="min_protein", type=int, help="minimum protein identity of a CDS in percent (90)")
     s.add_argument("--min-length", dest="min_length", type=int, help="ignore parts shorter than this many bp (15)")
+    s.add_argument("--no-plannotate", action="store_true", help="search only openDNA's Features Database, not pLannotate (which is used when it is installed)")
     s.add_argument("--add", help="write a copy of the plasmid with the parts not annotated yet added as features, to this new GenBank file")
     s.set_defaults(run=cmd_annotate)
+    s = sub.add_parser("wsltools", help="status of pLannotate and of the Terminal's tools (WSL on Windows); install: set them up (several hundred MB, a few minutes)")
+    s.add_argument("action", choices=["status", "install"])
+    s.add_argument("--only", choices=["plannotate", "terminal"], help="install: only pLannotate (with its databases), or only the Terminal's tools (default: both)")
+    s.set_defaults(run=cmd_wsltools)
     s = sub.add_parser("checkup", help="for each CDS: should it be expressed? promoters, RBS, terminators, transcription units (Plasmid Checkup)")
     s.add_argument("file")
     s.add_argument("--min-promoter", dest="min_promoter", type=int, help="predicted promoter: minimum score (the Plasmid Checkup setting, 10)")

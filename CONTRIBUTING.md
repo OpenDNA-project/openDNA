@@ -106,7 +106,7 @@ cd core; cargo test; cd ..
 ```
 
 Some tests use your own `.dna` / `.gb` files in the repository root (not in git) and skip themselves when the files are absent, so a clean clone should be
-green. [docs/TESTING.md](docs/TESTING.md) lists what is covered and what is not; a fix should come with a test, and the test plan should be updated.
+green. [docs/test-report/README.md](docs/test-report/README.md) lists every test and what it checks; a fix should come with a test, and its entry in `tests.json` (see CLAUDE.md).
 CI runs `cargo test`, `pyflakes app tests` and `pytest` on every pull request.
 
 ### Style (what the code around it does)

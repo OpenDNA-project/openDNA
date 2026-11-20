@@ -5,6 +5,7 @@ without options says so). Stored in settings.ini in the app data folder (tests u
 
 A change emits notifier.changed(tool), so open tools can redo their work.
 """
+import os
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -22,7 +23,7 @@ TOOLS = {}  # tool name -> [Param], in declaration order
 LABELS = {"Detect Features": "Detect Common Features"}
 
 GENERAL = "General"
-GENERAL_PAGES = ["Genetic code", "Display", "History", "Updates"]   # settings that belong to no view; the Display page is the hover delay
+GENERAL_PAGES = ["Genetic code", "Display", "History", "Updates", "Performance"]   # settings that belong to no view; the Display page is the hover delay
 # A registered tool whose settings are shown on the page of a view (by default a tool has the page of its own name).
 PAGE_OF = {"Alignments": "Alignment", "Primer checks": "Primers"}
 # A page without options of its own that depends on another page's: it says so and leads there.
@@ -108,6 +109,20 @@ def _read(tool, key):
         return type(p.default)(raw)
     except (TypeError, ValueError):
         return p.default
+
+
+PERFORMANCE = "Performance"
+CPUS = os.cpu_count() or 1
+DEFAULT_CORES = max(1, min(8, CPUS - 1))   # one core left free so the window and the rest of the PC stay responsive
+register(PERFORMANCE, [
+    Param("cores", "CPU cores openDNA may use", DEFAULT_CORES, 1, CPUS, suffix=f" of {CPUS}",
+          tip="For the analyses that run on several cores at once (Local Align, Folder Search). The installer asks it too."),
+])
+
+
+def cores():
+    """How many threads a multithreaded analysis may use (Settings > General > Performance)."""
+    return value(PERFORMANCE, "cores")
 
 
 def set_value(tool, key, v):

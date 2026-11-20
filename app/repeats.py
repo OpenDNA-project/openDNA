@@ -163,16 +163,20 @@ def find_repeats(seq, circular=False, min_direct=20, min_inverted=12, min_tandem
     diagonals, note = _seeds(t, t, seed, True, MAX_SEEDS)
     notes += [note] if note else []
     direct, tandem = [], []
+    cut = 0
     for d, starts in diagonals.items():
         if circular and d == n:
             continue   # the sequence against its own copy in the tail
         for i, length, mm in _segments(t, t, d, starts, seed, mismatches):
             if circular and i >= n:
                 continue   # entirely in the copied tail: the same as one that starts at the front
+            cut += circular and i + length >= len(t) and length >= min_direct   # (read on to the end of the copy: it may be longer)
             if d >= length and length >= min_direct:
                 direct.append((i % n, 1, (i + d) % n, 1, length, mm))
             elif d < length and d <= MAX_UNIT and (length + d) // d >= 3 and length + d >= min_tandem:
                 tandem.append((d, i, length + d, mm))
+            elif d < length and d >= min_direct:
+                direct.append((i % n, 1, (i + d) % n, 1, d, mm))   # a unit repeated less than three times (or too long for an array): its first two copies
     # tandem arrays, smallest unit first: ACACAC is a unit of 2, not also of 4 and 6
     arrays = []
     for d, i, total, mm in sorted(tandem):
@@ -190,7 +194,7 @@ def find_repeats(seq, circular=False, min_direct=20, min_inverted=12, min_tandem
     # ---- opposite orientation: inverted repeats (the sequence against its reverse complement)
     r = reverse_complement(t)
     m = len(t)
-    inverted = []
+    inverted, palindromes = [], 0
     diagonals, note = _seeds(t, r, seed, False, MAX_SEEDS)
     notes += [note] if note and note not in notes else []
     for d, starts in diagonals.items():
@@ -198,8 +202,11 @@ def find_repeats(seq, circular=False, min_direct=20, min_inverted=12, min_tandem
             j = m - (i + d) - length   # where the matching stretch lies in t, read as its reverse complement
             if length < min_inverted or (circular and (i >= n or j >= n)):
                 continue
-            if i > j or j < i + length:
-                continue   # the same pair seen from the other arm, or arms that overlap (a palindrome, not a hairpin)
+            if i > j:
+                continue   # the same pair seen from the other arm
+            if j < i + length:
+                palindromes += 1   # arms that overlap: a palindrome, not a hairpin (counted, and said)
+                continue
             loop = j - (i + length)
             if circular:
                 loop = min(loop, n - (j + length) + i)   # (the way round the origin may be the short one)
@@ -212,6 +219,10 @@ def find_repeats(seq, circular=False, min_direct=20, min_inverted=12, min_tandem
             copies = sorted(((s, s + g["length"], st) for s, st in g["copies"]), key=lambda c: c[0])
             found.append(Repeat(kind, g["length"], copies, g["mm"], 0))
     found.sort(key=lambda r: (-r.length, r.copies[0][0]))
+    if palindromes:
+        notes.append(f"{palindromes} self-complementary stretch(es) (arms that overlap) are not listed as inverted repeats")
+    if cut:
+        notes.append(f"{cut} repeat(s) through the origin were read only {WRAP:,} bp past it: they may be longer")
     if len(found) > MAX_REPEATS:
         notes.append(f"only the longest {MAX_REPEATS} of {len(found):,} repeats are listed")
         found = found[:MAX_REPEATS]
@@ -232,7 +243,8 @@ def pair_dots(a, b, k=12):
             direct.append((i + half, i + d + half))
             if same:
                 direct.append((i + d + half, i + half))
-    diagonals, _ = _seeds(a, reverse_complement(b), k, False, MAX_SEEDS)
+    diagonals, note = _seeds(a, reverse_complement(b), k, False, MAX_SEEDS)
+    notes += [note] if note and note not in notes else []
     for d, starts in diagonals.items():
         for i in starts:
             inverted.append((i + half, len(b) - (i + d) - k + half))
@@ -242,22 +254,33 @@ def pair_dots(a, b, k=12):
     return direct, inverted, "; ".join(notes)
 
 
-def pair_repeats(a, b, min_len=12, mismatches=0, same=None):
+def pair_repeats(a, b, min_len=12, mismatches=0, same=None, circular=False):
     """A Result whose repeats are the stretches `a` and `b` share, (kind, start in a, start in b, length, differences), longest
     first: "direct" (same orientation) and "inverted" (one is the reverse complement of the other; start in b is the left end of
     the stretch on b's top strand). With `same` (one sequence compared with itself; default: when the two are equal) each pair is listed
-    once and the main diagonal is left out; two different files that hold equal bases are not `same`: they share their whole length."""
-    a, b = _clean(a)[:MAX_LENGTH], _clean(b)[:MAX_LENGTH]
+    once and the main diagonal is left out; two different files that hold equal bases are not `same`: they share their whole length.
+    `circular`: both sequences are circles, so a stretch may run through an origin (starts stay inside the sequence, ends may pass
+    its length); one that reaches WRAP bases past the origin is cut there and the result says so."""
+    a, b = _clean(a), _clean(b)
+    notes = [f"only the first {MAX_LENGTH:,} bp of each sequence were searched"] if max(len(a), len(b)) > MAX_LENGTH else []
+    a, b = a[:MAX_LENGTH], b[:MAX_LENGTH]
     seed = min(max(MIN_SEED, min_len // (mismatches + 1)), min_len)
-    same, found, notes = (a == b) if same is None else same, [], []
-    for kind, target in (("direct", b), ("inverted", reverse_complement(b))):
-        diagonals, note = _seeds(a, target, seed, same and kind == "direct", MAX_SEEDS)
+    same, found = (a == b) if same is None else same, []
+    ta, tb = (s + s[:min(len(s) - 1, WRAP)] if circular else s for s in (a, b))   # (a circle read on past its origin)
+    cut = False
+    for kind, target in (("direct", tb), ("inverted", reverse_complement(tb))):
+        diagonals, note = _seeds(ta, target, seed, same and kind == "direct", MAX_SEEDS)
         notes += [note] if note and note not in notes else []
         for d, starts in diagonals.items():
-            for i, length, mm in _segments(a, target, d, starts, seed, mismatches):
-                j = i + d if kind == "direct" else len(b) - (i + d) - length
+            for i, length, mm in _segments(ta, target, d, starts, seed, mismatches):
+                j = i + d if kind == "direct" else len(tb) - (i + d) - length
+                if circular and (i >= len(a) or j >= len(b)):
+                    continue   # (a copy lying wholly in the tail: the same as one at the front)
                 if length >= min_len and not (same and kind == "inverted" and i > j):
-                    found.append((kind, i, j, length, mm))
+                    cut = cut or (circular and (i + length >= len(ta) or j + length >= len(tb)) and length < min(len(a), len(b)))
+                    found.append((kind, i, j, min(length, len(a), len(b)) if circular else length, mm))   # (a circle has no stretch longer than itself)
+    if cut:
+        notes.append(f"a repeat through the origin was cut at {WRAP:,} bp past it: it may be longer")
     found.sort(key=lambda r: (-r[3], r[1]))
     if len(found) > MAX_REPEATS:
         notes.append(f"only the longest {MAX_REPEATS} of {len(found):,} stretches are listed")

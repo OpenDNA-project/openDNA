@@ -1,7 +1,7 @@
 """Startup page: the welcome message, what is new, recent files, quick actions and an update check on the left; sponsor slots,
 a tip and links on the right. Shown at the first start of each day (unless turned off) and from Help → Welcome.
 
-Slots come from sponsors.json next to this file (bundled in the exe): name, text, url,
+Slots (up to 4) come from sponsors.json next to this file (bundled in the exe): name, text, url, button, until,
 image. An empty slot shows "Your ad here". The page is labelled as sponsored content
 (Canada's Competition Act expects advertising to be identifiable as such) and fetches
 nothing: no user data leaves the computer.
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 import feedback
+import online
 import project
 import updater
 from citations import CitationsDialog
@@ -41,20 +42,42 @@ TIPS = [
     "Ctrl+Shift+T shows the 3-frame translation under the sequence.",
     "Ctrl+Shift+F opens the Display Filter: choose which feature types are drawn.",
     "Ctrl+wheel makes the letters bigger or smaller; Ctrl+0 brings back the default size.",
-    "On a circular sequence, scrolling past the end continues at base 1.",
+    "On a circular sequence, click the red origin bar to scroll endlessly: the end runs on into base 1.",
     "In the Alignment view, Shift+drag selects bases and a click on a track name hides it.",
     "Tools > Plasmid Checkup tells how well each CDS of a plasmid should be expressed.",
     "F1 lists every keyboard shortcut, for the menus and for each panel.",
+    "Ctrl+Shift+C copies the reverse complement of the selected bases.",
+    "F3 and Shift+F3 jump to the next or previous match of your search.",
+    "Ctrl+R and Ctrl+Shift+R make a forward or reverse primer from the selection; Ctrl+Shift+P opens New Primer.",
+    "Ctrl+E edits the clicked feature; Ctrl+Shift+E groups features as a gene.",
+    "Ctrl+H opens the History panel: every change, in order.",
+    "Ctrl+Shift+L locks and unlocks the DNA, so the bases cannot be changed by accident.",
+    "Ctrl+Shift+B opens Local Align.",
+    "With two or more files open, Ctrl+Tab cycles between them and Ctrl+1 to 9 jumps to one.",
+    "oDNA-cli runs openDNA's functions with no window, so an AI agent such as Claude Code can design primers and edit plasmids for you.",
+    "To set up an agent, tell it: run oDNA-cli.exe, then `skills show index`. It finds the recipes itself.",
+    "Put that sentence in a CLAUDE.md in your working folder and every Claude Code session knows how to reach openDNA.",
+    "Ask an agent in plain words: \"Which enzymes cut pUC19 once?\" or \"Make T50A in eilR; show me the primers first.\"",
+    "For batches (KLD, PCR, Gibson), the agent runs a check that writes nothing, shows its settings and waits for your OK.",
+    "oDNA-cli never overwrites your files: results go to a new folder or file, and one bad row does not stop the others.",
 ]
 
 
-def load():
-    """(slots, contact) from sponsors.json; three empty slots if it is missing or broken."""
+MAX_SLOTS = 4
+
+
+def load(today=None):
+    """(slots, contact, heading) from sponsors.json; empty slots if it is missing or broken. A slot whose "until" date
+    (YYYY-MM-DD) has passed is emptied, so a time-limited slot (the naming vote) goes away by itself. The heading is
+    SPONSORED unless the file says otherwise (a vote is not an ad)."""
+    today = (today or date.today()).isoformat()
     try:
         data = json.loads(FILE.read_text(encoding="utf-8"))
-        return list(data.get("slots") or [{}, {}, {}])[:3], data.get("contact", "")
+        slots = [s if isinstance(s, dict) and str(s.get("until", "9999")) >= today else {} for s in (data.get("slots") or [])]
+        slots += [{}] * (3 - len(slots))
+        return slots[:MAX_SLOTS], data.get("contact", ""), data.get("heading", "SPONSORED")
     except (OSError, ValueError, AttributeError):
-        return [{}, {}, {}], ""
+        return [{}, {}, {}], "", "SPONSORED"
 
 
 def settings():
@@ -118,9 +141,10 @@ class SponsorsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Welcome to {project.NAME}")
         self.setMinimumWidth(820)
-        slots, contact = load()
+        slots, contact, heading = load()
+        dark = self.palette().window().color().lightness() < 128
         logo = QLabel(alignment=Qt.AlignCenter, accessibleName=project.NAME)
-        logo.setPixmap(wordmark(self.palette().window().color().lightness() < 128))
+        logo.setPixmap(wordmark(dark))
         title = QLabel(welcome_html(), wordWrap=True, openExternalLinks=True)
 
         notes = whats_new()
@@ -173,10 +197,10 @@ class SponsorsDialog(QDialog):
 
         # Right: sponsors one above the other (none yet: no empty "Your ad here" boxes in a test version), a tip, links.
         sponsored = any(s.get("name") for s in slots)
-        self.cards = [self._card(s, contact) for s in slots] if sponsored else []
+        self.cards = [self._card(s, contact, dark) for s in slots] if sponsored else []
         right = QVBoxLayout()
         if sponsored:
-            right.addWidget(_heading("SPONSORED"))  # advertising, identified as such
+            right.addWidget(_heading(heading))  # advertising, identified as such
             for card in self.cards:
                 right.addWidget(card)
             right.addSpacing(8)
@@ -319,26 +343,38 @@ class SponsorsDialog(QDialog):
             QDesktopServices.openUrl(QUrl(url))
 
     @staticmethod
-    def _card(slot, contact):
-        """One slot: logo or name, a line of text, a link; or the placeholder."""
+    def _card(slot, contact, dark=False):
+        """One slot: the image (a click on it opens the url) beside the name and a line of text, then the url as a link, or, when
+        the slot has a "button", a button with the globe (it sends something over the internet, so it says what); or the placeholder.
+        "image_dark" replaces "image" on a dark theme."""
         card = QFrame(frameShape=QFrame.StyledPanel)
-        card.setMinimumSize(210, 110)
+        card.setMinimumSize(210, 125)
         box = QVBoxLayout(card)
         if not slot.get("name"):
             text = "<b>Your ad here</b>" + (f"<br><br>{contact}" if contact else "")
             card.setStyleSheet("QFrame { border: 2px dashed #9e9e9e; border-radius: 6px; }")
         else:
             text = f"<b>{slot['name']}</b><br>{slot.get('text', '')}"
-            if slot.get("url"):
+            if slot.get("url") and not slot.get("button"):
                 text += f"<br><a href='{slot['url']}'>{slot['url']}</a>"
-            image = FILE.with_name(slot["image"]) if slot.get("image") else None
-            if image and image.exists():
-                logo = QLabel(alignment=Qt.AlignCenter)
-                logo.setPixmap(QPixmap(str(image)).scaled(180, 70, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                box.addWidget(logo)
         label = QLabel(text, alignment=Qt.AlignCenter, wordWrap=True, openExternalLinks=True)
         label.setStyleSheet("border: none")
-        box.addWidget(label, 1)
+        row = QHBoxLayout()
+        box.addLayout(row, 1)
+        image = FILE.parent / ((dark and slot.get("image_dark")) or slot.get("image") or "-")
+        if image.is_file():
+            picture = QLabel(alignment=Qt.AlignCenter, openExternalLinks=True, styleSheet="border: none")
+            picture.setFixedWidth(110)
+            picture.setPixmap(QPixmap(str(image)).scaled(110, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            if slot.get("url"):
+                picture.setCursor(Qt.PointingHandCursor)
+                picture.mousePressEvent = lambda _e, u=slot["url"]: QDesktopServices.openUrl(QUrl(u))
+            row.addWidget(picture)
+        row.addWidget(label, 1)
+        if slot.get("button") and slot.get("url"):
+            button = QPushButton(slot["button"], clicked=lambda _=False, u=slot["url"]: QDesktopServices.openUrl(QUrl(u)))
+            online.mark(button, slot.get("sends", "opens a web page in your browser; nothing is sent by openDNA itself"))
+            box.addWidget(button)
         return card
 
     def done(self, result):

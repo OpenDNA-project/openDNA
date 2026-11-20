@@ -1871,6 +1871,10 @@
     {
      "input": "5, 10, 15 base end overlaps; 20 base overlap",
      "expected": "no hit; exactly 20 bases (score 40) is reported"
+    },
+    {
+     "input": "80 bp unit placed fwd, fwd, rc; core.align(t, unit)",
+     "expected": "notes == [] (no limit reached)"
     }
    ],
    "oracle": "hand-computed",
@@ -1989,11 +1993,11 @@
    "id": "tests/test_core_alignment.py::test_folder_search_finds_a_query_in_its_file_record_place_and_strand",
    "area": "Folder Search",
    "role": "Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file.",
-   "purpose": "Searches the demo folder and a temporary folder with search_folder and checks the hit location, strand, the skipped-file count, the multi-record name, the tab-separated hits text and cancellation.",
+   "purpose": "Searches the demo folder and a temporary folder with search_folder and checks the hit location, strand, the skipped-file count, the multi-record name, the tab-separated hits text and cancellation. Also: a file with more hits than PER_FILE lists the best PER_FILE and says so (notes, status line, Copy).",
    "cases": [
     {
      "input": "pFG051_Chlor.gb bases 1000..1060 searched in demo/",
-     "expected": "hit in that file at (1000,1060,+1), identity 1.0; nothing skipped; >= 5 files"
+     "expected": "hit in that file at (1000,1060,+1), identity 1.0; nothing skipped; >= 5 files; no note"
     },
     {
      "input": "its reverse complement",
@@ -2010,6 +2014,10 @@
     {
      "input": "cancelled=lambda: True",
      "expected": "no hits"
+    },
+    {
+     "input": "repeats.fa: 7 copies of second[500:560] separated by 100 bases, the same query",
+     "expected": "5 hits from repeats.fa; notes == ['repeats.fa: more than 5 hits, only the 5 best are listed ...']; status text starts '; 1 file reached a search limit'; hits_text ends with the note"
     }
    ],
    "oracle": "hand-computed",
@@ -4502,6 +4510,72 @@
    "proposal": ""
   },
   {
+   "id": "tests/test_documents.py::test_label_text_is_black_or_white_by_contrast_and_always_readable",
+   "area": "Drawing",
+   "role": "Feature names drawn on a light or mid-tone colour could be hard or impossible to read.",
+   "purpose": "text_color_on picks black or white by WCAG contrast ratio, so the letters on any feature colour have at least 4.5 to 1 (the AA minimum for text). Every colour of a 17 x 17 x 17 grid of the colour cube gets the better of the two, and the worst contrast over the grid is at least 4.5.",
+   "cases": [
+    {
+     "input": "black on white",
+     "expected": "contrast 21"
+    },
+    {
+     "input": "all 4,913 colours of the grid",
+     "expected": "the chosen colour has the higher contrast; the minimum over the grid is 4.5 or more"
+    },
+    {
+     "input": "#ffeb3b (light yellow), #0d47a1 (dark blue)",
+     "expected": "black letters, white letters"
+    },
+    {
+     "input": "rgb(0, 160, 224) (mid blue)",
+     "expected": "black letters (7.1 to 1; white gave 3.0 to 1, which the old brightness threshold chose)"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": [
+    "Only the choice is tested; whether a given label is drawn on the colour it was measured on is by reading the drawing code (11 call sites use text_color_on)."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_documents.py::test_table_sort_key_puts_numbers_in_order_before_words",
+   "area": "Drawing",
+   "role": "A click on a table header could put 1,200 before 95, or scatter a column of locations, sizes and dates.",
+   "purpose": "data_table.sort_key, the order of every table of the application that has no key of its own: a cell sorts by the number it begins with (thousands commas read, sign kept), numbers before words, words by text without case, equal numbers by text.",
+   "cases": [
+    {
+     "input": "10 bp, 94 % (protein), 95 bp, 1,200 bp",
+     "expected": "in that order"
+    },
+    {
+     "input": "5,704–5,808 →, 5,859–5,902 ←",
+     "expected": "by the first position"
+    },
+    {
+     "input": "'', alpha, NC_000913, Zeta, '–' (a dash placeholder)",
+     "expected": "after every number, in that order: empty first, the dash last"
+    },
+    {
+     "input": "2013-09-26 and 2013-10-01; -5 bp and 3 bp",
+     "expected": "the earlier date first; the negative first"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "The key only: the table itself (sorting, filter, the row to its thing) was checked by hand offscreen on the Detect, Spacer Finder, ORF, Checkup and other tables, because the suite builds no widgets."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
    "id": "tests/test_documents.py::test_saving_never_damages_the_original",
    "area": "Safe saving",
    "role": "Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.",
@@ -5041,6 +5115,36 @@
    "fixed": [
     "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: 'every data file the app reads is bundled by the spec' is a substring test ('\"name\"' in SPEC): a name in a comment, a hiddenimports list or an excludes list satisfies it, so a frozen exe missing tools.toml would ship."
    ]
+  },
+  {
+   "id": "tests/test_project.py::test_welcome_slots_hold_four_and_expire",
+   "area": "Welcome page",
+   "role": "Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date.",
+   "purpose": "Checks sponsors.load returns four filled slots with an https link, a button, a 'sends' text and existing pictures, empties slots after their 'until' date, and keeps the old behaviour (padded to three, never expiring, SPONSORED heading) for a file without those keys.",
+   "cases": [
+    {
+     "input": "load on 2026-12-31 (the last day)",
+     "expected": "4 slots, each with name, https url without spaces, button, sends, and image files that exist"
+    },
+    {
+     "input": "load on 2027-01-01",
+     "expected": "[{}, {}, {}, {}]"
+    },
+    {
+     "input": "A file with one slot {name: A} and no heading",
+     "expected": "([{name: A}, {}, {}], '', 'SPONSORED')"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Does not check the card drawing or the click on the picture (no widget tests); the page was only rendered once offscreen by hand.",
+    "Does not detect a placeholder form link (FORM_ID) left in sponsors.json."
+   ],
+   "verdict": "sound",
+   "evidence": "Read only.",
+   "gaps": [],
+   "proposal": ""
   },
   {
    "id": "tests/test_project.py::test_old_data_folder_is_copied_once",
@@ -6210,35 +6314,89 @@
    "line": 553,
    "area": "Quick alignment (BLAST-like)",
    "role": "A mismatch in the last few bases of a query (a typical mutation near a read or primer end) could be silently clipped off the hit, so the user would see a 'perfect' shorter match and miss the difference.",
-   "purpose": "A single mismatch 6 or 11 bases from either end of a 300-bp query is kept inside a full-length hit and listed, instead of the local alignment trimming the end off to raise the score.",
+   "purpose": "A single mismatch anywhere from the first to the last base of a 300-bp query is kept inside a full-length hit and listed: 6 or more bases from an end by the trimming rule, in the last 1 to 6 bases by the end extension over exactly one mismatch.",
    "cases": [
     {
+     "input": "template random_dna(3000, seed 12); query = template[1000..1300] with base 0 changed (A->C, else ->A)",
+     "expected": "hit 1000..1300, query 0..300; mismatches == [(1000, wrong base)]"
+    },
+    {
+     "input": "template random_dna(3000, seed 12); query = template[1000..1300] with base 3 changed (A->C, else ->A)",
+     "expected": "hit 1000..1300, query 0..300; mismatches == [(1003, wrong base)]"
+    },
+    {
      "input": "template random_dna(3000, seed 12); query = template[1000..1300] with base 6 changed (A->C, else ->A)",
-     "expected": "hit start 1000, end 1300, qstart 0, qend 300; mismatches == [(1006, wrong base)]"
+     "expected": "hit 1000..1300, query 0..300; mismatches == [(1006, wrong base)]"
     },
     {
-     "input": "same, mismatch at query base 11",
-     "expected": "hit 1000..1300 / query 0..300; mismatches == [(1011, wrong)]"
+     "input": "template random_dna(3000, seed 12); query = template[1000..1300] with base 11 changed (A->C, else ->A)",
+     "expected": "hit 1000..1300, query 0..300; mismatches == [(1011, wrong base)]"
     },
     {
-     "input": "same, mismatch at query base 288",
-     "expected": "hit 1000..1300 / query 0..300; mismatches == [(1288, wrong)]"
+     "input": "template random_dna(3000, seed 12); query = template[1000..1300] with base 288 changed (A->C, else ->A)",
+     "expected": "hit 1000..1300, query 0..300; mismatches == [(1288, wrong base)]"
     },
     {
-     "input": "same, mismatch at query base 293 (7 from the end)",
-     "expected": "hit 1000..1300 / query 0..300; mismatches == [(1293, wrong)]"
+     "input": "template random_dna(3000, seed 12); query = template[1000..1300] with base 293 changed (A->C, else ->A)",
+     "expected": "hit 1000..1300, query 0..300; mismatches == [(1293, wrong base)]"
+    },
+    {
+     "input": "template random_dna(3000, seed 12); query = template[1000..1300] with base 296 changed (A->C, else ->A)",
+     "expected": "hit 1000..1300, query 0..300; mismatches == [(1296, wrong base)]"
+    },
+    {
+     "input": "template random_dna(3000, seed 12); query = template[1000..1300] with base 299 changed (A->C, else ->A)",
+     "expected": "hit 1000..1300, query 0..300; mismatches == [(1299, wrong base)]"
     }
    ],
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [
-    "Forward strand only; the end-trimming rule on a reverse-complement query is not checked.",
+    "Forward strand only; the end rule on a reverse-complement query is not checked.",
     "Does not assert hits.len()==1 (indexes [0] directly); an extra spurious hit would pass."
    ],
    "verdict": "sound",
    "evidence": "Read test and the trimming code (TRIM_RUN/KEEP_RUN loops in smith_waterman). For at=6,11 the left KEEP_RUN loop is what keeps the mismatch, for 288,293 the right one; without them the hit would be trimmed to 1007/1012.. or ..1288/1293 and the exact (start,end,qstart,qend)==(1000,1300,0,300) plus the exact mismatch list would fail.",
    "gaps": [],
    "proposal": ""
+  },
+  {
+   "id": "core/src/align.rs::tests::every_limit_reached_is_a_note",
+   "area": "Quick alignment (BLAST-like)",
+   "role": "A search limit (query longer than the circle, a query k-mer repeated over 100 times, the seed limit, the time limit) could leave hits out with nothing telling the user, who would take a partial answer for the whole one.",
+   "purpose": "Each limit, when reached, adds a note to align's answer, and an ordinary query gets none; 300 copies of a unit are all aligned (the old fixed cap of 200 places is gone) with the same answer on 1 thread as on all cores.",
+   "cases": [
+    {
+     "input": "random 1000 bp circle, query its bases 200..500",
+     "expected": "no note"
+    },
+    {
+     "input": "query = the whole circle + its first 200 bases (1200 bp)",
+     "expected": "note 'longer than the circular template (1000 bp)'"
+    },
+    {
+     "input": "query = 300 A + 100 template bases",
+     "expected": "note 'more than 100 times in the query'"
+    },
+    {
+     "input": "template = 300 x (50 bp unit + 100 random bases), query the unit, no time limit",
+     "expected": "300 hits, no note; the same hits with threads = 1"
+    },
+    {
+     "input": "same, time limit 1e-9 s",
+     "expected": "no hit; note '... were not aligned, so hits may be missing'"
+    },
+    {
+     "input": "60,000 A template, 104 A query (96 copies of the 9-mer)",
+     "expected": "note 'seed limit (5000000) was reached on the forward strand at template base ...'"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "The 64-pieces-per-place note is not triggered (it needs a very repetitive query); only its text is shared with the others.",
+    "Notes are matched on part of their text."
+   ]
   },
   {
    "id": "core/src/align.rs::tests::a_short_query_with_mismatches_near_both_ends_is_still_one_whole_hit",
@@ -7392,7 +7550,7 @@
    "id": "tests/test_agent_cli.py::test_pcr_batch_gives_the_pairs_the_panel_gives",
    "area": "Command line for agents",
    "role": "The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results.",
-   "purpose": "pcr check and run give, for 150..400 and 200..450, the pairs of primer_design.design_region (same sequences and sizes), sitting on the two ends of the target; a 12 bp target and an unknown feature are error rows with the reason (exit 1); check writes nothing; run writes primers.csv, report.jsonl and settings.json and shows an overridden Tm as an override; a second run into the same folder is refused.",
+   "purpose": "pcr check and run give, for 150..400 and 200..450, the pairs of primer_design.design_region (same sequences and sizes), sitting on the two ends of the target; a 12 bp target and an unknown feature are error rows with the reason (exit 1); check writes nothing; run writes primers.csv, report.jsonl and settings.json and shows an overridden Tm as an override; a second run into the same folder is refused. When every pair is marked bad the row warns and offers a wider window, and the window stays 0. When more pairs were found than the best 5 listed, the row warns of it. A window wider than the circle allows is narrowed and said.",
    "cases": [
     {
      "input": "pcr check t.gb with rows a 150..400, b 200..450, short 150..161, bad nope",
@@ -7409,6 +7567,18 @@
     {
      "input": "the pairs printed by default, then pcr check --full, and report.jsonl of the run",
      "expected": "default: no 'checks', 'checks_passed' + 'issues' = 8 and issues are warn/bad only; --full and report.jsonl: all 8 checks"
+    },
+    {
+     "input": "pcr check 150..400 with the pair marks forced to bad",
+     "expected": "the row's warning names '--window 0' and says to offer a wider one; settings window value 0"
+    },
+    {
+     "input": "the same check with the pair marks forced to bad",
+     "expected": "a warning 'Only the best 5 pairs are listed' as well as the wider-window one"
+    },
+    {
+     "input": "pcr check 150..400 --window 150 on the 521 bp circle",
+     "expected": "warning 'narrowed to 135 bases'"
     }
    ],
    "oracle": "independent implementation",
@@ -7673,7 +7843,7 @@
    "id": "tests/test_agent_cli.py::test_align_command_finds_pieces_and_structural_changes_like_local_align",
    "area": "Command line for agents",
    "role": "An agent could report a read as matching where it does not, or miss that a query has a deletion or is inverted.",
-   "purpose": "A 60 bp piece of a 400 bp plasmid is found at 101..160 with identity 1.0; its reverse complement as a minus-strand piece; a query with 30 bp left out is two pieces, the second 'deletion from the query'; the pieces equal local_align.find_hits (what the window calls); a protein is refused.",
+   "purpose": "A 60 bp piece of a 400 bp plasmid is found at 101..160 with identity 1.0; its reverse complement as a minus-strand piece; a query with 30 bp left out is two pieces, the second 'deletion from the query'; the pieces equal local_align.find_hits (what the window calls); a protein is refused. Also: a mismatch just past the origin is named at its own place; limits reached are warnings (query longer than the circle, time limit) with --time-limit and --threads shown in settings.",
    "cases": [
     {
      "input": "seq[100:160]",
@@ -7694,6 +7864,22 @@
     {
      "input": "one query base changed, forward and reverse-complemented",
      "expected": "mismatch_list names position 131, the plasmid base and the query base on the top strand for both strands; 5 missing bases give a deletion 131..135 or two pieces"
+    },
+    {
+     "input": "seq[-30:] + seq[0] + changed base + seq[2:30] (across the origin)",
+     "expected": "mismatch_list == [(position 2, changed base)] (it used to crash with IndexError)"
+    },
+    {
+     "input": "seq + seq[:100] (longer than the 400 bp circle)",
+     "expected": "a warning 'longer than the circular template'"
+    },
+    {
+     "input": "seq[100:160] --time-limit 0.000000001 --threads 2",
+     "expected": "no piece; warnings 'The time limit...' and '... --time-limit 0 ...'; settings.align time_limit 1e-09, cores 2"
+    },
+    {
+     "input": "the gap query: notes of find_hits and the command's warnings",
+     "expected": "both empty"
     }
    ],
    "oracle": "hand-computed",
@@ -7710,7 +7896,7 @@
    "id": "tests/test_agent_cli.py::test_msa_command_aligns_the_files_and_never_overwrites",
    "area": "Command line for agents",
    "role": "An agent could report a wrong identity between two variants, or overwrite an alignment file.",
-   "purpose": "A 200 bp sequence and a copy with 10 bases deleted are aligned: removing the gaps gives back each sequence, the copy has 10 gaps, identity to the first is 100 and 95 percent, the FASTA written parses back to the same rows, an existing output file is refused, one file is refused.",
+   "purpose": "A 200 bp sequence and a copy with 10 bases deleted are aligned: removing the gaps gives back each sequence, the copy has 10 gaps, identity to the first is 100 and 95 percent, the FASTA written parses back to the same rows, an existing output file is refused, one file is refused. A multi-FASTA of the same two sequences is aligned whole, and FILE#NAME picks a record.",
    "cases": [
     {
      "input": "a.gb b.gb --out aln.fa",
@@ -7727,6 +7913,10 @@
     {
      "input": "the two files",
      "expected": "each sequence names its file"
+    },
+    {
+     "input": "both.fasta (two records) alone; then both.fasta#a both.fasta#b",
+     "expected": "same rows as the two files; each sequence names FILE#NAME"
     }
    ],
    "oracle": "hand-computed",
@@ -7894,7 +8084,7 @@
    "id": "tests/test_agent_cli.py::test_checkup_command_gives_the_verdicts_of_the_checkup_window",
    "area": "Command line for agents",
    "role": "An agent could say a gene will be expressed when nothing drives it, or the reverse.",
-   "purpose": "On a plasmid with two CDS and nothing else both are 'Not expressed' (no bacterial promoter upstream); with an annotated promoter, RBS and terminator around the forward one it is 'Expressed' with those elements named and the other stays 'Not expressed'; the verdicts equal checkup.run on the same document; a threshold beyond the window's range warns.",
+   "purpose": "On a plasmid with two CDS and nothing else both are 'Not expressed' (no bacterial promoter upstream); with an annotated promoter, RBS and terminator around the forward one it is 'Expressed' with those elements named and the other stays 'Not expressed'; the verdicts equal checkup.run on the same document; a threshold beyond the window's range warns. An annotated p15A origin is reported as fields (label, positions, name, group), not as a Python object's text.",
    "cases": [
     {
      "input": "checkup t.gb --no-predict --no-library",
@@ -7907,6 +8097,10 @@
     {
      "input": "--min-promoter 99",
      "expected": "warning 'responsibility'"
+    },
+    {
+     "input": "a rep_origin 200..400 labelled p15A",
+     "expected": "origins[0] has label p15A, start 200, end 400, name p15A, incompatibility_group p15A"
     }
    ],
    "oracle": "independent implementation",
@@ -7946,6 +8140,128 @@
    "strength": "adequate",
    "issues": [
     "The part used is whichever bundled terminator is longest: if the library changes, the test follows it."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_annotate_command_lists_plannotate_hits_beside_the_library_and_says_who_found_each",
+   "area": "Command line for agents",
+   "role": "A user could be shown pLannotate's features as openDNA's own, lose one of the two tools' hits in the merge, or get a feature added with no trace of who found it.",
+   "purpose": "Canned pLannotate rows stand in for the search: one on exactly the planted terminator, one elsewhere (a protein-database fragment on the other strand). The merged list keeps both (nothing dropped or doubled), marks each found_by, names the Features Database's part for the shared one, and says the database of each.",
+   "cases": [
+    {
+     "input": "annotate p.gb --kinds terminator,CDS (pLannotate rows: rrnB T1 on the planted bases, AmpR fragment at 301..420 on the minus strand)",
+     "expected": "2 hits: 'openDNA + pLannotate' (library name, plannotate = rrnB T1 / snapgene / 0.99) and 'pLannotate' (AmpR (fragment), source 'pLannotate: swissprot', protein_match true); plannotate_citation holds the paper's DOI"
+    },
+    {
+     "input": "--no-plannotate",
+     "expected": "plannotate 'off', every hit found_by openDNA, the setting reported False"
+    },
+    {
+     "input": "--add annotated.gb",
+     "expected": "the fragment's /note starts 'detected by pLannotate (database swissprot): 90 % identity' and carries pLannotate's description; the shared feature's note says it was also found by pLannotate as rrnB T1"
+    },
+    {
+     "input": "pLannotate not installed",
+     "expected": "plannotate 'missing', a warning that names `wsltools install`, only openDNA hits"
+    }
+   ],
+   "oracle": "in-test reference model",
+   "strength": "adequate",
+   "issues": [
+    "pLannotate itself is not run (its rows are canned): the real search was tried by hand on demo/pBAD30_eilR.gb, 21 rows, 3 of the 7 library hits found by both. The rows' format is checked in test_plannotate_rows_become_positions_the_way_the_windows_draw_them."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_detect_features_merges_only_the_same_thing_in_the_same_place",
+   "area": "Detect features",
+   "role": "Two different features could be fused into one row (a gene and its antisense neighbour), or one thing listed twice, in the merged list of the two tools.",
+   "purpose": "annotation.merge on hand-made hits: a terminator on the other strand with the same bases merges; a CDS on the other strand does not; a misc_feature on a promoter's bases merges; a feature elsewhere stays alone; the list is in order of position.",
+   "cases": [
+    {
+     "input": "terminator 100..200 (+) and 105..200 (-)",
+     "expected": "one entry, found by both, `also` the other tool's hit, source 'openDNA + pLannotate'"
+    },
+    {
+     "input": "CDS 300..600 on + and on -",
+     "expected": "two entries"
+    },
+    {
+     "input": "promoter 700..760 and misc_feature 700..760",
+     "expected": "one entry, found by both"
+    },
+    {
+     "input": "terminator 1000..1050 from pLannotate only",
+     "expected": "kept, found by pLannotate"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_plannotate_rows_become_positions_the_way_the_windows_draw_them",
+   "area": "Detect features",
+   "role": "A pLannotate feature across the origin, or on the minus strand, could be drawn in the wrong place.",
+   "purpose": "plannotate_run.rows_from on two rows in pLannotate's columns: a plain CDS, and an origin of replication that starts at 5900 and ends at 40 on a 5936 bp circle on the minus strand, 99.34 % identity, a fragment.",
+   "cases": [
+    {
+     "input": "AmpR qstart 520, qend 1381, sframe 1, pident 100",
+     "expected": "start 520, end 1381, strand 1, kind CDS, identity 1.0"
+    },
+    {
+     "input": "origin of replication qstart 5900, qend 40, sframe -1, pident 99.34, fragment",
+     "expected": "start 5900, end 5976 (past the length, like a library hit across the origin), strand -1, kind rep_origin, identity 0.9934, fragment true"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Only the conversion is tested; the column names are those of pLannotate 2.0.0 (checked by running it), and a later pLannotate could rename them."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_wsltools_command_says_what_is_missing_and_never_installs_wsl",
+   "area": "Command line for agents",
+   "role": "The installer's optional step, or an agent, could try to install WSL itself, or fail with a traceback where WSL is missing; or the install could leave out pLannotate's databases or a Terminal tool.",
+   "purpose": "With every call into WSL failing, `wsltools status` reports wsl false and the Terminal's tools, and `wsltools install` is one ERROR line that tells the user to run `wsl --install` themselves. The install script names the pLannotate environment, runs `plannotate setupdb`, lists every tool the pipelines need, ends with the combined exit status; pLannotate alone leaves the Terminal's environment out.",
+   "cases": [
+    {
+     "input": "wsltools status (no WSL)",
+     "expected": "wsl false, plannotate no_wsl, one entry per tool of tools.toml"
+    },
+    {
+     "input": "wsltools install (no WSL)",
+     "expected": "exit 1, 'ERROR: ... wsl --install'"
+    },
+    {
+     "input": "install_script()",
+     "expected": "has opendna-plannotate, setupdb, every needed tool, ends 'exit $r'"
+    },
+    {
+     "input": "install_script(terminal=False)",
+     "expected": "no fastp, no opendna-tools"
+    }
+   ],
+   "oracle": "property/invariant",
+   "strength": "weak",
+   "issues": [
+    "The script text is checked, not run: running it downloads hundreds of MB. It was run for real by hand (pLannotate 2.0.0 and its databases installed, `wsltools status` ready) but nothing in the suite does."
    ],
    "verdict": "sound",
    "evidence": "",
@@ -8045,6 +8361,772 @@
    ],
    "verdict": "sound",
    "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_split_command_writes_one_file_per_record_and_file_hash_name_reads_one",
+   "area": "Command line for agents",
+   "role": "An agent could be unable to use one chromosome of a multi-record file, or split a file into files that lose bases or have clashing names.",
+   "purpose": "A two-record GenBank file is refused by a bare name with the record names and the way out; FILE#NAME reads one record; split writes one file per record with the right lengths and topology and refuses a used folder or a one-record file; a multi-FASTA with two names differing only by case gives two FASTA files and a warning.",
+   "cases": [
+    {
+     "input": "inspect multi.gb",
+     "expected": "ERROR naming p_one, p_two and `split`"
+    },
+    {
+     "input": "region multi.gb#p_two 1 10; #nope",
+     "expected": "the first 10 bases of that record; ERROR 'no record called'"
+    },
+    {
+     "input": "split multi.gb --out parts",
+     "expected": "p_one.gb (120, circular), p_two.gb (90, linear); p_two.gb has the original bases"
+    },
+    {
+     "input": "split again; split a one-record file",
+     "expected": "ERROR 'not empty'; ERROR 'one record'"
+    },
+    {
+     "input": "split m.fasta (>x, >X)",
+     "expected": "x.fasta and X_2.fasta, a warning, X_2 holds the second sequence"
+    }
+   ],
+   "oracle": "round-trip/self-consistency",
+   "strength": "adequate",
+   "issues": [
+    "Sequences are random and short; a real GenBank file with features is only covered by the demo recipes' examples."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_merge_command_joins_files_and_records_and_keeps_what_the_format_keeps",
+   "area": "Command line for agents",
+   "role": "An agent could merge files into a multi-record file that loses a sequence, overwrites a file, or silently drops features or topology.",
+   "purpose": "Three GenBank inputs (one repeated) are joined in order into a multi-record file with the repeated name numbered and a warning; every record reads back with its bases; an existing output and a single sequence are refused; a record picked by FILE#NAME joins a .fasta output, which warns that only the bases are kept. A record whose name is taken is named after its file; --names sets every name, and a wrong count is refused.",
+   "cases": [
+    {
+     "input": "merge a.gb b.gb a.gb --out all.gb",
+     "expected": "records pa (120, circular), pb (90), a (120, circular: the repeated file is named after itself); a warning"
+    },
+    {
+     "input": "region all.gb#pb 1 90 and #pa_2 1 120",
+     "expected": "the original bases"
+    },
+    {
+     "input": "same --out again; one input",
+     "expected": "ERROR 'already exists'; ERROR 'two or more'"
+    },
+    {
+     "input": "merge all.gb#pb a.gb --out two.fasta",
+     "expected": "records pb, pa; warning 'FASTA keeps only the bases'; two.fasta#pa starts with a's bases"
+    },
+    {
+     "input": "merge a.gb (record pa) other.gb (record pa)",
+     "expected": "records pa and other; a warning"
+    },
+    {
+     "input": "--names x,y; --names x",
+     "expected": "x and y, no warning; ERROR 'one name each'"
+    }
+   ],
+   "oracle": "round-trip/self-consistency",
+   "strength": "adequate",
+   "issues": [
+    "Sequences are random and short; a real GenBank file with features is only covered by the demo recipes' examples."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_circular_tools_give_the_same_answers_on_a_plasmid_turned_round_the_origin",
+   "area": "Command line for agents",
+   "role": "A restriction site, guide, repeat or gene that straddles the origin of a plasmid could be missed or misplaced by a tool, while the same plasmid cut elsewhere is fine.",
+   "purpose": "A 900 bp circle holds EcoRI, a guide with its PAM, a 30 bp repeat in two copies and a CDS. It is turned so that each piece crosses the origin in turn, and sites, guides, repeats, DNA and protein search, feature, pcr and kld are run on every turned copy: they must give what they give on the original, with positions mapped back. codon also recodes the CDS across the origin: the same recoded bases on every turned copy; the written plasmid keeps the protein, the gene's place and every base outside the gene. A residue split by the origin is an error, not a change over the whole plasmid.",
+   "cases": [
+    {
+     "input": "sites, search GAATTC on the original and on copies turned by 302 and 110",
+     "expected": "the same site positions (mapped back), the same guide with its strand"
+    },
+    {
+     "input": "repeats --min-len 25 on copies turned by 64 and 614 (each copy of the repeat crosses the origin)",
+     "expected": "the same one direct repeat of about 30 bp"
+    },
+    {
+     "input": "search the protein MAKDAHHHF, feature wrapCDS, pcr target wrapCDS and kld p.Ala2Gly on the copy turned by 720",
+     "expected": "same protein hit, same 60 bp feature and protein, product 60 bp with the same first primer, p.(Ala2Gly) missense"
+    },
+    {
+     "input": "region START END with START > END on the turned copy; inspect",
+     "expected": "the CDS bases; the feature is marked crosses_origin"
+    },
+    {
+     "input": "codon check on every turned copy; codon run on the copy turned by 720",
+     "expected": "same codons changed and same recoded sequence; only bases of the CDS (880..900, 1..39) change; protein unchanged; feature still join(880..900,1..39)"
+    },
+    {
+     "input": "kld wrapCDS:p.His8Ala on the copy turned by 721 (codon 8 is split by the origin)",
+     "expected": "row error 'cross the origin'"
+    }
+   ],
+   "oracle": "property/invariant",
+   "strength": "strong",
+   "issues": [
+    "Variants have their own test (they need a BAM).",
+    "Random sequence: a stretch of 30 bases that repeats by chance next to the planted one would change a length (the check allows 30 to 32)."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_a_limit_that_is_reached_is_always_a_warning",
+   "area": "Command line for agents",
+   "role": "A list cut short or a search stopped at its limit could be taken for the complete answer.",
+   "purpose": "Each limit is lowered to 1 (guides --top 1, search hits, repeats listed, align pieces, NCBI --limit with a canned total of 40): the answer of every command carries a warning that says what was left out. Bases that are N are counted in the guides warning.",
+   "cases": [
+    {
+     "input": "guides --top 1",
+     "expected": "'Only the best 1 of the ... guides'"
+    },
+    {
+     "input": "search with the hit limit 1; repeats with the list limit 1; align with 1 piece",
+     "expected": "'stopped at'; 'only the longest 1 of'; 'Only 1 pieces are listed'"
+    },
+    {
+     "input": "ncbi search --limit 1 with a canned count of 40",
+     "expected": "'40 matches; only the first 1 are shown'"
+    },
+    {
+     "input": "guides on a sequence with NNNN",
+     "expected": "warning '4 base(s) are N ...'"
+    }
+   ],
+   "oracle": "in-test reference model",
+   "strength": "adequate",
+   "issues": [
+    "The limits are monkeypatched down, so it shows each command reports a reached limit, not that the real limits (500, 20,000, 30) are the right ones."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_variants_command_sees_changes_on_both_sides_of_the_origin_and_apply_writes_them",
+   "area": "Command line for agents",
+   "role": "A change at the first or last base of a plasmid, or a deletion across the origin, could be missed or mistaken for a break, because reads over the origin are mapped as two clipped pieces.",
+   "purpose": "A 600 bp circle with SNPs at bases 1, 5 and 600 is read by 100-base reads every 10 bases, those over the origin mapped as a primary piece and a supplementary piece (written with the test suite's own BAM writer): the three SNPs are consensus with 10 of 10 reads, nothing else is reported, and --apply writes a circular copy equal to the sample. Reads of a circle lacking 80 bases across the origin show breaks at 41 and 561 only. --apply writes the deletion through the origin; reads hard-clipped at the origin are reported with a note.",
+   "cases": [
+    {
+     "input": "variants on the SNP sample, --min-depth 3 --apply fixed.gb",
+     "expected": "snps at 1, 5, 600 (alt as planted), 10 of 10 reads, consensus; fixed.gb equals the sample and is circular"
+    },
+    {
+     "input": "variants on reads of the circle without reference bases 561..600 and 1..40, --apply",
+     "expected": "one consensus deletion of 80 bases at 561 (through the origin); the written plasmid equals the shortened sequence"
+    },
+    {
+     "input": "reads of the unchanged circle whose supplementary pieces are hard-clipped at the origin",
+     "expected": "one clip at 1 whose text says it could not be checked"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "The reads are error-free and evenly spaced; real reads would add noise (the thresholds are tested in test_core_formats)."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_core_formats.py::test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle",
+   "area": "BAM reads",
+   "role": "A break, a gap or a deletion near an end of the reference, or through the origin of a plasmid, could be hidden or mistaken for something else.",
+   "purpose": "On a 2000 bp reference: linear, uncovered ends are gaps and a clip at the very end is a break; circular, reads over the origin (also with a missing base in the clip) are not breaks, a clip that is something else is, hard-clipped reads are reported with a note, reads that jump over the origin are one deletion through it, an uncovered start and end are one gap through it.",
+   "cases": [
+    {
+     "input": "linear: reads over 100..199 and three clipped at the very end",
+     "expected": "gaps (0,100), (200,1750) and a clip at 1999"
+    },
+    {
+     "input": "circular: three reads over the origin (primary + supplementary), the clip lacking a base",
+     "expected": "no break at all; read as linear, breaks at 0 and 1999"
+    },
+    {
+     "input": "circular: the same reads with a clip that is not the circle",
+     "expected": "a break at 1999"
+    },
+    {
+     "input": "circular: supplementary pieces hard-clipped",
+     "expected": "a clip at 0 saying it could not be checked"
+    },
+    {
+     "input": "circular: 80 bases (1961..2000 and 1..40) missing",
+     "expected": "one 'del' of 80 bases at 1960, alt 'across the origin'; no clip and no gap"
+    },
+    {
+     "input": "circular: nothing over the first and the last 100 bases",
+     "expected": "one gap of 200 bases at 1900 through the origin"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "The reads are error-free; the edit-distance tolerance is checked only with one missing base."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_repeats_msa.py::test_repeats_left_out_are_said_and_a_unit_repeated_twice_and_a_half_is_found",
+   "area": "Repeats",
+   "role": "A repeat that is dropped by every branch of the search, or a stretch skipped as a palindrome, could vanish without a word.",
+   "purpose": "A 100 bp unit repeated 2.5 times is listed as a direct repeat of the unit; a perfect palindrome is counted in the note (self-complementary stretches).",
+   "cases": [
+    {
+     "input": "200 random + unit + unit + half a unit + 200 random",
+     "expected": "a direct repeat of 100 bp"
+    },
+    {
+     "input": "a 40 bp palindrome in random DNA",
+     "expected": "the note says self-complementary stretches are not listed as inverted repeats"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Only one case of each; the cut of a repeat at 1,000 bp past the origin is not covered here."
+   ],
+   "verdict": "sound",
+   "evidence": "",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_the_forest_gives_scikit_learns_answer_for_every_sequence_of_the_paper",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "The 1512 exported trees give, for the nine features of each of the 303 paper sequences, the probability scikit-learn gets from the same trees, and the verdict.",
+   "cases": [
+    {
+     "input": "303 feature rows from the paper's table (+ the repeat metric from the authors' code)",
+     "expected": "probability within 1e-12 of scikit-learn's, same True/False verdict, for all 303"
+    },
+    {
+     "input": "the paper's own Synthesized/Canceled labels",
+     "expected": "the verdict agrees with the label for more than 85 % of rows (it is 269 of 303, 89 %)"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": [
+    "The agreement with the paper's labels is a sanity check only: the model has an F1 of 0.93 on held-out data and some of these fragments trained it."
+   ],
+   "role": "A mistake in reading the exported forest would make every synthesis verdict wrong without any error.",
+   "verdict": "sound",
+   "evidence": "Read: reference probabilities come from scikit-learn's own Tree.predict on the unpickled trees, averaged as RandomForestClassifier does; the measured difference was 0.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_melting_temperature_equals_biopythons_nearest_neighbour_value",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "The ported nearest-neighbour melting temperature (Tm_NN, dnac1=250, salt correction 7) equals Biopython on 20-mers.",
+   "cases": [
+    {
+     "input": "2000 random 20-mers",
+     "expected": "difference below 1e-9 each"
+    },
+    {
+     "input": "poly-A, poly-C, poly-G, poly-T, (AT)x10, (GC)x10",
+     "expected": "same"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": [],
+   "role": "A wrong melting temperature changes how many windows count as too cold or too hot, and so the verdict.",
+   "verdict": "sound",
+   "evidence": "Read: Bio.SeqUtils.MeltingTemp.Tm_NN is the function the authors' code calls; compared value by value.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_the_rust_repeat_finder_agrees_with_the_rules_written_the_plain_way",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "The Rust port of the authors' maximal-repeat finder returns the same (length, kind, positions) as the same rules written with str.find.",
+   "cases": [
+    {
+     "input": "60 random sequences of 30 to 160 bases with 0 to 3 planted direct or inverted pieces of 9 to 16 bases",
+     "expected": "identical sets of (length, inverted, starts)"
+    }
+   ],
+   "oracle": "in-test reference model",
+   "strength": "strong",
+   "issues": [
+    "The reference model is the same rules transcribed by us, not the authors' program: the check against the authors' own numbers is the feature test below and scripts/salis_verify.py."
+   ],
+   "role": "A repeat missed or invented by the fast repeat finder changes two of the nine features.",
+   "verdict": "sound",
+   "evidence": "Read: the model transcribes RepeatFinder.py's maximal-repeat tests (left and right maximality, covered k-mers, the 'direct' filing of other copies).",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_the_rule_based_hairpin_best_gc_is_a_stem_fraction",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "A GC-only 11 bp stem scores 1.0, poly-A scores 0, and a sequence shorter than any stem pair scores 0.",
+   "cases": [
+    {
+     "input": "GCGCGCGCGCG AAA CGCGCGCGCGC",
+     "expected": "1.0"
+    },
+    {
+     "input": "80 x A",
+     "expected": "0.0"
+    },
+    {
+     "input": "ACGT",
+     "expected": "0.0"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Three cases only; the full rule set is checked on the paper's sequences by the feature test and scripts/salis_verify.py."
+   ],
+   "role": "The rule-based hairpin pass feeds the richest_hairpin feature.",
+   "verdict": "sound",
+   "evidence": "Read: values follow from the stem definition.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_a_window_starting_at_size_minus_20_is_never_counted_as_the_original_does",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "GC_short_l counts windows that start before size - 20 only.",
+   "cases": [
+    {
+     "input": "40 C then 20 A",
+     "expected": "4 (the all-A window at 40 is skipped)"
+    },
+    {
+     "input": "40 A then 20 C",
+     "expected": "25"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [],
+   "role": "The original code never reads the last 20-base window; a port that 'fixed' this would no longer be the published model.",
+   "verdict": "sound",
+   "evidence": "Read: counts follow from the window definition and the published loop range.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_clean_names_the_first_base_it_cannot_use",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "Whitespace and case are accepted; the first other base is named; an empty text is refused.",
+   "cases": [
+    {
+     "input": "' ac gt\\nAC '",
+     "expected": "ACGTAC"
+    },
+    {
+     "input": "ACGNACG",
+     "expected": "error: Base 4 is 'N'"
+    },
+    {
+     "input": "two spaces",
+     "expected": "error: no sequence"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [],
+   "role": "A sequence with an N or a stray character must be refused with its position, never silently changed.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the_paper",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "The nine features, the probability and the verdict of the 6 shortest paper sequences equal the authors' own table, the authors' repeat metric and scikit-learn's answer.",
+   "cases": [
+    {
+     "input": "the 6 shortest of the 303 sequences (under 300 bp)",
+     "expected": "all nine features equal (richest_hairpin to the table's 9 decimals); probability within 1e-12"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": [
+    "Only 6 of the 303 sequences run here (the whole set takes about 80 CPU-minutes): scripts/salis_verify.py runs all of them. Needs ViennaRNA (skipped without it; CI installs it)."
+   ],
+   "role": "The folding, window and repeat parts together must reproduce the published model on real sequences.",
+   "verdict": "sound",
+   "evidence": "Read: reference values are the authors' published table (made with their code and ViennaRNA 2.3.4); the converted original also reproduced that table on 55 sequences with ViennaRNA 2.8.0.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_a_fragment_shorter_than_one_folding_window_is_still_scored",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "A 29-base fragment (no 100-base window to fold) gives size 29 and a probability between 0 and 1.",
+   "cases": [
+    {
+     "input": "29 bases",
+     "expected": "size 29, probability in [0, 1]"
+    }
+   ],
+   "oracle": "smoke",
+   "strength": "weak",
+   "issues": [
+    "Checks that it runs and the numbers are in range, not that they are right."
+   ],
+   "role": "A short fragment must give an answer, not an error.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_synthesis_command_gives_what_the_synthesis_module_gives",
+   "area": "Command line for agents",
+   "purpose": "The synthesis command returns the same probability, features and verdict as synthesis_salis.evaluate for the region, warns that a circular file is read straight, and refuses a backwards region.",
+   "cases": [
+    {
+     "input": "random 260 bp circle, --region 1..200",
+     "expected": "equal to evaluate(seq[:200]); region {1, 200}"
+    },
+    {
+     "input": "whole circular file",
+     "expected": "warning 'straight piece'"
+    },
+    {
+     "input": "--region 200..100",
+     "expected": "ERROR line"
+    }
+   ],
+   "oracle": "round-trip/self-consistency",
+   "strength": "adequate",
+   "issues": [
+    "Compares with the module, not with an external value: the module is checked in test_synthesis_salis.py."
+   ],
+   "role": "The command line and the Synthesis tab could drift apart if the command had its own copy of the logic.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "core/src/salis.rs::tests::a_direct_repeat_is_found_once_at_its_full_length_with_both_starts",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "A 12-mer placed twice with a 20-base spacer is one direct repeat of 12 with starts 0 and 32.",
+   "cases": [
+    {
+     "input": "GATTACAGGCTA + 20 spacer + GATTACAGGCTA",
+     "expected": "(12, direct) at [0, 32]; every repeat is 9 or longer"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "The spacer has repeats of its own (9 bases), so only the 12-mer is asserted exactly."
+   ],
+   "role": "The repeat finder could report a copy at the wrong place or twice.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "core/src/salis.rs::tests::a_sequence_without_repeats_has_none",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "Two sequences with no 9-base repeat give an empty list; one shorter than 9 as well.",
+   "cases": [
+    {
+     "input": "ACGTTGCAAGCTTAGGCCATAT",
+     "expected": "no repeat"
+    },
+    {
+     "input": "ACG",
+     "expected": "no repeat"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [],
+   "role": "A repeat-free sequence must not be flagged.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "core/src/salis.rs::tests::a_gc_rich_stem_scores_one_and_a_poly_a_run_scores_zero",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "A GC-only 11 bp stem with a 3-base loop scores 1.0; 60 A score 0.0.",
+   "cases": [
+    {
+     "input": "GCGCGCGCGCGAAACGCGCGCGCGC",
+     "expected": "1.0"
+    },
+    {
+     "input": "60 x A",
+     "expected": "0.0"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [],
+   "role": "The rule-based hairpin pass feeds richest_hairpin.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_a_pasted_text_is_one_fasta_record_or_bare_bases",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "The Synthesis tab box accepts bare bases or exactly one FASTA record and names what it refuses.",
+   "cases": [
+    {
+     "input": ">pUC fragment / acgt / ACGT",
+     "expected": "ACGTACGT"
+    },
+    {
+     "input": "two FASTA records",
+     "expected": "error: more than one FASTA record"
+    },
+    {
+     "input": "ACGT1",
+     "expected": "error: Base 5 is '1'"
+    },
+    {
+     "input": "a header and no bases",
+     "expected": "error: no sequence"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [],
+   "role": "A pasted FASTA header, a second record or a stray digit must never reach the calculator as bases.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_the_viennarna_wheel_picked_fits_the_python_and_the_system",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "From a PyPI file list, the wheel for this Python and system is chosen: Windows, macOS Intel and Apple Silicon, Linux (manylinux, not musl), and an error names what was looked for.",
+   "cases": [
+    {
+     "input": "cp312 win32 AMD64",
+     "expected": "win_amd64"
+    },
+    {
+     "input": "cp313 darwin arm64 / x86_64",
+     "expected": "macosx_11_0_arm64 / macosx_10_15_x86_64"
+    },
+    {
+     "input": "cp312 linux x86_64 / aarch64",
+     "expected": "the manylinux file of that machine, never musllinux"
+    },
+    {
+     "input": "cp39",
+     "expected": "error: no ViennaRNA wheel for Python cp39"
+    },
+    {
+     "input": "win32 arm64",
+     "expected": "error naming win32 (arm64)"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "Uses the file names of the real 2.8.0 listing, written out here; a new naming scheme on PyPI would not be noticed."
+   ],
+   "role": "The first-use download of ViennaRNA could fetch a file that cannot load on the user's system, or a musl or source build.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_salis.py::test_installing_viennarna_checks_the_checksum_before_unpacking_anything",
+   "area": "Synthesis Success Calculator (Salis)",
+   "purpose": "The installer unpacks a wheel whose SHA-256 matches PyPI's listing and makes it importable, refuses one that does not (leaving no folder), and reports an unreachable PyPI as one message.",
+   "cases": [
+    {
+     "input": "a fake wheel with the right digest",
+     "expected": "version 9.9 returned; RNA/__init__.py unpacked"
+    },
+    {
+     "input": "digest of 64 zeros",
+     "expected": "error: does not match the checksum; no folder left"
+    },
+    {
+     "input": "PyPI unreachable",
+     "expected": "error: Could not download ViennaRNA from PyPI: Could not reach pypi.org"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "No real download is made (fetch is replaced), so the real PyPI answer format is only as good as the fake: the key names used are the documented ones."
+   ],
+   "role": "A corrupted or swapped download could be unpacked into the data folder and imported.",
+   "verdict": "sound",
+   "evidence": "Read: the real RNA module and sys.path are put back after the test.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_vendors.py::test_the_idt_login_and_screening_requests_have_the_shape_the_open_client_uses",
+   "area": "Synthesis tab: company checks and stored logins",
+   "purpose": "Screening a sequence makes two calls: a password-grant login (client id and secret as HTTP Basic) and a screening call with the bearer token and the sequence as a JSON list; the score is the sum of the findings' scores.",
+   "cases": [
+    {
+     "input": "a 200-base sequence and fake credentials",
+     "expected": "token call to the identity server with grant_type=password, scope=test, the username and password, Basic base64(client id:secret); then a Bearer call whose body is [{Name, Sequence}]; score 12.5 from findings 4.5 and 8"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "weak",
+   "issues": [
+    "The shape being checked is the one the open-source SBOL-utilities client is reported to use, not one read from IDT's documentation (behind a login) or seen on the live service: the first real call by someone with an IDT API account is the real test."
+   ],
+   "role": "A wrong login or screening request would send credentials to IDT in a form it rejects, or read the score from the wrong place.",
+   "verdict": "sound",
+   "evidence": "Read: the HTTP call is replaced by a recorder; no network.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_vendors.py::test_an_idt_answer_is_read_whatever_its_nesting_and_a_missing_score_is_said",
+   "area": "Synthesis tab: company checks and stored logins",
+   "purpose": "Findings are collected from any nesting of lists and dictionaries; a boolean is not a score; an answer with no Score gives none; text that is not JSON is refused.",
+   "cases": [
+    {
+     "input": "{\"Score\": 3}",
+     "expected": "3"
+    },
+    {
+     "input": "[[{Score 1}], [{Score 2.5}, {Name}]]",
+     "expected": "3.5"
+    },
+    {
+     "input": "[{Score: true}]",
+     "expected": "no score"
+    },
+    {
+     "input": "<html>maintenance</html>",
+     "expected": "error: not JSON"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "The shape being checked is the one the open-source SBOL-utilities client is reported to use, not one read from IDT's documentation (behind a login) or seen on the live service: the first real call by someone with an IDT API account is the real test."
+   ],
+   "role": "An answer in an unexpected shape must not be shown as a good score.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_vendors.py::test_a_length_idt_does_not_cover_is_refused_before_anything_is_sent",
+   "area": "Synthesis tab: company checks and stored logins",
+   "purpose": "Sequences under 125 or over 3000 bases are refused with nothing sent; 125 and 3000 are accepted.",
+   "cases": [
+    {
+     "input": "124 and 3001 bases",
+     "expected": "error naming the range and 'Nothing was sent', post never called"
+    },
+    {
+     "input": "125 and 3000 bases",
+     "expected": "sent"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "The range itself (125 to 3000) is as reported by the SBOL-utilities documentation, not read from IDT."
+   ],
+   "role": "IDT answers 0 outside its length range, which would read as an excellent score.",
+   "verdict": "sound",
+   "evidence": "Read.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_vendors.py::test_idt_errors_say_what_happened_without_repeating_the_login",
+   "area": "Synthesis tab: company checks and stored logins",
+   "purpose": "A 401 from IDT gives its code and message and a hint about the four login values but none of their contents; an unreachable host and an answer with no token get their own messages.",
+   "cases": [
+    {
+     "input": "401 Unauthorized with body invalid_client",
+     "expected": "message has '401 Unauthorized', 'invalid_client', 'client secret' and none of the four values"
+    },
+    {
+     "input": "no route to host",
+     "expected": "Could not reach www.idtdna.com: no route"
+    },
+    {
+     "input": "login answer without access_token",
+     "expected": "error: without an access token"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [],
+   "role": "An error message could leak the password or client secret into a screenshot, a log or a bug report.",
+   "verdict": "sound",
+   "evidence": "Read: urlopen is replaced; the four fake values are looked for in the message.",
+   "gaps": [],
+   "proposal": ""
+  },
+  {
+   "id": "tests/test_synthesis_vendors.py::test_logins_go_to_the_systems_secure_store_or_stay_in_memory_never_in_a_file",
+   "area": "Synthesis tab: company checks and stored logins",
+   "purpose": "With a working system store the login is saved and loaded from it and forgotten from it; with no store (fail backend or no keyring) or one that refuses writes, it is held in memory only (save says so); forgetting empties both.",
+   "cases": [
+    {
+     "input": "a working fake keyring (Windows)",
+     "expected": "save True, stored JSON equals the login, load equals it, forget empties"
+    },
+    {
+     "input": "fail backend / no keyring / write error",
+     "expected": "save False, load still returns it this run, forget empties"
+    },
+    {
+     "input": "fail backend",
+     "expected": "backend() is None, secure() False"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "Uses a fake keyring: the real Windows, macOS and Linux stores are not exercised, and neither is the frozen build's backend discovery."
+   ],
+   "role": "A password written to a file, or lost silently, or a remembered login that cannot be forgotten.",
+   "verdict": "sound",
+   "evidence": "Read.",
    "gaps": [],
    "proposal": ""
   }

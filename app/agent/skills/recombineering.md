@@ -20,7 +20,7 @@ del_araC,araC,none,
 ```
 
 - `id`: names the output genome `<id>.gb`; choose a convention that suits the user. Colliding or unsafe ids are renamed with a warning (see the index), never lost.
-- `region`: what is replaced: a feature name (or `#INDEX`), or `START..END`, 1-based and inclusive, along the genome. A region across the origin is not accepted.
+- `region`: what is replaced: a feature name (or `#INDEX`), or `START..END`, 1-based and inclusive, along the genome. On a circular genome START > END is a region through the origin (`890..10`); a feature that crosses it is used as it is.
 - `cassette`: the cassette's GenBank file (relative to the CSV's folder, or an absolute path), or `none` to delete the region (no primers: there is nothing to amplify).
 - `orientation`: optional column, `forward` (default) or `reverse` (the cassette goes in reverse-complemented). Say to the user which one you used; for a gene knock-out it usually matches the direction of the gene it replaces.
 - Insertions between two bases are not offered here: replace a small region instead.

@@ -36,6 +36,7 @@ You do not need to learn the commands. The agent reads the instructions that shi
 | Align several sequences | `msa` | alignment, consensus, identity (optional FASTA file) |
 | Check a plasmid for expression (**beta**: treat the verdicts as hints) | `checkup` | for each CDS: expressed or not, with promoter, RBS and terminator |
 | Annotate known parts | `annotate` | promoters, terminators, origins, resistance genes (optional annotated copy) |
+| Is a fragment likely to be synthesised quickly? | `synthesis` | the Synthesis Success Calculator's verdict, probability and nine features (needs ViennaRNA) |
 | Compare sequencing reads with the plasmid | `variants` | SNPs, insertions, deletions with read counts (optional corrected copy) |
 | Convert to GenBank, FASTA, GFF3, BED, NCBI feature table or protein FASTA | `export` | one new file |
 | Turn a primer list into an order file | `order` | an IDT plate file or a plain name,sequence file |
@@ -59,7 +60,7 @@ Example requests:
 4. Shows you the settings (Tm, codon table, PCR conditions, limits) and waits for your OK.
 5. Runs `run`, which writes a new folder of files (edited plasmids, a primer table, a report).
 
-**Analyses** (`sites`, `guides`, `repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`) are read-only: one command, one answer. They write a file only when you ask for one (`--out`, `--add`, `--apply`).
+**Analyses** (`sites`, `guides`, `repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`, `synthesis`) are read-only: one command, one answer. They write a file only when you ask for one (`--out`, `--add`, `--apply`).
 
 Positions are 1-based and inclusive, as in GenBank files.
 
@@ -106,7 +107,7 @@ Positions are 1-based and inclusive, as in GenBank files.
 | `check` reports rows in error | Read the reasons (a reference base that does not match is the usual one) and correct the table; the other rows are fine. |
 | A warning that a value is "outside what openDNA's windows accept" | The agent was given a value beyond the windows' range. Confirm it is what you meant. |
 | The agent invents a command or a column | Ask it to run `skills show <name>` and follow the recipe. |
-| The results differ from the window | This should not happen. Report it with the command, the file and both results (see `docs/FEEDBACK.md`). |
+| The results differ from the window | This should not happen. Report it with the command, the file and both results (Help > Copy Diagnostics, then a GitHub issue). |
 
 ## 7. For other tools and scripts
 

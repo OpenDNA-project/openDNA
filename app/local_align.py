@@ -17,10 +17,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QGroupBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QRadioButton,
-    QSizePolicy, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QMessageBox, QSizePolicy, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from opendna_core import align
+
+import tool_settings
 
 import msa
 from alignments import INVERTED_COLOR
@@ -28,9 +30,9 @@ from editor import clean_pasted
 from msa_view import MsaCanvas, MsaView
 from repeats import PairRepeats
 from tools import ToolDialog, empty_hint
-from uikit import fit_columns, no_auto_default, plural, right_aligned, run_busy
+from data_table import DataTable
+from uikit import fit_columns, no_auto_default, plural, run_busy
 import theme
-import value_filter
 
 MIN_QUERY = 12        # bp: shorter text from the clipboard is not offered as a query
 MAX_QUERY = 200_000   # bp: longer queries are refused (the alignment takes too long and too much memory)
@@ -88,12 +90,37 @@ def clipboard_query():
         return "", f"The clipboard has no DNA: {e}"
 
 
+TOOL = "Local Align"   # its page in Tools > Settings
+DEFAULT_TIME_LIMIT, TIME_LIMIT_LIMITS = 0.0, (0.0, 3600.0)
+tool_settings.register(TOOL, [
+    tool_settings.Param("time_limit", "Time limit for one search (0 = none)", DEFAULT_TIME_LIMIT, *TIME_LIMIT_LIMITS, step=1.0, suffix=" s",
+                        tip="A long query against a genome can take seconds. When the limit is reached, the candidate places with "
+                            "fewest seeds are left out and a warning says how many. Folder Search applies it to each file."),
+])
+WHERE_TIME_LIMIT = "Tools > Settings > Local Align > Time limit (0 = none)"
+
+
+def time_limit_note(notes):
+    """The note of `align` that says its time limit was reached (also inside a Folder Search note), or None."""
+    return next((n for n in notes if "The time limit" in n), None)
+
+
+def warn_time_limit(parent, note, files=0):
+    """The warning box when a search stopped at its time limit: what was left out and where the limit is changed."""
+    where = f" (in {plural(files, 'file')}; the first:)" if files else ":"
+    QMessageBox.warning(parent, "Time limit reached: hits may be missing",
+                        f"The search stopped at its time limit before aligning every candidate place{where}\n\n{note}\n\n"
+                        f"To search everything, set {WHERE_TIME_LIMIT} and align again.")
+
+
 def find_hits(template, query, circular):
-    """The pieces of `query` found in `template` (both strands; Rust `align`), as the Align button lists them: one SimpleNamespace per piece
-    (start, end, strand, score, identity, qstart, qend, mismatches, insertions, deletions), in the order the pieces have in the query."""
+    """(hits, notes): the pieces of `query` found in `template` (both strands; Rust `align`), as the Align button lists them: one SimpleNamespace per
+    piece (start, end, strand, score, identity, qstart, qend, mismatches, insertions, deletions), in the order the pieces have in the query; and the
+    notes of `align`, one per search limit reached, saying what it left out."""
+    found, notes = align(template, query, circular, MAX_HITS, tool_settings.value(TOOL, "time_limit"), tool_settings.cores())
     hits = [SimpleNamespace(start=h[0], end=h[1], strand=h[2], score=h[3], identity=h[4], qstart=h[5], qend=h[6], mismatches=h[7], insertions=h[8],
-                            deletions=h[9]) for h in align(template, query, circular, MAX_HITS)]
-    return sorted(hits, key=lambda h: (h.qstart, h.qend, h.start))
+                            deletions=h[9]) for h in found]
+    return sorted(hits, key=lambda h: (h.qstart, h.qend, h.start)), notes
 
 
 def strand_text(strand):
@@ -182,15 +209,13 @@ class LocalAlignDialog(ToolDialog):
         self.status = QLabel(wordWrap=True, textFormat=Qt.PlainText)
         self.status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.summary = QLabel(wordWrap=True)
-        self.table = QTableWidget(0, len(self.COLUMNS))
-        self.table.setHorizontalHeaderLabels(self.COLUMNS)
-        value_filter.install(self.table, ["Strand"])   # right-click a header: filter by values
+        self.table = DataTable(self.COLUMNS, filtered=["Strand"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=7)   # one number column: "#" (Qt's own row numbers are hidden)
         self.table.setWordWrap(False)
         empty_hint(self.table, "Paste a query and press Align")
-        self.table.currentCellChanged.connect(lambda row, *_: self._select(row))
+        self.table.currentCellChanged.connect(lambda row, *_: self._select(self.table.data_row(row)))
         editor.query_hit_changed.connect(self._picked)   # a row clicked in the Alignment view picks the same row here
         self.length = QLabel()   # the query's size, as the box is typed in
         self.query.textChanged.connect(self._query_length)
@@ -379,11 +404,13 @@ class LocalAlignDialog(ToolDialog):
             self.clear(str(e))
             return
         text, circular = ed.doc.sequence(), ed.doc.circular   # (up to 200 kb of query: in a thread, behind a busy dialog)
-        self.hits = run_busy(self, "Aligning…", lambda: find_hits(text, query, circular))   # (one row per piece, in the order the pieces have in the query)
+        self.hits, notes = run_busy(self, "Aligning…", lambda: find_hits(text, query, circular))   # (one row per piece, in the order the pieces have in the query)
         self.fill()
         ed.set_query_hits(self.hits)
         limit = " (the limit; weaker ones are left out)" if len(self.hits) >= MAX_HITS else ""
-        self.status.setText(f"{plural(len(self.hits), 'hit')}{limit}" if self.hits else "No hit")
+        self.status.setText(" ".join([f"{plural(len(self.hits), 'hit')}{limit}." if self.hits else "No hit."] + notes))
+        if time_limit_note(notes):
+            warn_time_limit(self, time_limit_note(notes))
         if self.hits:
             self.win.set_genome_visible(True)  # show the Alignment view and frame the pieces
             n = ed.length
@@ -393,29 +420,26 @@ class LocalAlignDialog(ToolDialog):
                 lo, hi = best.start, best.end
             margin = max(20, (hi - lo) // 10)
             self.win.genome_view.set_view(lo - margin, min(hi, n) + margin)
-            self.table.selectRow(self.hits.index(best) if len(self.hits) == 1 else 0)
+            self.table.select_data_row(self.hits.index(best) if len(self.hits) == 1 else 0)
 
     def fill(self):
         n, circular = self.editor.length, self.editor.doc.circular
         self.summary.setText(summarize(self.hits, n, circular))
-        self.table.setRowCount(len(self.hits))
         inverted_brush = QBrush(QColor(INVERTED_COLOR))
         bold = QFont(self.table.font())
         bold.setBold(True)
-        for i, h in enumerate(self.hits):
-            before = junction_text(self.hits[i - 1], h, n, circular) if i else "start of the query"
-            values = [str(i + 1), f"{h.qstart + 1:,}–{h.qend:,}", f"{h.start + 1:,}–{(h.end - 1) % n + 1:,}",
-                      strand_text(h.strand), f"{h.identity:.1%}", str(h.score),
-                      f"{plural(len(h.mismatches), 'mismatch')}, {len(h.insertions)} ins, {len(h.deletions)} del", before]
-            for c, v in enumerate(values):
-                item = QTableWidgetItem(v)
-                if c in (0, 4, 5):
-                    right_aligned(item)
-                if h.strand < 0 and c in (0, 3):  # the inverted pieces stand out
-                    item.setBackground(inverted_brush)
-                    item.setForeground(QBrush(QColor("white")))
-                    item.setFont(bold)
-                self.table.setItem(i, c, item)
+        with self.table.refilling(len(self.hits)):
+            for i, h in enumerate(self.hits):
+                before = junction_text(self.hits[i - 1], h, n, circular) if i else "start of the query"
+                values = [str(i + 1), f"{h.qstart + 1:,}–{h.qend:,}", f"{h.start + 1:,}–{(h.end - 1) % n + 1:,}",
+                          strand_text(h.strand), f"{h.identity:.1%}", str(h.score),
+                          f"{plural(len(h.mismatches), 'mismatch')}, {len(h.insertions)} ins, {len(h.deletions)} del", before]
+                for c, v in enumerate(values):
+                    item = self.table.put(i, c, v, right=c in (0, 4, 5))
+                    if h.strand < 0 and c in (0, 3):  # the inverted pieces stand out
+                        item.setBackground(inverted_brush)
+                        item.setForeground(QBrush(QColor("white")))
+                        item.setFont(bold)
 
     def clear(self, message=""):
         """Remove the hits (and their track); `message` goes in the status line."""
@@ -434,5 +458,5 @@ class LocalAlignDialog(ToolDialog):
 
     def _picked(self, index):
         """The Alignment view picked hit `index`: select its row in the table (same order, same numbers)."""
-        if 0 <= index < self.table.rowCount() and self.table.currentRow() != index:
-            self.table.selectRow(index)
+        if 0 <= index < self.table.rowCount() and self.table.current_data_row() != index:
+            self.table.select_data_row(index)

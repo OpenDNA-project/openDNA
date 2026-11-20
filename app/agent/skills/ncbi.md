@@ -16,6 +16,8 @@ ncbi get ACCESSION --out NEW_FILE [--db nuccore|protein] [--allow-large]
 - `search`: records that match, each with `accession` (with version), `title`, `length`, `organism`, `updated`, `topology`, `source` (refseq, genbank, swiss_prot...). Up to 25 by default. Words like `E. coli K-12 complete genome` work; an accession finds that record.
 - `get`: writes the record to a **new** file (never overwrites): a GenBank file with its annotation for `nuccore`, FASTA for `protein`. `ACCESSION` is the accession, with or without version (without: the current version). A record already fetched before comes from the local cache (`from_cache`). A record over 20 million bases is refused unless `--allow-large` (a download of minutes): ask the user first. Over 100 million bases it cannot be fetched here.
 
+A gene name (`lacZ`) often lists whole genomes before the gene's own record, and the tool cannot filter for it. If the user gave an accession, use `get` directly; if not, show them the list and ask which record they want rather than picking a genome or an accession from memory.
+
 After `get`, use the file with `inspect`, `kld`, `pcr` and the rest like any other.
 
 ## What to tell the user

@@ -5,7 +5,8 @@ again after every refill, and a value it has never seen (a new row) is shown, no
 
     install(table, ["Type", "Strand"])   # the columns, by header text, that can be filtered (categories, not numbers)
 
-The tables it is installed on, and why the others are left out, are in docs/FILTER_AUDIT.md.
+It is offered only on columns that hold categories (a handful of repeated values); names, sequences, positions and measured numbers are left to
+the text filter and to sorting.
 """
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -117,6 +118,33 @@ class ValueFilter(QObject):
             return [r for r in range(root.childCount()) if not root.child(r).isHidden()]
         return [r for r in range(self.view.model().rowCount()) if not self.view.isRowHidden(r)]
 
+    # ---- right-click a cell: show only, or hide, its value ---------------------------------------------------------------------
+    def cell_actions(self, menu, pos):
+        """Add to `menu` what a right-click at `pos` on a cell of a filtered column offers: Show only its value, Hide it, Show all rows
+        (after a separator when the menu has actions already). Returns whether it added any: nothing for any other cell."""
+        index = self.view.indexAt(pos)
+        name = self.columns().get(index.column())
+        if not index.isValid() or index.parent().isValid() or name is None:   # (a row of a tree under another one is not filtered)
+            return False
+        value = dict(self.rows())[index.row()][index.column()]
+        others = {v for v, _ in self.values(index.column())} - {value}
+        if menu.actions():
+            menu.addSeparator()
+        menu.addAction(f"Show only {name} = {value}", lambda: self.set_hidden(name, others))
+        menu.addAction(f"Hide {name} = {value}", lambda: self.set_hidden(name, self.hidden.get(name, set()) | {value}))
+        menu.addAction("Show all rows", self.clear).setEnabled(any(self.hidden.values()))
+        return True
+
+    def cell_menu(self, pos):
+        """The menu of a right-click at `pos`: cell_actions alone, or None."""
+        menu = QMenu(self.view)
+        return menu if self.cell_actions(menu, pos) else None
+
+    def _cell_menu_at(self, pos):
+        menu = self.cell_menu(pos)
+        if menu is not None:
+            menu.exec(self.view.viewport().mapToGlobal(pos))
+
     # ---- the popup ---------------------------------------------------------------------------------------------------------
     def popup(self, column, pos):
         name = self.columns().get(column)
@@ -191,11 +219,15 @@ def _text(index):
     return text or EMPTY
 
 
-def install(view, columns, keys=None):
+def install(view, columns, keys=None, cells=False):
     """Filter by values on these columns (header texts) of `view`; the ValueFilter is also `view.value_filter`. `keys`: {column:
-    function(text) -> value} for a column filtered by a part of its text."""
+    function(text) -> value} for a column filtered by a part of its text. `cells`: also a right-click on a cell offers "Show only" / "Hide"
+    its value (not for a view that has a context menu of its own)."""
     vf = view.value_filter = ValueFilter(view, columns, keys)
     vf.header.setToolTip(f"Right-click a column header ({', '.join(columns)}) to show only some of its values")
+    if cells:
+        view.setContextMenuPolicy(Qt.CustomContextMenu)
+        view.customContextMenuRequested.connect(vf._cell_menu_at)
     return vf
 
 

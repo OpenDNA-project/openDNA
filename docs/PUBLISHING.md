@@ -1,6 +1,6 @@
 # Publishing openDNA on GitHub
 
-A checklist for taking the project further. **Done so far:** the code is in a private GitHub repository under the AGPL-3.0 ([LICENSE](../LICENSE)). The steps below are what is left before opening it up, building releases or adding CI.
+A checklist for taking the project further. **Done so far:** the repository is public (since 0.7.0) under the AGPL-3.0 ([LICENSE](../LICENSE)), with CI and releases (v0.8.2 to v0.8.4). The sections below are the how-to for each step; read the ones about the past as the record of why.
 
 ## 1. Decide first
 
@@ -21,8 +21,8 @@ A checklist for taking the project further. **Done so far:** the code is in a pr
 - **The Sponsors startup page.** `app/sponsors.json` has three empty "Your ad here" slots shown on startup (labelled as sponsored,
   shown at the first start of each day, can be turned off). Decide that you want that in a public tool; if not, remove the page or leave the slots empty
   and the `contact` blank (as now).
-- **Honest status.** The README says "early / personal project". [TESTING.md](TESTING.md) lists what is still
-  untested (two items: a comparison with a .dna file's own primer list on a real file that has primers, and the location forms listed under Known problems in TODO.md). Keep both in step.
+- **Honest status.** The README says "early / personal project". [test-report/README.md](test-report/README.md) lists every test; what is known to be wrong is in
+  [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Keep both in step.
 
 ## 2. Already checked (as of this commit)
 
@@ -81,9 +81,7 @@ repository settings, then make it public when ready: `gh repo edit --visibility 
 ## 6. Continuous integration
 
 `.github/workflows/ci.yml` runs on every push to `main` and on pull requests (Windows, about 5 minutes): it builds the Rust core, runs
-`cargo test`, `pyflakes` and `pytest` (the tests that need your own `.dna` / `.fa` files skip themselves on the runner). The first run
-passed. GitHub warns that `actions/checkout@v4` and `actions/setup-python@v5` use Node 20: bump them when newer majors appear.
-Private-repo minutes are limited (Windows counts double); the cargo cache keeps later runs short.
+`cargo test`, `pyflakes` and `pytest` (the tests that need your own `.dna` / `.fa` files skip themselves on the runner). The workflow uses `actions/checkout@v5` and `actions/setup-python@v6`; bump them when newer majors appear. The cargo cache keeps runs short.
 
 ## 7. Building the Windows installer
 
@@ -160,9 +158,7 @@ named after the version in the code, with no tag until published. Delete the dra
 Something wrong after step 4: `gh release delete v0.1.1 --cleanup-tag` removes the draft and the tag on GitHub, then `git tag -d v0.1.1`
 locally, fix, tag again. Never move a tag that was published.
 
-The workflow file has only been checked by reading and by running each of its PowerShell steps locally; it has not run on GitHub yet.
-The first real run may need a small fix (most likely candidates: the smoke test on the runner's desktop, which has no GPU, and
-`gh release create` permissions in a private repository).
+The release workflow has run for v0.8.2 to v0.8.4.
 
 ### Code signing and SmartScreen
 

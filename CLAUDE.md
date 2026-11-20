@@ -38,7 +38,7 @@ in `.venv`.
 
 ```bash
 uv venv --python 3.12 .venv
-uv pip install --python .venv\Scripts\python.exe -r requirements.txt pytest pytest-timeout pytest-xdist pyflakes biopython pyyaml
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt pytest pytest-timeout pytest-xdist pyflakes biopython pyyaml ViennaRNA
 ```
 
 Then rebuild the core (below). Do not run `uv init` in the repo: it creates a stub `pyproject.toml`

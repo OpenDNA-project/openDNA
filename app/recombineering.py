@@ -1,6 +1,5 @@
 """Recombineering engine (λ Red, dsDNA cassette): design the primers and the recombinant genome for a cassette that
-replaces a region of the genome, or check a finished fragment (or a primer pair) against a genome. No widgets here;
-see docs/specs/recombineering.md."""
+replaces a region of the genome, or check a finished fragment (or a primer pair) against a genome. No widgets here."""
 from types import SimpleNamespace
 
 from opendna_core import find_motif, find_primers
@@ -79,9 +78,14 @@ def design_primers(genome, cassette, start, end, left=HOMOLOGY, right=HOMOLOGY, 
 
 def amplicon(template, circular, fwd, rev):
     """The PCR product of primers `fwd` and `rev` (5'->3', tails allowed) on a template string, tails included."""
-    f, r = (found[:1] for found in find_primers(template, circular, [fwd, rev], 1))
-    if not f or not r or f[0][2] != 1 or r[0][2] != -1:
+    found = find_primers(template, circular, [fwd, rev], 1)
+    exact = [[h for h in hits if h[3] == 0] or hits for hits in found]   # (a site with no mismatch beats one that comes first with some)
+    f = [h for h in exact[0] if h[2] == 1]
+    r = [h for h in exact[1] if h[2] == -1]
+    if not f or not r:
         raise ValueError("the primers do not face each other on the template")
+    if len(f) > 1 or len(r) > 1:
+        raise ValueError(f"the primers bind more than once on the template (forward {len(f)} places, reverse {len(r)}): the product is not defined")
     (_, fe, _, _), (rs, re, _, _) = f[0], r[0]
     if re < fe and not circular:
         raise ValueError("the primers do not face each other on the template")
@@ -125,6 +129,7 @@ def check(genome, fragment, arm=HOMOLOGY, max_mismatches=MAX_MISMATCHES):
                 f"{h[0] + 1}..{h[1]} ({h[3]} mm)" for h in extra[:5])))
     # Exact arms are the genome's own bases: replace only what lies between them. Otherwise the fragment's bases win.
     exact = not (lh[3] or rh[3])
-    inner, s, t = (f[arm:-arm], lh[1], e) if exact else (f, lh[0], e + arm)
+    shift = n if lh[1] > n else 0   # (a left homology through the origin ends past the genome's end: the whole stretch moves back by one lap)
+    inner, s, t = (f[arm:-arm], lh[1] - shift, e - shift) if exact else (f, lh[0] % n, e + arm - shift)
     product = apply(genome, s, t, inner, [])
-    return SimpleNamespace(region=(lh[1], e), forward=forward, hits=dict(zip(("left", "right"), hits)), checks=checks, product=product)
+    return SimpleNamespace(region=(lh[1] - shift, e - shift), forward=forward, hits=dict(zip(("left", "right"), hits)), checks=checks, product=product)

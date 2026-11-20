@@ -1,6 +1,6 @@
 # openDNA user guide
 
-Reference for every feature. New here? Start with [TUTORIAL.md](TUTORIAL.md). Developers: [../README.md](../README.md#build-from-source), [TESTING.md](TESTING.md), [RUST_PRIMER.md](RUST_PRIMER.md).
+Reference for every feature. New here? Start with [TUTORIAL.md](TUTORIAL.md). Developers: [../README.md](../README.md#build-from-source), [test-report/README.md](test-report/README.md), [RUST_PRIMER.md](RUST_PRIMER.md).
 
 Python API (positions 0-based, end-exclusive):
 ```python
@@ -217,7 +217,11 @@ Help → Keyboard Shortcuts (F1) lists every shortcut (menus read live; per-pane
 
 Tools → Local Align (Ctrl+Shift+B) aligns a pasted sequence (FASTA or plain bases; the clipboard is
 offered) to the open one, both strands, with mismatches and gaps (seed-and-extend with a banded
-Smith-Waterman, `align` in `core/src/align.rs`; ~0.1 s on a 4.6 Mb genome). Every matching piece of the query is
+Smith-Waterman, `align` in `core/src/align.rs`; ~0.1 s on a 4.6 Mb genome, run on the CPU cores allowed in Tools > Settings > General >
+Performance, which the installer asks for). Every candidate place is aligned unless you set a time limit in Tools > Settings > Local Align
+(0, the default, means none): a long query against a genome can then stop early, and a warning box says how many places were left out
+and where to change the limit. Any other search limit reached (a query too repetitive, more than 64 pieces in one place, a query longer
+than a circular template) is said in the status line. Every matching piece of the query is
 reported on its own (up to 30), so a query that is a patchwork (a structural variant) reads like a story: one row per piece, **in query
 order**, with its query range, its template range, the strand in words (*forward*, or *↺ reverse complement (inverted)*, shaded purple),
 the identity, and a *Before this piece* column that says how it follows the previous piece: *contiguous*, *insertion in the query*
@@ -239,7 +243,8 @@ The **Search folder** row of Local Align answers "which of my plasmids carries t
 *Search folder*: the query box is aligned (both strands, mismatches and gaps allowed, like Local Align) against every record of every
 GenBank, `.dna` and FASTA file in the folder and its sub-folders, including each record inside a multi-record file. No index is built; a few
 hundred plasmids take seconds, in the background with a progress bar and a Cancel button. The *Folder results* tab shows file, record,
-position, strand, identity and length, best first (identity, then length), at most 5 hits per file so one repetitive genome cannot flood it.
+position, strand, identity and length, best first (identity, then length), at most 5 hits per file so one repetitive genome cannot flood it;
+the status line says which files had more (and *Copy results* lists every such note). The Local Align time limit applies to each file.
 Double-click a row (or press Enter) to open that file at that position with the match selected. Files that cannot be read are skipped and
 counted in the status line. *Copy results* puts the list on the clipboard as tab-separated text. The last folder is remembered.
 
@@ -285,6 +290,8 @@ All four methods read alike: a junction's pill, inspector title and report line 
 **Repeats and Dot Plot** is the paired mode of Local Align (see above): the stretches two sequences share, and their dot plot. A repeat over 8 or more bases is found with mismatches only if it holds an exact stretch of at least 8 bases; the search is capped for very large input (the first 1,000,000 bases; k-mers seen more than 200 times are skipped; at most 500 stretches listed) and the status line then says "Not complete" and what was left out.
 
 The **dot plot** beside the list is the sequence against itself: position across and down, a blue dot where the window (default 12 bases, the *Plot window* box) at one position equals the window at the other, a red dot where it equals the reverse complement. The main diagonal (the sequence with itself) is the dashed line; a direct repeat is a line parallel to it, an inverted repeat a line running the other way. Hover to read both positions; click a point to select the window at its across position in the sequence. At most 300,000 dots are drawn (the status line says so). The plot follows the light and dark themes. Engine and dialog: `app/repeats.py`.
+
+**Synthesis** (Tools → Synthesis): can a company make this DNA, and quickly? Paste bases (or one FASTA record) in the box, or select bases in a sequence and right-click → *Test Synthesis…* (it fills the box and runs nothing). The *Synthesis Success Calculator* section (Halper, Hossain & Salis, ACS Synth Biol 2020) runs on your computer and sends nothing: it reads the sequence as a straight piece, counts its repeats, low-GC and hot or cold stretches and hairpins, and a random forest trained on 1,076 real orders gives the probability of quick synthesis, with the nine numbers it read. It is a prediction, not a promise, and takes about 10 seconds per 1,000 bases; you can keep working while it runs. Its hairpin step needs ViennaRNA, which openDNA does not ship: the section offers *Install ViennaRNA…* (it fetches the official package from pypi.org into the data folder, and sends no sequence). Only A, C, G and T are accepted. The *IDT* section below it asks IDT's own complexity screen (gBlocks / genes, 125 to 3,000 bases): it needs your own IDT API account (username, password, client id and secret), sends the sequence and these details to idtdna.com only when you press *Check with IDT* and confirm, keeps the login in the system's secure store if you tick *Remember*, and shows IDT's answer as it came (a table, and *Copy as JSON*) with the score set against the limit quoted for the product.
 
 **Spacer Finder** (Tools → Spacer Finder…, or the *Spacer Finder* view in any pane): Cas9 / Cas12a guides.: lists every guide of SpCas9 (NGG, 20 nt), SaCas9
 (NNGRRT, 21 nt) or Cas12a (TTTV, 23 nt) in the selection or the whole sequence, on both strands, best first, with where the nuclease cuts (Cas9: 3 bp from the PAM, both strands at once; Cas12a: the PAM is on the 5′ side, shown first, and the two strands are cut in different places, 18 and 23 bases after the PAM, leaving a 5 nt 5′ overhang; both drawn on the sequence), GC
@@ -468,7 +475,7 @@ the comparison (when it is one record of the reference). A search that passes th
 linear (the format cannot say it is circular); a GenBank record keeps its own topology. The cost is per primer: a human-size genome takes minutes
 for each.
 
-**Input checks.** Every field that takes a value was audited (`docs/INPUT_AUDIT.md`): sequence fields take pasted FASTA or
+**Input checks.** Every field that takes a value is checked: sequence fields take pasted FASTA or
 numbered blocks and say why when the text is not DNA, numbers outside the possible range are refused with a message, long text
 has a maximum length, and a dialog that finds a mistake stays open with what you typed.
 

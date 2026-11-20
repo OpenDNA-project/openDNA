@@ -1,7 +1,7 @@
 """Self-test: small checks that the editing, annotation and primer code is right, run from
 Help → Troubleshooting → Self-Test (and by pytest). Each check builds its own in-memory Document,
 so it never touches the user's files. Add one with @check("Area", "what it verifies"); it
-passes when it returns, fails when it raises AssertionError. The full plan is docs/TESTING.md.
+passes when it returns, fails when it raises AssertionError. Every test is described in docs/test-report/.
 """
 import random
 import time

@@ -4,7 +4,7 @@
 
 ## 1. Look first
 
-`inspect PLASMID.gb` gives the CDS names; a CDS that is a join, crosses the origin or has `/transl_except` is refused with a message.
+`inspect PLASMID.gb` gives the CDS names; a CDS that crosses the origin of a circular plasmid is recoded like any other (the answer then has `crosses_origin` and `end` below `start`); any other join, or a `/transl_except`, is refused with a message.
 
 ## 2. Build the input: a CSV with exactly two columns
 
@@ -38,7 +38,7 @@ How many codons changed, the GC before and after, any rule not met, and that the
 |---|---|
 | `No codon usage table is set` | give `--usage` |
 | `is a gene, not a CDS` | name a CDS feature |
-| `made of several parts` | not supported for a join or an origin-crossing CDS |
+| `made of several parts` | a join other than one through the origin is not supported: select one piece of DNA, or tell the user |
 | `--gc-low is above --gc-high` | swap them |
 
 ## Example

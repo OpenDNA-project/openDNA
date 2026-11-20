@@ -32,7 +32,7 @@ jobs:
 
       # Not PyInstaller (only the exe build needs it): faster.
       - name: Install Python packages
-        run: pip install -r requirements.txt pytest biopython pyflakes
+        run: pip install -r requirements.txt pytest biopython pyflakes ViennaRNA
 
       - name: Build the Rust core and install it
         run: |

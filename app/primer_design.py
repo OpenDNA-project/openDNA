@@ -57,6 +57,12 @@ def candidate(seq, tm_target, cond, tolerance=5):
     return {"seq": seq, "tm": t, "gc": gc, "penalty": penalty, "notes": notes}
 
 
+class PairList(list):
+    """The pairs `design` lists, best first; `more` is True when other pairs were found than the `count` listed."""
+    more = False
+    window = None
+
+
 def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0, count=5, tm_tolerance=5):
     """Best primer pairs whose product contains [start, end). Returns a list of dicts:
     fwd/rev candidates, their positions, product size, pair penalty. The forward primer starts (5') at most `window` bases before
@@ -69,6 +75,7 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0,
     fwds, revs = [], []
     off, total = 0, n
     tolerance = float("inf") if tm_tolerance is None else tm_tolerance
+    asked = window
     if editor.doc.circular:
         # Three laps with the target in the middle one, so primers (and the target) may pass through the origin.
         # The two search windows must not meet on the other side of the circle.
@@ -114,7 +121,10 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0,
                 notes.append(f"cross-dimer {cross3:.1f}")
             pairs.append({"fwd": f, "rev": r, "size": r["raw"] - f["raw"], "penalty": penalty, "notes": notes})
     pairs.sort(key=lambda p: p["penalty"])
-    return pairs[:count]
+    out = PairList(pairs[:count])
+    out.more = len(pairs) > count
+    out.window = window if window < asked else None   # (the window that was used, when it had to be narrower than asked: the two sides would meet)
+    return out
 
 
 def editor_like(doc):

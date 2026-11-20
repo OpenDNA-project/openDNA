@@ -30,7 +30,7 @@ from types import SimpleNamespace
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics
 from PySide6.QtWidgets import (
-    QAbstractItemView, QHBoxLayout, QLabel, QPushButton, QSplitter, QTableWidget, QTableWidgetItem, QTreeWidget,
+    QAbstractItemView, QHBoxLayout, QLabel, QPushButton, QSplitter, QTableWidget, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -41,8 +41,8 @@ import tool_settings
 from editor import COLOR_KEYS, reverse_complement, site_location
 import units
 from tools import ToolDialog
+from data_table import DataTable
 from uikit import fit_columns
-import value_filter
 import theme
 
 TOOL = "Plasmid Checkup"
@@ -800,10 +800,8 @@ def _fit(view, stretch):
         view.verticalHeader().setDefaultSectionSize(QFontMetrics(view.font()).height() + 3)
 
 
-def _table(columns):
-    t = QTableWidget(0, len(columns))
-    t.setHorizontalHeaderLabels(columns)
-    return _compact(t)
+def _table(columns, filtered=()):
+    return _compact(DataTable(columns, filtered=filtered))
 
 
 def _key(view):
@@ -907,15 +905,13 @@ class CheckupDialog(ToolDialog):
         self.units_tree.setUniformRowHeights(True)
         self.units_tree.setIndentation(12)
         self.units_tree.setRootIsDecorated(True)
-        self.origin_table = _table(self.ORIGIN_COLUMNS)
-        self.element_table = _table(self.ELEMENT_COLUMNS)
+        self.origin_table = _table(self.ORIGIN_COLUMNS, ["Replicates in", "Copies"])   # right-click a header or a cell: filter; click a header: sort
+        self.element_table = _table(self.ELEMENT_COLUMNS, ["Type", "From"])
         _fit(self.origin_table, self.ORIGIN_COLUMNS.index("Notes"))
         _fit(self.element_table, self.ELEMENT_COLUMNS.index("Details"))
-        value_filter.install(self.origin_table, ["Replicates in", "Copies"])   # right-click a header: filter by values
-        value_filter.install(self.element_table, ["Type", "From"])
         self.units_tree.currentItemChanged.connect(self._select_tree)
-        self.origin_table.currentCellChanged.connect(lambda row, *_: self._select_origin(row))
-        self.element_table.currentCellChanged.connect(lambda row, *_: self._select_element(row))
+        self.origin_table.currentCellChanged.connect(lambda row, *_: self._select_origin(self.origin_table.data_row(row)))
+        self.element_table.currentCellChanged.connect(lambda row, *_: self._select_element(self.element_table.data_row(row)))
         self.info = QLabel(wordWrap=True)
         self.info.setFont(small_font(self.info))
         self.origin_info = QLabel(wordWrap=True)
@@ -979,25 +975,21 @@ class CheckupDialog(ToolDialog):
         views = (self.units_tree, self.origin_table, self.element_table)
         kept = [(_key(v), v.verticalScrollBar().value()) for v in views]
         self._fill_units(r, n)
-        self.origin_table.setRowCount(len(r.origins))
-        for i, o in enumerate(r.origins):
-            el = o.element
-            name = el.label if o.name == el.label else f"{el.label} ({o.name})"
-            for col, v in enumerate([name, self._loc(el.start, el.end, 1), o.host, o.copies, o.note]):
-                item = QTableWidgetItem(v)
-                item.setToolTip(v)
-                self.origin_table.setItem(i, col, item)
+        with self.origin_table.refilling(len(r.origins)):
+            for i, o in enumerate(r.origins):
+                el = o.element
+                name = el.label if o.name == el.label else f"{el.label} ({o.name})"
+                for col, v in enumerate([name, self._loc(el.start, el.end, 1), o.host, o.copies, o.note]):
+                    self.origin_table.put(i, col, v, tip=v)
         self.origin_info.setText("\n".join(f"⚠ {x}" for x in r.origin_notes))
         self.origin_info.setVisible(bool(r.origin_notes))
-        self.element_table.setRowCount(len(r.elements))
-        for i, el in enumerate(r.elements):
-            for col, v in enumerate([el.label, el.kind, self._loc(el.start, el.end, el.strand), el.origin, el.detail]):
-                item = QTableWidgetItem(v)
-                item.setToolTip(v)
-                if col == 0 and el.origin != "annotated":
-                    item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                    item.setCheckState(Qt.Checked)
-                self.element_table.setItem(i, col, item)
+        with self.element_table.refilling(len(r.elements)):
+            for i, el in enumerate(r.elements):
+                for col, v in enumerate([el.label, el.kind, self._loc(el.start, el.end, el.strand), el.origin, el.detail]):
+                    item = self.element_table.put(i, col, v, tip=v)
+                    if col == 0 and el.origin != "annotated":
+                        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                        item.setCheckState(Qt.Checked)
         _fit(self.units_tree, self.units_tree.columnCount() - 1)   # (its columns change with the hosts: fitted again)
         for view, (key, scroll) in zip(views, kept):
             _restore(view, key, scroll)
@@ -1088,8 +1080,9 @@ class CheckupDialog(ToolDialog):
             self._show(el.start, el.end, feature=el.feature)
 
     def ticked(self):
-        return [el for i, el in enumerate(self.result.elements)
-                if el.origin != "annotated" and self.element_table.item(i, 0).checkState() == Qt.Checked]
+        table = self.element_table
+        elements = [self.result.elements[table.data_row(r)] for r in range(table.rowCount())]
+        return [el for r, el in enumerate(elements) if el.origin != "annotated" and table.item(r, 0).checkState() == Qt.Checked]
 
     def add_elements(self):
         chosen = self.ticked()

@@ -24,7 +24,7 @@ from display_panel import DisplayPanel
 from history_panel import HistoryPanel, side_panel_width
 from editor import Editor, clean_pasted, primer_sequence, remember_hidden_primers
 from shortcuts import ShortcutsDialog
-from sponsors import SponsorsDialog, show_at_startup
+from sponsors import SponsorsDialog, show_at_startup, tip_of_the_day
 from feature_dialog import edit_feature
 from feature_table import FeatureTable, features_inside, group_as_gene, reverse_primer_dialog
 from map_view import MapView
@@ -95,6 +95,7 @@ ANNOTATION_FILTER = "Annotation tracks (*.gff *.gff3 *.gtf *.bed);;All files (*)
 VCF_FILTER = "Variants (*.vcf *.vcf.gz);;All files (*)"
 BAM_FILTER = "Aligned reads (*.bam);;All files (*)"
 AUTOSAVE_MS = 60_000
+TIP_MS = 300_000   # the status bar shows another tip every 5 minutes
 
 
 def is_fasta(path):
@@ -166,6 +167,13 @@ class MainWindow(QMainWindow):
         self.status = QLabel()
         # permanent: the selection readout stays while a message (saved, searched...) is shown, instead of being hidden by it
         self.statusBar().addPermanentWidget(self.status)
+        # A tip in small grey text at the left of the status bar (hidden while a message is shown), a new one every TIP_MS.
+        self.tip_n = 0
+        self.tip_label = QLabel(styleSheet="color: gray; font-size: 7pt")
+        self.statusBar().addWidget(self.tip_label)
+        self.next_tip()
+        self.tip_timer = QTimer(self, interval=TIP_MS, timeout=self.next_tip)
+        self.tip_timer.start()
         # Display filter in a side panel (its content is made per document, in show_document).
         self.display_dock = QDockWidget("Display", self, objectName="display")
         self.display_dock.setWidget(QLabel())
@@ -394,6 +402,7 @@ class MainWindow(QMainWindow):
         action(tools, "Detect Common &Features…", "Ctrl+Shift+A", lambda: DetectDialog(self, self.editor).exec())
         action(tools, "Detect &ORFs…", None, lambda: OrfDialog(self, self.editor).exec())
         action(tools, "Plasmid C&heckup (expression of each CDS)…", None, self.open_checkup)
+        tools.addAction(QAction("Sy&nthesis (can a company make it?)", self, triggered=lambda: self.show_synthesis()))
         tools.addSeparator()
         action(tools, "Recode CDS for a Codon &Usage Table…", None, lambda: RecodeDialog(self, self.editor).exec())
         action(tools, "Compare CDS Under Another &Genetic Code…", None, lambda: CompareDialog(self, self.editor).exec())
@@ -1199,6 +1208,16 @@ class MainWindow(QMainWindow):
         """Tools > Recombineering: a genome and a cassette, as a tab."""
         self.recombineering = self.show_tool_tab("Recombineering", lambda: RecombineeringPanel(self))
 
+    def show_synthesis(self, sequence=None):
+        """Tools > Synthesis: the Synthesis tab; `sequence` (the bases selected when it was asked for on right-click) is put in its box, nothing is run."""
+        def make():
+            from synthesis_panel import SynthesisPanel   # (keyring, IDT and the calculator load when the tab is first opened, not at start-up)
+            return SynthesisPanel(self)
+        panel = self.show_tool_tab("Synthesis", make)
+        if sequence:
+            panel.set_sequence(sequence)
+        return panel
+
     def show_terminal(self, pipeline=None):
         """The Terminal view (bash session and pipelines; any pane's picker → Terminal), added if missing (`pipeline`: the one to show)."""
         terminal = self.workspace.ensure(Terminal)
@@ -1433,6 +1452,10 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("No CDS with a /translation qualifier to update.", 5000)
         else:
             self.statusBar().showMessage(genetic_code.summarize(report) + (" (Ctrl+Z undoes it)." if any(s == "updated" for _, s, _ in report) else "."), 8000)
+
+    def next_tip(self):
+        self.tip_label.setText("Tip: " + tip_of_the_day(self.tip_n))
+        self.tip_n += 1
 
     def open_checkup(self):
         """Tools > Plasmid Checkup: a tab of panes, the checkup beside the document's own map and sequence (which then
@@ -2059,6 +2082,14 @@ if __name__ == "__main__":
         try:
             file_assoc.register() if sys.argv[1] == "--register-file-types" else file_assoc.unregister()
         except (OSError, RuntimeError):
+            sys.exit(1)
+        sys.exit(0)
+    if sys.argv[1:2] == ["--set-cores"]:   # run by the installer's CPU cores page: saves the answer, no window
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.setApplicationName(project.NAME)   # (the data folder, as below)
+        try:
+            tool_settings.set_value(tool_settings.PERFORMANCE, "cores", max(1, min(int(sys.argv[2]), tool_settings.CPUS)))
+        except (IndexError, ValueError):
             sys.exit(1)
         sys.exit(0)
     if sys.platform == "win32":   # own taskbar button and icon, also when run from source (otherwise it groups under python.exe)

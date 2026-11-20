@@ -1,5 +1,5 @@
-# The labels that make the issue list a public roadmap. docs/FEEDBACK.md explains how to apply them
-# (gh label create ... --force, one per entry). Each issue has exactly one "type:" and one "status:" label.
+# The labels that make the issue list a public roadmap. Apply them with
+# `gh label create ... --force`, one per entry. Each issue has exactly one "type:" and one "status:" label.
 - name: "type: bug"
   color: d73a4a
   description: Something does not work or gives a wrong result

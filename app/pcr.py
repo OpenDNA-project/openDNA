@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel, QMessageBox, QPushButton,
-    QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QSpinBox, QSplitter, QVBoxLayout, QWidget,
 )
 
 from html import escape
@@ -20,7 +20,8 @@ from primer_design import DEFAULT_MAX_LEN, DEFAULT_MIN_LEN, DEFAULT_TM, DEFAULT_
 from primer_panel import (MARKS, MAX_NAME, ReportView, conditions, is_degenerate, limit, primer_checks, primer_problem, warm_genome,
                           worst)
 from tools import ToolDialog, pcr_product, product_range
-from uikit import fit_columns, plural, right_aligned, run_busy
+from data_table import DataTable
+from uikit import fit_columns, plural, run_busy
 
 
 class PcrPage(ToolDialog):
@@ -61,13 +62,12 @@ class PcrPage(ToolDialog):
         design_form.addRow("Tm", self.tm)
         design_form.addRow("Length", lengths)
         design_form.addRow("Search window", self.window)
-        self.table = QTableWidget(0, len(self.COLUMNS))
-        self.table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.table = DataTable(self.COLUMNS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=5)
-        self.table.currentCellChanged.connect(lambda row, *_: self._design_chosen(row))
+        self.table.currentCellChanged.connect(lambda row, *_: self._design_chosen(self.table.data_row(row)))
         self.destroyed.connect(lambda *_, ed=editor: self._forget(ed))   # the tab is closed: its primers go with it
         self.details = ReportView(16)
         self.details.anchorClicked.connect(self._toggle_check)
@@ -277,25 +277,27 @@ class PcrPage(ToolDialog):
                     window=self.window.value())
         # (thousands of candidates: in a thread behind a busy dialog, so the window is drawn and stays alive meanwhile)
         self.pairs = run_busy(self, "Designing primers…", lambda: design_region(ed.doc, **args))
-        self.table.setRowCount(len(self.pairs))
+        self._set_target()
+        if getattr(self.pairs, "more", False):   # (never a silent cut: say that other pairs were found)
+            self.target.setText(self.target.text() + f". Only the best {len(self.pairs)} pairs are listed.")
+        if getattr(self.pairs, "window", None) is not None:
+            self.target.setText(self.target.text() + f". Search window narrowed to {self.pairs.window} bases a side (a wider one would make the two sides meet).")
         # The genome search (every chromosome) first, with a progress dialog; the checks below then read its results.
         warm_genome(self, ed, [p[k]["seq"] for p in self.pairs for k in ("fwd", "rev")])
-        for i, p in enumerate(self.pairs):
-            values = [p["fwd"]["seq"], p["rev"]["seq"], f"{p['fwd']['tm']:.1f} / {p['rev']['tm']:.1f}",
-                      f"{p['size']:,}", f"{p['penalty']:.1f}", "; ".join(p["notes"])]
-            # The pair's mark: the worst of all checks of both primers (details below the table).
-            level = worst(primer_checks(ed, p["fwd"]["seq"], "cached") + primer_checks(ed, p["rev"]["seq"], "cached"))
-            mark, color = MARKS["warn" if level == "ok" and p["notes"] else level]
-            values[5] = f"{mark} {values[5]}".strip()
-            for c, v in enumerate(values):
-                item = QTableWidgetItem(v)
-                if c in (2, 3, 4):
-                    right_aligned(item)
-                if c == 5:
-                    item.setForeground(QColor(color))
-                self.table.setItem(i, c, item)
+        with self.table.refilling(len(self.pairs)):
+            for i, p in enumerate(self.pairs):
+                values = [p["fwd"]["seq"], p["rev"]["seq"], f"{p['fwd']['tm']:.1f} / {p['rev']['tm']:.1f}",
+                          f"{p['size']:,}", f"{p['penalty']:.1f}", "; ".join(p["notes"])]
+                # The pair's mark: the worst of all checks of both primers (details below the table).
+                level = worst(primer_checks(ed, p["fwd"]["seq"], "cached") + primer_checks(ed, p["rev"]["seq"], "cached"))
+                mark, color = MARKS["warn" if level == "ok" and p["notes"] else level]
+                values[5] = f"{mark} {values[5]}".strip()
+                for c, v in enumerate(values):
+                    item = self.table.put(i, c, v, right=c in (2, 3, 4))
+                    if c == 5:
+                        item.setForeground(QColor(color))
         if self.pairs:
-            self.table.selectRow(0)
+            self.table.select_data_row(0)   # the best pair, wherever the sort the user chose has put it
         else:
             self._from_pair()   # (back to what the lists say)
             self.details.setText("No pair found: widen the search window, the length range or the Tm.")

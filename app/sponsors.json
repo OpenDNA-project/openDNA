@@ -1,5 +1,27 @@
 {
-  "_help": "Startup page (sponsors.py). Up to 3 slots; an empty slot shows 'Your ad here'. Each slot: name, text, url (optional), image (optional: a PNG next to this file). contact: shown under empty slots.",
+  "_help": "Startup page (sponsors.py). Up to 4 slots; an empty slot shows 'Your ad here'. Each slot: name, text, url (optional), image (optional: a PNG, path from this folder), image_dark (optional, dark theme), button (optional: a button with the globe replaces the url line; sends = what it sends), until (optional YYYY-MM-DD: the slot is empty after that day). heading: the title over the slots (default SPONSORED). contact: shown under empty slots.",
   "contact": "",
-  "slots": [{}, {}, {}]
+  "heading": "NAME THE PROGRAM: VOTE",
+  "slots": [
+    {"name": "openDNA", "text": "The current name. Opens the vote form in your browser: choose a name there and press Submit.",
+     "image": "logo/wordmark.png", "image_dark": "logo/wordmark_dark.png", "button": "Open the vote form",
+     "url": "https://forms.gle/Pj2dbXJTnsgkjUzZ8",
+     "sends": "opens a Google Form in your browser; nothing is sent until you press Submit there (Google sees your IP address)",
+     "until": "2026-12-31"},
+    {"name": "COGENIE", "text": "Opens the vote form in your browser: choose a name there and press Submit.",
+     "image": "contest_cogenie.png", "button": "Open the vote form",
+     "url": "https://forms.gle/Pj2dbXJTnsgkjUzZ8",
+     "sends": "opens a Google Form in your browser; nothing is sent until you press Submit there (Google sees your IP address)",
+     "until": "2026-12-31"},
+    {"name": "HelixBench", "text": "Opens the vote form in your browser: choose a name there and press Submit.",
+     "image": "contest_helixbench.png", "button": "Open the vote form",
+     "url": "https://forms.gle/Pj2dbXJTnsgkjUzZ8",
+     "sends": "opens a Google Form in your browser; nothing is sent until you press Submit there (Google sees your IP address)",
+     "until": "2026-12-31"},
+    {"name": "Your name?", "text": "Opens the vote form: type your idea in its box and press Submit.",
+     "button": "Open the vote form",
+     "url": "https://forms.gle/Pj2dbXJTnsgkjUzZ8",
+     "sends": "opens a Google Form in your browser; nothing is sent until you press Submit there (Google sees your IP address)",
+     "until": "2026-12-31"}
+  ]
 }

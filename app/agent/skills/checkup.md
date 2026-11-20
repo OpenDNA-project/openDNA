@@ -10,7 +10,7 @@ checkup PLASMID.gb [--min-promoter N] [--min-stem N] [--rbs-reach N] [--no-predi
 
 Elements come, in order of trust, from the file's own features (promoter, terminator, RBS, origin), from known parts found in it (the Features Database, as `annotate` does), and from predicted motifs (bacterial sigma-70 promoters, intrinsic terminators, Shine-Dalgarno sites). `--no-predict` / `--no-library` leave a source out. The thresholds are the user's Settings > Plasmid Checkup values: `settings` shows each with where it came from and the range the window accepts; a value given here is used for this run only and never saved. Show the settings and wait for the user's OK before changing one.
 
-JSON: `cds`, one per CDS: `verdict` (`Expressed`, `Likely`, `Unlikely`, `Not expressed`) in its `best_host`, `reasons`, and per host (`Bacteria`; also `Eukaryotic cells` when the plasmid has a eukaryotic promoter) the `promoter`, `terminator` and `rbs` used. `elements` (every promoter, terminator, RBS and origin with its `origin`: annotated, library or predicted), `origins` and `origin_notes` (for example two origins that may be incompatible).
+JSON: `cds`, one per CDS: `verdict` (`Expressed`, `Likely`, `Unlikely`, `Not expressed`) in its `best_host`, `reasons`, and per host (`Bacteria`; also `Eukaryotic cells` when the plasmid has a eukaryotic promoter) the `promoter`, `terminator` and `rbs` used. `elements` (every promoter, terminator, RBS and origin with its `origin`: annotated, library or predicted), `origins` (each: `label`, `start`, `end`, `strand`, `name`, `host`, `copies_per_cell`, `incompatibility_group`, `note`) and `origin_notes` (for example two origins that may be incompatible).
 
 ## What to tell the user
 

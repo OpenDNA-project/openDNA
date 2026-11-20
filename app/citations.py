@@ -90,6 +90,13 @@ PANELS = {
          "nucleases, polymerases, reporters and regulators. UniProtKB (CC BY 4.0) names each protein and cites the record holding its coding "
          "sequence; the DNA is then taken from that GenBank record (public domain), and kept only when its length matches the protein exactly."),
     ],
+    "Detect Features with pLannotate (Tools > Detect Common Features)": [
+        ("McGuffie MJ, Barrick JE. pLannotate: engineered plasmid annotation. Nucleic Acids Res 49(W1), W516-W522 (2021).",
+         "10.1093/nar/gkab374",
+         "A separate tool that you install once (https://github.com/barricklab/pLannotate, GPL-3.0). When it is installed openDNA runs its annotate "
+         "function and lists what it finds, marked as pLannotate's, beside the Features Database's. It searches SnapGene-derived features, FPbase, "
+         "Swiss-Prot and Rfam with BLAST+, DIAMOND and Infernal; cite the paper (and those databases) if you use its results."),
+    ],
     "Plasmid Checkup (Tools > Plasmid Checkup)": [
         ("Harley CB, Reynolds RP. Analysis of E. coli promoter sequences. Nucleic Acids Res 15(5), 2343-2361 (1987).",
          "10.1093/nar/15.5.2343",

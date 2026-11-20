@@ -304,6 +304,7 @@ class FeatureTable(QWidget):
         menu = QMenu(self)
         if getattr(ed, "database", None):   # the Features Database: its own actions, not the editing ones of a file
             ed.database.menu(menu, self, chosen)
+            self.view.value_filter.cell_actions(menu, pos)   # show only / hide the value of the cell
             if not menu.isEmpty():
                 menu.exec(self.view.viewport().mapToGlobal(pos))
             return
@@ -321,6 +322,7 @@ class FeatureTable(QWidget):
             menu.addAction("Delete Gene and Its Parts", lambda: genes.delete_gene(ed, keys[0]))
         menu.addSeparator()
         menu.addAction("Add to Features Database", lambda: self.add_to_library(chosen)).setEnabled(bool(chosen))
+        self.view.value_filter.cell_actions(menu, pos)   # show only / hide the value of the cell
         menu.exec(self.view.viewport().mapToGlobal(pos))
 
     def add_to_library(self, indices):
@@ -537,6 +539,8 @@ def selection_menu(parent, editor, global_pos):
     menu.addAction("Add Primer (F)", lambda: PrimerDialog(window, editor).exec())
     menu.addAction("Add Primer (R)", lambda: reverse_primer_dialog(window, editor).exec())
     menu.addAction("Design Primers for This Sequence…", lambda: (setattr(window, "design_on_open", True), window.workspace.new_tab("PCR")))   # the new PCR tab designs for the selection
+    if hasattr(window, "show_synthesis"):
+        menu.addAction("Test Synthesis…", lambda: window.show_synthesis(editor.selected_sequence()))   # opens the tab with the bases in its box; nothing is sent or run
     menu.addSeparator()
     if hasattr(window, "workspace"):   # the Protein view follows the selection, in the frame chosen beside it
         menu.addAction("Translate", lambda: window.workspace.new_tab("Protein"))

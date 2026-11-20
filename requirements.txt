@@ -2,3 +2,4 @@
 # WebEngine/PDF/multimedia we don't use. Avoid GPL-only Qt add-ons (e.g. Qt Charts) to stay LGPL.
 PySide6-Essentials>=6.8
 maturin>=1.7,<2
+keyring>=24   # the IDT login of the Synthesis tab: Windows Credential Manager, macOS Keychain, Linux Secret Service

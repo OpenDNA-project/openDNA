@@ -11,6 +11,7 @@ Each pipeline run gets a folder next to its output (<out>_run/) with its inputs,
 import json
 import re
 import shlex
+import subprocess
 import sys
 import tomllib
 from datetime import datetime
@@ -139,9 +140,9 @@ def build(pipeline, options, files, threads, folder, marks=False):
     return f"( {need}cd {shlex.quote(shell_path(folder))} && {body} )", used
 
 
-def install(tools):
-    """bash that installs `tools` from bioconda into the opendna-tools env (created if missing), installing
-    Miniforge into ~/miniforge3 first when no conda is found."""
+def install(tools, env=ENV, after=""):
+    """bash that installs `tools` from bioconda into the conda env `env` (opendna-tools by default; created if missing), installing
+    Miniforge into ~/miniforge3 first when no conda is found. `after`: a command run when that worked, with $E the env's folder."""
     names = " ".join(shlex.quote(t) for t in tools)
     miniforge = "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh"
     bases = " ".join(f'"$HOME"/{b}/bin/conda' for b in CONDA_BASES)
@@ -150,8 +151,27 @@ def install(tools):
             'if [ -z "$c" ]; then echo "No conda found: installing Miniforge into ~/miniforge3"; '
             f'curl -fsSL -o /tmp/miniforge.sh "{miniforge}" && bash /tmp/miniforge.sh -b -p "$HOME/miniforge3" '
             '&& rm -f /tmp/miniforge.sh && c="$HOME/miniforge3/bin/conda" || exit 1; fi; '   # exit leaves the ( ) only, not the session
-            f'if [ -d "${{c%/bin/conda}}/envs/{ENV}" ]; then "$c" install -y -n {ENV} -c conda-forge -c bioconda {names}; '
-            f'else "$c" create -y -n {ENV} -c conda-forge -c bioconda {names}; fi )')
+            f'E="${{c%/bin/conda}}/envs/{env}"; '
+            f'if [ -d "$E" ]; then "$c" install -y -n {env} -c conda-forge -c bioconda {names}; '
+            f'else "$c" create -y -n {env} -c conda-forge -c bioconda {names}; fi'
+            + (f' && {after}' if after else '') + ' )')
+
+
+def terminal_tools():
+    """The tools the pipelines call (their `needs` in tools.toml): what `install` puts in the opendna-tools environment."""
+    return sorted({tool for p in pipelines().values() for tool in p.get("needs", [])})
+
+
+def installed_tools(tools):
+    """Which of `tools` the opendna-tools environment has (a look into its bin folder; WSL is started for it). [] when WSL cannot be run."""
+    dirs = " ".join(f'"{d}"' for d in TOOL_DIRS)
+    script = f'for t in {" ".join(tools)}; do for d in {dirs}; do [ -x "$d/$t" ] && {{ echo $t; break; }}; done; done'
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if use_wsl() else 0
+    try:
+        done = subprocess.run(command_line(["-lc", script]), capture_output=True, text=True, timeout=120, creationflags=flags)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return done.stdout.split() if done.returncode == 0 else []
 
 
 def session_setup(folder):

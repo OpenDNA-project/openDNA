@@ -676,3 +676,32 @@ def test_gene_groups_and_display_switches(tmp_path):
     ed.doc = real.__self__
     ed.add_features([("repeat_region", "1001..1010", [("label", "r")])])
     assert ed.kind_counts["repeat_region"] == 1 and ed.kind_counts["gene"] == 6
+
+
+# ---- drawing ------------------------------------------------------------------------------------------------------------------
+
+def test_label_text_is_black_or_white_by_contrast_and_always_readable():
+    from itertools import product
+    from PySide6.QtGui import QColor
+    from editor import contrast, text_color_on
+    assert round(contrast(QColor("black"), QColor("white")), 6) == 21.0   # the definition's own value
+    worst = 21.0
+    for r, g, b in product(range(0, 256, 15), repeat=3):   # the colour cube on a 17 x 17 x 17 grid
+        c = QColor(r, g, b)
+        pick, other = (QColor("black"), QColor("white")) if text_color_on(c).lightness() == 0 else (QColor("white"), QColor("black"))
+        assert contrast(pick, c) >= contrast(other, c)   # the better of the two
+        worst = min(worst, contrast(pick, c))
+    assert worst >= 4.5   # WCAG AA for text, for every colour
+    assert text_color_on(QColor("#ffeb3b")).lightness() == 0 and text_color_on(QColor("#0d47a1")).lightness() == 255   # a light yellow, a dark blue
+    assert text_color_on(QColor(0, 160, 224)).lightness() == 0   # a mid blue: a brightness threshold gave it white letters at 3.0 to 1
+
+
+def test_table_sort_key_puts_numbers_in_order_before_words():
+    from data_table import sort_key
+    cells = ["1,200 bp", "95 bp", "10 bp", "–", "NC_000913", "2013-09-26", "94 % (protein)", "5,859–5,902 ←", "5,704–5,808 →", "Zeta", "alpha", ""]
+    ordered = sorted(cells, key=sort_key)
+    assert ordered[:7] == ["10 bp", "94 % (protein)", "95 bp", "1,200 bp", "2013-09-26", "5,704–5,808 →", "5,859–5,902 ←"]   # by the first number, not the text
+    assert ordered[7:] == ["", "alpha", "NC_000913", "Zeta", "–"]   # then the words, without case: empty first, a dash placeholder last
+    assert sort_key("1,200 bp") > sort_key("95 bp") > sort_key("10 bp")   # thousands commas are read
+    assert sort_key("2013-09-26") < sort_key("2013-10-01")   # equal first number: the text decides, and an ISO date sorts as a date
+    assert sort_key("-5 bp") < sort_key("3 bp")

@@ -6,7 +6,7 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMenu, QPushButton, QSizePolicy, QSpinBox, QSplitter, QStyle,
-    QTabBar, QTableWidget, QTableWidgetItem, QToolButton, QTreeWidget, QVBoxLayout, QWidget,
+    QTabBar, QToolButton, QTreeWidget, QVBoxLayout, QWidget,
 )
 
 from editor import protein_field, reverse_complement, site_location
@@ -15,7 +15,8 @@ import inventory
 from enzymes import COMMON, EnzymeFilter, describe, find_cuts, is_owned, wanted
 import genetic_code
 from sequence_view import cds_codons, codons
-from uikit import fit_columns, no_auto_default, plural, right_aligned, run_busy
+from data_table import DataTable
+from uikit import fit_columns, no_auto_default, plural, run_busy
 import value_filter
 
 
@@ -135,13 +136,11 @@ class OrfDialog(ToolDialog):
         self.min_aa = QSpinBox(minimum=10, maximum=5000, value=100, suffix=" aa", keyboardTracking=False)
         self._reload_later = QTimer(self, singleShot=True, interval=300, timeout=self.reload)
         self.min_aa.valueChanged.connect(self._reload_later.start)
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Location", "Strand", "Length (aa)", "Annotation"])
-        value_filter.install(self.table, ["Strand", "Annotation"])   # right-click a header: filter by values
+        self.table = DataTable(["Location", "Strand", "Length (aa)", "Annotation"], filtered=["Strand", "Annotation"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=3)
-        self.table.currentCellChanged.connect(lambda row, *_: self._select(row))
+        self.table.currentCellChanged.connect(lambda row, *_: self._select(self.table.data_row(row)))
         self.add_button = add = QPushButton("Add selected as CDS features", clicked=self.add, enabled=False)
         self.table.itemSelectionChanged.connect(self._can_add)
         top = QHBoxLayout()
@@ -173,7 +172,7 @@ class OrfDialog(ToolDialog):
 
     def _can_add(self):
         """The button can add something only when a selected ORF is not annotated yet."""
-        rows = {i.row() for i in self.table.selectionModel().selectedRows()}
+        rows = self.table.selected_data_rows()
         self.add_button.setEnabled(any(0 <= r < len(self.links) and self.links[r] is None for r in rows))
 
     def annotated(self, s, e, strand):
@@ -190,18 +189,15 @@ class OrfDialog(ToolDialog):
         doc, args = self.editor.doc, (self.min_aa.value() + 1, genetic_code.table_id(), genetic_code.alt_starts())
         self.orfs = run_busy(self, "Finding ORFs…", lambda: doc.orfs(*args))   # (a genome takes a moment: the window stays alive)
         self.links = [self.annotated(*orf) for orf in self.orfs]  # annotation of each ORF, or None
-        self.table.setRowCount(len(self.orfs))
         link = QColor(self.palette().color(self.palette().ColorRole.Link))
-        for i, ((s, e, strand), f) in enumerate(zip(self.orfs, self.links)):
-            values = [f"{s + 1:,}–{e:,}", "→" if strand > 0 else "←", f"{(e - s) // 3 - 1:,}",
-                      f"→ {f.label} (annotated)" if f else "predicted"]
-            for c, v in enumerate(values):
-                item = QTableWidgetItem(v)
-                if c == 2:
-                    right_aligned(item)
-                if f:
-                    item.setForeground(link)  # a link: selecting the row selects that feature
-                self.table.setItem(i, c, item)
+        with self.table.refilling(len(self.orfs)):
+            for i, ((s, e, strand), f) in enumerate(zip(self.orfs, self.links)):
+                values = [f"{s + 1:,}–{e:,}", "→" if strand > 0 else "←", f"{(e - s) // 3 - 1:,}",
+                          f"→ {f.label} (annotated)" if f else "predicted"]
+                for c, v in enumerate(values):
+                    item = self.table.put(i, c, v, right=c == 2)
+                    if f:
+                        item.setForeground(link)  # a link: selecting the row selects that feature
         new = sum(f is None for f in self.links)
         self.setWindowTitle("Detect ORFs")   # (the counts beside the length box, not in the title)
         self.count.setText(f"{plural(len(self.orfs), 'ORF')}, {new} not annotated")
@@ -218,7 +214,7 @@ class OrfDialog(ToolDialog):
             self.editor.reveal.emit(s)
 
     def add(self):
-        rows = sorted({i.row() for i in self.table.selectionModel().selectedRows()})
+        rows = self.table.selected_data_rows()
         features = [("CDS", site_location(s, e, strand, self.editor.length),
                      [("label", f"ORF {(e - s) // 3 - 1} aa"), ("codon_start", "1")])
                     for i in rows if self.links[i] is None  # annotated ones are there already
@@ -248,6 +244,8 @@ class OrfDialog(ToolDialog):
                 self.found.append((min(c[2] for c in part), max(c[3] for c in part)))
                 self.hits.addItem(f"{name}: {motif} at aa {i + 1}")
                 i = protein.find(motif, i + 1)
+                if i >= 0 and len(self.found) >= 500:
+                    self.hits.addItem("The list stops at 500 matches: there are more.")   # (never a silent cut)
         if not self.found:
             self.hits.addItem("No match")
 
@@ -559,16 +557,14 @@ class DigestDialog(ToolDialog):
         self._list_later = QTimer(self, singleShot=True, interval=0, timeout=self.show_list)
         inventory.notifier.changed.connect(self._list_later.start)   # (a QObject slot: the link goes with the dialog)
         self.filter.textChanged.connect(self.show_list)
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Size (bp)", "From", "To", "Ends"])
-        value_filter.install(self.table, ["Ends"])   # right-click a header: filter by values
+        self.table = DataTable(["Size (bp)", "From", "To", "Ends"], filtered=["Ends"])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         fit_columns(self.table, stretch=3)
         self.table.setToolTip("Click a fragment to select it on the sequence, map and genome view and show the cuts at its two ends")
         empty_hint(self.table, "Tick an enzyme to see its fragments")
-        self.table.currentCellChanged.connect(lambda row, *_: self.show_fragment(row))
+        self.table.currentCellChanged.connect(lambda row, *_: self.show_fragment(self.table.data_row(row)))
         self.fragment_span = None   # (start, end) of the fragment selected in the table, while it is
         editor.selection_changed.connect(self._selection_moved)
         self.gel = GelView()
@@ -686,19 +682,15 @@ class DigestDialog(ToolDialog):
         digests = [self.digest(t) for t in self.lanes]
         here = self.tabs.currentIndex()
         names, frags = digests[here]
+        shown = frags if names else []   # nothing ticked: the hint, not one "fragment" that is the whole sequence uncut
         self.table.blockSignals(True)   # (the old rows go: no fragment is selected any more)
-        self.table.setRowCount(0)
+        with self.table.refilling(len(shown)):
+            for i, (size, a, b, left, right) in enumerate(shown):
+                ends = f"{'/'.join(left) or 'end'} – {'/'.join(right) or 'end'}"
+                for c, v in enumerate([f"{size:,}", f"{a + 1:,}", f"{b:,}", ends]):
+                    self.table.put(i, c, v, right=c < 3)
         self.table.blockSignals(False)
         self._clear_fragment()
-        shown = frags if names else []   # nothing ticked: the hint, not one "fragment" that is the whole sequence uncut
-        self.table.setRowCount(len(shown))
-        for i, (size, a, b, left, right) in enumerate(shown):
-            ends = f"{'/'.join(left) or 'end'} – {'/'.join(right) or 'end'}"
-            for c, v in enumerate([f"{size:,}", f"{a + 1:,}", f"{b:,}", ends]):
-                item = QTableWidgetItem(v)
-                if c < 3:
-                    right_aligned(item)
-                self.table.setItem(i, c, item)
         # The selected digest's cuts on the sequence, on both strands.
         self.editor.set_cut_marks("digest", [(top, bottom, name, self._tip(name, top, bottom))
                                              for name in names for top, bottom in self.cuts[name]])

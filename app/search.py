@@ -100,6 +100,24 @@ def _feature_text(f, details):
     return (" ".join(v for k, v in f.qualifiers if k in NAME_KEYS and v) + " " + f.label).lower()
 
 
+CAP_NOTE = f"The search stopped at {MAX_HITS:,} hits: there may be more (look for something longer or more specific)."
+
+
+def protein_hits(seq, protein, mm, circular):
+    """`find_protein` of `seq`, and on a circular sequence also the matches that run through the origin (read in the sequence turned by
+    half a lap: a match there that spans the old origin). Frame: the codon phase counted from the top strand's first base (reverse: from its last)."""
+    table, n = genetic_code.table_id(), len(seq)
+    hits = list(find_protein(seq, protein, mm, MAX_HITS, table))
+    if circular and n > 3 * len(protein):
+        half = n // 2
+        for s, e, strand, m, _ in find_protein(seq[half:] + seq[:half], protein, mm, MAX_HITS, table):
+            if s < n - half < e:
+                s0 = (s + half) % n
+                e0 = s0 + e - s
+                hits.append((s0, e0, strand, m, (s0 % 3 if strand > 0 else (n - e0) % 3) + 1))
+    return hits
+
+
 def search_sequence(ed, query, opts):
     """Every hit of `query` in the open sequence of editor `ed`: [hit] in order of position, and a note (what was not searched,
     why nothing was looked for...), as (hits, note). Hits past MAX_HITS are dropped."""
@@ -115,7 +133,7 @@ def search_sequence(ed, query, opts):
             hits.append(hit(s, e, "dna", motif, strand, m))
     if protein:
         mm = allowed_mismatches(opts, len(protein))
-        for s, e, strand, m, frame in find_protein(seq, protein, mm, MAX_HITS, genetic_code.table_id()):
+        for s, e, strand, m, frame in protein_hits(seq, protein, mm, circular):
             hits.append(hit(s, e, "protein", f"{protein} (frame {'+' if strand > 0 else '−'}{frame})", strand, m))
     needle = q.lower()
     for f in ed.features:
@@ -134,8 +152,8 @@ def search_sequence(ed, query, opts):
             hits += [hit(s, en, "enzyme", f"{e.name} site", strand) for s, en, strand in enzymes.site_spans(seq, circular, e)]
     if opts.scope == "selection":
         if ed.end > ed.start:
-            spans = ed.selected_spans()
-            hits = [h for h in hits if any(a <= h.start and h.end <= b for a, b in spans)]
+            laps = (0, ed.length) if getattr(ed, "circular", False) else (0,)   # (a selection through the origin runs past the end: a hit may be one lap on)
+            hits = [h for h in hits if any(ed.start <= h.start + lap and h.end + lap <= ed.end for lap in laps)]
         else:
             note = "Nothing is selected: searched the whole sequence."
     seen, out = set(), []
@@ -144,6 +162,8 @@ def search_sequence(ed, query, opts):
         if key not in seen:
             seen.add(key)
             out.append(h)
+    if len(out) >= MAX_HITS:
+        note = (note + " " + CAP_NOTE).strip()
     return out[:MAX_HITS], note
 
 
@@ -173,8 +193,7 @@ def search_file(path, records, current, current_seq, query, opts, stop, on_recor
                 hits += [hit(s, e, "dna", motif, strand, m, record=name)
                          for s, e, strand, m in find_motif(doc.sequence(), motif, mm, opts.iupac, opts.both, doc.circular, MAX_HITS)]
             if prot := protein_query(query, opts):
-                for s, e, strand, m, frame in find_protein(doc.sequence(), prot, allowed_mismatches(opts, len(prot)), MAX_HITS,
-                                                           genetic_code.table_id()):
+                for s, e, strand, m, frame in protein_hits(doc.sequence(), prot, allowed_mismatches(opts, len(prot)), doc.circular):
                     hits.append(hit(s, e, "protein", f"{prot} (frame {'+' if strand > 0 else '−'}{frame})", strand, m, record=name))
             needle = query.strip().lower()
             if opts.enzymes:

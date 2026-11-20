@@ -10,17 +10,21 @@ new coordinates, so the reads should be mapped again.
 """
 
 
+ORIGIN = "across the origin"   # the `alt` of a deletion or an uncovered stretch that runs through the origin of a circular sequence
+
+
 def change_text(v):
     """"A > G", "deletion of 5 bp (ACGTA)", "insertion of TT", and the two signs of a larger change: reads that
     break at one spot (stop matching the sequence there) and a stretch no read covers."""
     if v.kind == "snp":
         return f"{v.ref} > {v.alt}"
+    through = " through the origin" if getattr(v, "alt", "") == ORIGIN else ""
     if v.kind == "del":
-        return f"deletion of {len(v.ref)} bp" + (f" ({v.ref})" if len(v.ref) <= 10 else "")
+        return f"deletion of {len(v.ref)} bp{through}" + (f" ({v.ref})" if len(v.ref) <= 10 else "")
     if v.kind == "clip":
-        return f"{v.count} reads break here: they stop matching the sequence (likely the edge of an insertion, an inversion or a rearrangement)"
+        return f"{v.count} reads break here: they stop matching the sequence (likely the edge of an insertion, an inversion or a rearrangement)" +                (f". {v.alt}" if getattr(v, "alt", "") else "")
     if v.kind == "gap":
-        return f"no reads over {len(v.ref):,} bp (deletion longer than the reads, or not covered)"
+        return f"no reads over {len(v.ref):,} bp{through} (deletion longer than the reads, or not covered)"
     return f"insertion of {v.alt or '?'}"
 
 
@@ -29,7 +33,7 @@ def short_text(v):
     if v.kind == "snp":
         return f"{v.ref}>{v.alt}"
     if v.kind == "del":
-        return f"−{len(v.ref)} bp"
+        return f"−{len(v.ref)} bp" + (" (origin)" if v.alt == ORIGIN else "")
     if v.kind == "ins":
         return f"+{v.alt}" if 0 < len(v.alt) <= 4 else f"+{len(v.alt) or '?'} bp"
     if v.kind == "clip":
@@ -45,13 +49,20 @@ def can_apply(v):
 
 def apply_to_document(doc, chosen):
     """Write the variants `chosen` (each one `can_apply`) into `doc`, last position first so the earlier positions stay valid."""
+    heads = []   # a deletion through the origin loses its end of the sequence first and its start last, after the changes between
     for v in sorted(chosen, key=lambda v: v.pos, reverse=True):
         if v.kind == "snp":
             doc.overwrite(v.pos, v.alt)
+        elif v.kind == "del" and v.pos + len(v.ref) > doc.length:
+            head = v.pos + len(v.ref) - doc.length   # (bases to lose at the start: counted before the end is deleted)
+            doc.delete(v.pos, doc.length)
+            heads.append(head)
         elif v.kind == "del":
             doc.delete(v.pos, v.pos + len(v.ref))
         else:
             doc.insert(v.pos, v.alt)
+    for head in heads:
+        doc.delete(0, head)
 
 
 def apply_variants(editor, entry, chosen):
@@ -78,7 +89,8 @@ def variant_feature(v, length, source=""):
     if v.kind in ("snp", "clip"):
         location = str(v.pos + 1)
     elif v.kind in ("del", "gap"):
-        location = f"{v.pos + 1}..{v.pos + len(v.ref)}"
+        end = v.pos + len(v.ref)
+        location = f"{v.pos + 1}..{end}" if end <= length else f"join({v.pos + 1}..{length},1..{end - length})"
     else:
         location = f"{max(1, v.pos)}..{min(length, v.pos + 1)}"
     note = f"{v.count:,} of {v.depth:,} reads ({100 * v.count / max(1, v.depth):.0f} %)" + (f" in {source}" if source else "")

@@ -4,7 +4,7 @@
 
 ## `test_fragment_and_gibson_products`
 
-**Result:** ✅ passed in 0.07 s · [line 101](../../tests/test_assembly.py#L101) · **Area:** Gibson assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 101](../../tests/test_assembly.py#L101) · **Area:** Gibson assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Gibson designs could hand the user primers or a predicted product whose junctions do not actually exist in the assembled DNA, and silently accept ends that share no homology.
 
@@ -54,7 +54,7 @@ Checks a vector-plus-inserts assembly end to end (primer design skips the vector
 
 ## `test_sidewinder_oligos_toeholds_and_barcodes`
 
-**Result:** ✅ passed in 0.05 s · [line 263](../../tests/test_assembly.py#L263) · **Area:** Sidewinder assembly · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 266](../../tests/test_assembly.py#L266) · **Area:** Sidewinder assembly · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the ordered oligos could fail to tile the intended product, repeat a toehold so the assembly joins in the wrong place, or reuse barcodes, and the user would only discover it after paying for synthesis.
 
@@ -79,7 +79,7 @@ Checks that Sidewinder's toeholds are taken from the product itself (scarless), 
 
 ## `test_products_keep_every_orf_on_its_own_bases`
 
-**Result:** ✅ passed in 0.37 s · [line 403](../../tests/test_assembly.py#L403) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.40 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an assembled product could annotate a CDS a few bases off, so the user reads a shifted frame and the wrong protein without any error being shown.
 
@@ -100,7 +100,7 @@ Builds fragments that are each a single ORF with the CDS annotated over all of i
 
 ## `test_the_product_carries_the_features_and_the_primers_of_its_fragments`
 
-**Result:** ✅ passed in 0.09 s · [line 461](../../tests/test_assembly.py#L461) · **Area:** Assembly product annotation · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.09 s · [line 464](../../tests/test_assembly.py#L464) · **Area:** Assembly product annotation · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the simulated product could lose or duplicate the fragments' features and primer_bind annotations, or credit bases to a primer tail that the fragments already shared, misleading the user about what the design actually adds.
 
@@ -126,7 +126,7 @@ Checks that features inside an overlap are annotated once and at the right place
 
 ## `test_restriction_ligation_products`
 
-**Result:** ✅ passed in 0.01 s · [line 584](../../tests/test_assembly.py#L584) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 587](../../tests/test_assembly.py#L587) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the predicted ligation product could be the wrong arc of the vector or have the insert at the wrong place, so the user would clone a construct different from the one shown.
 
@@ -146,7 +146,7 @@ Checks the exact base sequence of a directional EcoRI/BamHI ligation, of a compa
 
 ## `test_restriction_ligation_end_rules_and_warnings`
 
-**Result:** ✅ passed in 0.01 s · [line 647](../../tests/test_assembly.py#L647) · **Area:** Restriction / ligation end compatibility · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 650](../../tests/test_assembly.py#L650) · **Area:** Restriction / ligation end compatibility · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the program could pair ends that cannot actually ligate (or refuse ones that can) and stay silent about an insert that can go in backwards or a vector that will re-close on itself.
 
@@ -167,7 +167,7 @@ Checks the end-compatibility rule base by base (same sticky bases, same overhang
 
 ## `test_assembly_reports_bad_input_instead_of_failing`
 
-**Result:** ✅ passed in 0.34 s · [line 708](../../tests/test_assembly.py#L708) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.34 s · [line 711](../../tests/test_assembly.py#L711) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a zero-length or very short fragment could crash the assembly panel with a traceback instead of showing the user a red check saying what is wrong.
 
@@ -189,7 +189,7 @@ Runs every method (Gibson, Golden Gate, Sidewinder), circular and linear, with a
 
 ## `test_recombineering_design_and_check`
 
-**Result:** ✅ passed in 0.01 s · [line 742](../../tests/test_assembly.py#L742) · **Area:** Assembly (recombineering) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 745](../../tests/test_assembly.py#L745) · **Area:** Assembly (recombineering) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A cassette could land on the wrong bases, a region across the origin could scramble the genome, or a non-specific homology could go unreported, so the user would build the wrong strain.
 
@@ -208,7 +208,7 @@ A cassette replaces, deletes or inserts at the right bases of a circular genome 
 
 ## `test_kld_primers_for_unsaved_edits`
 
-**Result:** ✅ passed in 0.06 s · [line 781](../../tests/test_assembly.py#L781) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.06 s · [line 792](../../tests/test_assembly.py#L792) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.
 

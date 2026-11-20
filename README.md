@@ -144,7 +144,8 @@ check, and it tells you before it does. [PRIVACY.md](PRIVACY.md) lists exactly w
 | [PRIVACY.md](PRIVACY.md) | What is sent over the network, what is stored where, how to delete it |
 | [SECURITY.md](SECURITY.md) | Reporting a vulnerability; the unsigned exe and how to verify it |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Bugs, feature requests, running from source, building, the tests |
-| [docs/TESTING.md](docs/TESTING.md) | The test plan and its progress |
+| [docs/test-report/README.md](docs/test-report/README.md) | Every test, what it checks and how strong it is |
+| [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) | Known problems, and [docs/POTENTIAL_UPGRADES.md](docs/POTENTIAL_UPGRADES.md): improvements not built |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | The components openDNA is built with and their licences |
 | Help > Citations | What each panel is based on, and the packages used |
 

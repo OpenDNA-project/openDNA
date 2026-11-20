@@ -92,6 +92,11 @@ def call(endpoint, params, key="", timeout=60):
             time.sleep(1.5 * (attempt + 1))   # "too many requests": NCBI counts by address, so wait longer and ask again
 
 
+class Records(list):
+    """The records a search listed; `total` is how many NCBI says match (more than were listed when the limit was reached)."""
+    total = 0
+
+
 def search(db, term, key="", limit=MAX_RESULTS):
     """The records of database `db` ("nuccore" / "protein") that match `term` (an accession, or words: E. coli K-12 complete genome)."""
     term = term.strip()
@@ -101,13 +106,20 @@ def search(db, term, key="", limit=MAX_RESULTS):
         found = json.loads(call("esearch.fcgi", {"db": db, "term": term, "retmax": limit, "retmode": "json"}, key))
         ids = found["esearchresult"]["idlist"]
         if not ids:
-            return []
+            return Records()
         summary = json.loads(call("esummary.fcgi", {"db": db, "id": ",".join(ids), "retmode": "json"}, key))["result"]
     except (ValueError, KeyError) as e:
         raise NcbiError(f"NCBI's answer could not be read ({e!r}).") from None
-    return [Record(uid=uid, accession=s.get("accessionversion") or s.get("caption", uid), title=s.get("title", ""), length=int(s.get("slen") or 0),
-                   organism=s.get("organism", ""), updated=s.get("updatedate", ""), db=db, topology=s.get("topology", "linear"),
-                   source=s.get("sourcedb", "")) for uid in ids if (s := summary.get(uid))]
+    out = Records(Record(uid=uid, accession=s.get("accessionversion") or s.get("caption", uid), title=s.get("title", ""), length=int(s.get("slen") or 0),
+                         organism=s.get("organism", ""), updated=s.get("updatedate", ""), db=db, topology=s.get("topology", "linear"),
+                         source=s.get("sourcedb", "")) for uid in ids if (s := summary.get(uid)))
+    out.total = int(found["esearchresult"].get("count") or len(out))
+    return out
+
+
+def more_note(records, limit):
+    """"" or the words saying a search stopped at its limit (`records` from `search`): never silently a part of the matches."""
+    return f"NCBI lists {records.total:,} matches; only the first {len(records)} are shown (the limit is {limit}): narrow the words, or raise the limit." if records.total > len(records) else ""
 
 
 def path_of(record):

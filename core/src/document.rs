@@ -2173,7 +2173,7 @@ ORIGIN
     }
 
     // ================================================================================
-    // Sequence editing (docs/TESTING.md section 1) and annotation drift (section 2).
+    // Sequence editing and annotation drift.
     // ================================================================================
 
     /// Tiny deterministic random numbers (no extra crate): the same seed always gives the

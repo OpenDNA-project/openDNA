@@ -33,7 +33,7 @@ Checks feedback.scrub on strings containing the username, home paths, quoted and
 
 ## `test_report_links_are_encoded_capped_and_carry_nothing_private`
 
-**Result:** ✅ passed in 0.12 s · [line 126](../../tests/test_feedback.py#L126) · **Area:** Error reports: GitHub issue links · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.10 s · [line 126](../../tests/test_feedback.py#L126) · **Area:** Error reports: GitHub issue links · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the 'Report a bug' / 'Request a feature' links could be malformed, too long for the browser, lose the end of the log, or carry private data to GitHub.
 
@@ -56,7 +56,7 @@ Builds bug and feature issue URLs and decodes their query: template, title prefi
 
 ## `test_log_file_and_error_hooks`
 
-**Result:** ✅ passed in 0.11 s · [line 197](../../tests/test_feedback.py#L197) · **Area:** Error reports: log file and crash dialog · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.10 s · [line 197](../../tests/test_feedback.py#L197) · **Area:** Error reports: log file and crash dialog · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it unhandled errors could go unlogged or unreported, the same error could pop a dialog repeatedly, the log could grow without bound or contain private data, or the error dialog itself could crash the app.
 

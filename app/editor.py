@@ -123,10 +123,25 @@ def label_font(base):
     return font
 
 
+def luminance(color):
+    """WCAG relative luminance of a colour: 0 (black) to 1 (white), on linear light, so that green weighs most and blue least."""
+    def linear(v):
+        v /= 255
+        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+    return 0.2126 * linear(color.red()) + 0.7152 * linear(color.green()) + 0.0722 * linear(color.blue())
+
+
+def contrast(a, b):
+    """WCAG contrast ratio of two colours, 1 (none) to 21 (black on white); 4.5 is the minimum for readable text."""
+    hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
 def text_color_on(background):
-    """Black or white, whichever reads better on `background` (perceived brightness)."""
-    brightness = 0.299 * background.red() + 0.587 * background.green() + 0.114 * background.blue()
-    return QColor("black") if brightness > 150 else QColor("white")
+    """Black or white, whichever has the higher contrast on `background`. Whatever the colour, that is at least 4.58 to 1 (the worst
+    colour, a grey of luminance 0.18, gives it with either): a mid-tone that a brightness threshold sent the wrong way is read right."""
+    black, white = QColor("black"), QColor("white")
+    return black if contrast(black, background) >= contrast(white, background) else white
 
 
 def feature_color(f):
@@ -1028,7 +1043,15 @@ class Editor(QObject):
         undo step. The new bases stay selected."""
         if not self.dna_editable():
             return False
-        done = self._edit(lambda: self.doc.overwrite(pos, bases), pos)
+        n = self.doc.length
+
+        def write():
+            if pos + len(bases) <= n:
+                self.doc.overwrite(pos, bases)
+            else:   # through the origin of a circular sequence: in two pieces (Undo takes two steps)
+                self.doc.overwrite(pos, bases[:n - pos])
+                self.doc.overwrite(0, bases[n - pos:])
+        done = self._edit(write, pos)
         if done:
             self.select(pos, pos + len(bases))
         return done
@@ -1296,10 +1319,11 @@ class Editor(QObject):
         hits = []
         if set(q.upper()) <= set("ACGTN"):
             seq, pat = self.doc.sequence().upper(), q.upper()
+            text = seq + seq[:len(pat) - 1] if self.doc.circular else seq   # (a circle read on past its origin: a query may run through it)
             for p in {pat, reverse_complement(pat)}:
                 for start in (after + 1, 0):  # next one after the cursor, else the first
-                    i = seq.find(p, start)
-                    if i != -1:
+                    i = text.find(p, start)
+                    if i != -1 and i < len(seq):   # (a match wholly in the copied tail is the one at the front)
                         hits.append((i, i + len(p), None))
         needle = q.lower()
         if self._search_text is None:  # built on the first search after a change

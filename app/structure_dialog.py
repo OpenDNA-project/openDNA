@@ -11,14 +11,14 @@ from PySide6.QtCore import QObject, QSettings, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox,
-    QProgressBar, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QProgressBar, QPushButton, QVBoxLayout,
 )
 
 import structure
 from primer_db import data_dir
 import theme
 import wip
-
+from data_table import DataTable
 
 HIT_COLUMNS = ["Entry", "Identity", "Covers", "Title", "Organism", "Method", "Resolution", "Chains"]
 
@@ -58,9 +58,11 @@ class StructureDialog(QDialog):
         self.busy = QProgressBar(minimum=0, maximum=0, textVisible=False, visible=False)
         # The PDB entries found (PDB source): pick one, then "Show this entry" (or double-click it)
         self.hits = []
-        self.table = QTableWidget(0, len(HIT_COLUMNS), visible=False, editTriggers=QAbstractItemView.NoEditTriggers,
-                                  selectionBehavior=QAbstractItemView.SelectRows, selectionMode=QAbstractItemView.SingleSelection)
-        self.table.setHorizontalHeaderLabels(HIT_COLUMNS)
+        self.table = DataTable(HIT_COLUMNS, filtered=["Method"])
+        self.table.setVisible(False)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(HIT_COLUMNS.index("Title"), QHeaderView.Stretch)
@@ -123,10 +125,10 @@ class StructureDialog(QDialog):
 
     def show_hit(self):
         """Get the PDB entry picked in the list (and keep it in the cache: Auto then finds this one for this protein)."""
-        rows = self.table.selectionModel().selectedRows()
+        rows = self.table.selected_data_rows()
         if not rows or self.job is not None:
             return
-        hit, protein = self.hits[rows[0].row()], self.protein
+        hit, protein = self.hits[rows[0]], self.protein
 
         def work(job):
             found = structure.pdb_entry(hit)
@@ -200,23 +202,19 @@ class StructureDialog(QDialog):
 
     def _list_hits(self, hits):
         self.hits = hits
-        self.table.setRowCount(0)
         self.table.setVisible(bool(hits))
         self.pick.setVisible(bool(hits))
         if not hits:
             self.status.setText("No PDB entry is linked to this protein." if self.source.currentText() == "Linked entries" else
                                 "No entry of the PDB has a chain like this protein (50 % identity or more).")
             return
-        for h in hits:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            cells = [h.entry, f"{h.identity:.0%}", f"{h.covered:.0%}", h.title, h.organism, h.method.lower(),
-                     f"{h.resolution:.2f} Å" if h.resolution else "", h.chains]
-            for column, text in enumerate(cells):
-                item = QTableWidgetItem(text)
-                item.setToolTip(text)
-                self.table.setItem(row, column, item)
-        self.table.selectRow(0)
+        with self.table.refilling(len(hits)):
+            for row, h in enumerate(hits):
+                cells = [h.entry, f"{h.identity:.0%}", f"{h.covered:.0%}", h.title, h.organism, h.method.lower(),
+                         f"{h.resolution:.2f} Å" if h.resolution else "", h.chains]
+                for column, text in enumerate(cells):
+                    self.table.put(row, column, text, tip=text)
+        self.table.select_data_row(0)   # the closest entry, wherever the user's sort has put it
         self.resize(max(self.width(), 900), max(self.height(), 560))
         self.status.setText(f"{len(hits)} entries, the closest first. <b>Identity</b> is over the aligned part, <b>Covers</b> how much of "
                             "the protein the chain spans: pick the entry to show (double-click, or <i>Show this entry</i>).")

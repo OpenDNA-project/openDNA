@@ -4,7 +4,7 @@
 
 ## `test_gene_groups_fold_their_parts_and_survive_edits`
 
-**Result:** ✅ passed in 0.03 s · [line 59](../../tests/test_genes_and_history.py#L59) · **Area:** Gene grouping · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 59](../../tests/test_genes_and_history.py#L59) · **Area:** Gene grouping · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the feature list and map could fold the wrong features under a gene (or fail to fold them), and after editing the sequence a feature could end up covering bases it never covered.
 

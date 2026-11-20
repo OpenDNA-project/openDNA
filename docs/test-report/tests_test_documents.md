@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.68 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.58 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -31,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.49 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.26 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -52,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 20.64 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 18.25 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -203,3 +203,41 @@ Builds a 1200 bp GenBank with six gene/CDS pairs sharing locus_tags plus two mis
 - Docstring says the switch 'also dropped the Local Align hits' while the test asserts they are kept; it refers to an old bug and reads backwards.
 - Group T_F expects 2 parts although gene F has a gene, a CDS and a misc_feature; the intent (the gene feature is the group head, not a part) is not explained in the test.
 - Does not check collapse_genes actually changes what is shown.
+
+## `test_label_text_is_black_or_white_by_contrast_and_always_readable`
+
+**Result:** ✅ passed in 0.05 s · [line 683](../../tests/test_documents.py#L683) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
+
+**Why it matters:** Feature names drawn on a light or mid-tone colour could be hard or impossible to read.
+
+text_color_on picks black or white by WCAG contrast ratio, so the letters on any feature colour have at least 4.5 to 1 (the AA minimum for text). Every colour of a 17 x 17 x 17 grid of the colour cube gets the better of the two, and the worst contrast over the grid is at least 4.5.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | black on white | contrast 21 |
+| 2 | all 4,913 colours of the grid | the chosen colour has the higher contrast; the minimum over the grid is 4.5 or more |
+| 3 | #ffeb3b (light yellow), #0d47a1 (dark blue) | black letters, white letters |
+| 4 | rgb(0, 160, 224) (mid blue) | black letters (7.1 to 1; white gave 3.0 to 1, which the old brightness threshold chose) |
+
+**Review notes:**
+
+- Only the choice is tested; whether a given label is drawn on the colour it was measured on is by reading the drawing code (11 call sites use text_color_on).
+
+## `test_table_sort_key_puts_numbers_in_order_before_words`
+
+**Result:** ✅ passed in 0.00 s · [line 699](../../tests/test_documents.py#L699) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** A click on a table header could put 1,200 before 95, or scatter a column of locations, sizes and dates.
+
+data_table.sort_key, the order of every table of the application that has no key of its own: a cell sorts by the number it begins with (thousands commas read, sign kept), numbers before words, words by text without case, equal numbers by text.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | 10 bp, 94 % (protein), 95 bp, 1,200 bp | in that order |
+| 2 | 5,704–5,808 →, 5,859–5,902 ← | by the first position |
+| 3 | '', alpha, NC_000913, Zeta, '–' (a dash placeholder) | after every number, in that order: empty first, the dash last |
+| 4 | 2013-09-26 and 2013-10-01; -5 bp and 3 bp | the earlier date first; the negative first |
+
+**Review notes:**
+
+- The key only: the table itself (sorting, filter, the row to its thing) was checked by hand offscreen on the Detect, Spacer Finder, ORF, Checkup and other tables, because the suite builds no widgets.

@@ -175,6 +175,9 @@ def test_golden_gate_products_and_overhang_checks():
     assert d.ok and len(d.rows) == 4 and all(len(j.seq) == 4 for j in d.joints)
     assert len({j.seq for j in d.joints}) == 3
     assert rotation_of(d.product(), A.design_golden_gate(frags_like(f), True, "BsaI").product())
+    # the closing junction of a circle: the first fragment's forward primer carries the overhang it shares with the last one (it once did not)
+    gg = A.design_golden_gate([frag("g0", dna(400)), frag("g1", dna(400)), frag("g2", dna(400))], True, "BsaI")
+    assert "ggtctca" + gg.joints[-1].seq[:3].lower() in dict((row[0], row[1]) for row in gg.rows)["g0-F"].lower()
     assert all(dict((s, lv) for s, lv, _ in d.jchecks[j])["unique"] == "ok" for j in range(3))
     assert find_check(d, "BsaI sites left in product")[1] == "ok"
     # Reverse-complement the insert: its ends no longer fit until it gets new primers.
@@ -765,8 +768,16 @@ def test_recombineering_design_and_check():
     for query, forward in ((fragment, True), (rc(fragment), False)):
         r = R.check(genome, query)
         assert (r.region, r.forward, r.checks) == ((400, 500), forward, []) and seq(r.product) == seq(d.product)
+    # a left homology that runs through the origin: found, and the replaced stretch is the same as designed
+    through = R.design(genome, cassette, 20, 100)
+    across = through.rows[0][1][:50] + cas + rc(through.rows[1][1][:50])
+    r = R.check(genome, across)
+    assert (r.region, r.checks) == ((20, 100), []) and seq(r.product) == seq(through.product)
     template = Document.new_sequence("t", random_dna(300, 13) + cas + random_dna(300, 14), False)
     assert R.amplicon(seq(template), False, d.rows[0][1], d.rows[1][1]) == fragment
+    twice = seq(template) + seq(template)   # the primers bind twice: the product is not defined, and it is said so
+    with pytest.raises(ValueError, match="more than once"):
+        R.amplicon(twice, False, d.rows[0][1], d.rows[1][1])
     # --- a mutated arm and a near-copy of an arm elsewhere ---
     mutated = fragment[:10] + ("A" if fragment[10] != "A" else "C") + fragment[11:]
     r = R.check(genome, mutated)

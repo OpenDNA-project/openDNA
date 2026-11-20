@@ -4,7 +4,7 @@
 
 ## `reads_mismatches_and_coverage`
 
-**Result:** ✅ passed · [line 580](../../core/src/alignments.rs#L580) · **Area:** BAM reads, coverage, pileup and variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 767](../../core/src/alignments.rs#L767) · **Area:** BAM reads, coverage, pileup and variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Imported BAM reads could be drawn with wrong positions, strands, mismatches, indels or soft clips, and the coverage, pileup and variant tracks could show wrong numbers.
 
