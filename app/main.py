@@ -53,6 +53,7 @@ from file_tabs import FileHost, FileStrip, all_pages, find_open, last_host, mode
 from genome_view import GenomeView
 import feedback
 import file_assoc
+import setup_again
 import project
 import runner
 import wip
@@ -475,6 +476,7 @@ class MainWindow(QMainWindow):
         help_menu.addSeparator()
         help_menu.addAction(QAction("Check for &Updates…", self, triggered=lambda: updater.check_now(self, **self.update_hooks())))
         help_menu.addAction(QAction("File Ass&ociations…", self, triggered=lambda: file_assoc.show_manage_dialog(self)))
+        help_menu.addAction(QAction("Run &Setup Again…", self, triggered=lambda: setup_again.run(self)))
 
         self.search_bar = SearchBar(self)
         self.find_box = self.search_bar.box

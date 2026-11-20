@@ -88,9 +88,6 @@ must release the GIL (`py.allow_threads`) for a Python thread to help; pure-Pyth
 
 ## 4. Interface (from the UI passes)
 
-- Help > Run setup again: the installer's choices for an existing user who skipped them or installed an older version (file types in "Open with",
-  CPU cores, the WSL tools), without reinstalling. Asked for on 2026-11-20.
-
 - Menu order: View after Tools is the open question (File, Import, Export, Edit, Feature, Primers, Databases, Tools, View, Help); the owner decides.
 - Tab bar: a "+" inside the bar, quick filters as a tab-bar corner widget; one header pattern for the database tabs and the Primers view; a Reference combo with "Add reference genome…";
   the PCR pane without Cancel; database Status dialogs as a plain form.

@@ -242,12 +242,12 @@ def features_for(editor, chosen, group):
 
 
 class InstallDialog(QDialog):
-    """Runs the install of pLannotate in WSL / bash, its text shown as it comes. `ok`: it finished without error."""
+    """Runs the install of pLannotate and/or the Terminal's tools in WSL / bash, its text shown as it comes. `ok`: it finished without error."""
 
-    def __init__(self, parent):
+    def __init__(self, parent, plannotate=True, terminal=False):
         super().__init__(parent)
         self.ok = False
-        self.setWindowTitle("Install pLannotate")
+        self.setWindowTitle("Install pLannotate" if not terminal else "Install the optional tools")
         self.resize(720, 360)
         self.log = QPlainTextEdit(readOnly=True)
         self.button = QPushButton("Stop", clicked=self._stop)
@@ -259,7 +259,7 @@ class InstallDialog(QDialog):
         self.process.readyRead.connect(lambda: self.log.appendPlainText(bytes(self.process.readAll()).decode("utf-8", "replace").rstrip()))
         self.process.finished.connect(self._finished)
         self.process.errorOccurred.connect(lambda _: self._finished(-1) if self.process.state() == QProcess.NotRunning else None)
-        argv = runner.command_line(["-lc", plannotate_tool.install_script(plannotate=True, terminal=False)])
+        argv = runner.command_line(["-lc", plannotate_tool.install_script(plannotate, terminal)])
         self.process.start(argv[0], argv[1:])
 
     def _stop(self):
