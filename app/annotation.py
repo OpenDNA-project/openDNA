@@ -76,7 +76,8 @@ def import_files(paths, rejected=None):
 
 def detect(editor, kinds=None, run=None):
     """Hits of library parts on the sequence: SimpleNamespace(name, kind, start, end, strand, identity,
-    protein, source, collection, organism, strength, units, measured, known, covered), sorted by start. `known`: a
+    protein, source, collection, organism, strength, units, measured, known, reversed, covered), sorted by start. `reversed`: the file's
+    feature of the same type on exactly these bases but in the other direction (or None). `known`: a
     feature of the same type already covers exactly the same bases (on the same strand for a CDS); `covered`: one covers most of them. `measured`: the
     strength its source reports, as text ("TS 98 (E. coli)"), or "". `kinds`: only parts of these types. `run(work)`: how the
     search itself (Rust, it lets go of Python's lock) is run, e.g. in a thread behind a busy dialog; by default, here."""
@@ -91,8 +92,9 @@ def detect(editor, kinds=None, run=None):
         hits.append(SimpleNamespace(name=p.name, kind=p.kind, start=s, end=e, strand=strand, identity=identity,
                                     protein=protein, source=p.source, collection=p.collection, organism=p.organism,
                                     strength=p.strength, units=p.units, measured=describe(p), origin=OWN, also=None,
-                                    known=already_there(editor, p.kind, s, e, strand),
+                                    reversed=reversed_twin(editor, p.kind, s, e, strand),
                                     covered=already_there(editor, p.kind, s, e, strand, exact=False)))
+        hits[-1].known = hits[-1].reversed is None and already_there(editor, p.kind, s, e, strand)
     # Library parts on the same bases (two KanR variants, one promoter annotated on opposite
     # strands by two records, "rrnB" vs "5S RNA, T1, T2, rrnB"): keep one, preferring a
     # specific type over misc_feature, then the best identity, then the longest.
@@ -112,7 +114,8 @@ def plannotate_hits(editor, rows):
                             strand=r["strand"], identity=r["identity"], protein=r["database"] in PROTEIN_DATABASES,
                             source=f"{plannotate_tool.NAME}: {r['database']}", collection="", organism="", strength="", units="", measured="",
                             origin=THEIRS, also=None, database=r["database"], note=r["note"],
-                            known=already_there(editor, r["kind"], r["start"], r["end"], r["strand"]),
+                            reversed=(twin := reversed_twin(editor, r["kind"], r["start"], r["end"], r["strand"])),
+                            known=twin is None and already_there(editor, r["kind"], r["start"], r["end"], r["strand"]),
                             covered=already_there(editor, r["kind"], r["start"], r["end"], r["strand"], exact=False)) for r in rows]
 
 
@@ -189,6 +192,49 @@ def already_there(editor, kind, s, e, strand, exact=True):
         if (fs, fe) == (s, e) if exact else overlap(probe, SimpleNamespace(start=fs, end=fe)) >= 0.8 * min(e - s, fe - fs):
             return True
     return False
+
+
+# Types whose direction is their function: a hit found the other way round from the file's feature is ticked to turn that feature round.
+# The others (terminators, origins, misc) are often annotated either way: listed, not ticked.
+TURN_KINDS = {"CDS", "promoter", "RBS", "primer_bind"}
+
+
+def reversed_twin(editor, kind, s, e, strand):
+    """The existing feature of the same type on exactly these bases but in the other direction (both have one), or None."""
+    if not strand:
+        return None
+    for f in editor.visible_features(s, min(e, editor.length), overlays=False):
+        if f.kind == kind and f.strand == -strand and genes.span_of([f]) == (s, e):
+            return f
+    return None
+
+
+def status(h):
+    """What the "In the file" column says of a hit."""
+    if h.reversed is not None:
+        here, found = ("→", "←") if h.reversed.strand > 0 else ("←", "→")
+        return f"annotated the other way ({here} in the file, {found} found)"
+    return "annotated" if h.known else "new"
+
+
+def turned(location):
+    """A GenBank location in the other direction: complement(X) <-> X, and join(complement(a),complement(b)) -> join(b,a)."""
+    text = location.strip()
+    if text.startswith("complement(") and text.endswith(")"):
+        return text[len("complement("):-1]
+    if text.startswith("join(") and text.endswith(")"):
+        parts = [p.strip() for p in text[len("join("):-1].split(",")]
+        if all(p.startswith("complement(") and p.endswith(")") for p in parts):
+            return "join(" + ",".join(p[len("complement("):-1] for p in reversed(parts)) + ")"
+    return f"complement({text})"
+
+
+def turn_features(target, hits):
+    """Turn round the file's feature of each hit that found it the other way (`target`: an Editor, one undo step per feature, or a Document).
+    Its name, notes and colour stay."""
+    for h in hits:
+        f = h.reversed
+        target.set_feature(f.index, f.kind, turned(f.location), [tuple(q) for q in f.qualifiers])
 
 
 def gene_groups(hits, reach):
@@ -288,7 +334,7 @@ INSTALL_QUESTION = (
 
 
 class DetectDialog(ToolDialog):
-    COLUMNS = ["Name", "Type", "Location", "Identity", "Strength", "Source", "Found by"]
+    COLUMNS = ["Name", "Type", "Location", "Identity", "Strength", "Source", "Found by", "In the file"]
 
     def __init__(self, parent, editor):
         super().__init__(parent)
@@ -297,7 +343,7 @@ class DetectDialog(ToolDialog):
         self.columns = self.COLUMNS + (["Record"] if editor.multi_genbank else [])
         self.setWindowTitle("Detect Common Features")   # its name in the Tools menu
         self.resize(1300, 560)
-        self.table = DataTable(self.columns, filtered=["Type", "Source", "Found by"])
+        self.table = DataTable(self.columns, filtered=["Type", "Source", "Found by", "In the file"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         fit_columns(self.table, stretch=0)
@@ -378,20 +424,25 @@ class DetectDialog(ToolDialog):
                 ident = f"{h.identity * 100:.0f} %{' (protein)' if h.protein else ''}"
                 where = [h.record or self.editor.fasta_record] if self.editor.multi_genbank else []
                 keys = {2: (h.record or "", h.start, h.end), 3: h.identity}   # Location and Identity sort by number; the rest by their text
-                for c, v in enumerate([h.name, h.kind, loc, ident, h.measured, h.source, h.origin] + where):
+                for c, v in enumerate([h.name, h.kind, loc, ident, h.measured, h.source, h.origin, status(h)] + where):
                     item = self.table.put(i, c, v, key=keys.get(c), right=c == 3)
                     if c == 0:
                         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                        item.setCheckState(Qt.Unchecked if h.known else Qt.Checked)
-                        if h.known:
+                        turn = h.reversed is not None and h.kind in TURN_KINDS
+                        item.setCheckState(Qt.Checked if turn or not (h.known or h.reversed is not None) else Qt.Unchecked)
+                        if h.reversed is not None:
+                            item.setToolTip("Annotated in the other direction: ticked, Add turns the file's feature round (its name and notes stay)")
+                        elif h.known:
                             item.setToolTip("Already annotated")
                         elif h.origin == BOTH:
                             item.setToolTip(f"Found by both. pLannotate calls it {h.also.name} ({h.also.source.split(': ')[-1]}, {h.also.identity * 100:.0f} % identity).")
-        new = sum(not h.known for h in self.hits)
+        new = sum(not h.known and h.reversed is None for h in self.hits)
+        other_way = sum(h.reversed is not None for h in self.hits)
         by = {o: sum(h.origin == o for h in self.hits) for o in (OWN, THEIRS, BOTH)}
         who = f" ({by[OWN]} by openDNA, {by[THEIRS]} by pLannotate, {by[BOTH]} by both)" if plannotate.name == "ran" else ""
         problem = {"missing": " pLannotate is not installed.", "error": f" pLannotate: {plannotate.text}"}.get(plannotate.name, "")
-        self.info.setText(f"{plural(len(self.hits), 'feature')} found{who}, {new} not annotated yet (ticked).{problem}")
+        turns = f" {other_way} annotated the other way (Add turns the ticked ones round)." if other_way else ""
+        self.info.setText(f"{plural(len(self.hits), 'feature')} found{who}, {new} not annotated yet (ticked).{turns}{problem}")
         self.credit.setVisible(plannotate.name == "ran")
         self.credit.setText(f"pLannotate features: {plannotate_tool.CITATION} <a href='https://doi.org/{plannotate_tool.DOI}'>doi:{plannotate_tool.DOI}</a>")
 
@@ -431,11 +482,16 @@ class DetectDialog(ToolDialog):
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
         group = tool_settings.value(TOOL, "group_genes")
-        if here:
-            self.editor.add_features(features_for(self.editor, here, group))
+        fresh = lambda hits: [h for h in hits if h.reversed is None]
+        turn = lambda hits: [h for h in hits if h.reversed is not None]
+        turn_features(self.editor, turn(here))   # (first: adding features may renumber them, and these are found by number)
+        if fresh(here):
+            self.editor.add_features(features_for(self.editor, fresh(here), group))
         for name, hits in away.items():
             other = self.others[name]
-            other.add_features(features_for(other, hits, group))
+            turn_features(other, turn(hits))
+            if fresh(hits):
+                other.add_features(features_for(other, fresh(hits), group))
             multigb.save_record_of(other)
         if away:
             multigb.forget_siblings(self.editor)

@@ -126,7 +126,7 @@ Checks that features inside an overlap are annotated once and at the right place
 
 ## `test_restriction_ligation_products`
 
-**Result:** ✅ passed in 0.00 s · [line 587](../../tests/test_assembly.py#L587) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 587](../../tests/test_assembly.py#L587) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the predicted ligation product could be the wrong arc of the vector or have the insert at the wrong place, so the user would clone a construct different from the one shown.
 

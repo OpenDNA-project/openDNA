@@ -522,7 +522,7 @@ ANNOTATE_FLAGS = {"min_dna": "--min-dna", "min_protein": "--min-protein", "min_l
 def hit_fields(h, n):
     """One hit of the Detect Features list as the command line prints it. `found_by`: openDNA, pLannotate or both (then `plannotate` is its own hit)."""
     out = {"name": h.name, "kind": h.kind, "start": h.start + 1, "end": end1(h.end, n), "strand": h.strand, "identity": round(h.identity, 4), "protein_match": bool(h.protein),
-           "already_annotated": h.known, "found_by": h.origin, "source": h.source, "strength": h.measured}
+           "already_annotated": h.known, "annotated_other_way": h.reversed is not None, "found_by": h.origin, "source": h.source, "strength": h.measured}
     if h.also:
         out["plannotate"] = {"name": h.also.name, "database": h.also.database, "identity": round(h.also.identity, 4)}
     return out
@@ -544,11 +544,13 @@ def cmd_annotate(args):
         out["warnings"].append(f"pLannotate was not used: {plannotate.text}" + (" Install it with: oDNA-cli wsltools install --only plannotate" if plannotate.name == "missing" else ""))
     if args.add:
         target = new_path(args.add)
-        fresh = [h for h in hits if not h.known]
+        fresh = [h for h in hits if not h.known and h.reversed is None]
+        turn = [h for h in hits if h.reversed is not None and h.kind in annotation.TURN_KINDS]   # (as the window ticks them)
+        annotation.turn_features(doc, turn)   # (before the new ones are added: the feature indexes are the ones read)
         if fresh:
             doc.add_features(annotation.features_for(ed, fresh, False))
         doc.write_genbank(str(target), None)
-        out["added"] = {"file": str(target), "features": len(fresh), "skipped_already_annotated": len(hits) - len(fresh)}
+        out["added"] = {"file": str(target), "features": len(fresh), "turned_round": len(turn), "skipped_already_annotated": len(hits) - len(fresh) - len(turn)}
     return out
 
 

@@ -646,6 +646,20 @@ def test_annotate_command_finds_library_parts_and_adds_only_new_ones(tmp_path, c
     again = tmp_path / "again.gb"      # a second pass over the annotated copy finds the same parts, already annotated, and adds nothing
     assert answer(capsys, "annotate", out, "--kinds", "terminator", "--add", again)["added"]["features"] == 0
     assert "responsibility" in answer(capsys, "annotate", gb, "--min-dna", "10")["warnings"][0]
+    # A promoter annotated the wrong way round in the file: reported as such, and --add turns it round, keeping its name
+    promoter = max((p for p in annotation.load_parts() if p.kind == "promoter" and set(p.sequence.upper()) <= set("ACGT")), key=lambda p: len(p.sequence))
+    gb, seq = planted(tmp_path, (100, promoter.sequence.upper()), n=600)
+    doc = Document(str(gb))
+    doc.add_features([("promoter", f"complement(101..{100 + len(promoter.sequence)})", [("label", "mine")])])
+    doc.write_genbank(str(gb), None)
+    hit = next(h for h in answer(capsys, "annotate", gb, "--kinds", "promoter")["hits"] if h["start"] == 101)
+    assert hit["annotated_other_way"] and not hit["already_annotated"] and hit["strand"] == 1
+    fixed = tmp_path / "fixed.gb"
+    assert answer(capsys, "annotate", gb, "--kinds", "promoter", "--add", fixed)["added"]["turned_round"] >= 1
+    mine = [f for f in Document(str(fixed)).features() if f.label == "mine"]
+    assert len(mine) == 1 and mine[0].strand == 1 and mine[0].spans[0] == (100, 100 + len(promoter.sequence))   # turned, not doubled
+    again = next(h for h in answer(capsys, "annotate", fixed, "--kinds", "promoter")["hits"] if h["start"] == 101)
+    assert again["already_annotated"] and not again["annotated_other_way"]   # a second pass: nothing left to turn
 
 
 @pytest.fixture(autouse=True)
@@ -743,6 +757,12 @@ def test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_i
     assert not annotation.already_there(having(s + 5, e), "terminator", s, e, 1) and not annotation.already_there(having(s - 20, e + 20), "terminator", s, e, 1)   # overlapping is not the same bases
     assert annotation.already_there(having(s + 5, e), "terminator", s, e, 1, exact=False)    # (what the Plasmid Checkup still treats as covered)
     assert not annotation.already_there(having(s, e, -1), "CDS", s, e, 1)    # a CDS: its strand counts
+    # the same type on the same bases in the other direction: found, so that Add can turn it round
+    twin = lambda kind, strand: SimpleNamespace(length=1000, visible_features=lambda a, b, overlays=True: [SimpleNamespace(kind=kind, strand=strand, spans=[(s, e)])])
+    assert annotation.reversed_twin(twin("promoter", -1), "promoter", s, e, 1) is not None
+    assert annotation.reversed_twin(twin("promoter", 1), "promoter", s, e, 1) is None and annotation.reversed_twin(twin("terminator", -1), "promoter", s, e, 1) is None
+    assert [annotation.turned(t) for t in ("101..160", "complement(101..160)", "join(complement(5..9),complement(1..3))")] == [
+        "complement(101..160)", "101..160", "join(1..3,5..9)"]
 
 
 def test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds(tmp_path, capsys):

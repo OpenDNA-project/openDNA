@@ -36,6 +36,8 @@ Open problems are in `docs/KNOWN_ISSUES.md`.
   The nine measures sit side by side in three columns, all visible without scrolling; what each counts is in its tooltip.
   Synthesis moved from the Tools menu to the tools of every pane's picker. `oDNA-cli synthesis` gives the same places.
 - Detect Common Features is split in half: the sequence on the left, the features found on the right; a click selects where a feature would go.
+  A new *In the file* column says new / annotated / annotated the other way; a CDS, promoter, RBS or primer site annotated backwards is ticked and
+  Add turns it round (name and notes kept). `oDNA-cli annotate` reports `annotated_other_way` and `--add` turns them too.
 
 ### CPU cores and setup
 - New setting Tools > Settings > General > Performance: the CPU cores openDNA may use (default: all but one, at most 8). The installer asks for it.
@@ -95,6 +97,8 @@ feature across base 1 (`demo/pFG051_Chlor.gb`, then Edit > Set Origin to Selecti
 - Synthesis: open it from a pane's picker (Tools > Synthesis; it is no longer in the Tools menu). Paste a FASTA record, run the calculator, point at
   each row of its table: the stretches light up in the sequence view; click a row: they stay and the view scrolls there; edit a base: they go.
 - Detect Common Features: the window is half sequence, half list; click a feature: the left view jumps to it and selects it.
+  On pFG051_Chlor.gb: Tn5 ME (misc_feature) shows "annotated the other way", unticked. Annotate a promoter backwards (Edit a feature, flip it), reopen
+  Detect: it is ticked as "annotated the other way"; Add turns it round, Undo puts it back.
 - Help > Run Setup Again: a ViennaRNA row says whether it is installed; ticking it downloads it (needs the internet).
 - Display panel on the genome: open the criteria arrow, set every enzyme and every number of sites: the orange warning appears and no site is drawn;
   set them back: sites return. The Synthesis table: three columns, no scrollbar, tooltips say what each counts.

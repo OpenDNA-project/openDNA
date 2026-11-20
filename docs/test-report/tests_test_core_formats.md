@@ -4,7 +4,7 @@
 
 ## `test_bam_reads_pileup_coverage_and_variants_match_a_model`
 
-**Result:** ✅ passed in 0.07 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.11 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the read alignment track could show reads at wrong places, miscount depth, ignore duplicate/QC filters or call wrong SNPs and indels from a user's BAM file.
 

@@ -38,7 +38,7 @@ Checks core.align with planted queries in random templates and exact expected hi
 
 ## `test_align_finds_every_piece_of_a_structural_variant_query`
 
-**Result:** ✅ passed in 0.07 s · [line 310](../../tests/test_core_alignment.py#L310) · **Area:** Local alignment, structural variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 310](../../tests/test_core_alignment.py#L310) · **Area:** Local alignment, structural variants · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Local Align could merge, drop or misplace pieces of a rearranged construct (insertion, inversion, shuffled or duplicated segments), which is what users rely on to diagnose structural variants.
 
@@ -88,7 +88,7 @@ Checks local_align.clean_query on accepted formats and on errors with their mess
 
 ## `test_folder_search_finds_a_query_in_its_file_record_place_and_strand`
 
-**Result:** ✅ passed in 1.27 s · [line 421](../../tests/test_core_alignment.py#L421) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.29 s · [line 421](../../tests/test_core_alignment.py#L421) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file.
 
