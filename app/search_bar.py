@@ -18,8 +18,7 @@ import icons
 import search
 from primer_db import data_dir
 from search import Options
-from editor import SYNC_LIMIT
-from uikit import in_background
+from uikit import SYNC_LIMIT, Latest
 
 MAX_QUERY = 5000   # characters: a longer text is not something to look for (and would stall the live search)
 LIVE_MAX = 2_000_000   # bp: below this the hits follow the typing; above it the search waits for Enter
@@ -85,6 +84,7 @@ class SearchBar(QWidget):
         self.hits, self.index, self.key = [], -1, None   # key: (query, options) the hits are for; None = no valid search
         self.rank, self.file_path = {}, None             # file search: the order of the sequences; the file the hits are from
         self.token, self.stop_flag, self.want, self.total, self.seen = None, threading.Event(), 0, 0, 0
+        self.job = Latest(self, "Search")   # the open sequence searched in a thread when it is long
         self.settings = QSettings(str(data_dir() / "search.ini"), QSettings.IniFormat)
         self.timer = QTimer(self, singleShot=True, interval=LIVE_MS, timeout=self._live)
 
@@ -243,6 +243,7 @@ class SearchBar(QWidget):
         ed, query, opts = self.editor, self.box.text().strip(), self.options()
         self.stop_flag.set()
         self.token = None   # results of a file search still on their way are ignored
+        self.job.cancel()
         self.timer.stop()
         if not query:
             self.clear()
@@ -256,20 +257,12 @@ class SearchBar(QWidget):
             return
         if opts.scope == "file":   # names and proteins belong to the open sequence
             opts, note = replace(opts, scope="sequence"), ("Searched the open sequence only (a file search looks for DNA)." if ed.fasta_record else "")
-        if ed.length <= SYNC_LIMIT:
-            self._show_hits(query, note, *search.search_sequence(ed, query, opts), direction)
-            return
-        # A long sequence: in a background thread. An edit meanwhile clears the search (`clear`), so its answer is dropped.
-        token = self.token = object()
-        self.counter.setText("Searching…")
-
-        def done(found, error):
-            if token is self.token and ed is self.editor:   # (an error otherwise came from reading a document being edited)
-                if error is not None:
-                    raise error
-                self.token = None
-                self._show_hits(query, note, *found, direction)
-        in_background("Search", lambda: search.search_sequence(ed, query, opts), done)
+        # A long sequence is searched in a thread: an edit meanwhile clears the search (`clear`), and its answer is dropped.
+        now = ed.length <= SYNC_LIMIT
+        if not now:
+            self.counter.setText("Searching…")
+        self.job.run(lambda: search.search_sequence(ed, query, opts),
+                     lambda found: ed is self.editor and self._show_hits(query, note, *found, direction), now)
 
     def _show_hits(self, query, note, hits, more, direction):
         self.file_path, self.rank = None, {}
@@ -389,6 +382,7 @@ class SearchBar(QWidget):
     def clear(self):
         self.stop_flag.set()
         self.token = None
+        self.job.cancel()
         self.hits, self.index, self.key, self.file_path, self.rank = [], -1, None, None, {}
         self.counter.setText("")
         if self.editor is not None:

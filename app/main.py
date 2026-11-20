@@ -1840,23 +1840,27 @@ class MainWindow(QMainWindow):
             return
         target, version, gen = autosave_path(ed.path, ed.fasta_record), ed.version, self._autosave_gen
 
-        def done(_, error):
+        def write():
+            try:
+                ed.doc.write_genbank(str(target), ed.file_primer_features())
+            except OSError as e:   # a full disk...: said in the status bar
+                return e
+
+        def done(error):
             self._autosaving = None
             if gen != self._autosave_gen:   # saved, closed or another file opened meanwhile: this copy is not wanted
                 autosave.drop(target)
                 return
-            if isinstance(error, OSError):
+            if error is not None:
                 self.statusBar().showMessage(f"Autosave failed: {error}", 5000)
                 return
-            if error is not None:
-                raise error
             autosave.remember_source(target, ed.path)
             if self.autosave_file not in (None, target):
                 self._drop_autosave()  # file was renamed by Save As
             self.autosave_file, self.autosaved_version = target, version
 
         # (in a thread, from a copy of the document taken there: the window goes on meanwhile, edits included)
-        self._autosaving = in_background("Autosave", lambda: ed.doc.write_genbank(str(target), ed.file_primer_features()), done)
+        self._autosaving = in_background("Autosave", write, done)
 
     def _drop_autosave(self):
         if self._autosaving is not None:

@@ -216,15 +216,49 @@ pub fn find_motifs(seq: &[u8], motifs: &[&[u8]], circular: bool) -> Vec<Vec<Moti
                 _ => plain = false,
             }
         }
+        let checked = if plain { K } else { 0 }; // the bases the bucket already matched
         for &p in if plain { &buckets[word] } else { &all } {
             let (k, masks, forward) = &patterns[p];
             let m = masks.len();
-            if i + m <= text.len() && masks.iter().zip(&text[i..i + m]).all(|(&mask, &b)| fits(mask, b)) {
+            let from = checked.min(m);
+            if i + m <= text.len() && masks[from..].iter().zip(&text[i + from..i + m]).all(|(&mask, &b)| fits(mask, b)) {
                 out[*k].push(MotifHit { start: i, end: i + m, forward: *forward, mismatches: 0 });
             }
         }
     }
     out
+}
+
+/// Where each enzyme cuts `seq`: `enzymes` are (site in IUPAC letters, cuts as (top, bottom) offsets of the gap from the start of the
+/// site, possibly outside it). For each, the sorted distinct (top, bottom) cut positions (the gap before that base on the top
+/// strand's numbering): a site on the bottom strand cuts mirrored; on a `circular` sequence positions are taken round the
+/// origin, on a linear one a cut on or past an end is no cut. (The app's `enzymes.find_cuts`.)
+pub fn find_cuts(seq: &[u8], enzymes: &[(&[u8], Vec<(i64, i64)>)], circular: bool) -> Vec<Vec<(usize, usize)>> {
+    let n = seq.len() as i64;
+    let sites: Vec<&[u8]> = enzymes.iter().map(|e| e.0).collect();
+    find_motifs(seq, &sites, circular)
+        .into_iter()
+        .zip(enzymes)
+        .map(|(hits, (site, cuts))| {
+            let l = site.len() as i64;
+            let mut out = Vec::new();
+            for h in hits {
+                for &(top, bottom) in cuts {
+                    // read the other way, the cut `t` from the start of the site is `l - t` from its end
+                    let (t, b) = if h.forward { (top, bottom) } else { (l - bottom, l - top) };
+                    let (t, b) = (h.start as i64 + t, h.start as i64 + b);
+                    if circular {
+                        out.push((t.rem_euclid(n) as usize, b.rem_euclid(n) as usize));
+                    } else if 0 < t && t < n && 0 < b && b < n {
+                        out.push((t as usize, b as usize));
+                    }
+                }
+            }
+            out.sort_unstable();
+            out.dedup();
+            out
+        })
+        .collect()
 }
 
 /// One place a protein motif occurs, read from DNA.

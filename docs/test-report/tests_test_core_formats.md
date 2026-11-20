@@ -30,7 +30,7 @@ Writes BAM files with the standard library (hand-designed reads, 300 random read
 
 ## `test_tracks_gff_bed_parsing_query_density_and_search`
 
-**Result:** ✅ passed in 0.06 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, or miss features when zooming and searching.
 
@@ -93,7 +93,7 @@ Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python
 
 ## `test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.03 s · [line 733](../../tests/test_core_formats.py#L733) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 733](../../tests/test_core_formats.py#L733) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A break, a gap or a deletion near an end of the reference, or through the origin of a plasmid, could be hidden or mistaken for something else.
 

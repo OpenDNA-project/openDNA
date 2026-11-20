@@ -790,6 +790,17 @@ fn find_motifs(py: Python<'_>, seq: &str, motifs: Vec<String>, circular: bool) -
     })
 }
 
+/// `opendna_core.enzyme_cuts(seq, enzymes, circular=False)`: for each (site, [(top, bottom) cut offsets]), its sorted distinct
+/// (top, bottom) cut positions; see search.rs `find_cuts` (the app's `enzymes.find_cuts`).
+#[pyfunction]
+#[pyo3(signature = (seq, enzymes, circular=false))]
+fn enzyme_cuts(py: Python<'_>, seq: &str, enzymes: Vec<(String, Vec<(i64, i64)>)>, circular: bool) -> Vec<Vec<(usize, usize)>> {
+    py.allow_threads(|| {
+        let enzymes: Vec<(&[u8], Vec<(i64, i64)>)> = enzymes.iter().map(|(s, c)| (s.as_bytes(), c.clone())).collect();
+        search::find_cuts(seq.as_bytes(), &enzymes, circular)
+    })
+}
+
 /// `opendna_core.find_protein(seq, query, max_mismatches=0, limit=100000)`: where an amino-acid motif occurs in the
 /// translations of a DNA sequence in the three frames of both strands, as (start, end, strand, mismatches, frame) with the
 /// DNA positions on the top strand, in order of position; see search.rs.
@@ -923,6 +934,7 @@ fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(find_guide_sites, m)?)?;
     m.add_function(wrap_pyfunction!(find_motif, m)?)?;
     m.add_function(wrap_pyfunction!(find_motifs, m)?)?;
+    m.add_function(wrap_pyfunction!(enzyme_cuts, m)?)?;
     m.add_function(wrap_pyfunction!(find_protein, m)?)?;
     m.add_function(wrap_pyfunction!(genetic_codes, m)?)?;
     m.add_function(wrap_pyfunction!(register_genetic_code, m)?)?;

@@ -79,7 +79,7 @@ Checks that Sidewinder's toeholds are taken from the product itself (scarless), 
 
 ## `test_products_keep_every_orf_on_its_own_bases`
 
-**Result:** ✅ passed in 0.26 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.24 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an assembled product could annotate a CDS a few bases off, so the user reads a shifted frame and the wrong protein without any error being shown.
 
@@ -100,7 +100,7 @@ Builds fragments that are each a single ORF with the CDS annotated over all of i
 
 ## `test_the_product_carries_the_features_and_the_primers_of_its_fragments`
 
-**Result:** ✅ passed in 0.07 s · [line 464](../../tests/test_assembly.py#L464) · **Area:** Assembly product annotation · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 464](../../tests/test_assembly.py#L464) · **Area:** Assembly product annotation · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the simulated product could lose or duplicate the fragments' features and primer_bind annotations, or credit bases to a primer tail that the fragments already shared, misleading the user about what the design actually adds.
 
@@ -208,7 +208,7 @@ A cassette replaces, deletes or inserts at the right bases of a circular genome 
 
 ## `test_kld_primers_for_unsaved_edits`
 
-**Result:** ✅ passed in 0.05 s · [line 792](../../tests/test_assembly.py#L792) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.06 s · [line 792](../../tests/test_assembly.py#L792) · **Area:** KLD (point mutations, insertions, deletions) · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, KLD could hand out primers that do not make the edit the user typed, or accept a case it should refuse.
 

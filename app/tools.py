@@ -1,8 +1,6 @@
 """Tools: PCR product, Detect ORFs, restriction digest with a virtual gel."""
 import math
 
-import shiboken6
-
 from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
@@ -11,14 +9,14 @@ from PySide6.QtWidgets import (
     QTabBar, QToolButton, QTreeWidget, QVBoxLayout, QWidget,
 )
 
-from editor import SYNC_LIMIT, protein_field, reverse_complement, site_location
+from editor import protein_field, reverse_complement, site_location
 from cut_sites import enzyme_mark_tip
 import inventory
 from enzymes import COMMON, EnzymeFilter, describe, find_cuts, is_owned, wanted
 import genetic_code
 from sequence_view import cds_codons, codons
 from data_table import DataTable
-from uikit import fit_columns, in_background, no_auto_default, plural, run_busy
+from uikit import SYNC_LIMIT, Latest, fit_columns, no_auto_default, plural, run_busy
 import value_filter
 
 
@@ -62,20 +60,16 @@ class ToolDialog(QDialog):
         """`take(work())`: now on a short sequence; on a long one, `work` in a background thread (`label` in the status bar) with this
         tool greyed meanwhile, and `take` only if the document is unchanged since and the tool still open (else the refresh after
         that edit brings the answer). The tool clears what it draws on the document first, so nothing stale is shown."""
-        if self.editor.length <= SYNC_LIMIT:
-            take(work())
-            return
-        version = self.editor.version
-        self.setEnabled(False)
+        if "_job" not in vars(self):
+            self._job = Latest(self, label)
+        now, version = self.editor.length <= SYNC_LIMIT, self.editor.version
+        self.setEnabled(now)
 
-        def done(value, error):
-            if not shiboken6.isValid(self) or version != self.editor.version:   # (an error then came from reading a changing document)
-                return
-            self.setEnabled(True)
-            if error is not None:
-                raise error
-            take(value)
-        in_background(label, work, done)
+        def taken(value):
+            if version == self.editor.version:   # (`work` may read the editor itself: an edit since makes the answer stale)
+                self.setEnabled(True)
+                take(value)
+        self._job.run(work, taken, now)
 
 
 class _EmptyHint(QObject):

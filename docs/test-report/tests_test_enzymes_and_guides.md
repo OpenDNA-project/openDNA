@@ -26,7 +26,7 @@ Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both
 
 ## `test_what_a_cut_says_about_itself`
 
-**Result:** ✅ passed in 0.10 s · [line 131](../../tests/test_enzymes_and_guides.py#L131) · **Area:** Restriction site tooltips · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 131](../../tests/test_enzymes_and_guides.py#L131) · **Area:** Restriction site tooltips · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the tooltip a user reads before ordering a digest could state the wrong cut base, the wrong overhang or the wrong strand, which is the only place those numbers are explained.
 

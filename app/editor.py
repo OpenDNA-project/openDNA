@@ -12,7 +12,7 @@ from bisect import bisect_left, insort
 from pathlib import Path
 from types import SimpleNamespace
 
-from PySide6.QtCore import QEvent, QMimeData, QObject, QRegularExpression, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QEvent, QMimeData, QObject, QRegularExpression, QThreadPool, Signal
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QKeySequence, QRegularExpressionValidator
 from PySide6.QtWidgets import QApplication, QToolTip
 
@@ -25,7 +25,7 @@ import inventory
 from enzymes import COMMON, EnzymeFilter, find_sites, is_owned, wanted
 from genes import GENE, compute_groups, fitted_master, retag, span_of
 from perf import timed
-from uikit import in_background
+from uikit import SYNC_LIMIT, Latest
 from units import is_tu
 from primer_db import binding_mismatches, data_dir, db, notifier
 
@@ -35,7 +35,6 @@ PRIMER_KIND = "primer_bind"
 # recomputed on the current sequence (see Editor.match_primers).
 HIDDEN_KINDS = {"source", PRIMER_KIND}
 CLIP_MIME = "application/x-opendna-clip"  # copied bases + features, JSON
-SYNC_LIMIT = 50_000  # bp; above this, the analyses that follow every edit (primer and enzyme sites, tools in panes) run in a background thread
 # Qualifiers searched by Find / the genome view's locus box.
 NAME_KEYS = {"label", "gene", "locus_tag", "old_locus_tag", "product", "gene_synonym", "protein_id", "note"}
 MAX_SITES = 50               # per primer; more means it is not specific anyway
@@ -88,8 +87,6 @@ def type_color(kind):
 IUPAC = set("ACGTURYSWKMBDHVN-acgturyswkmbdhvn")
 TYPABLE = set("ACGTNacgtn")  # keyboard input; ambiguity codes only arrive by paste
 _COMPLEMENT = str.maketrans("ACGTURYSWKMBDHVNacgturyswkmbdhvn", "TGCAAYRSWMKVHDBNtgcaayrswmkvhdbn")
-
-
 
 
 def complement(seq):
@@ -277,9 +274,8 @@ def clean_pasted(text):
 
 
 class _Relay(QObject):
-    """Carries background primer-matching results to the GUI thread. Lives forever, so a
+    """Carries the primer sites found on the other records of a file to the GUI thread. Lives forever, so a
     late result never hits a deleted Editor."""
-    sites_ready = Signal(object, object, object)  # token, primers, hits
     elsewhere_ready = Signal(object, object)      # token, binding sites on the other records of a multi-record file
 
 
@@ -403,12 +399,9 @@ class Editor(QObject):
         self.query_hits = []         # Local Align hits (SimpleNamespace), drawn by the genome view, one row each
         self.current_query_hit = -1  # index in query_hits of the picked one
         self.dna_locked = False      # lock button of the toolbar: bases cannot change (features etc. still can)
-        self._match_version = 0
-        self._sites_version = 0
-        self._sites_timer = QTimer(self, singleShot=True, interval=300, timeout=self._sites_in_background)
-        self._primer_timer = QTimer(self, singleShot=True, interval=300, timeout=self._match_in_background)
+        self._primer_job = Latest(self, "Primer sites")
+        self._sites_job = Latest(self, "Restriction sites")
         # Weak links: a global signal must not keep a closed window's editor alive (each one would go on re-matching the primers).
-        _connect_weakly(_relay.sites_ready, self._take_sites)
         _connect_weakly(_relay.elsewhere_ready, self._take_elsewhere)
         _connect_weakly(notifier.changed, self.match_primers)
         _connect_weakly(inventory.notifier.changed, self._inventory_changed)
@@ -440,28 +433,17 @@ class Editor(QObject):
     def find_cut_sites(self):
         """Where the enzymes cut (`site_cuts`), while they are shown. Small sequences: now. Large ones: in a background thread, and
         none drawn until they are found (never the sites of the sequence as it was)."""
-        self._sites_version += 1
         self.site_cuts, self._shown_sites = {}, {}
         if not self.show_enzymes:
+            self._sites_job.cancel()
             return
-        if self.length <= SYNC_LIMIT:
-            self.site_cuts = find_sites(self.doc.sequence(), self.doc.circular)
-            return
-        self._sites_timer.start()   # once typing pauses
+        seq, circular, now = self.doc.sequence(), self.doc.circular, self.length <= SYNC_LIMIT
+        self._sites_job.run(lambda: find_sites(seq, circular), lambda sites: self._take_cut_sites(sites, now), now)
 
-    def _sites_in_background(self):
-        token, seq, circular = self._sites_version, self.doc.sequence(), self.doc.circular
-        in_background("Restriction sites", lambda: find_sites(seq, circular), lambda sites, error: self._take_cut_sites(token, sites, error))
-
-    def _take_cut_sites(self, token, sites, error):
-        if error is not None:
-            raise error
-        if token == self._sites_version:   # (an edit since: a newer search is on its way)
-            self.site_cuts, self._shown_sites = sites, {}
-            try:
-                self.display_changed.emit()
-            except RuntimeError:   # the editor was closed meanwhile
-                pass
+    def _take_cut_sites(self, sites, now):
+        self.site_cuts, self._shown_sites = sites, {}
+        if not now:   # (drawn after the edit that asked for them: draw again)
+            self.display_changed.emit()
 
     def _lay_out(self, keep_lanes=False):
         """What the views draw and in which lanes (no primer matching: set_overlay calls this alone)."""
@@ -561,29 +543,11 @@ class Editor(QObject):
 
     def match_primers(self):
         """Recompute where the database primers bind. Small sequences: now. Large ones:
-        in a background thread once edits pause (the old sites stay drawn meanwhile)."""
-        self._match_version += 1
-        if self.length <= SYNC_LIMIT:
-            primers = self.primer_list()
-            hits = find_primers(self.doc.sequence(), self.doc.circular, [p for _, p in primers], binding_mismatches())
-            self._set_sites(primers, hits)
-        else:
-            self._primer_timer.start()
-
-    def _match_in_background(self):
-        token = (id(self), self._match_version)
+        in a background thread (the old sites stay drawn meanwhile)."""
         primers = self.primer_list()
-        # Copies only: the document may be edited while the thread runs.
-        seq, circular, mm = self.doc.sequence(), self.doc.circular, binding_mismatches()
-        def done(hits, error):
-            if error is not None:
-                raise error
-            _relay.sites_ready.emit(token, primers, hits)   # (through the relay: a closed editor is not reached)
-        in_background("Primer sites", lambda: find_primers(seq, circular, [p for _, p in primers], mm), done)
-
-    def _take_sites(self, token, primers, hits):
-        if token == (id(self), self._match_version):  # ignore results for an older sequence
-            self._set_sites(primers, hits)
+        seq, circular, mm = self.doc.sequence(), self.doc.circular, binding_mismatches()   # copies: the document may be edited meanwhile
+        self._primer_job.run(lambda: find_primers(seq, circular, [p for _, p in primers], mm), lambda hits: self._set_sites(primers, hits),
+                             self.length <= SYNC_LIMIT)
 
     def _set_sites(self, primers, hits):
         n = self.length

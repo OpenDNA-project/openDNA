@@ -68,7 +68,7 @@ Checks that on a circular 3000 bp sequence the designer returns pairs for a targ
 
 ## `test_the_files_written_for_ordering`
 
-**Result:** ✅ passed in 0.03 s · [line 245](../../tests/test_primer_design.py#L245) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 245](../../tests/test_primer_design.py#L245) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the plate file sent to a synthesis company could put oligos in the wrong wells, overflow past well 96, drop the scale or purification, or corrupt names and sequences - a real-money error.
 

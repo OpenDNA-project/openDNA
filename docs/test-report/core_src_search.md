@@ -4,7 +4,7 @@
 
 ## `finds_an_exact_motif_on_both_strands_in_position_order`
 
-**Result:** ✅ passed · [line 299](../../core/src/search.rs#L299) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 333](../../core/src/search.rs#L333) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Sequence search could miss bottom-strand hits, report palindromes twice, ignore the top-strand-only option, or be case-sensitive.
 
@@ -22,7 +22,7 @@ Exact motif search finds palindromes once, finds a motif via its reverse complem
 
 ## `iupac_letters_in_the_query_match_every_base_they_stand_for`
 
-**Result:** ✅ passed · [line 314](../../core/src/search.rs#L314) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 348](../../core/src/search.rs#L348) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** IUPAC search queries could miss bases they stand for, or an N in the sequence could match everything, giving false or missing hits.
 
@@ -37,7 +37,7 @@ IUPAC codes in the query match all bases they stand for; with IUPAC off, R is in
 
 ## `allows_a_number_of_mismatches_and_reports_how_many`
 
-**Result:** ✅ passed · [line 333](../../core/src/search.rs#L333) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 367](../../core/src/search.rs#L367) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Search with mismatches allowed could miss near-matches or report a wrong mismatch count.
 
@@ -50,7 +50,7 @@ Fuzzy search returns hits with up to N mismatches and reports the count, on both
 
 ## `a_hit_can_run_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed · [line 345](../../core/src/search.rs#L345) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 379](../../core/src/search.rs#L379) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A motif crossing the origin of a plasmid could be missed by the search.
 
@@ -63,7 +63,7 @@ On a circular sequence a motif split across the origin is found (end > length), 
 
 ## `many_motifs_in_one_pass_match_find_motif_one_by_one`
 
-**Result:** ✅ passed · [line 358](../../core/src/search.rs#L358) · **Area:** Sequence search (DNA motif) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 392](../../core/src/search.rs#L392) · **Area:** Sequence search (DNA motif) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Restriction sites (map, sequence, Enzymes table, digests, cloning) could be missed or invented by the one-pass search that replaced the Python one.
 
@@ -82,7 +82,7 @@ find_motifs (all the enzymes' sites in one pass, used by every restriction-site 
 
 ## `stops_at_the_limit_and_handles_tiny_and_empty_inputs`
 
-**Result:** ✅ passed · [line 379](../../core/src/search.rs#L379) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 413](../../core/src/search.rs#L413) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A search could run past its hit limit or crash on an empty or very short sequence or query.
 
@@ -100,7 +100,7 @@ The hit limit is honoured and empty or too-short inputs return nothing without p
 
 ## `finds_a_protein_motif_in_all_six_frames`
 
-**Result:** ✅ passed · [line 389](../../core/src/search.rs#L389) · **Area:** Sequence search (protein motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 423](../../core/src/search.rs#L423) · **Area:** Sequence search (protein motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Protein motif search could miss hits in some frames, report wrong DNA coordinates, or mishandle X wildcards and stops.
 

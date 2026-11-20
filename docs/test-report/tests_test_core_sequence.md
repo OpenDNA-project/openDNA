@@ -110,7 +110,7 @@ Checks Document.orfs on hand-made cases (minimum length, all three stops, strand
 
 ## `test_restriction_cuts_and_digests_match_biopython`
 
-**Result:** ✅ passed in 0.91 s · [line 392](../../tests/test_core_sequence.py#L392) · **Area:** Restriction digest · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.83 s · [line 392](../../tests/test_core_sequence.py#L392) · **Area:** Restriction digest · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, enzyme cut sites, overhangs and digest fragment sizes shown on the map could be wrong (strand, Type IIS offsets, origin-spanning sites, degenerate sites) and cloning plans built on them would fail.
 
