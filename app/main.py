@@ -82,7 +82,7 @@ import autosave
 from autosave import autosave_path
 from add_record import AddRecordsDialog
 import multigb
-from uikit import plural, run_busy
+from uikit import background_jobs, in_background, plural, run_busy
 
 tool_settings.register_page(genetic_code.TOOL, codon_dialog.UsageBox)   # the codon usage line of the Genetic code page
 
@@ -159,6 +159,8 @@ class MainWindow(QMainWindow):
         self.record_docs = {}        # records of the open multi-record file that are not shown, kept in memory with their edits
         self.autosave_file = None    # recovery copy we wrote (deleted after save/close)
         self.autosaved_version = None
+        self._autosaving = None      # the thread writing a recovery copy, if one is
+        self._autosave_gen = 0       # counts _drop_autosave: a copy whose writing began before one is not wanted
         self.hint = QLabel("Open a GenBank or .dna file (Ctrl+O)", alignment=Qt.AlignCenter)
         self.setCentralWidget(self.hint)
         # The Assembly panel is a tab (opened from Tools > Assembly only); `tool_host` holds it while no file is open.
@@ -174,6 +176,12 @@ class MainWindow(QMainWindow):
         self.next_tip()
         self.tip_timer = QTimer(self, interval=TIP_MS, timeout=self.next_tip)
         self.tip_timer.start()
+        # Analyses still running in the background for over a second (uikit.in_background), so the user knows a result is coming.
+        self.jobs_label = QLabel(styleSheet="color: gray")
+        self.jobs_label.hide()
+        self.statusBar().insertPermanentWidget(0, self.jobs_label)
+        self.jobs_timer = QTimer(self, interval=500, timeout=self._show_jobs)
+        self.jobs_timer.start()
         # Display filter in a side panel (its content is made per document, in show_document).
         self.display_dock = QDockWidget("Display", self, objectName="display")
         self.display_dock.setWidget(QLabel())
@@ -1817,24 +1825,43 @@ class MainWindow(QMainWindow):
         self.editor.select(start, end)
         self.editor.reveal.emit(start)
 
+    def _show_jobs(self):
+        jobs = background_jobs()
+        self.jobs_label.setText(f"Running in the background: {', '.join(jobs)}…" if jobs else "")
+        self.jobs_label.setVisible(bool(jobs))
+
     def autosave(self):
         """Write a recovery copy if there are changes since the last one. Never touches
         the user's file: that only happens on Save."""
         ed = self.editor
         if ed is None or not ed.doc.modified or ed.version == self.autosaved_version:
             return
-        target = autosave_path(ed.path, ed.fasta_record)
-        try:
-            ed.doc.write_genbank(str(target), ed.file_primer_features())
-        except OSError as e:
-            self.statusBar().showMessage(f"Autosave failed: {e}", 5000)
+        if self._autosaving is not None:   # the last one is still being written
             return
-        autosave.remember_source(target, ed.path)
-        if self.autosave_file not in (None, target):
-            self._drop_autosave()  # file was renamed by Save As
-        self.autosave_file, self.autosaved_version = target, ed.version
+        target, version, gen = autosave_path(ed.path, ed.fasta_record), ed.version, self._autosave_gen
+
+        def done(_, error):
+            self._autosaving = None
+            if gen != self._autosave_gen:   # saved, closed or another file opened meanwhile: this copy is not wanted
+                autosave.drop(target)
+                return
+            if isinstance(error, OSError):
+                self.statusBar().showMessage(f"Autosave failed: {error}", 5000)
+                return
+            if error is not None:
+                raise error
+            autosave.remember_source(target, ed.path)
+            if self.autosave_file not in (None, target):
+                self._drop_autosave()  # file was renamed by Save As
+            self.autosave_file, self.autosaved_version = target, version
+
+        # (in a thread, from a copy of the document taken there: the window goes on meanwhile, edits included)
+        self._autosaving = in_background("Autosave", lambda: ed.doc.write_genbank(str(target), ed.file_primer_features()), done)
 
     def _drop_autosave(self):
+        if self._autosaving is not None:
+            self._autosaving.join()   # a recovery copy being written must not land after it is dropped
+        self._autosave_gen += 1
         if self.autosave_file is not None:
             autosave.drop(self.autosave_file)
             self.autosave_file = None

@@ -24,7 +24,7 @@ The bookkeeping of the files of one window (FileSet), with stand-in pages: tab o
 
 ## `test_two_open_files_share_no_editor_state`
 
-**Result:** ✅ passed in 0.01 s · [line 51](../../tests/test_file_tabs.py#L51) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 51](../../tests/test_file_tabs.py#L51) · **Area:** File tabs · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, an edit or cursor move in one open file could silently land in another open file.
 

@@ -1,10 +1,11 @@
 """Small pieces every panel of the interface shares, so the same thing looks and behaves the same everywhere: counted words
 ("3 primers", never "3 primer(s)"), tables whose columns fit what they hold, and buttons that Enter does not press by surprise."""
 import threading
+import time
 
 import shiboken6
 
-from PySide6.QtCore import QEvent, QEventLoop, QModelIndex, QObject, QSettings, Qt, QTimer
+from PySide6.QtCore import QEvent, QEventLoop, QModelIndex, QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication, QHeaderView, QMessageBox, QProgressDialog, QPushButton, QStyle, QStyleOptionViewItem, QTableView, QTreeView,
 )
@@ -313,6 +314,53 @@ def run_busy(parent, text, work):
     if "error" in result:
         raise result["error"]
     return result["value"]
+
+
+class _Delivery(QObject):
+    """Hands a background job's answer to the GUI thread (a queued signal). Lives forever, so a late answer never hits a deleted object."""
+    done = Signal(object, object, object)   # done callback, value, error
+
+    def __init__(self):
+        super().__init__()
+        self.done.connect(self._call)   # a slot of this object (made on the GUI thread): queued, so it runs there
+
+    def _call(self, done, value, error):
+        done(value, error)
+
+
+_delivery = _Delivery()
+_jobs = {}   # job -> (label, time.monotonic() at its start): what the status bar says is running
+
+
+def in_background(label, work, done):
+    """Run `work()` in a worker thread without blocking anything; then `done(value, error)` on the GUI thread (`error`: the exception
+    it raised, else None). The caller checks there that the answer is still for what is shown (a version number). `label` is what the
+    status bar says while it runs (`background_jobs`). Returns the thread (to wait for it: `.join()`)."""
+    job = object()
+
+    def target():
+        value = error = None
+        try:
+            value = work()
+        except Exception as e:   # handed to `done`
+            error = e
+        finally:
+            _jobs.pop(job, None)
+        try:
+            _delivery.done.emit(done, value, error)
+        except RuntimeError:   # the program is closing
+            pass
+
+    _jobs[job] = (label, time.monotonic())
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    return thread
+
+
+def background_jobs(after=1.0):
+    """The labels of the `in_background` jobs running for more than `after` seconds, oldest first, each once."""
+    now = time.monotonic()
+    return list(dict.fromkeys(label for label, start in sorted(list(_jobs.values()), key=lambda j: j[1]) if now - start > after))
 
 
 def ask(parent, title, text, choices, default=None, detail=""):

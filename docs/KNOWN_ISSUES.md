@@ -24,7 +24,7 @@ Core (Rust):
   with end < start fails the whole track.
 
 App (Python):
-- `app/editor.py`: restriction sites are not computed above 250 kb with no notice; `MAX_SITES` (50) and the track-search cap (500, also `app/search.py`) cut silently.
+- `app/editor.py`: `MAX_SITES` (50) and the track-search cap (500, also `app/search.py`) cut silently.
 - FASTA records are searched as linear (`app/search.py`, `app/reference.py`, `app/folder_search.py`), not said.
 - `app/reference.py` `split_genbank`: a last record without `//` is never searched.
 - `app/msa.py`: no warning when the alignment touches the band edge, none for circular inputs with different origins.
@@ -67,12 +67,6 @@ App (Python):
 ## 4. Interface (found by the 2026 UI passes, still present)
 
 - A click within 4 px of the red origin bar after the last base toggles endless scrolling instead of placing the cursor (deliberate in the code comment, but it was the original complaint).
-- The Plasmid Checkup re-runs feature detection on the GUI thread 400 ms after every edit (`app/checkup.py` `run` from `CheckupDialog.refresh`,
-  `app/tools.py` line 33): a large sequence freezes the window. Found by the 2026-11-20 multithreading review.
-- Restriction sites are found in pure Python on the GUI thread at every edit (`app/enzymes.py` `find_cuts` from `app/editor.py` and the Enzymes table in
-  `app/tools.py`): this is why they stop above 250 kb, and the Enzymes table has no limit at all, so it can freeze the window.
-- Autosave writes GenBank on the GUI thread (`app/main.py` near line 1820): a chromosome can freeze the window.
-- `primer_design.design_region` is not run behind the busy dialog from the PCR panel.
 - Tools opened from the Tools menu are modal `.exec()` dialogs while the same tools also exist as pane views.
 - Tool names differ between the setting and the window (`Detect Features` vs `Detect Common Features`); some titles are in sentence case.
 - About 56 "(s)" plurals remain where `uikit.plural()` exists (`app/assembly.py`, `cas9.py`, `enzymes.py`, `pcr.py`...).

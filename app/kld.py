@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from assembly import TAIL_COLOR, anneal_len, oligo_checks
 from editor import reverse_complement as rc
 from primer_panel import melting_temp
+from uikit import run_busy
 
 DEFAULT_TM, DEFAULT_GROUP, DEFAULT_WARN = 60.0, 30, 120   # the panel's starting values and the command line's defaults (app/cli.py)
 MAX_INSERT = 500    # bp: new bases beyond this are not made with primers
@@ -350,7 +351,7 @@ class KldPage(QWidget):
                                               "GenBank (*.gb *.gbk)")
         if path:
             try:
-                self.product_doc.write_genbank(path, None)
+                run_busy(self, "Saving…", lambda: self.product_doc.write_genbank(path, None))
             except OSError as e:
                 QMessageBox.critical(self, "Save Failed", f"{path}\n\n{e}")
             else:

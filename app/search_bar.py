@@ -18,6 +18,8 @@ import icons
 import search
 from primer_db import data_dir
 from search import Options
+from editor import SYNC_LIMIT
+from uikit import in_background
 
 MAX_QUERY = 5000   # characters: a longer text is not something to look for (and would stall the live search)
 LIVE_MAX = 2_000_000   # bp: below this the hits follow the typing; above it the search waits for Enter
@@ -254,7 +256,22 @@ class SearchBar(QWidget):
             return
         if opts.scope == "file":   # names and proteins belong to the open sequence
             opts, note = replace(opts, scope="sequence"), ("Searched the open sequence only (a file search looks for DNA)." if ed.fasta_record else "")
-        hits, more = search.search_sequence(ed, query, opts)
+        if ed.length <= SYNC_LIMIT:
+            self._show_hits(query, note, *search.search_sequence(ed, query, opts), direction)
+            return
+        # A long sequence: in a background thread. An edit meanwhile clears the search (`clear`), so its answer is dropped.
+        token = self.token = object()
+        self.counter.setText("Searching…")
+
+        def done(found, error):
+            if token is self.token and ed is self.editor:   # (an error otherwise came from reading a document being edited)
+                if error is not None:
+                    raise error
+                self.token = None
+                self._show_hits(query, note, *found, direction)
+        in_background("Search", lambda: search.search_sequence(ed, query, opts), done)
+
+    def _show_hits(self, query, note, hits, more, direction):
         self.file_path, self.rank = None, {}
         self.hits, self.index = hits, -1
         self.key = (query, self.options().key())
@@ -278,22 +295,22 @@ class SearchBar(QWidget):
         self.stop_flag, self.token = flag, token
         self.total, self.seen, self.want = len(names), 0, direction
         path, current, bases = ed.path, ed.fasta_record, ed.doc.sequence()   # a copy: the document may change meanwhile
-        others = names
-        if ed.multi_genbank:   # the open record is searched in full here; the other records in the thread
-            own, _ = search.search_sequence(ed, query, replace(opts, scope="sequence"))
-            if opts.primers:   # primer binding sites on the other records (found when the file was opened)
-                needle = query.strip().lower()
-                own += [search.hit(s.start, s.end, "primer", s.label, s.strand, s.mismatches, record=s.record)
-                        for s in ed.elsewhere if needle in s.label.lower()]
-            for h in own:
-                h.record = h.record or current
-            others = [n for n in names if n != current]
-            self._found(token, current, own)
+        own_too = ed.multi_genbank   # the open record is searched with everything it has, the other records from the file
+        others = [n for n in names if n != current] if own_too else names
         self._mark()
         self.counter.setText(f"Searching {self.seen} / {self.total}…")
 
         def work():
             try:
+                if own_too:   # (an edit meanwhile clears the search: these hits are then dropped with the token)
+                    own, _ = search.search_sequence(ed, query, replace(opts, scope="sequence"))
+                    if opts.primers:   # primer binding sites on the other records (found when the file was opened)
+                        needle = query.strip().lower()
+                        own += [search.hit(s.start, s.end, "primer", s.label, s.strand, s.mismatches, record=s.record)
+                                for s in ed.elsewhere if needle in s.label.lower()]
+                    for h in own:
+                        h.record = h.record or current
+                    _relay.found.emit(token, current, own)
                 search.search_file(path, others, current, bases, query, opts, flag, lambda n, h: _relay.found.emit(token, n, h))
                 _relay.done.emit(token)
             except RuntimeError:

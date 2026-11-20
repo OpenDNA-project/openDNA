@@ -160,6 +160,73 @@ pub fn find_motif(
     hits
 }
 
+/// Every exact place of each of `motifs` (IUPAC letters) in `seq`, on both strands: for each motif, its hits in order of
+/// position (`find_motif` with no mismatches and no limit, for many motifs in one pass: the enzymes' sites at every edit).
+///
+/// How it works: each pattern is filed under every 3-base word its first three positions accept, so at each place of the
+/// sequence only the few patterns filed under the 3 bases found there are compared (all of them where those bases are not
+/// plain A C G T).
+pub fn find_motifs(seq: &[u8], motifs: &[&[u8]], circular: bool) -> Vec<Vec<MotifHit>> {
+    const K: usize = 3;
+    let n = seq.len();
+    let mut out = vec![Vec::new(); motifs.len()];
+    let mut patterns = Vec::new(); // (motif index, masks, forward)
+    for (k, motif) in motifs.iter().enumerate() {
+        let masks: Vec<u8> = motif.iter().map(|&c| pattern_mask(c, true)).collect();
+        if masks.is_empty() || masks.contains(&0) || masks.len() > n {
+            continue;
+        }
+        let reverse = reverse_masks(&masks);
+        let palindrome = reverse == masks;
+        patterns.push((k, masks, true));
+        if !palindrome {
+            patterns.push((k, reverse, false));
+        }
+    }
+    let longest = patterns.iter().map(|p| p.1.len()).max().unwrap_or(0);
+    if n == 0 || longest == 0 {
+        return out;
+    }
+    let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); 1 << (2 * K)];
+    for (p, (_, masks, _)) in patterns.iter().enumerate() {
+        for (word, bucket) in buckets.iter_mut().enumerate() {
+            // position j of the word holds base (word >> 2j) & 3, as the bit 1 << that of BASE
+            if (0..K.min(masks.len())).all(|j| masks[j] & (1 << ((word >> (2 * j)) & 3)) != 0) {
+                bucket.push(p);
+            }
+        }
+    }
+    let all: Vec<usize> = (0..patterns.len()).collect();
+    let wrapped: Vec<u8>;
+    let text: &[u8] = if circular {
+        wrapped = seq.iter().chain(&seq[..longest - 1]).copied().collect();
+        &wrapped
+    } else {
+        seq
+    };
+    for i in 0..n {
+        let mut word = 0;
+        let mut plain = i + K <= text.len();
+        for j in 0..K.min(text.len() - i) {
+            match BASE[text[i + j] as usize] {
+                1 => {}
+                2 => word |= 1 << (2 * j),
+                4 => word |= 2 << (2 * j),
+                8 => word |= 3 << (2 * j),
+                _ => plain = false,
+            }
+        }
+        for &p in if plain { &buckets[word] } else { &all } {
+            let (k, masks, forward) = &patterns[p];
+            let m = masks.len();
+            if i + m <= text.len() && masks.iter().zip(&text[i..i + m]).all(|(&mask, &b)| fits(mask, b)) {
+                out[*k].push(MotifHit { start: i, end: i + m, forward: *forward, mismatches: 0 });
+            }
+        }
+    }
+    out
+}
+
 /// One place a protein motif occurs, read from DNA.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProteinHit {
@@ -285,6 +352,27 @@ mod tests {
         let hits = find_motif(b"TAGGAAAAAAAACT", b"CCTAAG", 0, true, true, true, 10);
         assert_eq!(hits.len(), 1);
         assert!(!hits[0].forward && hits[0].start == 12);
+    }
+
+    #[test]
+    fn many_motifs_in_one_pass_match_find_motif_one_by_one() {
+        // A made-up sequence with lower case, N and a letter that is not a base; sites plain, palindromic, degenerate and short.
+        let mut seq = Vec::new();
+        let mut x: u32 = 7;
+        for _ in 0..3000 {
+            x = x.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            seq.push(b"ACGTacgtNACGTACGTX"[(x >> 16) as usize % 18]);
+        }
+        let motifs: [&[u8]; 9] = [b"GAATTC", b"GGTCTC", b"GCNNNNNNNGC", b"RGATCY", b"AC", b"CCWGG", b"GAAGAC", b"NNN", b"GAXTTC"];
+        for circular in [false, true] {
+            let all = find_motifs(&seq, &motifs, circular);
+            for (motif, hits) in motifs.iter().zip(&all) {
+                assert_eq!(hits, &find_motif(&seq, motif, 0, true, true, circular, usize::MAX), "{}", String::from_utf8_lossy(motif));
+            }
+        }
+        assert_eq!(find_motifs(b"TTCAAAGAA", &[b"GAATTC"], true)[0].len(), 1, "a site across the origin");
+        assert!(find_motifs(b"GAA", &[b"GAATTC"], true)[0].is_empty(), "a site longer than the circle");
+        assert!(find_motifs(b"", &[b"GAATTC"], false)[0].is_empty());
     }
 
     #[test]

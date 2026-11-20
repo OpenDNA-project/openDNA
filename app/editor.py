@@ -25,6 +25,7 @@ import inventory
 from enzymes import COMMON, EnzymeFilter, find_sites, is_owned, wanted
 from genes import GENE, compute_groups, fitted_master, retag, span_of
 from perf import timed
+from uikit import in_background
 from units import is_tu
 from primer_db import binding_mismatches, data_dir, db, notifier
 
@@ -34,7 +35,7 @@ PRIMER_KIND = "primer_bind"
 # recomputed on the current sequence (see Editor.match_primers).
 HIDDEN_KINDS = {"source", PRIMER_KIND}
 CLIP_MIME = "application/x-opendna-clip"  # copied bases + features, JSON
-PRIMER_SYNC_LIMIT = 300_000  # bp; above this, primers are matched in a background thread
+SYNC_LIMIT = 50_000  # bp; above this, the analyses that follow every edit (primer and enzyme sites, tools in panes) run in a background thread
 # Qualifiers searched by Find / the genome view's locus box.
 NAME_KEYS = {"label", "gene", "locus_tag", "old_locus_tag", "product", "gene_synonym", "protein_id", "note"}
 MAX_SITES = 50               # per primer; more means it is not specific anyway
@@ -89,7 +90,6 @@ TYPABLE = set("ACGTNacgtn")  # keyboard input; ambiguity codes only arrive by pa
 _COMPLEMENT = str.maketrans("ACGTURYSWKMBDHVNacgturyswkmbdhvn", "TGCAAYRSWMKVHDBNtgcaayrswmkvhdbn")
 
 
-ENZYME_LIMIT = 250_000  # bp; above this, cut sites are not computed (see _refresh)
 
 
 def complement(seq):
@@ -404,6 +404,8 @@ class Editor(QObject):
         self.current_query_hit = -1  # index in query_hits of the picked one
         self.dna_locked = False      # lock button of the toolbar: bases cannot change (features etc. still can)
         self._match_version = 0
+        self._sites_version = 0
+        self._sites_timer = QTimer(self, singleShot=True, interval=300, timeout=self._sites_in_background)
         self._primer_timer = QTimer(self, singleShot=True, interval=300, timeout=self._match_in_background)
         # Weak links: a global signal must not keep a closed window's editor alive (each one would go on re-matching the primers).
         _connect_weakly(_relay.sites_ready, self._take_sites)
@@ -433,11 +435,33 @@ class Editor(QObject):
         self._lay_out(keep_lanes)
         self._search_text = None
         self.match_primers()
-        # shortcut: cut sites are skipped above ENZYME_LIMIT (~0.2 s per edit on a 5 Mb
-        # genome); compute them on demand or in Rust if genome digests are needed.
-        sites = find_sites(self.doc.sequence(), self.doc.circular) if self.length <= ENZYME_LIMIT else {}
-        self.unique_sites = sorted((cuts[0], name) for name, cuts in sites.items() if len(cuts) == 1)
-        self.site_cuts, self._shown_sites = sites, {}
+        self.find_cut_sites()
+
+    def find_cut_sites(self):
+        """Where the enzymes cut (`site_cuts`), while they are shown. Small sequences: now. Large ones: in a background thread, and
+        none drawn until they are found (never the sites of the sequence as it was)."""
+        self._sites_version += 1
+        self.site_cuts, self._shown_sites = {}, {}
+        if not self.show_enzymes:
+            return
+        if self.length <= SYNC_LIMIT:
+            self.site_cuts = find_sites(self.doc.sequence(), self.doc.circular)
+            return
+        self._sites_timer.start()   # once typing pauses
+
+    def _sites_in_background(self):
+        token, seq, circular = self._sites_version, self.doc.sequence(), self.doc.circular
+        in_background("Restriction sites", lambda: find_sites(seq, circular), lambda sites, error: self._take_cut_sites(token, sites, error))
+
+    def _take_cut_sites(self, token, sites, error):
+        if error is not None:
+            raise error
+        if token == self._sites_version:   # (an edit since: a newer search is on its way)
+            self.site_cuts, self._shown_sites = sites, {}
+            try:
+                self.display_changed.emit()
+            except RuntimeError:   # the editor was closed meanwhile
+                pass
 
     def _lay_out(self, keep_lanes=False):
         """What the views draw and in which lanes (no primer matching: set_overlay calls this alone)."""
@@ -539,7 +563,7 @@ class Editor(QObject):
         """Recompute where the database primers bind. Small sequences: now. Large ones:
         in a background thread once edits pause (the old sites stay drawn meanwhile)."""
         self._match_version += 1
-        if self.length <= PRIMER_SYNC_LIMIT:
+        if self.length <= SYNC_LIMIT:
             primers = self.primer_list()
             hits = find_primers(self.doc.sequence(), self.doc.circular, [p for _, p in primers], binding_mismatches())
             self._set_sites(primers, hits)
@@ -551,13 +575,11 @@ class Editor(QObject):
         primers = self.primer_list()
         # Copies only: the document may be edited while the thread runs.
         seq, circular, mm = self.doc.sequence(), self.doc.circular, binding_mismatches()
-        def work():
-            hits = find_primers(seq, circular, [p for _, p in primers], mm)
-            try:
-                _relay.sites_ready.emit(token, primers, hits)
-            except RuntimeError:   # the program is closing: the relay is already gone
-                pass
-        QThreadPool.globalInstance().start(work)
+        def done(hits, error):
+            if error is not None:
+                raise error
+            _relay.sites_ready.emit(token, primers, hits)   # (through the relay: a closed editor is not reached)
+        in_background("Primer sites", lambda: find_primers(seq, circular, [p for _, p in primers], mm), done)
 
     def _take_sites(self, token, primers, hits):
         if token == (id(self), self._match_version):  # ignore results for an older sequence
@@ -713,8 +735,9 @@ class Editor(QObject):
     def set_display(self, enzymes=None, translation=None, collapse_genes=None, hidden_kinds=None, primers=None,
                     cds_translation=None, file_primers=None, db_primers=None, units=None, enzyme_filter=None, cds_only=None,
                     complement=None):
-        if enzymes is not None:
+        if enzymes is not None and enzymes != self.show_enzymes:
             self.show_enzymes = enzymes
+            self.find_cut_sites()
         if enzyme_filter is not None:
             self.enzyme_filter = enzyme_filter
         if translation is not None:

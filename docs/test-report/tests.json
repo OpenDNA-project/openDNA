@@ -1409,6 +1409,35 @@
    "proposal": ""
   },
   {
+   "id": "core/src/search.rs::tests::many_motifs_in_one_pass_match_find_motif_one_by_one",
+   "area": "Sequence search (DNA motif)",
+   "purpose": "find_motifs (all the enzymes' sites in one pass, used by every restriction-site display and digest) gives, for each motif, exactly what find_motif gives with no mismatches and no limit, on a linear and a circular sequence.",
+   "cases": [
+    {
+     "input": "3000 made-up bases (A C G T, lower case, N, X); GAATTC, GGTCTC, GCNNNNNNNGC, RGATCY, AC, CCWGG, GAAGAC, NNN, GAXTTC; linear and circular",
+     "expected": "each motif's hits == find_motif(seq, motif, 0, iupac, both strands, circular, no limit)"
+    },
+    {
+     "input": "'TTCAAAGAA' circular, GAATTC",
+     "expected": "1 hit (across the origin)"
+    },
+    {
+     "input": "'GAA' circular, GAATTC",
+     "expected": "none (a site longer than the circle)"
+    },
+    {
+     "input": "'' linear, GAATTC",
+     "expected": "none"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": [
+    "find_motif is the reference, so a bug both share (the IUPAC masks of pattern_mask) would not be seen; those are checked by iupac_letters_in_the_query_match_every_base_they_stand_for."
+   ],
+   "role": "Restriction sites (map, sequence, Enzymes table, digests, cloning) could be missed or invented by the one-pass search that replaced the Python one."
+  },
+  {
    "id": "core/src/search.rs::tests::stops_at_the_limit_and_handles_tiny_and_empty_inputs",
    "line": 291,
    "area": "Sequence search (DNA motif)",

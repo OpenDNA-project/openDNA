@@ -405,9 +405,14 @@ impl Document {
     /// document itself is not changed, so this adds no undo step.
     pub fn save_genbank(&mut self, path: &Path, primers: Option<Vec<Feature>>) -> io::Result<()> {
         self.write_genbank(path, primers)?;
+        self.mark_saved();
+        Ok(())
+    }
+
+    /// The document as it is now is the one on disk (after `write_record` of its `genbank_record`).
+    pub fn mark_saved(&mut self) {
         self.saved_depth = Some(self.real_depth());
         self.clear_edited(); // everything is on disk now
-        Ok(())
     }
 
     /// Write into FASTA `dst` a copy of `src` where this document's sequence replaces the
@@ -422,34 +427,21 @@ impl Document {
 
     /// Write a GenBank copy without changing the "saved" state (used for autosave).
     pub fn write_genbank(&self, path: &Path, primers: Option<Vec<Feature>>) -> io::Result<()> {
-        // `replaced` must live until the write is done, so it is declared out here.
-        let replaced;
-        let record = match primers {
-            None => &self.record,
-            Some(primers) => {
-                let mut copy = self.record.clone();
-                copy.features.retain(|f| f.kind != PRIMER_KIND);
-                for mut f in primers {
-                    check_feature(&mut f, self.len() as i64)?;
-                    copy.features.push(f);
-                }
-                replaced = copy;
-                &replaced
+        write_record(&self.genbank_record(primers)?, path)
+    }
+
+    /// A copy of the record as `write_genbank` writes it: with `primers` instead of its own primer_bind features when given.
+    /// A copy, so the app can write it with Python's lock released while the window goes on reading (or editing) the document.
+    pub fn genbank_record(&self, primers: Option<Vec<Feature>>) -> io::Result<Seq> {
+        let mut copy = self.record.clone();
+        if let Some(primers) = primers {
+            copy.features.retain(|f| f.kind != PRIMER_KIND);
+            for mut f in primers {
+                check_feature(&mut f, self.len() as i64)?;
+                copy.features.push(f);
             }
-        };
-        let mut tmp = path.as_os_str().to_owned();
-        tmp.push(".tmp");
-        {
-            // Inner block: the file is closed (flushed) when `out` goes out of scope.
-            let mut out = BufWriter::new(File::create(&tmp)?);
-            gb_io::writer::write(&mut out, record)?;
-            out.flush()?;
         }
-        let renamed = replace_file(Path::new(&tmp), path);
-        if renamed.is_err() {
-            let _ = std::fs::remove_file(&tmp); // e.g. the target is a folder: leave no stray .tmp file behind
-        }
-        renamed
+        Ok(copy)
     }
 
     /// Open one sequence of a FASTA file (through its .fai index) as a linear document.
@@ -1203,6 +1195,24 @@ fn canonical(key: &str, value: &str) -> String {
 fn is_iupac(b: u8) -> bool {
     matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T' | b'U' | b'R' | b'Y' | b'S' | b'W'
         | b'K' | b'M' | b'B' | b'D' | b'H' | b'V' | b'N' | b'-')
+}
+
+/// Write `record` as GenBank `path`: to a temporary file first, then renamed over the target, so a crash mid-save never leaves a
+/// half-written file.
+pub fn write_record(record: &Seq, path: &Path) -> io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    {
+        // Inner block: the file is closed (flushed) when `out` goes out of scope.
+        let mut out = BufWriter::new(File::create(&tmp)?);
+        gb_io::writer::write(&mut out, record)?;
+        out.flush()?;
+    }
+    let renamed = replace_file(Path::new(&tmp), path);
+    if renamed.is_err() {
+        let _ = std::fs::remove_file(&tmp); // e.g. the target is a folder: leave no stray .tmp file behind
+    }
+    renamed
 }
 
 /// Rename `from` over `to`. On Windows a rename over a file is refused (PermissionDenied) while another thread of the app still

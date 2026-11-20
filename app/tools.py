@@ -1,6 +1,8 @@
 """Tools: PCR product, Detect ORFs, restriction digest with a virtual gel."""
 import math
 
+import shiboken6
+
 from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
@@ -9,14 +11,14 @@ from PySide6.QtWidgets import (
     QTabBar, QToolButton, QTreeWidget, QVBoxLayout, QWidget,
 )
 
-from editor import protein_field, reverse_complement, site_location
+from editor import SYNC_LIMIT, protein_field, reverse_complement, site_location
 from cut_sites import enzyme_mark_tip
 import inventory
 from enzymes import COMMON, EnzymeFilter, describe, find_cuts, is_owned, wanted
 import genetic_code
 from sequence_view import cds_codons, codons
 from data_table import DataTable
-from uikit import fit_columns, no_auto_default, plural, run_busy
+from uikit import fit_columns, in_background, no_auto_default, plural, run_busy
 import value_filter
 
 
@@ -55,6 +57,25 @@ class ToolDialog(QDialog):
 
     def refresh(self):
         pass
+
+    def compute(self, label, work, take):
+        """`take(work())`: now on a short sequence; on a long one, `work` in a background thread (`label` in the status bar) with this
+        tool greyed meanwhile, and `take` only if the document is unchanged since and the tool still open (else the refresh after
+        that edit brings the answer). The tool clears what it draws on the document first, so nothing stale is shown."""
+        if self.editor.length <= SYNC_LIMIT:
+            take(work())
+            return
+        version = self.editor.version
+        self.setEnabled(False)
+
+        def done(value, error):
+            if not shiboken6.isValid(self) or version != self.editor.version:   # (an error then came from reading a changing document)
+                return
+            self.setEnabled(True)
+            if error is not None:
+                raise error
+            take(value)
+        in_background(label, work, done)
 
 
 class _EmptyHint(QObject):
@@ -648,7 +669,12 @@ class DigestDialog(ToolDialog):
 
     def refresh(self):
         """Find the sites of the enzymes on the current sequence, keeping the ticked ones."""
-        self.cuts = find_cuts(self.editor.doc.sequence(), self.editor.doc.circular, COMMON)
+        self.editor.set_cut_marks("digest", [])
+        seq, circular = self.editor.doc.sequence(), self.editor.doc.circular
+        self.compute("Enzymes", lambda: find_cuts(seq, circular, COMMON), self._take_cuts)
+
+    def _take_cuts(self, cuts):
+        self.cuts = cuts
         self.sites = {name: sorted({t for t, _ in cuts}) for name, cuts in self.cuts.items()}
         self.show_list()
 

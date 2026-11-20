@@ -438,17 +438,25 @@ impl Document {
     /// `primers`: list of (kind, location, qualifiers) written instead of the document's
     /// own primer_bind features (the app passes the current primer sites).
     #[pyo3(signature = (path, primers=None))]
-    fn save_genbank(&mut self, path: PathBuf, primers: Option<Vec<FeatureTuple>>) -> PyResult<()> {
+    /// The file is written from a copy with Python's lock released and no borrow of the document held, so the window can draw
+    /// it meanwhile; the caller keeps it unedited until this returns (run_busy), since it is then marked saved.
+    fn save_genbank(slf: &Bound<'_, Self>, path: PathBuf, primers: Option<Vec<FeatureTuple>>) -> PyResult<()> {
         let primers = primers.map(|p| p.into_iter().map(to_gb).collect::<PyResult<Vec<_>>>()).transpose()?;
-        Ok(self.inner.save_genbank(&path, primers)?)
+        let record = slf.borrow().inner.genbank_record(primers)?;
+        slf.py().allow_threads(|| document::write_record(&record, &path))?;
+        slf.borrow_mut().inner.mark_saved();
+        Ok(())
     }
 
-    /// Write a GenBank copy without marking the document saved (autosave).
+    /// Write a GenBank copy without marking the document saved (autosave). Written from a copy taken now, with Python's lock
+    /// released: the document can be edited meanwhile (autosave runs in a background thread).
     #[pyo3(signature = (path, primers=None))]
-    fn write_genbank(&self, path: PathBuf, primers: Option<Vec<FeatureTuple>>) -> PyResult<()> {
+    /// (`slf` and not `&self`: the borrow of the document ends with the copy, so an edit meanwhile is not refused as "already borrowed".)
+    fn write_genbank(slf: &Bound<'_, Self>, path: PathBuf, primers: Option<Vec<FeatureTuple>>) -> PyResult<()> {
         // `.transpose()` turns Option<Result<..>> into Result<Option<..>> so `?` works.
         let primers = primers.map(|p| p.into_iter().map(to_gb).collect::<PyResult<Vec<_>>>()).transpose()?;
-        Ok(self.inner.write_genbank(&path, primers)?)
+        let record = slf.borrow().inner.genbank_record(primers)?;
+        Ok(slf.py().allow_threads(|| document::write_record(&record, &path))?)
     }
 
     fn __repr__(&self) -> String {
@@ -514,8 +522,9 @@ impl Fasta {
     }
 
     /// Python: `fa.fetch("chr1", start, end)` -> str of bases, 0-based half-open.
-    fn fetch(&mut self, name: &str, start: u64, end: u64) -> PyResult<String> {
-        let bytes = self.inner.fetch(name, start, end)?;
+    fn fetch(&mut self, py: Python<'_>, name: &str, start: u64, end: u64) -> PyResult<String> {
+        let inner = &mut self.inner;
+        let bytes = py.allow_threads(|| inner.fetch(name, start, end))?;
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 }
@@ -546,8 +555,9 @@ impl Track {
 
     /// (items overlapping [start, end) as (start, end, strand, name, kind), more_than_limit)
     #[pyo3(signature = (seq, start, end, limit=5000))]
-    fn query(&self, seq: &str, start: u64, end: u64, limit: usize) -> (Vec<TrackItem>, bool) {
-        let (items, more) = self.inner.query(seq, start, end, limit);
+    fn query(&self, py: Python<'_>, seq: &str, start: u64, end: u64, limit: usize) -> (Vec<TrackItem>, bool) {
+        let inner = &self.inner;
+        let (items, more) = py.allow_threads(|| inner.query(seq, start, end, limit));
         (items.into_iter().map(item_tuple).collect(), more)
     }
 
@@ -559,12 +569,15 @@ impl Track {
 
     /// [(sequence, start, end, strand, name, kind)] whose name contains `needle`.
     #[pyo3(signature = (needle, limit=200))]
-    fn search(&self, needle: &str, limit: usize) -> Vec<(String, u64, u64, i8, String, String)> {
-        self.inner
-            .search(needle, limit)
-            .into_iter()
-            .map(|(s, i)| (s.to_string(), i.start, i.end, i.strand, i.name.clone(), i.kind.clone()))
-            .collect()
+    fn search(&self, py: Python<'_>, needle: &str, limit: usize) -> Vec<(String, u64, u64, i8, String, String)> {
+        let inner = &self.inner;
+        py.allow_threads(|| {
+            inner
+                .search(needle, limit)
+                .into_iter()
+                .map(|(s, i)| (s.to_string(), i.start, i.end, i.strand, i.name.clone(), i.kind.clone()))
+                .collect()
+        })
     }
 }
 
@@ -763,6 +776,20 @@ fn find_motif(
     })
 }
 
+/// `opendna_core.find_motifs(seq, motifs, circular=False)`: for each motif (IUPAC letters), its exact places on both strands as
+/// (start, strand) in order of position, all found in one pass (`find_motif` with no mismatches and no limit; the enzymes' sites).
+#[pyfunction]
+#[pyo3(signature = (seq, motifs, circular=false))]
+fn find_motifs(py: Python<'_>, seq: &str, motifs: Vec<String>, circular: bool) -> Vec<Vec<(usize, i8)>> {
+    py.allow_threads(|| {
+        let motifs: Vec<&[u8]> = motifs.iter().map(|m| m.as_bytes()).collect();
+        search::find_motifs(seq.as_bytes(), &motifs, circular)
+            .into_iter()
+            .map(|hits| hits.into_iter().map(|h| (h.start, if h.forward { 1 } else { -1 })).collect())
+            .collect()
+    })
+}
+
 /// `opendna_core.find_protein(seq, query, max_mismatches=0, limit=100000)`: where an amino-acid motif occurs in the
 /// translations of a DNA sequence in the three frames of both strands, as (start, end, strand, mismatches, frame) with the
 /// DNA positions on the top strand, in order of position; see search.rs.
@@ -895,6 +922,7 @@ fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(find_parts, m)?)?;
     m.add_function(wrap_pyfunction!(find_guide_sites, m)?)?;
     m.add_function(wrap_pyfunction!(find_motif, m)?)?;
+    m.add_function(wrap_pyfunction!(find_motifs, m)?)?;
     m.add_function(wrap_pyfunction!(find_protein, m)?)?;
     m.add_function(wrap_pyfunction!(genetic_codes, m)?)?;
     m.add_function(wrap_pyfunction!(register_genetic_code, m)?)?;
