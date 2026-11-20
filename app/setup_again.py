@@ -28,6 +28,7 @@ def run(parent):
         note = ("Only the installed openDNA.exe can offer itself, not openDNA run from source." if not file_assoc.supported()
                 else "Now: offered." if offered
                 else "Now: offered for another copy of openDNA (OK makes it this one)." if file_assoc.OTHER in found
+                else "Now: offered for some file types only (OK adds the others)." if file_assoc.THIS in found
                 else "Now: not offered.")
         assoc = QCheckBox('Offer openDNA in "Open with" for sequence files', checked=offered, enabled=file_assoc.supported())
         form.addRow(assoc)
@@ -49,12 +50,15 @@ def run(parent):
         form.addRow("", QLabel(f"Now: {state.text}; Terminal tools: {sum(tools.values())} of {len(tools)} installed."))
 
     form.addRow(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, accepted=dialog.accept, rejected=dialog.reject))
-    if dialog.exec() != QDialog.Accepted:
+    accepted = dialog.exec() == QDialog.Accepted
+    n, register, setup = cores.value(), assoc is not None and assoc.isChecked() != offered, install is not None and install.isChecked()
+    dialog.deleteLater()   # (a child of the window: it would stay until the window closes)
+    if not accepted:
         return
-    if cores.value() != tool_settings.cores():
-        tool_settings.set_value(tool_settings.PERFORMANCE, "cores", cores.value())
-    if assoc is not None and assoc.isChecked() != offered:
-        (file_assoc.register_now if assoc.isChecked() else file_assoc.unregister_now)(parent)
-    if install is not None and install.isChecked():
+    if n != tool_settings.cores():
+        tool_settings.set_value(tool_settings.PERFORMANCE, "cores", n)
+    if setup:   # before the "Open with" notice, which does not block: the two would be on screen together
         InstallDialog(parent, plannotate=missing_plannotate, terminal=missing_tools).exec()
         plannotate_tool.forget()
+    if register:
+        (file_assoc.unregister_now if offered else file_assoc.register_now)(parent)
