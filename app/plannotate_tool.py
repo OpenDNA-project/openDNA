@@ -77,6 +77,14 @@ def status():
     return SimpleNamespace(state="no_wsl", version="", text=WSL_HELP)
 
 
+def tools_state():
+    """(status(), {tool: installed}) of pLannotate and the Terminal's tools (oDNA-cli wsltools, Help > Run Setup Again). Without WSL
+    every tool is False and WSL is not started a second time to ask."""
+    state, tools = status(), runner.terminal_tools()
+    have = set(runner.installed_tools(tools)) if state.state != "no_wsl" else set()
+    return state, {t: t in have for t in tools}
+
+
 def install_script(plannotate=True, terminal=True):
     """bash that installs pLannotate (conda package, then its databases with `plannotate setupdb`) and/or the Terminal's tools.
     Each part is tried even when the other failed; the exit status is that of the worst."""

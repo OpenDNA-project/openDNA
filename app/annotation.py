@@ -247,7 +247,7 @@ class InstallDialog(QDialog):
     def __init__(self, parent, plannotate=True, terminal=False):
         super().__init__(parent)
         self.ok = False
-        self.setWindowTitle("Install pLannotate" if not terminal else "Install the optional tools")
+        self.setWindowTitle("Install the optional tools" if terminal else "Install pLannotate")
         self.resize(720, 360)
         self.log = QPlainTextEdit(readOnly=True)
         self.button = QPushButton("Stop", clicked=self._stop)

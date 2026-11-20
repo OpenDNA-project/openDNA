@@ -685,19 +685,17 @@ def cmd_wsltools(args):
     """The tools that run beside openDNA (inside WSL on Windows): pLannotate and the Terminal's. `install` is what the Windows installer's
     optional task runs; it installs WSL itself never (that needs an administrator and a restart: the user does it)."""
     import plannotate_tool as P
-    import runner
-    state = P.status()
+    state, tools = P.tools_state()
     if state.state == "no_wsl":
         if args.action == "install":
             raise UserError(P.WSL_HELP)
-        return answer({}, wsl=False, plannotate={"state": "no_wsl"}, terminal_tools={t: False for t in runner.terminal_tools()}, note=P.WSL_HELP)
+        return answer({}, wsl=False, plannotate={"state": "no_wsl"}, terminal_tools=tools, note=P.WSL_HELP)
     if args.action == "install":
         code = P.install(plannotate=args.only != "terminal", terminal=args.only != "plannotate")
         if code != 0:
             raise UserError(f"The install did not finish (exit code {code}); the text above says why. It is safe to run it again.")
-        state = P.status()
-    have = set(runner.installed_tools(runner.terminal_tools()))
-    return answer({}, wsl=True, plannotate={"state": state.state, "version": state.version}, terminal_tools={t: t in have for t in runner.terminal_tools()})
+        state, tools = P.tools_state()
+    return answer({}, wsl=True, plannotate={"state": state.state, "version": state.version}, terminal_tools=tools)
 
 
 def register(sub, cli):
