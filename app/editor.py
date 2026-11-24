@@ -28,13 +28,15 @@ from perf import timed
 from uikit import SYNC_LIMIT, Latest
 from units import is_tu
 import tool_settings
-from primer_db import BINDING, PCR, binding, db, notifier
+from primer_db import BINDING, PCR, binding, db, notifier, tm_rule
 
 PRIMER_KIND = "primer_bind"
 # `source` spans the whole record (.dna files hide it too). `primer_bind` features stored in
 # files are not drawn: primers come from the primer database and their sites are
 # recomputed on the current sequence (see Editor.match_primers).
 HIDDEN_KINDS = {"source", PRIMER_KIND}
+# A GenBank COMMENT holding the primers and sites hidden in the file (other programs show it as a line of text, nothing more)
+DISPLAY_NOTE = "openDNA-display:"
 CLIP_MIME = "application/x-opendna-clip"  # copied bases + features, JSON
 # Qualifiers searched by Find / the genome view's locus box.
 NAME_KEYS = {"label", "gene", "locus_tag", "old_locus_tag", "product", "gene_synonym", "protein_id", "note"}
@@ -326,6 +328,7 @@ class Editor(QObject):
     edit_feature_requested = Signal(int)  # a view was double-clicked on this feature
     edit_primer_requested = Signal(str)   # ... or on a primer site (primer name)
     primers_changed = Signal()    # primer binding sites were recomputed
+    modified_changed = Signal()   # the file has something new to save that is not an edit (a primer or site hidden): the title
     primer_clicked = Signal(str)  # a primer site was clicked (or shift-clicked) in a view (its site key)
     elsewhere_changed = Signal()      # the primer sites on the other records of the file were (re)computed
     record_hit_requested = Signal(str, int, int)   # open this record of the file and select these bases
@@ -381,6 +384,7 @@ class Editor(QObject):
         # Sites shown or hidden by hand: {primer name: {"sequence": upper-case, "sites": {site_key: shown}}}, under the binding
         # rule (seed, exact 3′, mismatches) `site_rule` they were made with; another rule finds other sites, so it starts afresh.
         self.site_rule, self.site_choices = None, {}
+        self._read_display()
         self.current_primer = None   # key of the selected primer site
         self.tracks = []             # loaded annotation tracks (SimpleNamespace name, track, seqid)
         self.alignments = []         # loaded BAM files (SimpleNamespace name, bam, seqid, length, ...)
@@ -453,12 +457,19 @@ class Editor(QObject):
             out[(name, seq.upper())] = (name, seq)
         for f in self.doc.features():
             if f.kind == PRIMER_KIND:
-                seq = primer_sequence(f)
-                if seq is None:
-                    bases = "".join(self.doc.sequence(a, b) for a, b in f.spans)
-                    seq = reverse_complement(bases) if f.strand < 0 else bases
-                out.setdefault((f.label, seq.upper()), (f.label, seq))
+                out.setdefault(self._stored_key(f), (f.label, self._stored_sequence(f)))
         return out
+
+    def _stored_sequence(self, f):
+        """A stored primer_bind's primer: the full sequence from its note, else the bases it covers (its strand's)."""
+        seq = primer_sequence(f)
+        if seq is None:
+            bases = "".join(self.doc.sequence(a, b) for a, b in f.spans)
+            seq = reverse_complement(bases) if f.strand < 0 else bases
+        return seq
+
+    def _stored_key(self, f):
+        return f.label, self._stored_sequence(f).upper()
 
     def in_file(self, name, sequence):
         """Is the primer (name, sequence) one of this file's own?"""
@@ -479,10 +490,11 @@ class Editor(QObject):
             self.set_in_file([(before["name"], before["sequence"])], False)
             self.set_in_file([(after["name"], after["sequence"])], True)
 
-    def import_primers(self, pairs):
+    def import_primers(self, pairs, present=True):
         """Import to This Sequence: make the primers `pairs` [(name, sequence)] part of this file (the regular primer
-        annotation Save writes), as one step in the history. Returns how many were new to the file."""
-        new = {(n, s.upper()): (n, s) for n, s in pairs if (n, s.upper()) not in self.file_primer_set}
+        annotation Save writes), as one step in the history; `present` False takes them out of it again (they stay in the
+        database). Returns how many changed."""
+        new = {(n, s.upper()): (n, s) for n, s in pairs if ((n, s.upper()) in self.file_primer_set) != present}
         if not new:
             return 0
 
@@ -493,11 +505,11 @@ class Editor(QObject):
                 else:
                     self.file_primer_set.pop(key, None)
             self.match_primers()
-        put(True)
+        put(present)
         names = [n for n, _ in new.values()]
-        label = (f"Imported primer {names[0]} to this sequence" if len(names) == 1
-                 else f"Imported {len(names)} primers to this sequence")
-        self.record_external(label, lambda: put(False), lambda: put(True))
+        what = f"primer {names[0]}" if len(names) == 1 else f"{len(names)} primers"
+        label = f"Imported {what} to this sequence" if present else f"Removed {what} from this sequence"
+        self.record_external(label, lambda: put(not present), lambda: put(present))
         self.doc.modified = True   # the file stores them now: Save has something to write
         self.changed.emit()
         return len(new)
@@ -526,10 +538,15 @@ class Editor(QObject):
         primers = self.primer_list()
         seq, circular, rule = self.doc.sequence(), self.doc.circular, binding()   # copies: the document may be edited meanwhile
         seed, exact, mm = rule
-        self._primer_job.run(lambda: find_primers(seq, circular, [p for _, p in primers], mm, seed, exact),
-                             lambda hits: self._set_sites(primers, hits, rule), self.length <= SYNC_LIMIT)
+        warm = tm_rule()
+        # Only the minimum Tm (or the PCR conditions) changed: the sites it hides keep their choices, for when they come back.
+        prune = self._matched_with is None or self._matched_with[1] == warm
+        self._matched_with = (rule, warm)
+        seqs = [p for _, p in primers]
+        self._primer_job.run(lambda: find_primers(seq, circular, seqs, mm, seed, exact, **warm),
+                             lambda hits: self._set_sites(primers, hits, rule, prune), self.length <= SYNC_LIMIT)
 
-    def _set_sites(self, primers, hits, rule):
+    def _set_sites(self, primers, hits, rule, prune=True):
         n = self.length
         sites = []
         in_db = self._db_primer_keys()
@@ -555,7 +572,7 @@ class Editor(QObject):
         for site in sites:
             site.best = site.rank == best[site.label]
         self.primer_sites = sites
-        self._keep_site_choices(list(rule), primers)
+        self._keep_site_choices(list(rule), primers, prune)
         self._say_cut_primers()
         self.match_elsewhere()   # (no-op unless the file has several records, and the primers are the same as last time)
         self.site_by_key = {s.key: s for s in sites}
@@ -564,6 +581,7 @@ class Editor(QObject):
             self.current_primer = None
         self.primers_changed.emit()
 
+    _matched_with = None  # (binding(), tm_rule()) of the last match_primers
     site_totals = {}      # primer name -> every site found on this sequence (more than are drawn when above MAX_SITES)
     away_totals = {}      # primer name -> every site found on the other records of the file
     away_capped = set()   # primer names with more than MAX_SITES on one of those records
@@ -610,13 +628,14 @@ class Editor(QObject):
         if not self.multi_genbank:
             self.elsewhere, self.away_totals, self.away_capped = [], {}, set()
             return
-        primers, (seed, exact, mm) = self.primer_list(), binding()
-        key = (str(self.path), tuple(primers), seed, exact, mm, tuple(self.fasta_records))
+        primers, (seed, exact, mm), warm = self.primer_list(), binding(), tm_rule()
+        key = (str(self.path), tuple(primers), seed, exact, mm, tuple(sorted(warm.items())), tuple(self.fasta_records))
         if key == self._elsewhere_key:
             return
         self._elsewhere_key = key
         self._elsewhere_token += 1
         token, path, current, records = (id(self), self._elsewhere_token), self.path, self.fasta_record, list(self.fasta_records)
+        seqs = [p for _, p in primers]
 
         def work():
             found, totals, capped = [], {}, set()
@@ -625,7 +644,7 @@ class Editor(QObject):
                     if name == current:
                         continue
                     doc = multigb.read_record(path, name)
-                    hits = find_primers(doc.sequence(), doc.circular, [p for _, p in primers], mm, seed, exact)
+                    hits = find_primers(doc.sequence(), doc.circular, seqs, mm, seed, exact, **warm)
                     for (label, seq), per_primer in zip(primers, hits):
                         totals[label] = totals.get(label, 0) + len(per_primer)
                         if len(per_primer) > MAX_SITES:
@@ -662,7 +681,7 @@ class Editor(QObject):
     def _settings_changed(self, tool):
         """Settings > Primers: another binding rule finds other sites (matched again); the rest (Best site only, the PCR
         conditions, the 3′ check, the genome) only changes what is drawn or checked."""
-        if tool == BINDING and list(binding()) != self.site_rule:
+        if tool in (BINDING, PCR) and (binding(), tm_rule()) != self._matched_with:   # (the minimum Tm: PCR too)
             self.match_primers()
         elif tool in (BINDING, PCR):
             self._pack_primers()
@@ -701,11 +720,51 @@ class Editor(QObject):
         self._pack_primers()
         self.primers_changed.emit()
         self.display_changed.emit()
+        self._choice_changed()   # (after the repack: the views redraw on it)
 
     def saved_site_choices(self):
         """The site choices as a project keeps them (JSON)."""
         return {"rule": self.site_rule, "primers": {name: {"sequence": e["sequence"], "sites": [[*k, v] for k, v in e["sites"].items()]}
                                                     for name, e in self.site_choices.items()}}
+
+    def _choice_changed(self):
+        """A primer or site was shown or hidden: the file saves it (_write_display), so it has something to save. Not a FASTA file
+        (no place for it)."""
+        if not self.fasta_record or self.multi_genbank:
+            self.doc.modified = True
+            self.modified_changed.emit()   # (not `changed`: nothing was edited, every view would redo its layout)
+
+    def display_choices(self):
+        """The primers and sites hidden in this file, as a project (exports.project_meta) and the file's DISPLAY_NOTE keep them."""
+        return {"hidden_primers": sorted(self.hidden_primers), "primer_sites": self.saved_site_choices()}
+
+    def apply_display_choices(self, saved):
+        """Take the primers and sites hidden that a project or the file kept (display_choices); not a change to save."""
+        self.hidden_primers = {str(n) for n in saved.get("hidden_primers") or []}
+        if isinstance(saved.get("primer_sites"), dict):
+            self.load_site_choices(saved["primer_sites"])
+        self._pack_primers()
+        self.primers_changed.emit()
+        self.display_changed.emit()
+
+    def _read_display(self):
+        """The primers and sites hidden when the file was saved (its DISPLAY_NOTE comment)."""
+        for comment in self.doc.comments:
+            if comment.startswith(DISPLAY_NOTE):
+                try:   # (the writer wraps long lines: the note has no space of its own, see _write_display)
+                    self.apply_display_choices(json.loads("".join(comment[len(DISPLAY_NOTE):].split())))
+                except (ValueError, TypeError, AttributeError):
+                    pass   # a hand-edited note: nothing hidden
+
+    def _write_display(self):
+        """The primers and sites hidden, as the document's DISPLAY_NOTE comment (written with the file), or none when nothing is.
+        Spaces in names are escaped, so the only spaces are the ones added after commas for the writer to wrap at."""
+        kept = [c for c in self.doc.comments if not c.startswith(DISPLAY_NOTE)]
+        if self.hidden_primers or self.site_choices:
+            saved = json.dumps(self.display_choices(), separators=(",", ":"))
+            kept.append(DISPLAY_NOTE + " " + saved.replace(" ", r"\u0020").replace(",", ", "))
+        if kept != self.doc.comments:   # (autosave calls this on its thread, after the GUI thread did: then nothing to write)
+            self.doc.comments = kept
 
     def load_site_choices(self, saved):
         """Take the choices of a project; dropped when they were made under another binding rule."""
@@ -721,9 +780,9 @@ class Editor(QObject):
                 self._pack_primers()
                 self.primers_changed.emit()
 
-    def _keep_site_choices(self, rule, primers):
+    def _keep_site_choices(self, rule, primers, prune=True):
         """After a new match: under another rule nothing is kept; a primer whose sequence changed loses its choices; a site that no
-        longer binds (the sequence was edited) loses its own."""
+        longer binds (the sequence was edited) loses its own, unless not `prune` (only the minimum Tm changed: it may come back)."""
         if rule != self.site_rule:
             self.site_rule, self.site_choices = rule, {}
         sequences = {name: seq.upper() for name, seq in primers}
@@ -732,7 +791,7 @@ class Editor(QObject):
             keys.setdefault(site.label, set()).add(site_key(site))
         for name in list(self.site_choices):
             entry = self.site_choices[name]
-            kept = {k: v for k, v in entry["sites"].items() if k in keys.get(name, ())}
+            kept = {k: v for k, v in entry["sites"].items() if not prune or k in keys.get(name, ())}
             entry["sites"] = kept
             if sequences.get(name) != entry["sequence"] or not kept:
                 del self.site_choices[name]
@@ -750,6 +809,7 @@ class Editor(QObject):
         self._pack_primers()
         self.primers_changed.emit()
         self.display_changed.emit()
+        self._choice_changed()   # (after the repack: the views redraw on it)
 
     def _mismatch_positions(self, site):
         """Template positions where the annealed part of the primer does not match."""
@@ -1421,9 +1481,10 @@ class Editor(QObject):
         """primer_bind features to write in the GenBank file: every exact site of every primer that belongs to this file
         (stored in it or imported to it; matched now, a background result could be stale). A primer only in the database is
         not written: Import to This Sequence makes it part of the file. A stored primer with no exact site (a few
-        mismatches) is kept as it was."""
+        mismatches) is kept as it was. (Every save writes these: the primers and sites hidden go with them, _write_display.)"""
+        self._write_display()
         primers = list(self.file_primer_set.values())
-        hits = find_primers(self.doc.sequence(), self.doc.circular, [p for _, p in primers], 0)
+        hits = find_primers(self.doc.sequence(), self.doc.circular, [p for _, p in primers], 0)   # (every one: not only those drawn)
         out, written = [], set()
         for (name, seq), found in zip(primers, hits):
             for s, e, strand, _ in found:   # (every exact site: a file keeps what other programs read from it)
@@ -1431,8 +1492,8 @@ class Editor(QObject):
                 out.append((PRIMER_KIND, site_location(s, e, strand, self.length),
                             [("label", name), ("note", f"sequence: {seq}")]))
         for f in self.file_primers:
-            seq = primer_sequence(f) or ""
-            if (f.label, seq.upper()) not in written:
+            key = self._stored_key(f)
+            if key in self.file_primer_set and key not in written:   # (not one taken out of the file: In file unticked)
                 out.append((f.kind, f.location, f.qualifiers))
         return out
 

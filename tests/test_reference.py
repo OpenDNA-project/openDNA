@@ -106,7 +106,7 @@ def test_off_target_search_covers_every_record(genome, tmp_path, monkeypatch):
     assert stopped.stopped == "cancelled" and stopped.searched < 3 and seen[0][2] == "chr1" and seen[0][4] == 3
     ed = plasmid_editor(dna(300) + PRIMER + dna(300))
     ref._cache.clear()
-    ref._cache[(PRIMER, PRIMER, 0, 12, ("plasmid", ed.length))] = slow
+    ref._cache[ref.cache_key(PRIMER, PRIMER, 0, 12, ("plasmid", ed.length), primer_panel.tm_rule())] = slow
     level, text = genome_check(ed, PRIMER)
     assert level == "warn" and "0 of 3" in text and "not conclusive" in text
 

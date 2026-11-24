@@ -26,13 +26,15 @@ class Text(str):
 
 def describe_primer(editor, key):
     """Tooltip text (rich) for the primer site `key`: its bases (the tail in lowercase orange), where it binds, Tm and the checks."""
-    from primer_panel import is_degenerate, structure, tm_text   # here: primer_panel imports the views
+    from editor import reverse_complement
+    from primer_panel import is_degenerate, site_tm_text, structure   # here: primer_panel imports the views
     site = editor.site_by_key.get(key)
     if site is None:
         return ""
     tail, core = site.sequence[:site.tail], site.sequence[site.tail:]
     where = f"{site.start + 1:,}–{(site.end - 1) % editor.length + 1:,} {'→' if site.strand > 0 else '←'}"
-    t = tm_text(core)
+    template = "".join(editor.doc.sequence(a, b) for a, b in site.spans)
+    t, _ = site_tm_text(core, template if site.strand > 0 else reverse_complement(template))   # (its mismatches counted)
     s = structure(site.sequence) if len(site.sequence) >= 8 and not is_degenerate(site.sequence) else None
     if site.temporary:
         kind = "temporary primer (not in the primer database yet)"

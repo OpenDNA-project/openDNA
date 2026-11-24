@@ -155,11 +155,17 @@ class Reference:
                 text += fa.fetch(name, 0, min(overlap, length))
             yield first, lo, text
 
-    def search(self, sequence, core_part, mismatches, seed, skip=None, progress=None, cancel=None, seconds=MAX_SECONDS):
+    @staticmethod
+    def cache_key(sequence, core_part, mismatches, seed, skip, warm):
+        return sequence.upper(), core_part.upper(), mismatches, seed, skip, tuple(sorted(warm.items()))
+
+    def search(self, sequence, core_part, mismatches, seed, skip=None, progress=None, cancel=None, seconds=MAX_SECONDS, warm=None):
         """Binding sites of the primer `sequence` (whole annealing part `core_part`, no 5' tail) in every record.
         `skip` = (name, length) of a record to leave out (the open sequence: never compared with itself).
-        `progress(done bases, total bases, record name, record number, records)`; `cancel()` -> True stops the search."""
-        key = (sequence.upper(), core_part.upper(), mismatches, seed, skip)
+        `progress(done bases, total bases, record name, record number, records)`; `cancel()` -> True stops the search.
+        `warm`: primer_db.tm_rule(), the minimum Tm of a site (its mismatches counted) and the PCR conditions; None: no minimum."""
+        warm = warm or {}
+        key = self.cache_key(sequence, core_part, mismatches, seed, skip, warm)
         if key in self._cache:
             return self._cache[key]
         result = GenomeHits(self.count)
@@ -184,8 +190,9 @@ class Reference:
             """Sites in `text` (a piece of the record starting at `offset`); `keep(start)` filters to the piece's own.
             A `piece` already carries the bases past the origin, so it is searched as linear."""
             d = Document.new_sequence(name, text, circular and not piece)
-            for sites, whole in ((d.binding_sites(core_part, 0, len(core_part)), True),
-                                 (d.binding_sites(sequence, mismatches, seed), False)):
+            # (a site below the minimum Tm is not counted, as on the open sequence)
+            for sites, whole in ((d.binding_sites(core_part, 0, len(core_part), **warm), True),
+                                 (d.binding_sites(sequence, mismatches, seed, **warm), False)):
                 add(name, length, circular, [(s, e, st, mm) for s, e, st, mm in sites if keep is None or keep(s + offset)],
                     whole, text, offset)
 

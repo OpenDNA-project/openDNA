@@ -2414,8 +2414,8 @@
   {
    "id": "tests/test_primer_binding.py::test_editor_primer_sites_pcr_product_specificity_and_save",
    "area": "Primer sites in the editor, PCR product, specificity",
-   "role": "Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule.",
-   "purpose": "Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack. It also ranks a primer's sites (mismatches near the 3' end first), draws only the best with Best site only, and shows or hides single sites by hand: kept for the session (as a project saves them), dropped with a site that no longer binds, all dropped under another binding rule.",
+   "role": "Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule; or a site below the minimum Tm could still be drawn, or hiding a primer could crash the sequence view, or the primers and sites hidden in a file could be lost when it is saved and opened again, or the file be unreadable by other programs.",
+   "purpose": "Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack. It keeps only the sites whose annealed bases reach the minimum Tm (mismatches counted, also in the background genome and the tooltip), ranks a primer's sites (mismatches near the 3' end first), draws only the best with Best site only, and shows or hides single sites by hand: kept for the session (as a project saves them), dropped with a site that no longer binds, all dropped under another binding rule. The hidden primers and sites are saved in the GenBank file as a COMMENT and read back from it.",
    "cases": [
     {
      "input": "mismatch_indices('ACGTNR','ACCTGA')",
@@ -2426,12 +2426,24 @@
      "expected": "mismatch_at [100+k], 1 mismatch, start 100/end 130, tail length reported"
     },
     {
+     "input": "10-base 5' tail + 20 bases of the template at 100; minimum Tm just under, just over the Tm of those 20 bases, then 0",
+     "expected": "1 site and Binds here ok; no site and Binds here warn; 1 site and ok"
+    },
+    {
+     "input": "24-base primer on a copy with 2 mismatches (positions 10, 15); minimum Tm just under, just over site_tm of that copy",
+     "expected": "1 site, Binds here ok, 1 genome hit, tooltip shows that Tm; then no site, warn, no genome hit"
+    },
+    {
      "input": "24-base primer at 100, copies at 300 (mismatch 4 bases from the 3' end) and 450 (mismatches 3 and 6, far from it)",
      "expected": "sites 100, 300, 450; rank order 100, 450, 300; only 100 is best; all drawn with Best site only off"
     },
     {
      "input": "Best site only on; then tick 450; then (off) hide 100",
-     "expected": "[100]; [100, 450]; [300, 450], primer not hidden; saved rule [15,3,2], sites {(1,124,False),(1,474,True)}"
+     "expected": "[100]; [100, 450]; [300, 450], primer not hidden; saved rule [15,3,2], sites {(1,124,False),(1,474,True)}; a 99 °C minimum hides every site, back to 40 °C the choices are unchanged"
+    },
+    {
+     "input": "import p to the file; take it out (twice), import it again; hide then show p; hide primer 'a primer, with spaces', save as GenBank with a 99 °C minimum Tm, open it again; take p out of the reopened file, save, open",
+     "expected": "1 then 0 primers taken out, 1 imported back; every drawn primer has its lane on every signal the views redraw on; document modified; a 'COMMENT     openDNA-display:' line; Biopython reads 600 bp; hidden primers and site choices equal to the saved ones; p still part of the file; then p no longer part of it"
     },
     {
      "input": "delete bases 450..474 and match again; then 1 mismatch allowed",
@@ -2459,7 +2471,7 @@
     },
     {
      "input": "non-specific check, sequence: unique; last 12 bases elsewhere; whole primer twice; tailed and rc",
-     "expected": "ok; warn with '404–415 →'; bad with '2 places'; tail ignored; rc same"
+     "expected": "ok; warn with '404–415 →'; bad with '2 places'; tail ignored; rc same (minimum Tm 0); a 12-base 3' match melting below 40 °C: ok"
     },
     {
      "input": "non-specific check, genome: none; other genome; partial; rc copy; genome = the sequence",
@@ -6758,6 +6770,56 @@
    "fixed": [
     "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: Origin section: after edit_across_origin(18,22,'GGG') only the count (1) and width (3) of the marked range are asserted, never its position (it must be 16..19 where the GGG is). | Undo/redo of every step in this test restore the highlight from the per-step memo; the remap fallback (used when a save happened between the edit and the undo/redo: edited_backward, Rotate/Mirror undo, Remap::Across) is never reached with a non-empty result - the only save is followed by an undo onto an empty list - so the promised 'save then undo/redo' behaviour is untested. | Random section: 'if pos > 0 && doc.undo()' silently skips when undo() unexpectedly returns false."
    ]
+  },
+  {
+   "id": "core/src/primers.rs::tests::warm_sites_keep_what_melts_high_enough",
+   "area": "Primer Tm",
+   "role": "Without it, a primer site below the minimum Tm could still be drawn, saved, counted as mis-priming or found in the background genome, or a good site could be dropped, on either strand or across the origin.",
+   "purpose": "warm_sites, the one filter every search for primer sites goes through (find_primers, Document.binding_sites), keeps a site exactly when the Tm of the primer's annealed bases on the template's, mismatches counted, reaches the minimum; 0 keeps every site; a site across the origin of a circle is read through it.",
+   "cases": [
+    {
+     "input": "primer at 10 (forward) and a copy with 2 mismatches at 44 (reverse strand); minimum 0, just under / just over the copy's site Tm, just over the primer's Tm",
+     "expected": "both; both; the forward one only; none"
+    },
+    {
+     "input": "the primer across the origin of a circle; minimum just under / just over its Tm",
+     "expected": "1 site; none"
+    }
+   ],
+   "oracle": "property/invariant",
+   "strength": "strong",
+   "issues": ""
+  },
+  {
+   "id": "core/src/primers.rs::tests::site_tm_with_mismatches",
+   "area": "Primer Tm",
+   "role": "Without it, a primer site with mismatches could be given the Tm of a perfect match, so the minimum Tm of a site and the Tm shown for each site would let poorly binding sites through.",
+   "purpose": "site_tm(primer, target) is the Tm of the primer annealed where the sequence reads `target`: equal to tm() for a perfect site, lowered by internal mismatches by the amounts of Biopython's Tm_NN with DNA_IMM1, unpaired ends left out, and None for unequal lengths or non-ACGT letters.",
+   "cases": [
+    {
+     "input": "AGCGGATAACAATTTCACACAGGA on itself",
+     "expected": "tm(primer)"
+    },
+    {
+     "input": "the same with A·A at 12",
+     "expected": "56.582 °C (Biopython Tm_NN, c_seq = complement of the site, saltcorr 5, dnac 25/25)"
+    },
+    {
+     "input": "the same with A·G at 6 and A·C at 19",
+     "expected": "52.155 °C; below one mismatch, below the perfect Tm"
+    },
+    {
+     "input": "T + primer on G + primer (unpaired first base)",
+     "expected": "tm(primer)"
+    },
+    {
+     "input": "target 'AGC' (shorter); 'ACGN' on 'ACGT'",
+     "expected": "None; None"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": "Terminal mismatches and two mismatches in a row are a documented shortcut (left out / no term); only internal single mismatches are checked against Biopython."
   },
   {
    "id": "core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers",

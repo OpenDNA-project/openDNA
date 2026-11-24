@@ -167,7 +167,7 @@ Checks the end-compatibility rule base by base (same sticky bases, same overhang
 
 ## `test_assembly_reports_bad_input_instead_of_failing`
 
-**Result:** ✅ passed in 0.07 s · [line 711](../../tests/test_assembly.py#L711) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.08 s · [line 711](../../tests/test_assembly.py#L711) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a zero-length or very short fragment could crash the assembly panel with a traceback instead of showing the user a red check saying what is wrong.
 

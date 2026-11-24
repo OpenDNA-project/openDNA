@@ -141,11 +141,27 @@ class PrimersDatabase:
 
     tab = None   # the DatabaseTab showing it
 
+    def file_editor(self):
+        """The editor of the file open in the tab's window (the list's Match is about it), or None."""
+        return self.tab.file_editor() if self.tab is not None else None
+
     def edit(self, name):
         self.tab.edit_primer(name)
 
     def menu(self, menu, panel, names):
-        known = [n for n in names if primer_db.db().find(n) is not None]
+        rows = [r for n in names if (r := primer_db.db().find(n)) is not None]
+        known = [r["name"] for r in rows]
+        here = self.file_editor()
+        bound = {(s.label, s.sequence.upper()) for s in here.primer_sites} if here is not None else set()
+        todo = [(r["name"], r["sequence"]) for r in rows
+                if (r["name"], r["sequence"].upper()) in bound and not here.in_file(r["name"], r["sequence"])]
+        imp = menu.addAction(f"Import {len(todo)} to {here.path.name}" if len(todo) > 1 else
+                             f"Import to {here.path.name}" if here is not None else "Import to This Sequence",
+                             lambda: here.import_primers(todo))
+        imp.setEnabled(bool(todo))
+        imp.setToolTip("Make the primers that bind the file open in this window part of it (Save writes them)" if here is not None
+                       else "Open a file in this window first")
+        menu.setToolTipsVisible(True)
         edit = menu.addAction("Edit…", lambda: self.edit(known[0]))
         edit.setEnabled(len(known) == 1)
         delete = menu.addAction(f"Delete {len(known)} from Primer Database" if len(known) > 1 else "Delete from Primer Database",
@@ -223,6 +239,7 @@ class DatabaseTab(QWidget):
         self.key, self.title = key, TITLES[key]
         self.editor = self.table = self.sequence = self.entry_editor = None
         self.entry = None
+        self._file = None   # the editor of the page's file whose primer sites the Primer Database's list follows
         title = QLabel(self.title)
         font = title.font()
         font.setBold(True)
@@ -326,6 +343,33 @@ class DatabaseTab(QWidget):
             self.count.setText(plural(n, "primer"))
         self._restore(keep)
         self._can_change()
+
+    def file_editor(self):
+        """The editor of the file open in this tab's window, or None."""
+        from file_tabs import page_of
+        return getattr(page_of(self), "editor", None)
+
+    def showEvent(self, event):
+        """The Primer Database's Match follows the file of this window: listed again when the tab is shown (the file may be
+        another, or changed meanwhile), and while it is shown when the file's primers are matched again."""
+        super().showEvent(event)
+        if self.key != PRIMERS:
+            return
+        ed = self.file_editor()
+        if ed is not self._file:
+            if self._file is not None:
+                try:
+                    self._file.primers_changed.disconnect(self._file_primers)
+                except (RuntimeError, TypeError):
+                    pass   # (closed)
+            self._file = ed
+            if ed is not None:
+                ed.primers_changed.connect(self._file_primers)
+        self.table.reload()
+
+    def _file_primers(self):
+        if self.isVisible():   # (hidden: listed again when shown)
+            self.table.reload()
 
     def view(self):
         """The table widget of the list (for the filters)."""

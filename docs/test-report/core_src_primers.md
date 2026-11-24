@@ -2,9 +2,199 @@
 
 [← all test files](README.md) · source: [`core/src/primers.rs`](../../core/src/primers.rs)
 
+## `warm_sites_keep_what_melts_high_enough`
+
+**Result:** ✅ passed · [line 546](../../core/src/primers.rs#L546) · **Area:** Primer Tm · **Checked against:** property/invariant · **Strength:** 🟢 strong
+
+**Why it matters:** Without it, a primer site below the minimum Tm could still be drawn, saved, counted as mis-priming or found in the background genome, or a good site could be dropped, on either strand or across the origin.
+
+warm_sites, the one filter every search for primer sites goes through (find_primers, Document.binding_sites), keeps a site exactly when the Tm of the primer's annealed bases on the template's, mismatches counted, reaches the minimum; 0 keeps every site; a site across the origin of a circle is read through it.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | primer at 10 (forward) and a copy with 2 mismatches at 44 (reverse strand); minimum 0, just under / just over the copy's site Tm, just over the primer's Tm | both; both; the forward one only; none |
+| 2 | the primer across the origin of a circle; minimum just under / just over its Tm | 1 site; none |
+
+## `site_tm_with_mismatches`
+
+**Result:** ✅ passed · [line 572](../../core/src/primers.rs#L572) · **Area:** Primer Tm · **Checked against:** independent implementation · **Strength:** 🟢 strong
+
+**Why it matters:** Without it, a primer site with mismatches could be given the Tm of a perfect match, so the minimum Tm of a site and the Tm shown for each site would let poorly binding sites through.
+
+site_tm(primer, target) is the Tm of the primer annealed where the sequence reads `target`: equal to tm() for a perfect site, lowered by internal mismatches by the amounts of Biopython's Tm_NN with DNA_IMM1, unpaired ends left out, and None for unequal lengths or non-ACGT letters.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | AGCGGATAACAATTTCACACAGGA on itself | tm(primer) |
+| 2 | the same with A·A at 12 | 56.582 °C (Biopython Tm_NN, c_seq = complement of the site, saltcorr 5, dnac 25/25) |
+| 3 | the same with A·G at 6 and A·C at 19 | 52.155 °C; below one mismatch, below the perfect Tm |
+| 4 | T + primer on G + primer (unpaired first base) | tm(primer) |
+| 5 | target 'AGC' (shorter); 'ACGN' on 'ACGT' | None; None |
+
+**Review notes:**
+
+- T
+- e
+- r
+- m
+- i
+- n
+- a
+- l
+-  
+- m
+- i
+- s
+- m
+- a
+- t
+- c
+- h
+- e
+- s
+-  
+- a
+- n
+- d
+-  
+- t
+- w
+- o
+-  
+- m
+- i
+- s
+- m
+- a
+- t
+- c
+- h
+- e
+- s
+-  
+- i
+- n
+-  
+- a
+-  
+- r
+- o
+- w
+-  
+- a
+- r
+- e
+-  
+- a
+-  
+- d
+- o
+- c
+- u
+- m
+- e
+- n
+- t
+- e
+- d
+-  
+- s
+- h
+- o
+- r
+- t
+- c
+- u
+- t
+-  
+- (
+- l
+- e
+- f
+- t
+-  
+- o
+- u
+- t
+-  
+- /
+-  
+- n
+- o
+-  
+- t
+- e
+- r
+- m
+- )
+- ;
+-  
+- o
+- n
+- l
+- y
+-  
+- i
+- n
+- t
+- e
+- r
+- n
+- a
+- l
+-  
+- s
+- i
+- n
+- g
+- l
+- e
+-  
+- m
+- i
+- s
+- m
+- a
+- t
+- c
+- h
+- e
+- s
+-  
+- a
+- r
+- e
+-  
+- c
+- h
+- e
+- c
+- k
+- e
+- d
+-  
+- a
+- g
+- a
+- i
+- n
+- s
+- t
+-  
+- B
+- i
+- o
+- p
+- y
+- t
+- h
+- o
+- n
+- .
+
 ## `tm_and_tm_range_of_plain_and_degenerate_primers`
 
-**Result:** ✅ passed · [line 410](../../core/src/primers.rs#L410) · **Area:** Primer Tm · **Checked against:** property/invariant · **Strength:** 🔴 weak
+**Result:** ✅ passed · [line 588](../../core/src/primers.rs#L588) · **Area:** Primer Tm · **Checked against:** property/invariant · **Strength:** 🔴 weak
 
 **Why it matters:** Without it, the Rust Tm and the Tm range shown for degenerate primers could be implausible or not bracket the oligos they stand for.
 
@@ -38,7 +228,7 @@ Nearest-neighbour Tm is in a plausible range, rejects non-ACGT and too-short inp
 
 ## `a_degenerate_primer_binds_every_site_it_matches_on_either_strand`
 
-**Result:** ✅ passed · [line 463](../../core/src/primers.rs#L463) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 641](../../core/src/primers.rs#L641) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a degenerate primer could miss sites it matches, or bind sites it does not, on either strand.
 
@@ -62,7 +252,7 @@ A 20-nt primer with R, N and Y binds three template variants each with zero mism
 
 ## `annealing_extends_across_a_lone_mismatch`
 
-**Result:** ✅ passed · [line 501](../../core/src/primers.rs#L501) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 679](../../core/src/primers.rs#L679) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A primer's displayed binding site could stop at a lone mismatch (showing too much tail) or run on past two mismatches, on either strand.
 
@@ -77,7 +267,7 @@ Binding-site extension past the 15-nt 3' seed crosses a lone mismatch when enoug
 
 ## `finds_sites_on_both_strands_with_tails_and_mismatches`
 
-**Result:** ✅ passed · [line 531](../../core/src/primers.rs#L531) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 709](../../core/src/primers.rs#L709) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding. Or the exact 3' bases setting could be ignored.
 
@@ -93,7 +283,7 @@ A primer with a 5' tail binds only over its annealing part; reverse primers are 
 
 ## `site_across_the_origin`
 
-**Result:** ✅ passed · [line 560](../../core/src/primers.rs#L560) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 738](../../core/src/primers.rs#L738) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A primer binding across the origin of a plasmid could be missed.
 

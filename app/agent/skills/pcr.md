@@ -39,7 +39,7 @@ Nothing is written. JSON: `settings`, `summary` and one record per row: `status`
 
 ## 4. Show the settings, then wait for the user's OK
 
-Show the `settings` block: the Tm and length options, the PCR conditions (salt, dNTP, primer concentrations: `saved in openDNA` or default), the primer binding rule (`primer_binding`: 3' bases compared, of which exact, mismatches allowed: where a primer counts as binding), and the **background genome** that primers are checked against (the `background_genome` of the settings; the user sets it in openDNA under Primers > Options). If none is set the genome check says `no genome set` and primers are only checked against the plasmid: tell the user. Every setting shows the range the windows accept (`min`, `max`): tell the user; a value beyond it is used as given with a warning that the result is their responsibility. **Do not run before the user agrees.**
+Show the `settings` block: the Tm and length options, the PCR conditions (salt, dNTP, primer concentrations: `saved in openDNA` or default), the primer binding rule (`primer_binding`: 3' bases compared, of which exact, mismatches allowed, and the minimum Tm of a site, mismatches counted: where a primer counts as binding), and the **background genome** that primers are checked against (the `background_genome` of the settings; the user sets it in openDNA under Primers > Options). If none is set the genome check says `no genome set` and primers are only checked against the plasmid: tell the user. Every setting shows the range the windows accept (`min`, `max`): tell the user; a value beyond it is used as given with a warning that the result is their responsibility. **Do not run before the user agrees.**
 
 ## 5. Run
 

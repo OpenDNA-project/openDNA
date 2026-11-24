@@ -4,7 +4,7 @@
 
 ## `test_binding_agrees_with_the_documented_rules_written_in_python`
 
-**Result:** ✅ passed in 0.13 s · [line 170](../../tests/test_primer_binding.py#L170) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.12 s · [line 170](../../tests/test_primer_binding.py#L170) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer binding sites shown on the map could deviate from the documented seed/extension rules on any of thousands of combinations of mismatches, tails, strands and topologies.
 
@@ -92,29 +92,32 @@ Opens the sample .dna file with 15 primers and their stored primer_bind features
 
 ## `test_editor_primer_sites_pcr_product_specificity_and_save`
 
-**Result:** ✅ passed in 0.02 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
-**Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule.
+**Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule; or a site below the minimum Tm could still be drawn, or hiding a primer could crash the sequence view, or the primers and sites hidden in a file could be lost when it is saved and opened again, or the file be unreadable by other programs.
 
-Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack. It also ranks a primer's sites (mismatches near the 3' end first), draws only the best with Best site only, and shows or hides single sites by hand: kept for the session (as a project saves them), dropped with a site that no longer binds, all dropped under another binding rule.
+Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack. It keeps only the sites whose annealed bases reach the minimum Tm (mismatches counted, also in the background genome and the tooltip), ranks a primer's sites (mismatches near the 3' end first), draws only the best with Best site only, and shows or hides single sites by hand: kept for the session (as a project saves them), dropped with a site that no longer binds, all dropped under another binding rule. The hidden primers and sites are saved in the GenBank file as a COMMENT and read back from it.
 
 | # | Input | Expected output |
 |---|---|---|
 | 1 | mismatch_indices('ACGTNR','ACCTGA') | [2] (N and R pair with what they stand for) |
 | 2 | 30 bp core at 100 with mismatch at k in 3/5/12/20/25 and tails of 0/6/12 bases, fwd and rev | mismatch_at [100+k], 1 mismatch, start 100/end 130, tail length reported |
-| 3 | 24-base primer at 100, copies at 300 (mismatch 4 bases from the 3' end) and 450 (mismatches 3 and 6, far from it) | sites 100, 300, 450; rank order 100, 450, 300; only 100 is best; all drawn with Best site only off |
-| 4 | Best site only on; then tick 450; then (off) hide 100 | [100]; [100, 450]; [300, 450], primer not hidden; saved rule [15,3,2], sites {(1,124,False),(1,474,True)} |
-| 5 | delete bases 450..474 and match again; then 1 mismatch allowed | only (1,124,False) kept; then no choice left |
-| 6 | 30 bases over origin with mismatches at 4 and 20 | spans [(n-15,n),(0,15)], mismatch_at [n-11, 5], 2 mismatches |
-| 7 | F at 100..124 with 8-base tail, R at 300..324 with 10-base tail | product_range (100,324); product = tail + template[100:324] + rc(tail), length 242, linear |
-| 8 | R upstream of F: linear; circular with GG/CC tails | None; (350,574) and product wrapping the origin, length 228 |
-| 9 | F over origin, R at 100..124 with 6-base tail | product_range (n-12, n+124), length 142 |
-| 10 | reverse primer with 1 mismatch | product carries the primer's base |
-| 11 | non-specific check, sequence: unique; last 12 bases elsewhere; whole primer twice; tailed and rc | ok; warn with '404–415 →'; bad with '2 places'; tail ignored; rc same |
-| 12 | non-specific check, genome: none; other genome; partial; rc copy; genome = the sequence | info; ok; warn; bad; info |
-| 13 | editor with feature, edit, undo/redo, two primers, save twice | document, features, history unchanged; modified False; no primer_bind in doc; file holds pFwd (100,124,+1) and pRev (400,424,-1); identical bytes on second save |
-| 14 | undo all steps | 4 steps; sequence/features/primers back to empty |
-| 15 | edit after adding primer, then save | stored site moved to (110,134) |
+| 3 | 10-base 5' tail + 20 bases of the template at 100; minimum Tm just under, just over the Tm of those 20 bases, then 0 | 1 site and Binds here ok; no site and Binds here warn; 1 site and ok |
+| 4 | 24-base primer on a copy with 2 mismatches (positions 10, 15); minimum Tm just under, just over site_tm of that copy | 1 site, Binds here ok, 1 genome hit, tooltip shows that Tm; then no site, warn, no genome hit |
+| 5 | 24-base primer at 100, copies at 300 (mismatch 4 bases from the 3' end) and 450 (mismatches 3 and 6, far from it) | sites 100, 300, 450; rank order 100, 450, 300; only 100 is best; all drawn with Best site only off |
+| 6 | Best site only on; then tick 450; then (off) hide 100 | [100]; [100, 450]; [300, 450], primer not hidden; saved rule [15,3,2], sites {(1,124,False),(1,474,True)}; a 99 °C minimum hides every site, back to 40 °C the choices are unchanged |
+| 7 | import p to the file; take it out (twice), import it again; hide then show p; hide primer 'a primer, with spaces', save as GenBank with a 99 °C minimum Tm, open it again; take p out of the reopened file, save, open | 1 then 0 primers taken out, 1 imported back; every drawn primer has its lane on every signal the views redraw on; document modified; a 'COMMENT     openDNA-display:' line; Biopython reads 600 bp; hidden primers and site choices equal to the saved ones; p still part of the file; then p no longer part of it |
+| 8 | delete bases 450..474 and match again; then 1 mismatch allowed | only (1,124,False) kept; then no choice left |
+| 9 | 30 bases over origin with mismatches at 4 and 20 | spans [(n-15,n),(0,15)], mismatch_at [n-11, 5], 2 mismatches |
+| 10 | F at 100..124 with 8-base tail, R at 300..324 with 10-base tail | product_range (100,324); product = tail + template[100:324] + rc(tail), length 242, linear |
+| 11 | R upstream of F: linear; circular with GG/CC tails | None; (350,574) and product wrapping the origin, length 228 |
+| 12 | F over origin, R at 100..124 with 6-base tail | product_range (n-12, n+124), length 142 |
+| 13 | reverse primer with 1 mismatch | product carries the primer's base |
+| 14 | non-specific check, sequence: unique; last 12 bases elsewhere; whole primer twice; tailed and rc | ok; warn with '404–415 →'; bad with '2 places'; tail ignored; rc same (minimum Tm 0); a 12-base 3' match melting below 40 °C: ok |
+| 15 | non-specific check, genome: none; other genome; partial; rc copy; genome = the sequence | info; ok; warn; bad; info |
+| 16 | editor with feature, edit, undo/redo, two primers, save twice | document, features, history unchanged; modified False; no primer_bind in doc; file holds pFwd (100,124,+1) and pRev (400,424,-1); identical bytes on second save |
+| 17 | undo all steps | 4 steps; sequence/features/primers back to empty |
+| 18 | edit after adding primer, then save | stored site moved to (110,134) |
 
 **Review notes:**
 

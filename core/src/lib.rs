@@ -131,6 +131,17 @@ impl Document {
         self.inner.record.definition.clone()
     }
 
+    /// The record's COMMENT entries (GenBank header). Setting them is not an edit: no undo step, the file gets them at its next save.
+    #[getter]
+    fn comments(&self) -> Vec<String> {
+        self.inner.record.comments.clone()
+    }
+
+    #[setter]
+    fn set_comments(&mut self, comments: Vec<String>) {
+        self.inner.record.comments = comments;
+    }
+
     #[getter]
     fn length(&self) -> usize {
         self.inner.len()
@@ -302,11 +313,18 @@ impl Document {
     /// Where `primer` anneals: list of (start, end, strand, mismatches), top-strand
     /// coordinates; on circular records `end` can be > length (wraps through the origin).
     /// `seed` = how many 3'-end bases must match; use ~12 to look for mis-priming. `exact_3p` of them must match exactly.
-    #[pyo3(signature = (primer, max_mismatches=1, seed=primers::SEED, exact_3p=primers::EXACT_3P))]
-    fn binding_sites(&self, py: Python<'_>, primer: &str, max_mismatches: usize, seed: usize, exact_3p: usize) -> Vec<(usize, usize, i8, usize)> {
+    /// `min_tm` (°C) and the PCR conditions: only the sites that melt that high, mismatches counted (primers::warm_sites).
+    #[pyo3(signature = (primer, max_mismatches=1, seed=primers::SEED, exact_3p=primers::EXACT_3P, min_tm=0.0, na_mm=50.0, mg_mm=1.5, dntp_mm=0.6, primer_nm=50.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn binding_sites(&self, py: Python<'_>, primer: &str, max_mismatches: usize, seed: usize, exact_3p: usize, min_tm: f64, na_mm: f64,
+                     mg_mm: f64, dntp_mm: f64, primer_nm: f64) -> Vec<(usize, usize, i8, usize)> {
         let record = &self.inner.record;
         let circular = record.topology == Topology::Circular;
-        let sites = py.allow_threads(|| primers::binding_sites(&record.seq, primer.as_bytes(), circular, seed, max_mismatches, exact_3p));
+        let c = primers::Conditions { na_mm, mg_mm, dntp_mm, primer_nm };
+        let sites = py.allow_threads(|| {
+            let found = primers::binding_sites(&record.seq, primer.as_bytes(), circular, seed, max_mismatches, exact_3p);
+            primers::warm_sites(found, &record.seq, primer.as_bytes(), circular, min_tm, &c)
+        });
         sites
             .into_iter()
             .map(|s| (s.start, s.start + s.len, if s.forward { 1 } else { -1 }, s.mismatches))
@@ -768,6 +786,14 @@ fn tm(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64, primer_nm: f64) -> Option
     primers::tm(seq.as_bytes(), &primers::Conditions { na_mm, mg_mm, dntp_mm, primer_nm })
 }
 
+/// `opendna_core.site_tm(primer, target)`: Tm in °C of `primer` annealed where the sequence reads `target` (in the primer's sense,
+/// as long as it): its mismatches lower it. None as for `tm`, or when the lengths differ.
+#[pyfunction]
+#[pyo3(signature = (primer, target, na_mm=50.0, mg_mm=1.5, dntp_mm=0.6, primer_nm=50.0))]
+fn site_tm(primer: &str, target: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64, primer_nm: f64) -> Option<f64> {
+    primers::site_tm(primer.as_bytes(), target.as_bytes(), &primers::Conditions { na_mm, mg_mm, dntp_mm, primer_nm })
+}
+
 /// `opendna_core.tm_range("ARGT...")`: (lowest, highest) Tm in °C of a primer with IUPAC codes (a mixture of oligos).
 #[pyfunction]
 #[pyo3(signature = (seq, na_mm=50.0, mg_mm=1.5, dntp_mm=0.6, primer_nm=50.0))]
@@ -780,7 +806,8 @@ fn tm_range(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64, primer_nm: f64) -> 
 /// (start, end, strand, mismatches) per primer. Takes a copy of the sequence (not a
 /// Document), so it can run in a background thread while the document is being edited.
 #[pyfunction]
-#[pyo3(signature = (template, circular, primers, max_mismatches=1, seed=primers::SEED, exact_3p=primers::EXACT_3P))]
+#[pyo3(signature = (template, circular, primers, max_mismatches=1, seed=primers::SEED, exact_3p=primers::EXACT_3P, min_tm=0.0, na_mm=50.0, mg_mm=1.5, dntp_mm=0.6, primer_nm=50.0))]
+#[allow(clippy::too_many_arguments)]
 fn find_primers(
     py: Python<'_>,
     template: &str,
@@ -789,14 +816,21 @@ fn find_primers(
     max_mismatches: usize,
     seed: usize,
     exact_3p: usize,
+    min_tm: f64,
+    na_mm: f64,
+    mg_mm: f64,
+    dntp_mm: f64,
+    primer_nm: f64,
 ) -> Vec<Vec<(usize, usize, i8, usize)>> {
     // Uppercase once here instead of on every comparison.
     let upper = template.to_ascii_uppercase();
+    let c = primers::Conditions { na_mm, mg_mm, dntp_mm, primer_nm };
     py.allow_threads(|| {
         primers
             .iter()
             .map(|p| {
-                primers::binding_sites(upper.as_bytes(), p.as_bytes(), circular, seed, max_mismatches, exact_3p)
+                let found = primers::binding_sites(upper.as_bytes(), p.as_bytes(), circular, seed, max_mismatches, exact_3p);
+                primers::warm_sites(found, upper.as_bytes(), p.as_bytes(), circular, min_tm, &c)
                     .into_iter()
                     .map(|s| (s.start, s.start + s.len, if s.forward { 1 } else { -1 }, s.mismatches))
                     .collect()
@@ -991,6 +1025,7 @@ fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("EXACT_3P", primers::EXACT_3P)?;
     m.add_function(wrap_pyfunction!(tm, m)?)?;
     m.add_function(wrap_pyfunction!(tm_range, m)?)?;
+    m.add_function(wrap_pyfunction!(site_tm, m)?)?;
     m.add_function(wrap_pyfunction!(quick_align, m)?)?;
     m.add_function(wrap_pyfunction!(find_primers, m)?)?;
     m.add_function(wrap_pyfunction!(find_parts, m)?)?;

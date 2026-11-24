@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from opendna_core import dimer, hairpin, tm, tm_range
+from opendna_core import dimer, hairpin, site_tm as duplex_tm, tm, tm_range
 
 import tool_settings
 from editor import MAX_SITES, dna_field, reverse_complement
@@ -27,16 +27,11 @@ from tool_settings import Param, SettingsDialog
 from reference import Reference, as_reference
 from sequence_view import TEMP_COLOR
 from uikit import dispose_progress, fit_columns, plural, show_after
-from primer_db import (ORDER_FORMATS, PLATE_SIZE, PURIFICATIONS, SCALES, export_order, MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, BINDING, binding, db, PCR,  # noqa: F401 (re-exported)
+from primer_db import (ORDER_FORMATS, PLATE_SIZE, PURIFICATIONS, SCALES, export_order, conditions, tm_rule, MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, BINDING, binding, db,  # noqa: F401 (re-exported)
                        primer_problem, update_primer)
 import theme
 
 MAX_LISTED = 8     # positions listed in a report before "... and N more"
-
-
-def conditions():
-    """The PCR conditions of every Tm (Settings > Primers), as keyword arguments of tm()."""
-    return dict(tool_settings.values(PCR))
 
 
 def melting_temp(seq):
@@ -56,6 +51,20 @@ def tm_text(seq):
         return "" if r is None else f"{r[0]:.1f}–{r[1]:.1f}"
     t = melting_temp(seq)
     return "" if t is None else f"{t:.1f}"
+
+
+def site_tm_text(bound, template):
+    """(text, value) of the Tm of a site: the primer's annealed bases `bound` on the template's bases there `template` (the
+    primer's sense; None: unknown), its mismatches counted. A degenerate primer, or a template that is not plain bases: the
+    primer's own Tm (a range for a mixture), value None."""
+    t = duplex_tm(bound, template, **conditions()) if template is not None and len(template) == len(bound) else None
+    return (tm_text(bound), None) if t is None else (f"{t:.1f}", t)
+
+
+def min_tm_text():
+    """", Tm ≥ 40 °C" when a minimum Tm of a site applies (what the checks count as a match), else ""."""
+    low = tool_settings.value(BINDING, "min_tm")
+    return f", Tm ≥ {low:g} °C" if low > 0 else ""
 
 
 def tm_sort_key(seq):
@@ -209,7 +218,7 @@ def genome_search(editor, sequence, progress=None, cancel=None):
     if q is None:
         return None
     g, core, mm, seed, skip = q
-    return g.search(sequence, core, mm, seed, skip, progress, cancel)
+    return g.search(sequence, core, mm, seed, skip, progress, cancel, warm=tm_rule())
 
 
 def genome_cached(editor, sequence):
@@ -217,7 +226,7 @@ def genome_cached(editor, sequence):
     if q is None:
         return None
     g, core, mm, seed, skip = q
-    return g._cache.get((sequence.upper(), core.upper(), mm, seed, skip))
+    return g._cache.get(g.cache_key(sequence, core, mm, seed, skip, tm_rule()))
 
 
 def site_in_record(h):
@@ -240,7 +249,7 @@ def genome_check(editor, sequence, mode="wait"):
     r = genome_cached(editor, sequence) if mode == "cached" else genome_search(editor, sequence)
     if r is None:
         return (name, "info", f"searching {plural(g.count, 'sequence')}…")
-    rule = f"last {seed} nt, {'exact' if mm == 0 else f'≤{mm} mismatch'}"
+    rule = f"last {seed} nt, {'exact' if mm == 0 else f'≤{mm} mismatch'}" + min_tm_text()
     note = ""
     if not r.complete:
         note = (f"  Only {r.searched} of {r.total} sequences were searched ("
@@ -343,15 +352,16 @@ def primer_checks(editor, sequence, genome_mode="wait"):
 
     n = editor.length
     seed3, exact, mismatches = binding()
-    sites = editor.doc.binding_sites(sequence, mismatches, seed3, exact)
+    warm = tm_rule()   # (every site below the minimum Tm left out, as where they are drawn)
+    sites = editor.doc.binding_sites(sequence, mismatches, seed3, exact, **warm)
     checks.append(("Binds here", "ok" if sites else "warn",
                    _listing([site_text(*x, n) for x in sites]) if sites else "nowhere in this sequence"))
     seed, mm = homology_settings()
-    rule = f"last {seed} nt, {'exact' if mm == 0 else f'≤{mm} mismatch'}"
+    rule = f"last {seed} nt, {'exact' if mm == 0 else f'≤{mm} mismatch'}" + min_tm_text()
     core = annealing_part(sequence)
-    full = editor.doc.binding_sites(core, 0, len(core))  # the whole annealing part, exact
+    full = editor.doc.binding_sites(core, 0, len(core), **warm)  # the whole annealing part, exact
     bound = {three_prime_end(x) for x in sites}
-    others = [h for h in editor.doc.binding_sites(sequence, mm, seed) if three_prime_end(h) not in bound]
+    others = [h for h in editor.doc.binding_sites(sequence, mm, seed, **warm) if three_prime_end(h) not in bound]
     if len(full) > 1:
         checks.append(("Non-specific (sequence)", "bad", f"the whole primer binds {len(full)} places"))
     elif others:
@@ -829,7 +839,7 @@ class PrimerPanel(QWidget):
     `database` lists every primer (with its note and the day it was added), and gives the buttons and right-click menu of the
     database instead of those of a file."""
     COLUMNS = ["Name", "Sequence (5'→3')", "Length", "Tm °C", "Match", "Structure"]
-    DATABASE_COLUMNS = ["Added", "Note"]   # the note last: it takes the room left, the date stays in view
+    DATABASE_COLUMNS = ["In file", "Added", "Note"]   # the note last: it takes the room left, the date stays in view
     FILTERED = ["Match", "Structure", "Added"]   # filter by values (value_filter.py)
 
     def __init__(self, editor):
@@ -840,12 +850,16 @@ class PrimerPanel(QWidget):
         # every other column keeps its index)
         self.columns = self.COLUMNS + (self.DATABASE_COLUMNS if self.database else ["Visible"])
         self.visible = None if self.database else len(self.columns) - 1
+        # The database's list: a box ticked for each primer that is part of the file open in the window (tick: import it)
+        self.in_file = self.columns.index("In file") if self.database else None
         self.tree = PrimerTree()
         self.tree.setHeaderLabels(self.columns)
         if self.visible is not None:   # an eye, not a word: the column is only as wide as its checkboxes
             self.tree.headerItem().setText(self.visible, "")
             self.tree.header().moveSection(self.visible, 0)
             self._paint_eye()
+        if self.in_file is not None:   # first, like a file's eye
+            self.tree.header().moveSection(self.in_file, 0)
         self.tree.setUniformRowHeights(True)
         # (before fit_columns: a tree's header stretches its last column by default, and that width would count as one the user
         # dragged, never fitted again)
@@ -954,11 +968,20 @@ class PrimerPanel(QWidget):
             elsewhere.setdefault(site.label, []).append(site)
             groups.setdefault(site.label, [])
         rows, filtered = {}, 0
+        here = self.database.file_editor() if self.database else None   # the file open in the window (the database's Match)
         genome_on = genome() is not None
         cut = ed.cut_primers()   # primers with more sites than are listed (the first MAX_SITES of each sequence are)
         if self.database:   # every primer of the database, also one that binds nowhere (an ambiguity code...)
+            # Match: where each binds the file open in this window (not the list's own document); those that bind it first.
             rows = {r["name"]: r for r in db().rows}
-            groups = {name: groups.get(name, []) for name in rows}
+            on = {}
+            for s in here.primer_sites if here is not None else ():
+                if s.label in rows and s.sequence.upper() == rows[s.label]["sequence"].upper():
+                    on.setdefault(s.label, []).append(s)
+            groups = {name: on.get(name, []) for name in sorted(rows, key=lambda n: n not in on)}
+            cut = here.cut_primers() if here is not None else {}
+            self.tree.headerItem().setToolTip(self.columns.index("Match"), f"Where the primer binds {here.path.name}, the file open in this window"
+                                              if here is not None else "Open a file in this window to see where the primers bind it")
         elif not all(self._sources()):
             # Only the primers of the sources switched on in the Display filter (From this sequence / From the database), as
             # the views draw them; a hidden primer of a source shown stays listed, greyed.
@@ -982,9 +1005,9 @@ class PrimerPanel(QWidget):
                 summary = f"{cut[name]:,} sites, the first {MAX_SITES} on each sequence listed"
             warnings = [] if is_degenerate(seq) else structure(seq)["warnings"]
             mark, color = MARKS["warn" if warnings else "ok"]
-            group = SortItem([name, seq, str(len(seq)), t or "–", summary if total else "no site",
+            group = SortItem([name, seq, str(len(seq)), t or "–", summary if total else "" if self.database else "no site",
                               f"{mark} " + "; ".join(warnings) if warnings else mark]
-                             + ([rows[name]["added"], rows[name]["note"]] if self.database else []))
+                             + (["", rows[name]["added"], rows[name]["note"]] if self.database else []))
             group.keys = {0: name.lower(), 2: len(seq), 3: tm_sort_key(seq), 4: total}
             group.setForeground(5, QColor(color))
             group.setData(0, Qt.UserRole, name)
@@ -992,6 +1015,8 @@ class PrimerPanel(QWidget):
                 group.setForeground(0, QColor(TEMP_COLOR))
                 group.setToolTip(0, "Not part of this file: from the primer database (or designed, not saved). "
                                     "Right-click > Import to This Sequence keeps it in the file.")
+            if here is not None:
+                self._in_file_box(group, here, name, seq, bool(sites))
             if self.visible is not None:   # ticked: drawn in this file (set before the row is in the tree: no signal)
                 hidden = name in ed.hidden_primers
                 group.setFlags(group.flags() | Qt.ItemIsUserCheckable)
@@ -1048,12 +1073,27 @@ class PrimerPanel(QWidget):
         if group.data(0, Qt.UserRole) in self.expanded:   # the genome is searched only for a primer opened
             self._genome_rows(group, seq)
 
+    def _in_file_box(self, group, here, name, seq, binds):
+        """The database's In file box of a primer: ticked when it is part of `here`'s file. Only a primer with a site on it has
+        one (Save writes a primer as its sites)."""
+        inside = here.in_file(name, seq)
+        group.keys = {**group.keys, self.in_file: not inside}   # (sorted: those in the file first)
+        if not binds:   # (no check state at all: Qt draws a box for any row that has one)
+            return
+        group.setFlags(group.flags() | Qt.ItemIsUserCheckable)
+        group.setCheckState(self.in_file, Qt.Checked if inside else Qt.Unchecked)
+        group.setToolTip(self.in_file, f"Part of {here.path.name}: untick to take it out (it stays in the database)" if inside
+                         else f"Tick to import it to {here.path.name}")
+
     @staticmethod
     def _fold(group, length):
         """A primer with one site is one row: the site's match on it (its mismatches red in the primer's sequence), its place in
         the name's tooltip, a click selects it. (A site unticked by hand keeps its row: its box ticks it again.)"""
         row = group.takeChild(0)
         group.setText(4, row.text(4))
+        if row.data(1, MISMATCHES):   # (its mismatches lower the Tm of the site)
+            group.setText(3, row.text(3))
+            group.keys = {**group.keys, 3: row.keys[3]}
         group.setData(1, MISMATCHES, [k + length - len(row.text(1)) for k in row.data(1, MISMATCHES) or []])
         group.setData(0, SITE_ROLE, row.data(0, Qt.UserRole))
         group.setToolTip(0, "\n".join(x for x in (row.text(0), group.toolTip(0)) if x))
@@ -1091,11 +1131,11 @@ class PrimerPanel(QWidget):
     def _site_row(self, where, bound, template, sort_key, data, kind="", source="Sequence"):
         """One binding site: where, the primer's annealing bases (mismatches red when the template is known), length, Tm, and
         Match: the map it is on (Sequence, Background), how it binds there."""
-        tb = tm_text(bound)
         marks = mismatch_indices(bound, template) if template is not None and len(template) == len(bound) else None
+        tb, t = site_tm_text(bound, template)
         match = "" if marks is None else "exact" if not marks else plural(len(marks), 'mismatch')
         row = SortItem([where, bound, str(len(bound)), tb or "–", ", ".join(x for x in (source, kind, match) if x)])
-        row.keys = {0: sort_key, 2: len(bound), 3: tm_sort_key(bound), 4: (source, len(marks or []))}
+        row.keys = {0: sort_key, 2: len(bound), 3: tm_sort_key(bound) if t is None else t, 4: (source, len(marks or []))}
         row.setData(0, Qt.UserRole, data)
         row.setData(1, MISMATCHES, marks or [])
         if marks:
@@ -1264,6 +1304,12 @@ class PrimerPanel(QWidget):
 
     def _ticked(self, item, column):
         """A Visible checkbox: a primer's shows or hides it in this file, a site's that site only."""
+        if self.in_file is not None and column == self.in_file and item.parent() is None:
+            here, row = self.database.file_editor(), db().find(item.data(0, Qt.UserRole))
+            on = item.checkState(column) == Qt.Checked
+            if here is not None and row is not None and on != here.in_file(row["name"], row["sequence"]):
+                QTimer.singleShot(0, lambda: here.import_primers([(row["name"], row["sequence"])], on))
+            return
         if column != self.visible or self.visible is None:
             return
         ed, on = self.editor, item.checkState(column) == Qt.Checked

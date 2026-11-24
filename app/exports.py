@@ -154,8 +154,7 @@ def project_meta(editor, project_path, layout=None):
         "dna_locked": ed.dna_locked,
         "genetic_code": genetic_code.project_entry(),   # the code and the codon table in use travel with the project
         "codon_usage": codon_usage.project_entry(),
-        "hidden_primers": sorted(ed.hidden_primers),
-        "primer_sites": ed.saved_site_choices(),   # the sites shown or hidden by hand (with the binding rule they were made under)
+        **ed.display_choices(),   # the primers and sites hidden by hand (with the binding rule the sites were chosen under)
         "tracks": [{"path": t.path, "relative": _relative(t.path, project_path), "seqid": t.seqid, "types": t.types, "fields": t.fields}
                    for t in ed.tracks if getattr(t, "path", None)],
         "alignments": [{"path": a.path, "relative": _relative(a.path, project_path), "seqid": a.seqid}

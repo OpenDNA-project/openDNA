@@ -178,7 +178,7 @@ def effective_settings(extra):
         "genetic_code_table": {"value": genetic_code.table_id(), "source": "openDNA settings"},
         "codon_usage_table": {"value": usage.name if usage else None,
                               "source": "openDNA settings" if usage else "none: ties between codons are broken alphabetically"},
-        "primer_binding": sourced(BINDING, ("seed", "exact_3p", "mismatches")),
+        "primer_binding": sourced(BINDING, ("seed", "exact_3p", "mismatches", "min_tm")),
         "primer_checks": {"homology_seed": {"value": seed, "source": "openDNA settings"}, "homology_mismatches": {"value": mismatches, "source": "openDNA settings"},
                           "background_genome": {"value": genome, "source": "openDNA settings (Primers > Options)" if genome else "none set: no genome check"}},
     }
