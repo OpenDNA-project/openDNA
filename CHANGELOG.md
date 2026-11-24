@@ -14,6 +14,7 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 
 **UI/UX**
 - The background genome list opens at its full width and place instead of growing after its animation.
+- Best site only is renamed *Show only the best binding site by default*: it sets which sites are ticked until you tick or untick one yourself.
 
 ## 0.8.6 (2026-11-24)
 

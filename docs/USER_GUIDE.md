@@ -172,7 +172,8 @@ show them all at once.
 
 **Where a primer binds.** Settings → Primers sets the rule: how many bases at the primer's 3′ end are compared (15), how many of
 them must match exactly (3) and how many mismatches the others may have (2); the drawn sites, the *Binds here* check and the
-command line all use it. *Best site only* (also in the Display filter) draws, of each primer, only the site it binds best: fewest
+command line all use it, as does the *Minimum Tm of a site* (40 °C): a site counts only if the primer's bases that anneal there melt
+that high, its mismatches counted. *Show only the best binding site by default* (also in the Display filter) ticks, of each primer, only the site it binds best: fewest
 mismatches in the last 5 bases, then fewest mismatches, then the longest annealed part (ties are all drawn). To hide one site
 and keep the others, right-click it → *Hide This Site*, or untick it under its primer in the Primers panel (tick a site there to show
 it even when it is not the best). The choice lasts until the file is closed, and a project keeps it; a change of the binding rule starts

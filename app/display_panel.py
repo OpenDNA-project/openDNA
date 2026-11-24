@@ -267,7 +267,7 @@ class EnzymeCriteria(QWidget):
 
 
 def _set_best_only(on):
-    """Display filter > Best site only: the global setting (Settings > Primers), so every window follows."""
+    """Display filter > Show only the best binding site by default: the global setting (Settings > Primers), so every window follows."""
     tool_settings.set_value(BINDING, "best_only", on)
     tool_settings.notifier.changed.emit(BINDING)
 
@@ -295,7 +295,7 @@ class DisplayPanel(QScrollArea):
             tip="Primers that are only in the primer database (not in this file), drawn like temporary primers. "
                 "Right-click one > Import to This Sequence to make it part of the file.")
         self.best_sites = self._switch(
-            "Best site only", tool_settings.value(BINDING, "best_only"), _set_best_only,
+            "Show only the best binding site by default", tool_settings.value(BINDING, "best_only"), _set_best_only,
             tip="Of each primer, only the site it binds best (fewest mismatches near the 3′ end, then fewest, then the longest); "
                 "ties are all shown. The same setting as Settings > Primers, for every file. Tick a site in the Primers view to show it anyway.")
         self._rule()

@@ -679,7 +679,7 @@ class Editor(QObject):
         self.set_primers_hidden([name], hidden)
 
     def _settings_changed(self, tool):
-        """Settings > Primers: another binding rule finds other sites (matched again); the rest (Best site only, the PCR
+        """Settings > Primers: another binding rule finds other sites (matched again); the rest (Show only the best binding site by default, the PCR
         conditions, the 3′ check, the genome) only changes what is drawn or checked."""
         if tool in (BINDING, PCR) and (binding(), tm_rule()) != self._matched_with:   # (the minimum Tm: PCR too)
             self.match_primers()
@@ -690,7 +690,7 @@ class Editor(QObject):
 
     @staticmethod
     def _site_default(site, best_only):
-        """Shown unless chosen otherwise: every site, or with Best site only the best ones."""
+        """Shown unless chosen otherwise: every site, or with Show only the best binding site by default the best ones."""
         return site.best or not best_only
 
     def site_shown(self, site, best_only=None):

@@ -93,7 +93,7 @@ tool_settings.register(BINDING, [
     Param("min_tm", "Minimum Tm of a site", 40.0, 0.0, 100.0, suffix=" °C",
           tip="A site counts only if the primer's bases that anneal there melt at this temperature or above (PCR conditions,\n"
               "mismatches are not taken off). 0 = no minimum."),
-    Param("best_only", "Best site only", False,
+    Param("best_only", "Show only the best binding site by default", False,
           tip="Fewest mismatches in the last 5 bases, then fewest mismatches, then the longest annealed part; ties are all shown.\n"
               "Also in the Display filter."),
     Param("homology_seed", "3′ check: bases", 12, 6, 20, suffix=" nt", tip="Bases at the primer's 3′ end compared for the mis-priming check"),
