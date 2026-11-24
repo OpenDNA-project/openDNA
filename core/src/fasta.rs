@@ -106,7 +106,33 @@ impl IndexedFasta {
         self.fetch(name, 0, length)
     }
 
-    /// `search::find_motif` on sequence `name` (read once, whole): IUPAC letters, mismatches, either strand.
+    /// Is sequence `name` circular? FASTA has no topology of its own, so: the tag `[topology=circular]` or
+    /// `[topology=linear]` in its header wins (what openDNA and NCBI write); without a tag, a file of one
+    /// sequence is circular and a file of several (contigs, chromosomes) is linear.
+    pub fn circular(&mut self, name: &str) -> io::Result<bool> {
+        let Some(e) = self.entries.iter().find(|e| e.name == name) else {
+            return Err(io::Error::new(io::ErrorKind::NotFound, format!("no sequence named '{name}'")));
+        };
+        let (offset, single) = (e.offset, self.entries.len() == 1);
+        // The header is the line that ends where the bases start. shortcut: only its last 4 KB are read, so a tag
+        // at the start of a header longer than that is missed; upgrade if such headers turn up.
+        let from = offset.saturating_sub(4096);
+        let mut raw = vec![0u8; (offset - from) as usize];
+        self.file.seek(SeekFrom::Start(from))?;
+        self.file.read_exact(&mut raw)?;
+        let text = String::from_utf8_lossy(&raw).to_ascii_lowercase();
+        let header = text.trim_end().rsplit('\n').next().unwrap_or("");
+        Ok(if header.contains("[topology=circular]") {
+            true
+        } else if header.contains("[topology=linear]") {
+            false
+        } else {
+            single
+        })
+    }
+
+    /// `search::find_motif` on sequence `name` (read once, whole): IUPAC letters, mismatches, either strand,
+    /// across the origin when `circular(name)` says so.
     pub fn search_motif(
         &mut self,
         name: &str,
@@ -116,8 +142,9 @@ impl IndexedFasta {
         both: bool,
         limit: usize,
     ) -> io::Result<Vec<crate::search::MotifHit>> {
+        let circular = self.circular(name)?;
         let seq = self.fetch_all(name)?;
-        Ok(crate::search::find_motif(&seq, motif, max_mismatches, iupac, both, false, limit))
+        Ok(crate::search::find_motif(&seq, motif, max_mismatches, iupac, both, circular, limit))
     }
 
     /// Positions of `motif` (exact, case-insensitive) in sequence `name`, on both strands:
@@ -364,6 +391,28 @@ ACGTACGTAC
         assert_eq!(back.fetch("c", 0, 99).unwrap(), b"GGGAATTCGG");
         assert!(std::fs::read_to_string(&out).unwrap().starts_with(">a first\n"));
         assert!(write_replacing(&p, &out, "zzz", b"A").is_err());
+    }
+
+    #[test]
+    fn circular_is_the_header_tag_else_one_record_means_circular() {
+        let p = write_tmp("ge_test_topology.fa", ">a [Topology=Circular]\nACGT\n>b [topology=linear]\nAC\n>c plain\r\nGG\r\n");
+        let mut fa = IndexedFasta::open(&p).unwrap();
+        assert_eq!(fa.circular("a").unwrap(), true, "the tag, in any case");
+        assert_eq!(fa.circular("b").unwrap(), false);
+        assert_eq!(fa.circular("c").unwrap(), false, "no tag, several records: linear");
+        assert!(fa.circular("nope").is_err());
+        let p = write_tmp("ge_test_topology1.fa", ">only\nACGT\n");
+        assert_eq!(IndexedFasta::open(&p).unwrap().circular("only").unwrap(), true, "no tag, one record: circular");
+        let p = write_tmp("ge_test_topology2.fa", ">only [topology=linear]\nACGT\n");
+        assert_eq!(IndexedFasta::open(&p).unwrap().circular("only").unwrap(), false);
+        // a motif across the origin is found only where the record is circular
+        let p = write_tmp("ge_test_topology3.fa", ">x\nTTCAAAAAGA\n>y [topology=linear]\nTTCAAAAAGA\n");
+        let mut fa = IndexedFasta::open(&p).unwrap();
+        let wrap = fa.search_motif("x", b"GATTC", 0, true, false, 10).unwrap(); // x: tag-less, two records: linear
+        assert!(wrap.is_empty());
+        let p = write_tmp("ge_test_topology4.fa", ">x\nTTCAAAAAGA\n");
+        let hits = IndexedFasta::open(&p).unwrap().search_motif("x", b"GATTC", 0, true, false, 10).unwrap();
+        assert_eq!((hits[0].start, hits[0].end), (8, 13), "GA | TTC across the origin");
     }
 
     #[test]

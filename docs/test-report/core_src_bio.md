@@ -4,7 +4,7 @@
 
 ## `finds_orfs_on_both_strands`
 
-**Result:** ✅ passed · [line 86](../../core/src/bio.rs#L86) · **Area:** ORF finder · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 87](../../core/src/bio.rs#L87) · **Area:** ORF finder · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** The ORF finder could show ORFs at wrong coordinates, ignore the minimum length, or miss bottom-strand ORFs.
 
@@ -22,7 +22,7 @@ An ATG..stop ORF is found with exact top-strand coordinates, the minimum length 
 
 ## `alternative_starts_and_other_tables`
 
-**Result:** ✅ passed · [line 101](../../core/src/bio.rs#L101) · **Area:** ORF finder / genetic codes · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 102](../../core/src/bio.rs#L102) · **Area:** ORF finder / genetic codes · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** The ORF finder could use alternative start codons when they are switched off or from the wrong genetic code, or read TGA as a stop in the Mycoplasma code.
 
@@ -41,7 +41,7 @@ Alternative start codons count only when enabled and only if the chosen table li
 
 ## `finds_an_orf_that_crosses_the_origin_of_a_ring`
 
-**Result:** ✅ passed · [line 120](../../core/src/bio.rs#L120) · **Area:** ORF finder · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 121](../../core/src/bio.rs#L121) · **Area:** ORF finder · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An ORF that crosses the origin of a plasmid could be missed or reported twice.
 

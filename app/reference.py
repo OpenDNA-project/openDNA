@@ -7,8 +7,9 @@ the search runs on a worker thread, reports progress and can be cancelled.
 
 Memory: a FASTA is read through its .fai index, a record at a time, and a long linear record in windows of WINDOW bases
 (that overlap, so a site on a window edge is found exactly once). A multi-record GenBank file is split into temporary
-one-record files, again one at a time. Circular or linear: a GenBank / .dna record keeps its own topology, a FASTA record is
-linear (the format cannot say; a plasmid's last bases then do not pair with its first).
+one-record files, again one at a time. Circular or linear: a GenBank / .dna record keeps its own topology, a FASTA record's is
+`Fasta.circular` (its header tag, else circular for a one-record file, linear for several); a circular record's last window
+is read with the first bases after it, so a site across the origin is found.
 """
 
 import tempfile
@@ -92,7 +93,8 @@ class Reference:
         self._doc = None
         self._cache = {}
         if self.fasta:
-            self.records = [(n, int(l), False) for n, l in Fasta(str(self.path)).sequences()]
+            fa = Fasta(str(self.path))
+            self.records = [(n, int(l), fa.circular(n)) for n, l in fa.sequences()]
             if not self.records:
                 raise OSError(f"{self.path.name}: no FASTA sequence found")
         else:
@@ -143,11 +145,15 @@ class Reference:
                     d = Document(str(part))
                     yield d.name, d.sequence(0, None), d.circular
 
-    def _windows(self, fa, name, length, overlap):
-        """Yield (first base owned, bases) pieces of a linear FASTA record; a piece owns [first, first + WINDOW)."""
+    def _windows(self, fa, name, length, overlap, circular=False):
+        """Yield (first base owned, start of the bases, bases) pieces of a FASTA record; a piece owns [first, first + WINDOW).
+        On a circular record the last piece goes on with the first bases of the record (a site across the origin)."""
         for first in range(0, max(length, 1), WINDOW):
             lo, hi = max(0, first - overlap), min(length, first + WINDOW + overlap)
-            yield first, lo, fa.fetch(name, lo, hi)
+            text = fa.fetch(name, lo, hi)
+            if circular and hi == length:
+                text += fa.fetch(name, 0, min(overlap, length))
+            yield first, lo, text
 
     def search(self, sequence, core_part, mismatches, seed, skip=None, progress=None, cancel=None, seconds=MAX_SECONDS):
         """Binding sites of the primer `sequence` (whole annealing part `core_part`, no 5' tail) in every record.
@@ -174,9 +180,10 @@ class Reference:
                     # (a site of a circular record may run through its origin)
                     result.bases[(name, s + offset, e + offset, strand)] = text[s:e] + (text[:e - len(text)] if e > len(text) else "")
 
-        def search_text(name, length, circular, text, offset=0, keep=None):
-            """Sites in `text` (a piece of the record starting at `offset`); `keep(start)` filters to the piece's own."""
-            d = Document.new_sequence(name, text, circular)
+        def search_text(name, length, circular, text, offset=0, keep=None, piece=False):
+            """Sites in `text` (a piece of the record starting at `offset`); `keep(start)` filters to the piece's own.
+            A `piece` already carries the bases past the origin, so it is searched as linear."""
+            d = Document.new_sequence(name, text, circular and not piece)
             for sites, whole in ((d.binding_sites(core_part, 0, len(core_part)), True),
                                  (d.binding_sites(sequence, mismatches, seed), False)):
                 add(name, length, circular, [(s, e, st, mm) for s, e, st, mm in sites if keep is None or keep(s + offset)],
@@ -190,10 +197,11 @@ class Reference:
             return bool(result.stopped)
 
         def run(name, length, circular, number):
-            for first, lo, text in self._windows(fa, name, length, overlap):
+            for first, lo, text in self._windows(fa, name, length, overlap, circular):
                 if stop():
                     return
-                search_text(name, length, circular, text, lo, lambda p, f=first: f <= p < f + WINDOW)
+                # (p < length: a site that starts in the bases added past the origin belongs to the first piece)
+                search_text(name, length, circular, text, lo, lambda p, f=first: f <= p < min(f + WINDOW, length), piece=True)
                 if progress:
                     progress(done + min(first + WINDOW, length), total, name, number, len(todo))
 

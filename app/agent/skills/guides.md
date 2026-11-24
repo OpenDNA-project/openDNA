@@ -13,7 +13,7 @@ guides PLASMID.gb [--nuclease SpCas9|SaCas9|Cas12a] [--region START..END] [--max
 - `--max-mm`: other sites with up to this many mismatches are counted (default 3; the window accepts 1 to 4).
 - The **background genome** is the one in openDNA's Primers > Options (shown in `settings.background_genome`; the source checkout falls back to the demo E. coli genome). `--no-genome` skips it. If none is set, only this sequence is checked: tell the user.
 
-JSON: `guides` best first, each with `start`, `end` (1-based), `strand`, `guide` (the 20 nt written 5' to 3'), `pam`, `gc`, `score` (0-100 checklist, not a measured activity), `cut` (where the nuclease cuts), `other_sites_here` and `other_sites_genome` (lists of counts of the *other* places the guide matches, by number of mismatches: the item at index 0 is exact copies, index 1 one mismatch, up to `--max-mm`; `[0, 0, 2, 5]` = no copy, none with 1 mismatch, 2 with 2, 5 with 3), `mark` (`ok`, `warn`, `bad`) and `verdict`.
+JSON: `guides` best first, each with `start`, `end` (1-based), `strand`, `guide` (the 20 nt written 5' to 3'), `pam`, `gc`, `score` (0-100 checklist, not a measured activity), `cut` (where the nuclease cuts), `other_sites_here` and `other_sites_genome` (lists of counts of the *other* places the guide matches, by number of mismatches: the item at index 0 is exact copies, index 1 one mismatch, up to `--max-mm`; `[0, 0, 2, 5]` = no copy, none with 1 mismatch, 2 with 2, 5 with 3), `places_next_to_n` (how many places could be one more site but have an N in the DNA where the PAM is: not counted, and the mark is `warn` when it is not 0), `mark` (`ok`, `warn`, `bad`) and `verdict`.
 
 ## What to tell the user
 

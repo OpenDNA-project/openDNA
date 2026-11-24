@@ -4,7 +4,7 @@
 
 ## `test_bam_reads_pileup_coverage_and_variants_match_a_model`
 
-**Result:** ✅ passed in 0.11 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.12 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the read alignment track could show reads at wrong places, miscount depth, ignore duplicate/QC filters or call wrong SNPs and indels from a user's BAM file.
 
@@ -30,11 +30,11 @@ Writes BAM files with the standard library (hand-designed reads, 300 random read
 
 ## `test_tracks_gff_bed_parsing_query_density_and_search`
 
-**Result:** ✅ passed in 0.07 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.19 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, or miss features when zooming and searching.
 
-Parses GFF3/GTF/BED files written in the test and checks names, coordinates, strands, error handling; compares query and density against a brute-force overlap on 400 random BED features; checks text search.
+Parses GFF3/GTF/BED files written in the test and checks names, coordinates, strands, error handling; compares query and density against a brute-force overlap on 400 random BED features; checks text search. It also checks that a bad line among good ones is skipped and counted in Track.notes (the first one named), while a file with no valid line is still an error.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -47,14 +47,16 @@ Parses GFF3/GTF/BED files written in the test and checks names, coordinates, str
 | 7 | GFF with empty Name= | falls back to gene, then ID |
 | 8 | density 100 / 7 / 40 bins | equals per-bin overlap count; 100 tidy features in 100 bins -> [1]*100; empty cases zeros/[] |
 | 9 | search 'lac', 'LAC', 'LaC', 'écoli', 'ecoli', limit 3 | 12 matches case-insensitive; unicode case folding; no accent folding; limit respected; row tuple ('chr1',0,10,0,'LacZ','bed') |
+| 10 | a GFF with one good line and two bad ones (end before start, start 0); a BED with one bad and one good line; a clean BED | the good line is loaded; notes == ['2 lines were skipped as not valid GFF/GTF (first: line 3, end before start).'], the BED's '1 line was skipped as not valid BED (first: line 1, end before start).', and [] for the clean one |
+| 11 | t.search('lac', 3, 'chr3') and t.search('lac', 100, 'chr1') / 'nope' on a track of three sequences | three items of chr3 in start order; LacZ and lacY; [] (the limit counts only the sequence asked for) |
 
 ## `test_feature_locations_round_trip`
 
-**Result:** ✅ passed in 0.01 s · [line 589](../../tests/test_core_formats.py#L589) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 603](../../tests/test_core_formats.py#L603) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a GenBank file could silently change or drop complex feature locations (joins, complement, fuzzy ends, between-base sites, remote references).
 
-Adds each of 20 GenBank location forms to a document and checks the written text, spans and strand, that the written form re-parses to itself, and that a GenBank file with these locations survives save and reload.
+Adds each of 20 GenBank location forms to a document and checks the written text, spans and strand, that the written form re-parses to itself, and that a GenBank file with these locations survives save and reload. It also checks that an EMBL file cut short is still read and says so.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -64,14 +66,15 @@ Adds each of 20 GenBank location forms to a document and checks the written text
 | 4 | GenBank file with 10..(20.30) and join(1..5,(10.20)..(30.40)) | kept word for word after load and save; typing it in raises 'outside' |
 | 5 | GenBank file with every non-gap form, saved and reloaded | same (location, spans, strand) list |
 | 6 | complement(join(190..200,1..10)) on 200 bp circle | spans [(189,200),(0,10)], strand -1 |
+| 7 | an EMBL file whose last record has no // line, then the same with // | the sequence is read and Document.notes says the file may be cut short; with // the notes are [] |
 
 ## `test_genome_fasta_fetch_and_search_match_slicing_and_brute_force`
 
-**Result:** ✅ passed in 0.01 s · [line 660](../../tests/test_core_formats.py#L660) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 682](../../tests/test_core_formats.py#L682) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a reference genome opened from a FASTA file could return wrong bases at line breaks or ends, and motif/sequence search on it could miss hits or report wrong strands.
 
-Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python slicing, search against a brute-force scan on both strands, and search_motif against core.find_motif on the same string.
+Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python slicing, search against a brute-force scan on both strands, and search_motif against core.find_motif on the same string. Also the topology of a FASTA record: its header tag, else one record = circular, and the search and the document follow it.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -81,11 +84,12 @@ Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python
 | 4 | chr2 last base at exact line multiple; empty/inverted/past-end ranges; chrZ | correct base; ''; OSError |
 | 5 | 300 random ranges | equal slicing |
 | 6 | 6 bases straddling the first line break | found at 57 forward |
-| 7 | search_motif GARTTC/0, ACGT/1, NNGG/0 | equals core.find_motif on the string |
-| 8 | A/C filler with GATTACA fwd at 30 and rc at 77 | [(30,1),(77,-1)]; rc motif swaps strands; lower case same |
-| 9 | AAAA in 9 A; palindrome GAATTC | six overlapping positions; palindrome once on top strand |
-| 10 | motifs AC, ACA, CACACACACA, GAT, TACAC | equal brute-force scan both strands |
-| 11 | empty motif; 500 G | [] |
+| 7 | search_motif GARTTC/0, ACGT/1, NNGG/0 | equals core.find_motif on the string (a file of several records: each linear) |
+| 8 | one-record FASTA '>p / TTCAAAAAGA', then the same with '[topology=linear]' in the header; search_motif GATTC (one strand) | no tag: Fasta.circular and Document.from_fasta circular, hit (8,13) across the origin; tag linear: not circular, no hit |
+| 9 | A/C filler with GATTACA fwd at 30 and rc at 77 | [(30,1),(77,-1)]; rc motif swaps strands; lower case same |
+| 10 | AAAA in 9 A; palindrome GAATTC | six overlapping positions; palindrome once on top strand |
+| 11 | motifs AC, ACA, CACACACACA, GAT, TACAC | equal brute-force scan both strands |
+| 12 | empty motif; 500 G | [] |
 
 **Review notes:**
 
@@ -93,7 +97,7 @@ Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python
 
 ## `test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.02 s · [line 733](../../tests/test_core_formats.py#L733) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 763](../../tests/test_core_formats.py#L763) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A break, a gap or a deletion near an end of the reference, or through the origin of a plasmid, could be hidden or mistaken for something else.
 

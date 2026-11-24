@@ -42,8 +42,7 @@ HELP = {
         "Lists every feature: type, name, position, direction.",
         "Click a row to select the feature in all views.",
         "Delete removes the current feature.",
-        "Click the arrow beside a gene to show or hide its parts.",
-        "Right-click to group as a gene, ungroup or add to the Features Database.",
+        "Right-click to delete, hide or add to the Features Database.",
     ],
     "Primers": [
         "Lists the primers from your database that bind this sequence, one group per primer.",
@@ -105,7 +104,6 @@ HELP = {
         "Finds known parts (promoters, tags, resistance genes...) from the built-in and your own library.",
         "Tick the parts you want, then Add ticked features.",
         "Settings sets the minimum identity and length.",
-        "Parts found around a CDS can be grouped into a gene.",
     ],
     "Plasmid Checkup": [
         "Traces each transcription unit and says whether each CDS should be expressed.",

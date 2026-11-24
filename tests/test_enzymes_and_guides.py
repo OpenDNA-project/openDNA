@@ -21,6 +21,7 @@ import cas9
 import cut_sites as cs
 import enzymes
 import exports
+from user_error import UserError
 from editor import Editor, reverse_complement as rc
 from enzymes import Enzyme, EnzymeFilter, wanted
 
@@ -277,13 +278,22 @@ def test_other_guide_sites_here_and_in_a_genome():
     # --- the Rust search matches a plain Python one ---
     seq = "".join(rng.choice("ACGT") for _ in range(4000))
     guides = [seq[i:i + 20] for i in (100, 1000, 2500)]
-    for guide, found in zip(guides, core.find_guide_sites(seq, False, guides, "NGG", 2)):
+    for guide, found in zip(guides, core.find_guide_sites(seq, False, guides, "NGG", 2)[0]):
         expect = set()
         for strand, s in ((1, seq), (-1, rc(seq))):
             for i in range(len(s) - 22):
                 if s[i + 21:i + 23] == "GG" and sum(a != b for a, b in zip(s[i:i + 20], guide)) <= 2:
                     expect.add((i if strand > 0 else len(seq) - i - 23, strand))
         assert {(h[0], h[2]) for h in found} == expect
+
+    # --- a guide the core cannot hold is refused (not "no sites"); an N in the DNA at the PAM is counted and warned about ---
+    with pytest.raises(UserError, match="1 to 64"):
+        cas9.scan(seq, False, "t", [g._replace(guide="A" * 65)], SP, 1)
+    site = "ACGTTGCAAGTCCATGCATG"
+    text = "T" * 10 + site + "AGG" + "C" * 10 + site + "ANG" + "C" * 10
+    mine = next(g for g in cas9.candidates(text, False, SP) if g.guide == site and g.strand == 1)
+    (spec,) = cas9.scan(text, False, "t", [mine], SP, 1)
+    assert (spec.here, spec.skipped) == ([0, 0], 1) and cas9.verdict(spec, mine)[0] == "warn"
 
 
 def guide_doc(strand, nuclease=SP, circular=False, text=None):

@@ -23,7 +23,7 @@ import multigb
 import genetic_code
 import inventory
 from enzymes import COMMON, MAX_DRAWN_CUTS, EnzymeFilter, find_sites, is_owned, wanted
-from genes import GENE, compute_groups, fitted_master, retag, span_of
+from genes import GENE, redundant_genes
 from perf import timed
 from uikit import SYNC_LIMIT, Latest
 from units import is_tu
@@ -37,7 +37,8 @@ HIDDEN_KINDS = {"source", PRIMER_KIND}
 CLIP_MIME = "application/x-opendna-clip"  # copied bases + features, JSON
 # Qualifiers searched by Find / the genome view's locus box.
 NAME_KEYS = {"label", "gene", "locus_tag", "old_locus_tag", "product", "gene_synonym", "protein_id", "note"}
-MAX_SITES = 50               # per primer; more means it is not specific anyway
+MAX_SITES = 50               # per primer and sequence DRAWN and listed; more means it is not specific anyway (the primers panel and the status bar say so)
+TRACK_HITS = 20_000          # track items a search stops at (the search bar's counter says so)
 # Standard colour of each annotation type: drawn when a feature has no colour of its own,
 # given to new features, and applied by Feature → Recolor Annotations by Type.
 KIND_COLORS = {
@@ -370,10 +371,8 @@ class Editor(QObject):
         self.site_cuts, self._shown_sites = {}, {}   # enzyme name -> its cut positions; filter -> [(position, name)] (cache)
         self.show_translation = False  # 3-frame translation under the bases
         self.show_complement = True    # the second strand under the top one (off: the top strand alone, one line of bases)
-        self.collapse_genes = True   # map: a gene group drawn as its gene feature only
-        self.cds_only = True         # a gene whose only part is one CDS is not drawn: its CDS says it all (every view)
+        self.cds_only = True         # a gene at exactly the bases of a CDS is not drawn: its CDS says it all (every view)
         self.redundant_genes = set() # indices of those gene features
-        self.redundant_keys = set()  # and the keys of their groups
         # Display filter (side panel): feature types not drawn, primers on/off, and the
         # amino acids drawn inside CDS arrows (all CDSs, minus those switched off one by one).
         self.hidden_kinds = set()
@@ -421,10 +420,7 @@ class Editor(QObject):
         # feature again on every edit and display switch: tens of thousands of qualifier lists read from the core on a genome)
         self.unit_indexes = {f.index for f in self.features if is_tu(f)}
         self.kind_counts = Counter(f.kind for f in self.features if f.index not in self.unit_indexes)
-        self.groups, self.part_of = compute_groups(self.features)
-        alone = [g for g in self.groups.values() if len(g.parts) == 1 and g.parts[0].kind == "CDS"]
-        self.redundant_genes = {g.master.index for g in alone}
-        self.redundant_keys = {g.key for g in alone}
+        self.redundant_genes = redundant_genes(self.features)
         self._lay_out(keep_lanes)
         self._search_text = None
         self.match_primers()
@@ -450,13 +446,6 @@ class Editor(QObject):
         # What the views draw: all features but the types filtered out in the side panel, then the tools' temporary
         # ones (set_overlay) under the same filter.
         self.shown = [f for f in self.features if self.visible(f)] + [o for o in self.overlay_features if self.visible(o)]
-        # The map can show each gene as one arrow (its parts hidden), packed on its own.
-        # (not when the gene type itself is filtered out: its parts would vanish from the map with it)
-        fold = self.collapse_genes and GENE not in self.hidden_kinds
-        map_features = [f for f in self.shown if not (fold and f.index in self.part_of and self.part_of[f.index] not in self.hidden_alone())]
-        if not (keep_lanes and len(map_features) == len(getattr(self, "map_features", ()))):
-            self.map_lanes, self.map_lane_count = pack_lanes(map_features)  # same reuse rule as below
-        self.map_features = map_features
         # Typing/deleting bases never makes two features overlap that did not before, so
         # the packing stays valid while the features are the same ones (same count).
         if not (keep_lanes and len(self.lanes) == len(self.shown)):
@@ -553,6 +542,7 @@ class Editor(QObject):
         n = self.length
         sites = []
         in_db = self._db_primer_keys()
+        self.site_totals = {name: len(found) for (name, _), found in zip(primers, hits)}   # (the sites drawn are the first MAX_SITES of each)
         for (name, seq), found in zip(primers, hits):
             for i, (s, e, strand, mm) in enumerate(found[:MAX_SITES]):
                 site = SimpleNamespace(key=f"{name}#{i}", label=name, sequence=seq, strand=strand, start=s, end=e,
@@ -568,12 +558,36 @@ class Editor(QObject):
                 site.mismatch_at = self._mismatch_positions(site) if mm else []
                 sites.append(site)
         self.primer_sites = sites
+        self._say_cut_primers()
         self.match_elsewhere()   # (no-op unless the file has several records, and the primers are the same as last time)
         self.site_by_key = {s.key: s for s in sites}
         self._pack_primers()
         if self.current_primer not in self.site_by_key:
             self.current_primer = None
         self.primers_changed.emit()
+
+    site_totals = {}      # primer name -> every site found on this sequence (more than are drawn when above MAX_SITES)
+    away_totals = {}      # primer name -> every site found on the other records of the file
+    away_capped = set()   # primer names with more than MAX_SITES on one of those records
+    _cut_said = None
+
+    def cut_primers(self):
+        """{primer name: sites on all the sequences} for the primers that bind more places than are drawn (MAX_SITES a sequence)."""
+        cut = {n for n, c in self.site_totals.items() if c > MAX_SITES} | self.away_capped
+        return {n: self.site_totals.get(n, 0) + self.away_totals.get(n, 0) for n in cut}
+
+    def _say_cut_primers(self):
+        """The status line says which primers have sites that are not drawn (once, until the answer changes)."""
+        cut = self.cut_primers()
+        if cut == self._cut_said:
+            return
+        self._cut_said = cut
+        if len(cut) == 1:
+            (name, count), = cut.items()
+            self.error.emit(f"Primer {name} binds {count:,} places: the first {MAX_SITES} on each sequence are shown.")
+        elif cut:
+            self.error.emit(f"{len(cut)} primers bind more than {MAX_SITES} places ({', '.join(sorted(cut)[:4])}{'…' if len(cut) > 4 else ''}): "
+                            f"the first {MAX_SITES} of each on each sequence are shown.")
 
     @staticmethod
     def _db_primer_keys():
@@ -596,7 +610,7 @@ class Editor(QObject):
         """Multi-record file: where the primers bind on the other records, found on a worker thread (each record is read from the
         file in turn). The result is `self.elsewhere`; the Primers panel lists it beside the sites on the open record."""
         if not self.multi_genbank:
-            self.elsewhere = []
+            self.elsewhere, self.away_totals, self.away_capped = [], {}, set()
             return
         primers, mm = self.primer_list(), binding_mismatches()
         key = (str(self.path), tuple(primers), mm, tuple(self.fasta_records))
@@ -607,7 +621,7 @@ class Editor(QObject):
         token, path, current, records = (id(self), self._elsewhere_token), self.path, self.fasta_record, list(self.fasta_records)
 
         def work():
-            found = []
+            found, totals, capped = [], {}, set()
             try:
                 for name, _ in records:
                     if name == current:
@@ -615,19 +629,23 @@ class Editor(QObject):
                     doc = multigb.read_record(path, name)
                     hits = find_primers(doc.sequence(), doc.circular, [p for _, p in primers], mm)
                     for (label, seq), per_primer in zip(primers, hits):
+                        totals[label] = totals.get(label, 0) + len(per_primer)
+                        if len(per_primer) > MAX_SITES:
+                            capped.add(label)
                         for s, e, strand, m in per_primer[:MAX_SITES]:
                             n = doc.length   # the template's bases (a site may run through the origin of a circle)
                             bases = doc.sequence(s, min(e, n)) + (doc.sequence(0, e - n) if e > n else "")
                             found.append(SimpleNamespace(record=name, label=label, sequence=seq, start=s, end=e, strand=strand, mismatches=m,
                                                          bases=bases))
-                _relay.elsewhere_ready.emit(token, found)
+                _relay.elsewhere_ready.emit(token, (found, totals, capped))
             except (OSError, RuntimeError):   # an unreadable file, or the program is closing
                 pass
         QThreadPool.globalInstance().start(work)
 
-    def _take_elsewhere(self, token, found):
+    def _take_elsewhere(self, token, result):
         if token == (id(self), self._elsewhere_token):   # ignore the result for an older primer list
-            self.elsewhere = found
+            self.elsewhere, self.away_totals, self.away_capped = result
+            self._say_cut_primers()
             self.elsewhere_changed.emit()
 
     def _pack_primers(self):
@@ -696,7 +714,7 @@ class Editor(QObject):
         self.version += 1
         self.changed.emit()
 
-    def set_display(self, enzymes=None, translation=None, collapse_genes=None, hidden_kinds=None, primers=None,
+    def set_display(self, enzymes=None, translation=None, hidden_kinds=None, primers=None,
                     cds_translation=None, file_primers=None, db_primers=None, units=None, enzyme_filter=None, cds_only=None,
                     complement=None):
         if enzymes is not None and enzymes != self.show_enzymes:
@@ -716,13 +734,11 @@ class Editor(QObject):
             self.show_db_primers = db_primers
         if cds_translation is not None:
             self.show_cds_translation = cds_translation
-        if collapse_genes is not None or hidden_kinds is not None or units is not None or cds_only is not None:
+        if hidden_kinds is not None or units is not None or cds_only is not None:
             if cds_only is not None:
                 self.cds_only = cds_only
             if units is not None:
                 self.show_units = units
-            if collapse_genes is not None:
-                self.collapse_genes = collapse_genes
             if hidden_kinds is not None:
                 self.hidden_kinds = set(hidden_kinds)
             # only what is drawn changes: the features, their genes, primer sites and cut sites stay (_refresh read them all
@@ -826,11 +842,6 @@ class Editor(QObject):
         for the ones that are only there."""
         return [s for s in self.primer_sites if s.label not in self.hidden_primers
                 and (self.show_file_primers if s.from_file else self.show_db_primers)]
-
-    def hidden_alone(self):
-        """Keys of the gene groups whose gene feature is not drawn because its one CDS is (see `cds_only`): such a CDS is drawn
-        by itself, not folded into its gene on the map."""
-        return self.redundant_keys if self.cds_only else set()
 
     def visible(self, f):
         """Drawn, as far as the display filter goes? Transcription units have a switch of their own (their type, mRNA,
@@ -1096,8 +1107,7 @@ class Editor(QObject):
         the last copy in this app), the copied features come along (one undo step)."""
         clip = clip or Editor.clip
         if clip and text == clip[0] and text:
-            features = retag(clip[1], set(self.groups))  # a pasted gene is a new gene
-            return self._replace_selection(text, features)
+            return self._replace_selection(text, clip[1])
         try:
             bases = clean_pasted(text)
         except ValueError as err:
@@ -1200,16 +1210,7 @@ class Editor(QObject):
     def set_feature(self, index, kind, location, qualifiers):
         """Add (index None) or replace a feature, then select it.
         Raises OSError/ValueError on bad input, so a dialog can show it and stay open."""
-        key = self.part_of.get(index)
         index = self.doc.set_feature(index, kind, location, qualifiers)
-        if key is not None and key in self.groups:
-            # A part changed: grow its gene to still cover it, in the same undo step
-            # (undo the single change, redo both as one).
-            f = next(f for f in self.doc.features() if f.index == index)
-            grow = fitted_master(self, key, (index, *span_of([f])))
-            if grow:
-                self.doc.undo()
-                self.doc.edit_features([(index, (kind, location, qualifiers)), grow])
         self._changed()
         self.select_feature(index)
         return index
@@ -1328,9 +1329,10 @@ class Editor(QObject):
             if needle in text:
                 hits.append((*feature_bounds(f), f.index))
         for t in self.tracks:
-            for seq, s, e, *_ in t.track.search(q, 500):
-                if seq == t.seqid:
-                    hits.append((s, e, None))
+            found = t.track.search(q, TRACK_HITS, t.seqid)
+            if len(found) >= TRACK_HITS:
+                self.error.emit(f"{t.name}: more than {TRACK_HITS:,} items match: Next and Previous see the first {TRACK_HITS:,} of them.")
+            hits += [(s, e, None) for _, s, e, *_ in found]
         for site in self.primer_sites:
             if needle in site.label.lower():
                 hits.append((site.spans[0][0], site.spans[0][1], None))
@@ -1348,7 +1350,7 @@ class Editor(QObject):
         hits = find_primers(self.doc.sequence(), self.doc.circular, [p for _, p in primers], 0)
         out, written = [], set()
         for (name, seq), found in zip(primers, hits):
-            for s, e, strand, _ in found[:MAX_SITES]:
+            for s, e, strand, _ in found:   # (every exact site: a file keeps what other programs read from it)
                 written.add((name, seq.upper()))
                 out.append((PRIMER_KIND, site_location(s, e, strand, self.length),
                             [("label", name), ("note", f"sequence: {seq}")]))
@@ -1367,8 +1369,8 @@ class Editor(QObject):
             if needle == f.label.lower() or any(k in NAME_KEYS and v and v.lower() == needle for k, v in f.qualifiers):
                 return (*feature_bounds(f), f.index)
         for t in self.tracks:
-            for seq, s, e, _, item_name, _ in t.track.search(name, 500):
-                if seq == t.seqid and item_name.lower() == needle:
+            for _, s, e, _, item_name, _ in t.track.search(name, TRACK_HITS, t.seqid):
+                if item_name.lower() == needle:
                     return (s, e, None)
         return self.find(name, -1)
 

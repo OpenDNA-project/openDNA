@@ -88,7 +88,7 @@ Checks local_align.clean_query on accepted formats and on errors with their mess
 
 ## `test_folder_search_finds_a_query_in_its_file_record_place_and_strand`
 
-**Result:** ✅ passed in 1.29 s · [line 421](../../tests/test_core_alignment.py#L421) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.33 s · [line 421](../../tests/test_core_alignment.py#L421) · **Area:** Folder Search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file.
 
@@ -107,6 +107,7 @@ Searches the demo folder and a temporary folder with search_folder and checks th
 
 - The cancellation check is weak: the query ACGTACGTACGT would almost certainly not be found in that folder anyway, so a search that ignores cancelled() would still pass.
 - 'files >= 5' depends on the contents of demo/.
+- The tiny a.fa of the cancellation step is deleted before the PER_FILE step: a one-record FASTA is circular, and a 60 bp query longer than its 4 bp adds a note of its own.
 
 **Fixed by the audit of November 2026:**
 

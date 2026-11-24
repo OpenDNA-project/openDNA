@@ -42,7 +42,7 @@ def records_of(path):
     if is_fasta_file(path):
         fasta = Fasta(str(path))
         for name, length in fasta.sequences():
-            yield name, fasta.fetch(name, 0, int(length)), False   # (FASTA has no topology: searched as linear)
+            yield name, fasta.fetch(name, 0, int(length)), fasta.circular(name)
     elif multigb.is_multi_genbank(path):
         for name, _length, _circular in multigb.records(path):
             doc = multigb.read_record(path, name)

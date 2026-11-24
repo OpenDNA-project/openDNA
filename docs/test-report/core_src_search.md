@@ -4,7 +4,7 @@
 
 ## `finds_an_exact_motif_on_both_strands_in_position_order`
 
-**Result:** ✅ passed · [line 333](../../core/src/search.rs#L333) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 347](../../core/src/search.rs#L347) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Sequence search could miss bottom-strand hits, report palindromes twice, ignore the top-strand-only option, or be case-sensitive.
 
@@ -22,7 +22,7 @@ Exact motif search finds palindromes once, finds a motif via its reverse complem
 
 ## `iupac_letters_in_the_query_match_every_base_they_stand_for`
 
-**Result:** ✅ passed · [line 348](../../core/src/search.rs#L348) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 362](../../core/src/search.rs#L362) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** IUPAC search queries could miss bases they stand for, or an N in the sequence could match everything, giving false or missing hits.
 
@@ -35,9 +35,29 @@ IUPAC codes in the query match all bases they stand for; with IUPAC off, R is in
 | 3 | 'ACGTNCGT' 'GTACGT' / 'GTNCGT' | empty / 1 hit |
 | 4 | 'GAXTTC' | empty |
 
+## `an_ambiguity_code_in_the_sequence_fits_a_query_that_accepts_all_it_stands_for`
+
+**Result:** ✅ passed · [line 381](../../core/src/search.rs#L381) · **Area:** Motif search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** A hit on a sequence holding R, Y or U could be lost without a word, so a search or a digest of a draft assembly reports fewer places than exist.
+
+A sequence ambiguity code fits a query position that accepts every base it stands for (R fits R and N, not A, which costs one mismatch); U counts as T; lower case works; the reverse strand and IUPAC-off queries behave; check_motif names a letter that cannot be searched.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | sequence AAGARTTCAA, queries GARTTC / GANTTC / GAATTC (IUPAC on) | hit at 2; hit; none (1 mismatch allowed: hit with 1 mismatch) |
+| 2 | 'ggaauucc', GAATTC | 1 hit (U is T, lower case) |
+| 3 | AAGARTTCAA, GAGTTC with IUPAC off | none |
+| 4 | 'TTCCYGGTT', CCRGG, both strands | one hit at 2 on the reverse strand |
+| 5 | check_motif on GARTTC (on and off), GAXTTC, GANTTC (off), empty | ok; error naming 'R' when off; error naming 'X'; ok; ok |
+
+**Review notes:**
+
+- find_motifs (the enzyme pass) gets the same table; many_motifs_in_one_pass_match_find_motif_one_by_one compares it with find_motif over a sequence holding N, R, y and U.
+
 ## `allows_a_number_of_mismatches_and_reports_how_many`
 
-**Result:** ✅ passed · [line 367](../../core/src/search.rs#L367) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 401](../../core/src/search.rs#L401) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Search with mismatches allowed could miss near-matches or report a wrong mismatch count.
 
@@ -50,7 +70,7 @@ Fuzzy search returns hits with up to N mismatches and reports the count, on both
 
 ## `a_hit_can_run_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed · [line 379](../../core/src/search.rs#L379) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 413](../../core/src/search.rs#L413) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A motif crossing the origin of a plasmid could be missed by the search.
 
@@ -63,7 +83,7 @@ On a circular sequence a motif split across the origin is found (end > length), 
 
 ## `many_motifs_in_one_pass_match_find_motif_one_by_one`
 
-**Result:** ✅ passed · [line 392](../../core/src/search.rs#L392) · **Area:** Sequence search (DNA motif) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 426](../../core/src/search.rs#L426) · **Area:** Sequence search (DNA motif) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Restriction sites (map, sequence, Enzymes table, digests, cloning) could be missed or invented by the one-pass search that replaced the Python one.
 
@@ -82,7 +102,7 @@ find_motifs (all the enzymes' sites in one pass, used by every restriction-site 
 
 ## `cuts_mirror_on_the_bottom_strand_wrap_on_a_circle_and_stop_at_linear_ends`
 
-**Result:** ✅ passed · [line 416](../../core/src/search.rs#L416) · **Area:** Restriction enzymes · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 450](../../core/src/search.rs#L450) · **Area:** Restriction enzymes · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Enzyme cut positions (map, sequence, digests, cloning) could be wrong for Type IIS enzymes on the bottom strand, through the origin or at linear ends.
 
@@ -97,7 +117,7 @@ find_cuts turns site hits into (top, bottom) cut positions: as given on the top 
 
 ## `stops_at_the_limit_and_handles_tiny_and_empty_inputs`
 
-**Result:** ✅ passed · [line 431](../../core/src/search.rs#L431) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 465](../../core/src/search.rs#L465) · **Area:** Sequence search (DNA motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A search could run past its hit limit or crash on an empty or very short sequence or query.
 
@@ -115,7 +135,7 @@ The hit limit is honoured and empty or too-short inputs return nothing without p
 
 ## `finds_a_protein_motif_in_all_six_frames`
 
-**Result:** ✅ passed · [line 441](../../core/src/search.rs#L441) · **Area:** Sequence search (protein motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 475](../../core/src/search.rs#L475) · **Area:** Sequence search (protein motif) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Protein motif search could miss hits in some frames, report wrong DNA coordinates, or mishandle X wildcards and stops.
 

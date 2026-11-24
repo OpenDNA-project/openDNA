@@ -15,9 +15,10 @@ from PySide6.QtCore import QSettings, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QFont, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QPushButton,
-    QVBoxLayout,
+    QTextBrowser, QVBoxLayout,
 )
 
+import changelog
 import feedback
 import online
 import project
@@ -49,7 +50,7 @@ TIPS = [
     "Ctrl+Shift+C copies the reverse complement of the selected bases.",
     "F3 and Shift+F3 jump to the next or previous match of your search.",
     "Ctrl+R and Ctrl+Shift+R make a forward or reverse primer from the selection; Ctrl+Shift+P opens New Primer.",
-    "Ctrl+E edits the clicked feature; Ctrl+Shift+E groups features as a gene.",
+    "Ctrl+E edits the clicked feature.",
     "Ctrl+H opens the History panel: every change, in order.",
     "Ctrl+Shift+L locks and unlocks the DNA, so the bases cannot be changed by accident.",
     "Ctrl+Shift+B opens Local Align.",
@@ -104,14 +105,17 @@ def welcome_html():
             "(Help &gt; Report a Problem).")
 
 
-def whats_new():
-    """The notes of this version, the first time the page opens after an update (not on a first install: nothing was "before");
-    None otherwise. Remembers the version, so the notes show once."""
-    seen = settings().value("sponsors/seen_version", "")
-    settings().setValue("sponsors/seen_version", project.VERSION)
-    if seen and seen != project.VERSION:
-        return project.WHATS_NEW.get(project.VERSION)
-    return None
+class ChangelogDialog(QDialog):
+    """The whole CHANGELOG.md, every version."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"{project.NAME} changelog")
+        self.resize(640, 640)
+        view = QTextBrowser()
+        view.setMarkdown(changelog.text())
+        layout = QVBoxLayout(self)
+        layout.addWidget(view)
 
 
 def tip_of_the_day(offset=0):
@@ -147,11 +151,12 @@ class SponsorsDialog(QDialog):
         logo.setPixmap(wordmark(dark))
         title = QLabel(welcome_html(), wordWrap=True, openExternalLinks=True)
 
-        notes = whats_new()
-        self.news = QLabel(f"<b>New in {html.escape(project.VERSION)}</b><ul style='margin: 0'>"
-                           + "".join(f"<li>{html.escape(n)}</li>" for n in notes) + "</ul>" if notes else "",
-                           wordWrap=True, frameShape=QFrame.StyledPanel)
+        notes = changelog.section(project.VERSION)   # shown at every opening: the changelog is the page's news
+        self.news = QLabel(f"**New in {project.VERSION}**\n\n{notes}" if notes else "", textFormat=Qt.MarkdownText, wordWrap=True,
+                           frameShape=QFrame.StyledPanel)
         self.news.setVisible(bool(notes))
+        self.full_changelog = QPushButton("Full changelog…", clicked=lambda: ChangelogDialog(self).exec())
+        self.full_changelog.setVisible(bool(changelog.text()))
 
         # Recent files: pinned ones first (bold), then the others; the whole path as tooltip (two files of the same name differ by
         # their folder).
@@ -188,6 +193,7 @@ class SponsorsDialog(QDialog):
         left = QVBoxLayout()
         left.addWidget(title)
         left.addWidget(self.news)
+        left.addWidget(self.full_changelog, alignment=Qt.AlignLeft)
         left.addSpacing(8)
         left.addWidget(_heading("RECENT FILES"))
         left.addWidget(self.recent, 1)

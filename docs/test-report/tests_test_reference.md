@@ -4,11 +4,11 @@
 
 ## `test_off_target_search_covers_every_record`
 
-**Result:** ✅ passed in 0.07 s · [line 79](../../tests/test_reference.py#L79) · **Area:** Off-target search (reference genome) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.16 s · [line 79](../../tests/test_reference.py#L79) · **Area:** Off-target search (reference genome) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer and guide off-target checks could miss copies on the second or later chromosome, report the open sequence as its own off-target, show green after a search that timed out, or lose/double hits at window edges.
 
-With a fake 3-record genome, checks the primer genome check finds copies on chr2 and chr3, excludes the open record, treats incomplete searches as not conclusive, flags a 3' copy as warning and a clean primer as ok; also checks multi-record GenBank references, the Cas9 guide finder counting every record, and windowed search equals whole search.
+With a fake 3-record genome, checks the primer genome check finds copies on chr2 and chr3, excludes the open record, treats incomplete searches as not conclusive, flags a 3' copy as warning and a clean primer as ok; also checks multi-record GenBank references, the Cas9 guide finder counting every record, and windowed search equals whole search. A one-record FASTA is circular: a site across its origin is found once, in the windowed search too.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -20,6 +20,7 @@ With a fake 3-record genome, checks the primer genome check finds copies on chr2
 | 6 | GenBank file of recA (circular, 400 bp) + recB (primer inside) | count 2, records [recA, recB], recA circular; whole hits only recB; searched 2; complete; sequences() names [recA, recB] |
 | 7 | SpCas9 guide with copies (AGG, CGG PAM) on c2 and c3 of a 3-record FASTA | genome count 2, genome_name '3 sequences'; verdict 'bad' |
 | 8 | 1000 bp record with primer at 395 (spans 400 window edge) and RC at 700; WINDOW set to 100 | windowed whole and hits equal unwindowed; 2 whole hits at 395 and 700 |
+| 9 | one-record FASTA of 1000 bp holding the primer cut 14\|10 at the origin, WINDOW 100; then the header tagged [topology=linear] | one whole site (990, 1014) found once; tagged linear: none |
 
 **Review notes:**
 
@@ -28,7 +29,7 @@ With a fake 3-record genome, checks the primer genome check finds copies on chr2
 
 ## `test_ncbi_genome_search_and_download`
 
-**Result:** ✅ passed in 0.02 s · [line 184](../../tests/test_reference.py#L184) · **Area:** NCBI genome download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 191](../../tests/test_reference.py#L191) · **Area:** NCBI genome download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, searching NCBI for a reference genome could build wrong URLs, and downloading one could produce a broken FASTA (records joined without newlines), leave partial files, or download the same genome repeatedly.
 

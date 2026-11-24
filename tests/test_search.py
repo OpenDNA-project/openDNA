@@ -12,7 +12,7 @@ os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 
-from opendna_core import Document
+from opendna_core import Document, find_motif
 
 import primer_db
 import search
@@ -72,6 +72,13 @@ def test_sequence_search_engine(tmp_path):
     assert search.search_sequence(ed, "GRATTC", Options(iupac=False))[0] == []
     # N in the query matches anything
     assert (700, 710) in spans(search.search_sequence(ed, "ACGTNCGTAC", Options())[0])
+    # an ambiguity code in the sequence fits a query that accepts all it stands for; the core refuses a letter it cannot search for
+    assert find_motif("TTGARTTCTT", "GARTTC", 0, True, False) == [(2, 8, 1, 0)]
+    assert find_motif("TTGARTTCTT", "GAATTC", 0, True, False) == []
+    with pytest.raises(ValueError, match="IUPAC codes are off"):
+        find_motif("TTGAATTCTT", "GARTTC", 0, False)
+    with pytest.raises(ValueError, match="not a base"):
+        find_motif("TTGAATTCTT", "GAXTTC")
     # every hit and only those: a brute-force scan of both strands with the IUPAC table (a palindrome is one hit)
     for query in ("GRATTC", "ACGTNCGTAC", "GGATCCAAAT"):
         found = search.search_sequence(ed, query, Options())[0]

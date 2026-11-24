@@ -28,6 +28,7 @@ from reference import as_reference
 from tools import ToolDialog
 from data_table import DataTable
 from uikit import fit_columns, no_auto_default, plural, run_busy
+from user_error import UserError
 
 # Nuclease and NUCLEASES (and cut_places) live in cut_sites.py (the view and the tooltips need them without this tool)
 IUPAC = {"A": "A", "C": "C", "G": "G", "T": "T", "N": "[ACGT]", "R": "[AG]", "Y": "[CT]", "S": "[CG]", "W": "[AT]",
@@ -123,6 +124,7 @@ def guide_row(nuclease, g, spec, n):
     mark, text = verdict(spec, g)
     return {"start": g.start % n + 1, "end": (g.end - 1) % n + 1, "strand": g.strand, "guide": g.guide, "pam": g.pam, "gc": g.gc, "score": g.score,
             "cut": cut_text(nuclease, g, n), "other_sites_here": None if spec is None else spec.here, "other_sites_genome": None if spec is None else spec.genome,
+            "places_next_to_n": None if spec is None else spec.skipped,
             "mark": mark, "verdict": text}
 
 
@@ -131,7 +133,7 @@ def seed_mismatches(mask, length):
     return bin(mask >> max(length - SEED, 0)).count("1")
 
 
-Specificity = namedtuple("Specificity", "here genome genome_name")   # each: counts of other sites by mismatch count, or None
+Specificity = namedtuple("Specificity", "here genome genome_name skipped")   # here, genome: counts of other sites by mismatch count (genome: or None); skipped: places hidden by an N in the DNA
 
 
 def _counts(hits, length, max_mm, own=None):
@@ -144,6 +146,14 @@ def _counts(hits, length, max_mm, own=None):
     return counts
 
 
+def _search(text, circular, seqs, nuclease, max_mm):
+    """core.find_guide_sites -> (sites per guide, places hidden by an N per guide); a guide the core refuses (length) is a UserError."""
+    try:
+        return core.find_guide_sites(text, circular, seqs, nuclease.pam, max_mm, nuclease.pam_first)
+    except ValueError as e:
+        raise UserError(f"{nuclease.name}: {e}") from e
+
+
 class Cancelled(Exception):
     """A scan stopped because `cancel()` said so."""
 
@@ -154,7 +164,7 @@ def scan(text, circular, name, guides, nuclease, max_mm=3, ref=None, cancel=None
     A site that is the guide itself is left out. If `ref` is that same sequence it is not scanned twice. `cancel()` -> True
     stops the scan (between two sequences of the reference) by raising Cancelled."""
     n, seqs = len(text), [g.guide for g in guides]
-    here = core.find_guide_sites(text, circular, seqs, nuclease.pam, max_mm, nuclease.pam_first)
+    here, skipped = _search(text, circular, seqs, nuclease, max_mm)
     ref = as_reference(ref)
     same = ref is not None and ref.single and ref.name == name and ref.length == n
     # Every sequence of the reference (all chromosomes of a multi-record FASTA), one at a time, counts add up.
@@ -166,12 +176,14 @@ def scan(text, circular, name, guides, nuclease, max_mm=3, ref=None, cancel=None
                 raise Cancelled()
             if not ref.single and (rname, len(rtext)) == (name, n):
                 continue   # the open sequence is one of the genome's: not compared with itself
-            for total, hits in zip(far, core.find_guide_sites(rtext, rcircular, seqs, nuclease.pam, max_mm, nuclease.pam_first)):
+            sites, more = _search(rtext, rcircular, seqs, nuclease, max_mm)
+            for k, (total, hits) in enumerate(zip(far, sites)):
                 total[:] = [a + b for a, b in zip(total, _counts(hits, nuclease.length, max_mm))]
+                skipped[k] += more[k]
     out = []
-    for g, h, f in zip(guides, here, far or [None] * len(guides)):
+    for g, h, f, k in zip(guides, here, far or [None] * len(guides), skipped):
         out.append(Specificity(_counts(h, nuclease.length, max_mm, (g.start % n, g.strand) if n else None), f,
-                               ref.name if far is not None else None))
+                               ref.name if far is not None else None, k))
     return out
 
 
@@ -199,6 +211,9 @@ def verdict(spec, g):
         elif sum(spec.genome[1:3]):
             worse("warn")
             reasons.append(f"{plural(sum(spec.genome[1:3]), 'similar site')} in {spec.genome_name} (up to 2 mismatches)")
+    if spec.skipped:
+        worse("warn")
+        reasons.append(f"{plural(spec.skipped, 'place')} next to an N in the DNA could be another site (not counted)")
     if g.score < 70:
         worse("warn")
         reasons.extend(g.notes)

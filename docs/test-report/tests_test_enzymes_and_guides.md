@@ -4,7 +4,7 @@
 
 ## `test_cut_finder_the_common_list_and_the_filter`
 
-**Result:** ✅ passed in 0.01 s · [line 57](../../tests/test_enzymes_and_guides.py#L57) · **Area:** Restriction site finding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 58](../../tests/test_enzymes_and_guides.py#L58) · **Area:** Restriction site finding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the program could report cut positions at the wrong base (or miss sites on the bottom strand, across the origin, or with IUPAC codes), so every digest, map and cloning plan built on them would be wrong.
 
@@ -27,7 +27,7 @@ Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both
 
 ## `test_what_a_cut_says_about_itself`
 
-**Result:** ✅ passed in 0.09 s · [line 139](../../tests/test_enzymes_and_guides.py#L139) · **Area:** Restriction site tooltips · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.10 s · [line 140](../../tests/test_enzymes_and_guides.py#L140) · **Area:** Restriction site tooltips · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the tooltip a user reads before ordering a digest could state the wrong cut base, the wrong overhang or the wrong strand, which is the only place those numbers are explained.
 
@@ -49,7 +49,7 @@ Checks the generated tooltip text for a 5' overhang, a 3' overhang, a blunt cutt
 
 ## `test_guide_candidates_cuts_and_scores`
 
-**Result:** ✅ passed in 0.00 s · [line 186](../../tests/test_enzymes_and_guides.py#L186) · **Area:** CRISPR guide finding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 187](../../tests/test_enzymes_and_guides.py#L187) · **Area:** CRISPR guide finding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the Spacer Finder could list guides with the wrong PAM, the wrong strand or a cut site in the wrong place, so a user would order a guide that cuts somewhere other than shown.
 
@@ -70,11 +70,11 @@ Checks SpCas9 guide candidates on both strands with their blunt cut 3 bp from th
 
 ## `test_other_guide_sites_here_and_in_a_genome`
 
-**Result:** ✅ passed in 0.01 s · [line 239](../../tests/test_enzymes_and_guides.py#L239) · **Area:** CRISPR off-target search · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 240](../../tests/test_enzymes_and_guides.py#L240) · **Area:** CRISPR off-target search · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
-**Why it matters:** Without it, the off-target counts and the good/warn/bad verdict a user relies on when choosing a guide could be wrong, or the fast Rust search could silently miss sites a careful search would find.
+**Why it matters:** Without it, the off-target counts and the good/warn/bad verdict a user relies on when choosing a guide could be wrong, or the fast Rust search could silently miss sites a careful search would find. It also guards against a guide being silently left unchecked, or a site hidden by an N being silently left out.
 
-Checks off-target counting by mismatch class in the construct and in a reference genome, the verdict each situation gives, that seed mismatches (next to the PAM) are weighted, that a genome identical to the sequence is not scanned twice, and that the Rust search returns exactly what a brute-force Python search returns.
+Checks off-target counting by mismatch class in the construct and in a reference genome, the verdict each situation gives, that seed mismatches (next to the PAM) are weighted, that a genome identical to the sequence is not scanned twice, and that the Rust search returns exactly what a brute-force Python search returns. It also checks that a guide the core cannot hold is refused with a UserError, and that a place hidden by an N in the DNA at the PAM is counted in `skipped` and gives a warning.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -86,10 +86,12 @@ Checks off-target counting by mismatch class in the construct and in a reference
 | 6 | Cas12a sequence with the guide twice | 2 candidates; scanning the first gives here == [1,0] (PAM counted before the protospacer) |
 | 7 | seed_mismatches for bit masks 1, 1<<19, (1<<19)\|(1<<7)\|1, (1<<8)\|(1<<12) over 20 nt | 0, 1, 1, 2 - only the bases next to the PAM count |
 | 8 | 4000 random bases, 3 guides, core.find_guide_sites with NGG and 2 mismatches | the set of (position, strand) hits equals a plain Python scan of both strands |
+| 9 | a guide of 65 bases given to cas9.scan | UserError mentioning '1 to 64' (not an empty 'no sites' answer) |
+| 10 | a sequence holding the guide with an AGG PAM, then a second copy with PAM 'ANG' (unknown base), max 1 mismatch | here == [0,0] (the unknown-base copy is not counted as a site), spec.skipped == 1, verdict 'warn' |
 
 ## `test_a_saved_guide_site_is_read_back_and_round_trips_in_the_file`
 
-**Result:** ✅ passed in 0.02 s · [line 304](../../tests/test_enzymes_and_guides.py#L304) · **Area:** Guide site storage and display · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 314](../../tests/test_enzymes_and_guides.py#L314) · **Area:** Guide site storage and display · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a saved guide could come back from a GenBank file with the protospacer, PAM or cut drawn in the wrong place, be unreadable in other software, or break for files written under the program's former name.
 

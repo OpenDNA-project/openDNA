@@ -29,7 +29,7 @@ PANELS = {
         ("Shift+click a primer", "With a primer on the other strand selected: select the product"),
         ("Double-click a feature or primer", "Edit it"),
         ("Right-click a feature", "Edit / delete / show its translation"),
-        ("Right-click selected bases", "Add primer F / R, add feature, add gene, copy, copy reverse complement"),
+        ("Right-click selected bases", "Add primer F / R, add feature, copy, copy reverse complement"),
         ("Ctrl+R / Ctrl+Shift+R", "New forward / reverse primer from the selected bases"),
         ("Ctrl+wheel, Ctrl+= / Ctrl+-", "Bigger / smaller letters"),
         ("Ctrl+0", "Default letter size"),
@@ -60,7 +60,7 @@ PANELS = {
         ("Click a row", "Select the feature"),
         ("Delete", "Delete the selected feature(s)"),
         ("Click ▸ / ▾", "Show / hide the parts of a gene"),
-        ("Right-click", "Delete, hide/show (all selected rows), group as gene, add to the Features Database…"),
+        ("Right-click", "Delete, hide/show (all selected rows), add to the Features Database…"),
     ],
     "History panel": [
         ("Select a change + button (or double-click)", "Go back to just before it (undoes it and all later ones)"),

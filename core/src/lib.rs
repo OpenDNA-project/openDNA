@@ -98,10 +98,18 @@ impl Document {
         Ok(Document { inner })
     }
 
-    /// GC fraction per bin over [start, end) (NaN = empty bin).
+    /// GC fraction per bin over [start, end) (NaN = empty bin). On a circular sequence `end` may pass the length (up to one lap): the
+    /// bases past it are the start of the sequence; on a linear one that part is clipped.
     fn gc_bins(&self, py: Python<'_>, start: usize, end: usize, bins: usize) -> Vec<f32> {
         let inner = &self.inner;
         py.allow_threads(|| inner.gc_bins(start, end, bins))
+    }
+
+    /// What the file held that was not read (a .dna feature without a position, an EMBL record without `//`...), as sentences;
+    /// [] for a clean file.
+    #[getter]
+    fn notes(&self) -> Vec<String> {
+        self.inner.notes.clone()
     }
 
     /// Write FASTA `dst`: a copy of `src` with this sequence replacing its record.
@@ -199,7 +207,7 @@ impl Document {
         self.inner.record.features.iter().enumerate().map(|(i, f)| Feature::from_gb(i, f)).collect()
     }
 
-    /// Features overlapping [start, end).
+    /// Features overlapping [start, end). On a circular sequence `end` may pass the length: the part past it is the start of the sequence.
     fn features_in(&self, start: i64, end: i64) -> Vec<Feature> {
         let all = &self.inner.record.features;
         self.inner.features_in(start, end).into_iter().map(|i| Feature::from_gb(i, &all[i])).collect()
@@ -436,7 +444,8 @@ impl Document {
     }
 
     /// `primers`: list of (kind, location, qualifiers) written instead of the document's
-    /// own primer_bind features (the app passes the current primer sites).
+    /// own primer_bind features (the app passes the current primer sites). It replaces EVERY stored primer_bind: one that must stay (no exact
+    /// site, say) has to be in the list, as the app's `Editor.file_primer_features` does.
     #[pyo3(signature = (path, primers=None))]
     /// The file is written from a copy with Python's lock released and no borrow of the document held, so the window can draw
     /// it meanwhile; the caller keeps it unedited until this returns (run_busy), since it is then marked saved.
@@ -503,6 +512,12 @@ impl Fasta {
         self.inner.entries.iter().map(|e| (e.name.clone(), e.length)).collect()
     }
 
+    /// Python: `fa.circular("chr1")` -> bool: the header tag `[topology=circular|linear]`, else a one-sequence file is circular.
+    fn circular(&mut self, py: Python<'_>, name: &str) -> PyResult<bool> {
+        let inner = &mut self.inner;
+        Ok(py.allow_threads(|| inner.circular(name))?)
+    }
+
     /// Python: `fa.search("chr1", "GAATTC")` -> [(start, strand)], both strands, exact.
     fn search(&mut self, py: Python<'_>, name: &str, motif: &str) -> PyResult<Vec<(u64, i8)>> {
         let inner = &mut self.inner;
@@ -523,6 +538,7 @@ impl Fasta {
         limit: usize,
     ) -> PyResult<Vec<(usize, usize, i8, usize)>> {
         let inner = &mut self.inner;
+        search::check_motif(motif.as_bytes(), iupac).map_err(pyo3::exceptions::PyValueError::new_err)?;
         let hits = py.allow_threads(|| inner.search_motif(name, motif.as_bytes(), max_mismatches, iupac, both, limit))?;
         Ok(hits.into_iter().map(|h| (h.start, h.end, if h.forward { 1 } else { -1 }, h.mismatches)).collect())
     }
@@ -559,6 +575,12 @@ impl Track {
         self.inner.sequences()
     }
 
+    /// What the file held that was not read (lines that are not valid, counted, the first one named), as sentences; [] when all was read.
+    #[getter]
+    fn notes(&self) -> Vec<String> {
+        self.inner.notes.clone()
+    }
+
     /// (items overlapping [start, end) as (start, end, strand, name, kind), more_than_limit)
     #[pyo3(signature = (seq, start, end, limit=5000))]
     fn query(&self, py: Python<'_>, seq: &str, start: u64, end: u64, limit: usize) -> (Vec<TrackItem>, bool) {
@@ -573,13 +595,14 @@ impl Track {
         py.allow_threads(|| inner.density(seq, start, end, bins))
     }
 
-    /// [(sequence, start, end, strand, name, kind)] whose name contains `needle`.
-    #[pyo3(signature = (needle, limit=200))]
-    fn search(&self, py: Python<'_>, needle: &str, limit: usize) -> Vec<(String, u64, u64, i8, String, String)> {
+    /// [(sequence, start, end, strand, name, kind)] whose name contains `needle`, at most `limit`; with `seq`, only those on
+    /// that sequence (the limit counts only them).
+    #[pyo3(signature = (needle, limit=200, seq=None))]
+    fn search(&self, py: Python<'_>, needle: &str, limit: usize, seq: Option<String>) -> Vec<(String, u64, u64, i8, String, String)> {
         let inner = &self.inner;
         py.allow_threads(|| {
             inner
-                .search(needle, limit)
+                .search(needle, limit, seq.as_deref())
                 .into_iter()
                 .map(|(s, i)| (s.to_string(), i.start, i.end, i.strand, i.name.clone(), i.kind.clone()))
                 .collect()
@@ -762,6 +785,7 @@ fn find_primers(
 /// `opendna_core.find_motif(seq, motif, max_mismatches=0, iupac=True, both=True, circular=False, limit=100000)`: where a DNA
 /// motif occurs (IUPAC letters allowed, up to `max_mismatches` positions differing, on the top strand and with `both` as its
 /// reverse complement), as (start, end, strand, mismatches) in order of position; see search.rs. Takes a copy of the sequence.
+/// A letter of `motif` that cannot be searched for (not a base, or an IUPAC code with `iupac` off) is a ValueError.
 #[pyfunction]
 #[pyo3(signature = (seq, motif, max_mismatches=0, iupac=true, both=true, circular=false, limit=100_000))]
 fn find_motif(
@@ -773,13 +797,14 @@ fn find_motif(
     both: bool,
     circular: bool,
     limit: usize,
-) -> Vec<(usize, usize, i8, usize)> {
-    py.allow_threads(|| {
+) -> PyResult<Vec<(usize, usize, i8, usize)>> {
+    search::check_motif(motif.as_bytes(), iupac).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    Ok(py.allow_threads(|| {
         search::find_motif(seq.as_bytes(), motif.as_bytes(), max_mismatches, iupac, both, circular, limit)
             .into_iter()
             .map(|h| (h.start, h.end, if h.forward { 1 } else { -1 }, h.mismatches))
             .collect()
-    })
+    }))
 }
 
 /// `opendna_core.find_motifs(seq, motifs, circular=False)`: for each motif (IUPAC letters), its exact places on both strands as
@@ -845,11 +870,13 @@ fn translate(seq: &str, table: u8) -> String {
     String::from_utf8(code::by_id_or_standard(table).translate(seq.as_bytes())).unwrap_or_default()
 }
 
-/// `opendna_core.find_guide_sites(template, circular, guides, pam, max_mismatches, pam_first)`: every site of each
-/// guide (protospacer + PAM, or PAM + protospacer for a Cas12a-type nuclease: `pam_first`) on either strand, with at most `max_mismatches` mismatches in the protospacer, as one
-/// list per guide of (start, end, strand, mismatches, mask). `mask` bit i = guide base i (0 = 5' end) mismatches.
-/// `end` may pass the length on a circular template. Takes a copy of the sequence, like `find_primers`, so it can
-/// run in a background thread. All guides must have the same length (at most 32).
+/// `opendna_core.find_guide_sites(template, circular, guides, pam, max_mismatches, pam_first)`: (sites, skipped).
+/// `sites` is, for each guide (protospacer + PAM, or PAM + protospacer for a Cas12a-type nuclease: `pam_first`) on either
+/// strand with at most `max_mismatches` mismatches in the protospacer, a list of (start, end, strand, mismatches, mask).
+/// `mask` bit i = guide base i (0 = 5' end) mismatches. `end` may pass the length on a circular template.
+/// `skipped` is, for each guide, the count of places that would be sites if an unknown base N of the DNA in the PAM were any base.
+/// Takes a copy of the sequence, like `find_primers`, so it can run in a background thread. All guides must have
+/// the same length (1 to 64), else ValueError.
 #[pyfunction]
 #[pyo3(signature = (template, circular, guides, pam, max_mismatches=3, pam_first=false))]
 fn find_guide_sites(
@@ -860,16 +887,20 @@ fn find_guide_sites(
     pam: &str,
     max_mismatches: usize,
     pam_first: bool,
-) -> Vec<Vec<(usize, usize, i8, usize, u32)>> {
+) -> PyResult<(Vec<Vec<(usize, usize, i8, usize, u64)>>, Vec<usize>)> {
     let guides: Vec<Vec<u8>> = guides.into_iter().map(String::into_bytes).collect();
     // allow_threads lets other Python threads run while Rust searches.
-    let found = py.allow_threads(|| cas9::find_sites(template.as_bytes(), circular, &guides, pam.as_bytes(), max_mismatches, pam_first));
-    found
+    let found = py
+        .allow_threads(|| cas9::find_sites(template.as_bytes(), circular, &guides, pam.as_bytes(), max_mismatches, pam_first))
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let sites = found
+        .sites
         .into_iter()
         .map(|sites| {
             sites.into_iter().map(|s| (s.start, s.end, if s.forward { 1 } else { -1 }, s.mismatches, s.mask)).collect()
         })
-        .collect()
+        .collect();
+    Ok((sites, found.skipped))
 }
 
 /// `opendna_core.find_parts(template, circular, parts, coding, min_dna, min_protein)`:

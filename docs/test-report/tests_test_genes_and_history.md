@@ -2,27 +2,25 @@
 
 [← all test files](README.md) · source: [`tests/test_genes_and_history.py`](../../tests/test_genes_and_history.py)
 
-## `test_gene_groups_fold_their_parts_and_survive_edits`
+## `test_cds_only_hides_a_gene_at_exactly_a_cds_and_edits_keep_the_bases`
 
-**Result:** ✅ passed in 0.00 s · [line 59](../../tests/test_genes_and_history.py#L59) · **Area:** Gene grouping · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 56](../../tests/test_genes_and_history.py#L56) · **Area:** CDS only / editing · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-**Why it matters:** Without it, the feature list and map could fold the wrong features under a gene (or fail to fold them), and after editing the sequence a feature could end up covering bases it never covered.
+**Why it matters:** Without it, a gene feature that duplicates its CDS could stay drawn (or a gene that is not a duplicate could vanish), and after editing the sequence a feature could end up covering bases it never covered.
 
-Checks that features sharing a locus_tag or /gene fold under their gene while untagged or orphaned ones stay alone, which features each view is given under the cds_only and collapse_genes switches, and that after an insert before everything, a delete inside the gene, an insert inside the gene but outside the CDS, and an undo, every feature still covers exactly the bases it did.
+Checks that "CDS only" hides a gene feature at exactly the bases and strand of a CDS and keeps the others, and that after an insert before everything, a delete inside the gene, an insert inside the gene but outside the CDS, and an undo, every feature still covers exactly the bases it did.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | 9 features: gene/mRNA/CDS sharing L1, an untagged promoter, a solo misc_feature, a CDS with an unused tag L9, a gene+CDS sharing /gene abc, and an empty gene L2 | groups {L1, abc, L2}; L1 master 'gA' with parts ['mA','cA'] (ranked, then by position); abc master 'abc' with part 'abcCDS'; L2 has no parts |
-| 2 | part_of mapping | exactly mA, cA and abcCDS are parts; part_of[cA] == 'L1'; pA, solo and orphan are neither parts nor masters |
-| 3 | map_features / shown with cds_only on, then off, then collapse_genes off | {gA, pA, solo, orphan, abcCDS, g2} (the gene 'abc' hidden in favour of its single CDS); then {gA, pA, solo, orphan, abc, g2}; then every feature |
-| 4 | insert of 40 A's at position 0, then delete of bases 300-310 | groups unchanged; cA loses its 110th-120th bases; gA loses its 160th-170th; mA 10 bp shorter; pA, solo, orphan, abcCDS, abc and g2 cover the same bases as before |
-| 5 | genes.span_of on the L1 master and its parts | every part's span lies inside the gene's |
-| 6 | insert of CCCCC inside the gene but outside the CDS | the CDS covers the same bases; the gene is 5 bp longer; master still 'gA' |
-| 7 | undo_steps(3) | returns 3; every feature covers its original bases and the groups are {L1, abc, L2} again |
+| 1 | 7 features: gene 101..400 + CDS 151..390, a promoter, gene 900..1000 + CDS 900..1000, complement gene 1100..1200 + CDS 1100..1200 | shown = {gA, cA, pA, abcCDS, g2, c2}: only gene abc (same bases and strand as its CDS) is hidden, also from visible_features |
+| 2 | set_display(cds_only=False) | every feature is shown |
+| 3 | insert of 40 A's at position 0, then delete of bases 300-310 | cA loses its 110th-120th bases; gA loses its 160th-170th; pA, abcCDS, abc, g2 and c2 cover the same bases as before |
+| 4 | insert of CCCCC inside the gene but outside the CDS | the CDS covers the same bases; the gene is 5 bp longer |
+| 5 | undo of the three edits | every feature covers the bases it covered at the start |
 
 ## `test_history_texts`
 
-**Result:** ✅ passed in 0.01 s · [line 114](../../tests/test_genes_and_history.py#L114) · **Area:** Edit history wording · **Checked against:** regression value · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 90](../../tests/test_genes_and_history.py#L90) · **Area:** Edit history wording · **Checked against:** regression value · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the History panel - the user's only record of what an edit actually did - could describe an edit wrongly or lump several edits into one line, making a mistake impossible to trace back.
 

@@ -6,9 +6,9 @@
 //! an alignment ("diagonal": part placed at template position p - i), which is then scored
 //! over the whole part. Kept if identity >= min_dna.
 //!
-//! Protein level (coding parts only): the same on translated sequences, in the 3 frames
-//! of both strands, with 5-letter words. Finds codon-optimized versions of a protein,
-//! whose DNA differs a lot.
+//! Protein level (coding parts only, whether or not the part was found as DNA): the same on translated
+//! sequences, in the 3 frames of both strands, with 5-letter words. Finds codon-optimized versions of a
+//! protein, whose DNA differs a lot. On the bases of a DNA hit the DNA hit wins.
 //!
 //! shortcut: alignments are ungapped (substitutions only), so a part with an insertion
 //! or deletion inside is missed or split; add a banded gapped extension if that matters.
@@ -149,8 +149,9 @@ pub fn find_parts_with(
                 }
             }
         }
-        // Protein (coding parts not already found as DNA).
-        if coding.get(pi).copied().unwrap_or(false) && found.is_empty() {
+        // Protein (coding parts), also when a copy was found as DNA: a recoded second copy is another place. A protein
+        // hit on the bases of a DNA hit is dropped below (the DNA hit wins).
+        if coding.get(pi).copied().unwrap_or(false) {
             let mut prot = translate_with(&part, table);
             while prot.last() == Some(&b'*') {
                 prot.pop(); // the stop codon is not part of the protein
@@ -168,11 +169,16 @@ pub fn find_parts_with(
                 }
             }
         }
-        // Overlapping hits of the same part and strand: keep the best one.
-        found.sort_by(|a, b| b.identity.total_cmp(&a.identity));
+        // Overlapping hits of the same part and strand: keep the best one, a DNA hit before a protein one (equal: the
+        // first start, so the same hit is kept every run). On a circle a hit may run across the origin, so two hits
+        // also overlap when one, moved on by a whole lap (n), lands on the other.
+        found.sort_by(|a, b| a.protein.cmp(&b.protein).then(b.identity.total_cmp(&a.identity)).then(a.start.cmp(&b.start)));
         let mut kept: Vec<Hit> = Vec::new();
+        let overlap = |a: &Hit, b: &Hit, lap: usize| a.start < b.start + lap + b.len && b.start + lap < a.start + a.len;
         for h in found {
-            let overlaps = kept.iter().any(|k| k.forward == h.forward && h.start < k.start + k.len && k.start < h.start + h.len);
+            let overlaps = kept.iter().any(|k| {
+                k.forward == h.forward && (overlap(&h, k, 0) || (circular && (overlap(&h, k, n) || overlap(k, &h, n))))
+            });
             if !overlaps {
                 kept.push(h);
             }
@@ -238,6 +244,20 @@ mod tests {
         let simple: Vec<_> = hits.iter().map(|h| (h.part, h.start, h.len, h.forward, h.protein)).collect();
         assert_eq!(simple, vec![(0, 100, 40, true, false), (0, 565, 40, true, false), (1, 1105, 300, false, false), (0, n2 - 15, 40, true, false)]);
 
+        // --- a periodic part (15-base unit x 3) in a 60-base run of the unit across the origin: the copies at 990 and 5
+        // overlap on the circle (30 bases), so one is kept; linear: only the copy at 5 fits ---
+        let unit = random_dna(15, 9);
+        let run = unit.repeat(4);
+        let mut ring = run[10..].to_vec();
+        ring.extend(random_dna(940, 8));
+        ring.extend(&run[..10]);
+        assert_eq!(ring.len(), 1000);
+        let periodic = vec![unit.repeat(3)];
+        let hits = find_parts(&ring, true, &periodic, &[false], 0.95, 0.9);
+        assert_eq!(hits.iter().map(|h| h.start).collect::<Vec<_>>(), vec![5], "{hits:?}");
+        let hits = find_parts(&ring, false, &periodic, &[false], 0.95, 0.9);
+        assert_eq!(hits.iter().map(|h| h.start).collect::<Vec<_>>(), vec![5], "{hits:?}");
+
         // A recoded gene (synonymous codons): the DNA differs a lot, the protein not at all.
         let cds = b"ATGCTGCTGCTGAGCAGCAGCCGTCGTCGTGGTGGTGGTCTGCTGCTGTAA".to_vec(); // M LLL SSS RRR GGG LLL *
         let recoded = b"ATGTTATTGCTTTCTTCCTCACGCAGAAGGGGAGGCGGGTTGCTACTCTAG".to_vec(); // same protein
@@ -257,5 +277,14 @@ mod tests {
         assert_eq!(hits.len(), 1, "{hits:?}");
         assert_eq!((hits[0].start, hits[0].len, hits[0].forward, hits[0].protein), (200, 51, false, true));
         assert_eq!(hits[0].identity, 1.0);
+        // --- the same CDS twice: once as it is (a DNA hit), once recoded (a protein hit elsewhere): both are reported ---
+        let mut host = random_dna(200, 4);
+        host.extend(&cds);
+        host.extend(random_dna(200, 5));
+        host.extend(&recoded);
+        host.extend(random_dna(200, 6));
+        let hits = find_parts(&host, false, &[cds.clone()], &[true], 0.95, 0.9);
+        let simple: Vec<_> = hits.iter().map(|h| (h.start, h.len, h.forward, h.protein)).collect();
+        assert_eq!(simple, vec![(200, 51, true, false), (200 + 51 + 200, 51, true, true)]);
     }
 }

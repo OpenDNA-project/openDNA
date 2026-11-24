@@ -548,7 +548,7 @@ def cmd_annotate(args):
         turn = [h for h in hits if h.reversed is not None and h.kind in annotation.TURN_KINDS]   # (as the window ticks them)
         annotation.turn_features(doc, turn)   # (before the new ones are added: the feature indexes are the ones read)
         if fresh:
-            doc.add_features(annotation.features_for(ed, fresh, False))
+            doc.add_features(annotation.features_for(ed, fresh))
         doc.write_genbank(str(target), None)
         out["added"] = {"file": str(target), "features": len(fresh), "turned_round": len(turn), "skipped_already_annotated": len(hits) - len(fresh) - len(turn)}
     return out

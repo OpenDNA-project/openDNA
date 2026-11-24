@@ -12,8 +12,7 @@ Open DNA Project file (.odp): a zip holding `sequence.gb` (the document, as Save
 and `project.json`, what a GenBank file cannot hold and the program otherwise keeps only in
 memory: the loaded tracks and BAM files (their paths, absolute and relative to the project,
 since BAM files can be gigabytes), the DNA lock, the display options and the state of the panes' views (the layout's `state` entries:
-the Digest's ticked enzymes, the Sequence view's letter size and spacing). Gene groups and
-primers are already in the GenBank part.
+the Digest's ticked enzymes, the Sequence view's letter size and spacing). Primers are already in the GenBank part.
 """
 import json
 import re
@@ -161,7 +160,7 @@ def project_meta(editor, project_path, layout=None):
         "alignments": [{"path": a.path, "relative": _relative(a.path, project_path), "seqid": a.seqid}
                        for a in ed.alignments if getattr(a, "path", None)],
         "display": {"enzymes": ed.show_enzymes, "enzyme_filter": ed.enzyme_filter._asdict(),
-                    "hidden_features": sorted(list(k) for k in ed.hidden_features), "translation": ed.show_translation, "complement": ed.show_complement, "collapse_genes": ed.collapse_genes, "cds_only": ed.cds_only,
+                    "hidden_features": sorted(list(k) for k in ed.hidden_features), "translation": ed.show_translation, "complement": ed.show_complement, "cds_only": ed.cds_only,
                     "hidden_kinds": sorted(ed.hidden_kinds), "primers": ed.show_primers, "file_primers": ed.show_file_primers,
                     "db_primers": ed.show_db_primers, "units": ed.show_units,
                     "cds_translation": ed.show_cds_translation, "untranslated": sorted(ed.untranslated)},

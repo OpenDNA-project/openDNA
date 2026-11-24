@@ -4,7 +4,7 @@
 
 ## `a_fasta_rewritten_in_the_same_clock_tick_is_re_indexed`
 
-**Result:** ✅ passed · [line 320](../../core/src/fasta.rs#L320) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 347](../../core/src/fasta.rs#L347) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** After a genome FASTA is rewritten quickly, a stale .fai could be trusted and fetches would return the old bases.
 
@@ -21,7 +21,7 @@ A FASTA rewritten with the same mtime as its saved .fai is still re-indexed (sta
 
 ## `fetch_across_line_breaks_with_crlf`
 
-**Result:** ✅ passed · [line 338](../../core/src/fasta.rs#L338) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 365](../../core/src/fasta.rs#L365) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Fetching a region from a Windows (CRLF) or wrapped genome FASTA could return bases shifted by the line endings.
 
@@ -35,7 +35,7 @@ CRLF line endings and wrapped lines are indexed correctly; fetch crosses line br
 
 ## `replace_one_sequence_and_search`
 
-**Result:** ✅ passed · [line 353](../../core/src/fasta.rs#L353) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 380](../../core/src/fasta.rs#L380) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Saving one edited record into a multi-record FASTA could damage the other records, or motif search in a FASTA could miss or duplicate hits.
 
@@ -52,9 +52,27 @@ Exact motif search reports both strands once for palindromes; write_replacing sw
 
 - Wrapping at 60 (80 new bases should be 60+20 lines) and the in-place case dst == src, both promised by write_replacing's doc, are not tested.
 
+## `circular_is_the_header_tag_else_one_record_means_circular`
+
+**Result:** ✅ passed · [line 397](../../core/src/fasta.rs#L397) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** Without it, a FASTA plasmid's motifs across the origin would be silently missed, or a contig tagged linear would get wrap-around hits that cannot exist.
+
+IndexedFasta::circular gives the header tag [topology=circular|linear] (any case), else circular for a one-record file and linear for several; search_motif then wraps across the origin only where the record is circular.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | '>a [Topology=Circular]', '>b [topology=linear]', '>c plain' (CRLF) in one file; an unknown name | a true, b false, c false (several records); unknown: error |
+| 2 | one record without a tag; one record tagged linear | true; false |
+| 3 | 'TTCAAAAAGA' searched for GATTC: in a two-record file (linear); alone (circular) | no hit; one hit (8,13) across the origin |
+
+**Review notes:**
+
+- A header longer than 4 KB with the tag at its start is not tested (a shortcut: only the last 4 KB are read).
+
 ## `rejects_uneven_wrapping`
 
-**Result:** ✅ passed · [line 370](../../core/src/fasta.rs#L370) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 419](../../core/src/fasta.rs#L419) · **Area:** Indexed FASTA (.fai) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** An unevenly wrapped FASTA could be indexed anyway, so every fetch from it would silently return wrong bases.
 

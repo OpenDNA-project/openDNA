@@ -42,6 +42,7 @@ DATA = [
     (APP / "agent", "agent"),                  # cli.py: the recipes for agents (skills show)
     (APP / "plannotate_run.py", "."),          # plannotate_tool.py: the half that runs inside pLannotate's own conda environment (data, not an import)
     (ROOT / "LICENSE", "."),                   # AGPL-3.0
+    (ROOT / "CHANGELOG.md", "."),              # changelog.py: the startup page's news and the full changelog
 ]
 # main.py: window icon (all sizes); sponsors.py: the wordmark on the welcome page. Drawn by packaging/make_icon.py.
 DATA += [(APP / "logo" / f"icon_{size}.png", "logo") for size in (16, 24, 32, 48, 64, 128, 256)]

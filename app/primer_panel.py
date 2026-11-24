@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 from opendna_core import dimer, hairpin, tm, tm_range
 
 import tool_settings
-from editor import dna_field, reverse_complement
+from editor import MAX_SITES, dna_field, reverse_complement
 from file_tabs import page_of
 from value_filter import SortItem
 from tool_settings import Param, SettingsDialog
@@ -990,6 +990,7 @@ class PrimerPanel(QWidget):
             elsewhere.setdefault(site.label, []).append(site)
             groups.setdefault(site.label, [])
         rows, filtered = {}, 0
+        cut = ed.cut_primers()   # primers with more sites than are listed (the first MAX_SITES of each sequence are)
         if self.database:   # every primer of the database, also one that binds nowhere (an ambiguity code...)
             rows = {r["name"]: r for r in db().rows}
             groups = {name: groups.get(name, []) for name in rows}
@@ -1012,6 +1013,8 @@ class PrimerPanel(QWidget):
             total = len(sites) + len(away)
             summary = f"{total} site{'s' * (total > 1)}" + (f", {exact} exact" if exact != total else "") + \
                 (f" ({len(away)} on other sequences)" if away else "")
+            if name in cut:
+                summary = f"{cut[name]:,} sites, the first {MAX_SITES} on each sequence listed"
             warnings = [] if is_degenerate(seq) else structure(seq)["warnings"]
             mark, color = MARKS["warn" if warnings else "ok"]
             group = SortItem([name, seq, str(len(seq)), t or "–", summary if total else "no site",

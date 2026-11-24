@@ -12,7 +12,7 @@ from PySide6.QtGui import QColor
 from opendna_core import Document, find_primers
 
 import overhangs as OH
-from editor import MAX_SITES, gc_percent, reverse_complement as rc, site_location
+from editor import gc_percent, reverse_complement as rc, site_location
 from enzymes import COMMON, find_cuts, find_sites, site_spans
 from primer_panel import MARKS, band, limit, melting_temp, structure, worst
 import theme
@@ -1251,7 +1251,7 @@ def transfer_primers(doc, frags):
         return
     have = {(f.label, f.location) for f in doc.features() if f.kind == "primer_bind"}   # (one a fragment's file already had)
     for (name, seq), found in zip(primers, find_primers(doc.sequence(), doc.circular, [s for _, s in primers], 0)):
-        for s, e, strand, _ in found[:MAX_SITES]:
+        for s, e, strand, _ in found:
             where = site_location(s, e, strand, doc.length)
             if (name, where) not in have:
                 doc.set_feature(None, "primer_bind", where, [("label", name), ("note", f"sequence: {seq}")])

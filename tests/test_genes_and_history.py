@@ -1,5 +1,5 @@
-"""Two pieces of app logic the editor owes the rest of the program: gene groups (the features that share a tag folded
-under their gene, and still covering the same bases after edits) and the History texts written for every kind of edit."""
+"""Two pieces of app logic the editor owes the rest of the program: "CDS only" (a gene at exactly a CDS's bases is hidden, and
+features still cover the same bases after edits) and the History texts written for every kind of edit."""
 import os
 import random
 import sys
@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
 from opendna_core import Document
 
-import genes
 from editor import Editor
 from history_panel import group
 
@@ -42,45 +41,28 @@ GENE_SEQ = random_dna(1500, 11)
 
 
 def gene_features():
-    q = lambda label, **kw: [("label", label)] + list(kw.items())
+    q = lambda label: [("label", label)]
     return [
-        ("gene", "101..400", q("gA", gene="gA", locus_tag="L1")),
-        ("mRNA", "121..395", q("mA", locus_tag="L1")),
-        ("CDS", "151..390", q("cA", locus_tag="L1")),
-        ("promoter", "61..100", q("pA")),                  # near the gene but with no tag: alone
-        ("misc_feature", "600..650", q("solo")),
-        ("CDS", "700..760", q("orphan", locus_tag="L9")),  # a tag with no gene feature: alone
-        ("gene", "900..1000", q("abc", gene="abc")),       # only /gene: grouped by it
-        ("CDS", "910..990", q("abcCDS", gene="abc")),
-        ("gene", "1100..1200", q("g2", locus_tag="L2")),   # a gene with no parts
+        ("gene", "101..400", q("gA")),                 # longer than its CDS: kept
+        ("CDS", "151..390", q("cA")),
+        ("promoter", "61..100", q("pA")),
+        ("gene", "900..1000", q("abc")),               # exactly its CDS's bases and strand: hidden
+        ("CDS", "900..1000", q("abcCDS")),
+        ("gene", "complement(1100..1200)", q("g2")),   # same bases as a CDS on the other strand: kept
+        ("CDS", "1100..1200", q("c2")),
     ]
 
 
-def test_gene_groups_fold_their_parts_and_survive_edits():
-    """Features sharing a tag fold under their gene and the others are left alone (which of them the views are given,
-    and the switch that unfolds them); after inserts, deletes inside the gene and an undo, every feature still covers
-    exactly the bases it did."""
-    # --- fold features sharing a tag and leave the others alone ---
+def test_cds_only_hides_a_gene_at_exactly_a_cds_and_edits_keep_the_bases():
+    """A gene feature at exactly the bases and strand of a CDS is hidden by "CDS only" (every view), the others are kept, and
+    after inserts, deletes inside the gene and an undo every feature still covers exactly the bases it did."""
+    # --- which genes are hidden ---
     ed = editor_of(GENE_SEQ, features=gene_features())
-    assert set(ed.groups) == {"L1", "abc", "L2"}
-    g = ed.groups["L1"]
-    assert g.master.label == "gA" and [p.label for p in g.parts] == ["mA", "cA"]   # mRNA starts before the CDS: same rank, by position
-    assert ed.groups["abc"].master.label == "abc" and [p.label for p in ed.groups["abc"].parts] == ["abcCDS"]
-    assert ed.groups["L2"].parts == []
-    grouped = {by_label(ed, x).index for x in ("mA", "cA", "abcCDS")}
-    assert set(ed.part_of) == grouped and ed.part_of[by_label(ed, "cA").index] == "L1"
-    for alone in ("pA", "solo", "orphan"):     # in no group: not a part, not a master
-        f = by_label(ed, alone)
-        assert f.index not in ed.part_of and all(x.master is not f for x in ed.groups.values())
-    # The map draws the gene, not its parts; features in no group are drawn as they are. A gene whose only part is one CDS
-    # ("abc") is not drawn: the CDS is, in every view (View > Hide Gene Arrow when its CDS is Alone).
-    assert ed.cds_only and {f.label for f in ed.map_features} == {"gA", "pA", "solo", "orphan", "abcCDS", "g2"}
-    assert "abc" not in {f.label for f in ed.shown} and "abcCDS" in {f.label for f in ed.shown}
+    shown = lambda: {f.label for f in ed.shown}
+    assert ed.cds_only and shown() == {"gA", "cA", "pA", "abcCDS", "g2", "c2"}
     assert "abc" not in {f.label for f in ed.visible_features(0, ed.length)}
     ed.set_display(cds_only=False)
-    assert {f.label for f in ed.map_features} == {"gA", "pA", "solo", "orphan", "abc", "g2"} and "abc" in {f.label for f in ed.shown}
-    ed.set_display(cds_only=False, collapse_genes=False)
-    assert {f.label for f in ed.map_features} == {f.label for f in ed.features}
+    assert shown() == {f.label for f in ed.features}
 
     # --- still the same bases after edits ---
     ed = editor_of(GENE_SEQ, features=gene_features())
@@ -88,27 +70,21 @@ def test_gene_groups_fold_their_parts_and_survive_edits():
     ed.set_cursor(0)
     ed.type_bases("A" * 40)                                          # before everything: all shift
     ed.select(300, 310)
-    ed.backspace()                                                   # inside the gene (and its CDS): all shrink
-    assert set(ed.groups) == {"L1", "abc", "L2"} and [p.label for p in ed.groups["L1"].parts] == ["mA", "cA"]
+    ed.backspace()                                                   # inside the gene (and its CDS): both shrink
     after = {f.label: covered(ed, f) for f in ed.features}
     assert after["cA"] == before["cA"][:110] + before["cA"][120:]     # bases 260..270 of the sequence were the CDS's 110th..120th
-    assert after["gA"] == before["gA"][:160] + before["gA"][170:] and len(after["mA"]) == len(before["mA"]) - 10
-    for label in ("pA", "solo", "orphan", "abcCDS", "abc", "g2"):   # not touched by the delete: same bases
+    assert after["gA"] == before["gA"][:160] + before["gA"][170:]
+    for label in ("pA", "abcCDS", "abc", "g2", "c2"):                # not touched by the delete: same bases
         assert after[label] == before[label], label
-    # The gene still spans all its parts.
-    lo, hi = genes.span_of([ed.groups["L1"].master])
-    for p in ed.groups["L1"].parts:
-        plo, phi = genes.span_of([p])
-        assert lo <= plo and phi <= hi
-    # An insert inside the gene but outside its CDS grows the gene and the mRNA, and moves the CDS: still the same bases.
+    # An insert inside the gene but outside its CDS grows the gene and moves the CDS: still the same bases.
     cds_text, gene_len = covered(ed, by_label(ed, "cA")), len(covered(ed, by_label(ed, "gA")))
     ed.set_cursor(40 + 125)
     ed.type_bases("CCCCC")
     assert covered(ed, by_label(ed, "cA")) == cds_text
-    assert len(covered(ed, by_label(ed, "gA"))) == gene_len + 5 and ed.groups["L1"].master.label == "gA"
-    # Everything undone: the original bases and groups.
+    assert len(covered(ed, by_label(ed, "gA"))) == gene_len + 5
+    # Everything undone: the original bases.
     assert ed.undo_steps(3) == 3                                  # the three edits (the features were there from the start)
-    assert {f.label: covered(ed, f) for f in ed.features} == before and set(ed.groups) == {"L1", "abc", "L2"}
+    assert {f.label: covered(ed, f) for f in ed.features} == before
 
 
 def test_history_texts():

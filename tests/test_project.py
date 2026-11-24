@@ -52,6 +52,21 @@ def test_release_metadata_and_exe_recipe_are_consistent():
         assert ext.startswith(".") and len(ext) > 1 and ext == ext.lower() and " " not in ext, ext
         assert label.strip(), ext
 
+    # --- CHANGELOG.md: a section for this version, every released section well formed ---
+    import changelog
+    heads = re.findall(r"^## (.+)$", changelog.text(), re.M)
+    assert heads[0] == "Unreleased" and changelog.section(project.VERSION)
+    for head in heads[1:]:
+        assert re.fullmatch(r"\d+\.\d+\.\d+ \(\d{4}-\d\d-\d\d\)", head), head
+        body = changelog.section(head.split()[0])
+        parts = re.split(r"^\*\*(.+)\*\*$", body, flags=re.M)   # ["", label, lines, label, lines...]
+        labels = parts[1::2]
+        assert labels and labels == [c for c in changelog.CATEGORIES if c in labels], (head, labels)   # known labels, in order
+        for label, lines in zip(labels, parts[2::2]):
+            lines = [l for l in lines.splitlines() if l.strip()]
+            assert lines and all(l.startswith("- ") for l in lines), (head, label)
+            assert label != "Features" or len(lines) <= 3, (head, "more than 3 feature lines")
+
     # --- every data file the app reads is bundled ---
     wanted = set()
     for py in (ROOT / "app").glob("*.py"):

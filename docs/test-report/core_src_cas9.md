@@ -4,7 +4,7 @@
 
 ## `finds_a_site_with_its_pam_on_the_top_strand`
 
-**Result:** ✅ passed · [line 177](../../core/src/cas9.rs#L177) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 191](../../core/src/cas9.rs#L191) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Guide-site search could miss or misplace a perfect protospacer + NGG site on the top strand.
 
@@ -16,7 +16,7 @@ A perfect 20-nt protospacer followed by an NGG PAM is found at the right coordin
 
 ## `finds_a_site_on_the_bottom_strand`
 
-**Result:** ✅ passed · [line 188](../../core/src/cas9.rs#L188) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 202](../../core/src/cas9.rs#L202) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Guide sites on the bottom strand could be missed or drawn at the wrong place.
 
@@ -32,7 +32,7 @@ A site written on the bottom strand is found and reported in top-strand coordina
 
 ## `needs_the_pam`
 
-**Result:** ✅ passed · [line 207](../../core/src/cas9.rs#L207) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 221](../../core/src/cas9.rs#L221) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Sites lacking a PAM could be reported as guide sites (false off-targets), or non-NGG PAMs such as SaCas9's NNGRRT could be ignored.
 
@@ -53,7 +53,7 @@ Without a fitting PAM there is no site even with mismatches allowed; other IUPAC
 
 ## `counts_mismatches_and_records_where`
 
-**Result:** ✅ passed · [line 223](../../core/src/cas9.rs#L223) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 237](../../core/src/cas9.rs#L237) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Off-target sites could be listed with the wrong number or positions of mismatches, misleading guide specificity checks.
 
@@ -66,7 +66,7 @@ Mismatches are counted against the limit and their guide positions are recorded 
 
 ## `a_site_can_run_across_the_origin_of_a_circle`
 
-**Result:** ✅ passed · [line 238](../../core/src/cas9.rs#L238) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 252](../../core/src/cas9.rs#L252) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A guide site crossing the origin of a plasmid could be missed.
 
@@ -83,7 +83,7 @@ On a circular template a site split across the origin is found once, with end pa
 
 ## `several_guides_and_lower_case`
 
-**Result:** ✅ passed · [line 252](../../core/src/cas9.rs#L252) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 266](../../core/src/cas9.rs#L266) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Searching several guides at once, or a lower-case sequence, could return mixed-up or empty results.
 
@@ -99,7 +99,7 @@ Several guides are searched in one call (one result list each) and a lower-case 
 
 ## `finds_a_site_whose_pam_comes_first`
 
-**Result:** ✅ passed · [line 262](../../core/src/cas9.rs#L262) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 276](../../core/src/cas9.rs#L276) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Cas12a (5' TTTV PAM) sites could be searched in Cas9 orientation and so be missed or wrongly found.
 
@@ -117,7 +117,7 @@ With pam_first (Cas12a, TTTV) the PAM is matched 5' of the protospacer, on both 
 
 ## `mismatch_mask_counts_from_the_guides_5_prime_end_next_to_a_first_pam`
 
-**Result:** ✅ passed · [line 285](../../core/src/cas9.rs#L285) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 299](../../core/src/cas9.rs#L299) · **Area:** CRISPR guide search (Cas12a) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** For Cas12a the mismatch positions could be counted from the wrong end, so a PAM-proximal mismatch would be weighted as distal in off-target scoring.
 
@@ -130,3 +130,41 @@ For PAM-first nucleases bit 0 of the mismatch mask is the guide base next to the
 **Review notes:**
 
 - Does not assert there is exactly one site or its position (line 275 indexes hits[0][0] directly).
+
+## `a_guide_the_mask_cannot_hold_is_an_error_not_an_empty_answer`
+
+**Result:** ✅ passed · [line 309](../../core/src/cas9.rs#L309) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** A custom nuclease with a long guide, or guides of different lengths, would be answered with 'no sites', which reads as a clean guide that was never checked.
+
+A 40-base guide is searched (64-bit mask) and its mask shows the mismatch at base 39; a 65-base guide and guides of different lengths are errors; a sequence shorter than a site is a true empty answer.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | 40 A's guide, 'CC'+guide+'TGGCC', NGG, 0 mm | 1 site |
+| 2 | same with the last guide base changed, 1 mm allowed | 1 site, mask == 1<<39 |
+| 3 | one 65-base guide on 'ACGT' | Err |
+| 4 | guides of 20 and 21 bases in one call | Err |
+| 5 | 20-base guide on 'ACGT' (shorter than a site) | Ok, no site |
+
+**Review notes:**
+
+- Only the Rust side: the message the window and the command line show is checked in tests/test_enzymes_and_guides.py.
+
+## `a_site_that_only_an_unknown_base_in_the_pam_hides_is_counted`
+
+**Result:** ✅ passed · [line 326](../../core/src/cas9.rs#L326) · **Area:** CRISPR guide search · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** A site next to an assembly gap (N) could vanish without a word, so a guide looks more specific than it is.
+
+A PAM with an unknown base N in the DNA is not reported as a site but is counted per guide; a known PAM is a site and counts nothing; a known base that contradicts the pattern counts nothing.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | guide + 'ANG' (NGG), 0 mm | 0 sites, skipped == 1 |
+| 2 | guide + 'AGG' | 1 site, skipped == 0 |
+| 3 | guide + 'ANA' | skipped == 0 (the A cannot be a G) |
+
+**Review notes:**
+
+- Linear forward strand only; the reverse strand and a circular wrap share the same code path but are not tried.

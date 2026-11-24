@@ -22,7 +22,10 @@ view and 3D structures) and the Terminal's pipelines (mapping, assembly, MAFFT /
 The primer database is `primers.tsv` in the app data folder (`%APPDATA%\openDNA\` on
 Windows; set `OPENDNA_DATA_DIR` to use another folder). Export/import it from Primers → Primer Database.
 
-FASTA references (`.fa`, `.fasta`, `.fna`, multi-sequence) open like any other file: pick the sequence in
+FASTA references (`.fa`, `.fasta`, `.fna`, multi-sequence) open like any other file. FASTA has no topology, so openDNA reads it from the header:
+`[topology=circular]` or `[topology=linear]` (what NCBI and openDNA's own FASTA export write); with no tag, a file of one sequence is circular
+and a file of several (contigs, chromosomes) is linear. Circular means searches, binding sites and the map run across the origin: a linear
+sequence with no tag then shows a match across its two ends that cannot exist, and the Topology toggle or the tag puts it right. Pick the sequence in
 the toolbar; Save writes the edited sequence back into the same FASTA (others are copied through
 unchanged). Only one sequence is open at a time: tracks (GFF3/BED/VCF/BAM) follow you to another sequence of the file (each on the
 contig of the same name; "chr1" matches "1"), Save as GenBank / a project writes only the open sequence (the status bar says how many
@@ -63,7 +66,7 @@ file (one step in the History, the file is marked modified) and Save writes it a
 database's hundreds of primers no longer end up in every file. Edit…, Delete from Primer Database and Hide in This File stay as they were.
 Right-click a feature in any view to edit or delete it. In the feature table, select several rows (click, then Shift- or
 Ctrl-click) and right-click: Delete, Hide All / Show All and Show Translation apply to all of them at once (deleting is one
-undo step), next to Group as Gene. The toolbar's range box selects a stretch: type 101..200 (or 101-200, 101 to 200)
+undo step). The toolbar's range box selects a stretch: type 101..200 (or 101-200, 101 to 200)
 and press Enter; on a circular sequence 3700..50 runs through the origin, and one number puts the cursor after that base. Ctrl+wheel (or Ctrl+= / Ctrl+- / Ctrl+0) sizes the sequence view's letters.
 History (the hourglass in the toolbar, Ctrl+H; shares the side panel with the filter) lists the changes in words, typing grouped,
 and goes back to before any of them (or forward again; or drag ▶ Current sequence). Adding, editing and deleting features, and
@@ -388,8 +391,7 @@ it was saved with. Windows show tabs of split panes: pick any view or tool in a 
 one; right-click a tab to rename/duplicate it, middle-click duplicates; View → Reset View Tabs puts the standard layout back).
 A pane builds its view the first time you look at it, and drops it when it shows something else, so tabs you never visit and
 views you have switched away from cost nothing. Click a primer, then shift-click one on the other strand to select what they amplify.
-Feature → Group as Gene makes a gene own its promoter/RBS/CDS/terminator (saved as a shared
-`/locus_tag`). Tools → Detect Common Features finds known features from the **Features Database**
+Tools → Detect Common Features finds known features from the **Features Database**
 (Databases → Features Database). The window is split in half: the sequence on the left, the features found on the right; click a feature to select where it would be annotated (the sequence goes there), and tick the ones to add. The *In the file* column says whether each one is new, already annotated, or annotated the other way round: a CDS, promoter, RBS or primer binding site found in the opposite direction to the file's feature on the same bases is ticked, and *Add* turns the file's feature round (its name and notes stay; one undo step each); other types annotated the other way are listed but not ticked, as they are often annotated either way. The database is made of **sources**, one file each (`app/parts/*.tsv`, named by their
 publication or database, plus your own features in `parts.tsv` in the data folder, the source **Local**: right-click a feature → Add
 to Features Database, or Import → Features and Tracks → Import Features to Features Database; each keeps the file it came from).

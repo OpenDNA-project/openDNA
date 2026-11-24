@@ -26,7 +26,7 @@ from editor import Editor, clean_pasted, primer_sequence, remember_hidden_primer
 from shortcuts import ShortcutsDialog
 from sponsors import SponsorsDialog, show_at_startup, tip_of_the_day
 from feature_dialog import edit_feature
-from feature_table import FeatureTable, features_inside, group_as_gene, reverse_primer_dialog
+from feature_table import FeatureTable, reverse_primer_dialog
 from map_view import MapView
 from primer_db import copy_old_data, db
 from perf import PerfWindow
@@ -210,7 +210,7 @@ class MainWindow(QMainWindow):
     # ---- what the program remembers between sessions: the window's size and place (file_tabs.FileHost), the View switches. Not the
     # tabs (a file always opens with the standard ones, unless it is a project), not which side panel was open, and no side panel
     # width (fixed).
-    VIEW_SWITCHES = ("enzymes_action", "translation_action", "complement_action", "collapse_action", "cds_only_action")
+    VIEW_SWITCHES = ("enzymes_action", "translation_action", "complement_action", "cds_only_action")
 
     def _restore_view_switches(self):
         s = window_settings()
@@ -369,8 +369,6 @@ class MainWindow(QMainWindow):
         action(feature, "&New Feature from Selection…", "Ctrl+T", lambda: edit_feature(self, self.editor))
         action(None, "Edit Feature", "Ctrl+E", self.edit_current_feature)   # (also on the right-click menu of a feature)
         feature.addSeparator()
-        action(feature, "&Group as Gene…", "Ctrl+Shift+E", self.group_as_gene)
-        feature.addSeparator()
         action(feature, "&Recolor Annotations by Type", None, lambda: self.statusBar().showMessage(
             f"{plural(self.editor.recolor_by_type(), 'annotation')} recolored (Ctrl+Z undoes it).", 5000))
         feature.addSeparator()
@@ -432,11 +430,9 @@ class MainWindow(QMainWindow):
         filter_action.setShortcut("Ctrl+Shift+F")
         view.addAction(filter_action)
         view.addSeparator()
-        self.collapse_action = action(view, "Genes as One Arrow on &Map", None,
-                                      lambda on: self.editor.set_display(collapse_genes=on), True, True)
         self.cds_only_action = action(view, "Hide Gene Arrow when its CDS is A&lone", None,
                                       lambda on: self.editor.set_display(cds_only=on), True, True)
-        self.cds_only_action.setToolTip("A gene whose only part is one CDS (the usual NCBI gene + CDS pair) is shown as that CDS only, in every view")
+        self.cds_only_action.setToolTip("A gene at exactly the bases of a CDS (the usual NCBI gene + CDS pair) is hidden: the CDS is shown alone, in every view")
         view.addSeparator()
         themes = QActionGroup(self)
         self.theme_menu = theme_menu = view.addMenu("Th&eme")
@@ -874,6 +870,8 @@ class MainWindow(QMainWindow):
         finally:
             if frozen:
                 self.setUpdatesEnabled(True)
+        if doc.notes:
+            QMessageBox.warning(self, "Part of the file was not read", f"{path}\n\n" + "\n".join(doc.notes))
         if carry:
             skipped = [Path(p).name for p in carry if self.load_track(p, quiet=True) is None]
             if skipped:
@@ -897,7 +895,7 @@ class MainWindow(QMainWindow):
         ed = self.editor
         ed.untranslated, ed.hidden_features = set(old.untranslated), set(old.hidden_features)
         ed.set_display(enzymes=old.show_enzymes, enzyme_filter=old.enzyme_filter, translation=old.show_translation,
-                       collapse_genes=old.collapse_genes, hidden_kinds=old.hidden_kinds, primers=old.show_primers,
+                       hidden_kinds=old.hidden_kinds, primers=old.show_primers,
                        cds_translation=old.show_cds_translation, file_primers=old.show_file_primers,
                        db_primers=old.show_db_primers, units=old.show_units, cds_only=old.cds_only, complement=old.show_complement)
         temporary =[(n, s) for n, s in old.extra if (n, s.upper()) in old.temporary_primers]
@@ -912,7 +910,7 @@ class MainWindow(QMainWindow):
         d = meta.get("display", {})
         ed.untranslated = {tuple(x) for x in d.get("untranslated", [])}
         ed.hidden_features = {tuple(x) for x in d.get("hidden_features", [])}
-        ed.set_display(enzymes=d.get("enzymes"), enzyme_filter=EnzymeFilter.from_dict(d.get("enzyme_filter")), translation=d.get("translation"), collapse_genes=d.get("collapse_genes"), cds_only=d.get("cds_only"),
+        ed.set_display(enzymes=d.get("enzymes"), enzyme_filter=EnzymeFilter.from_dict(d.get("enzyme_filter")), translation=d.get("translation"), cds_only=d.get("cds_only"),
                        hidden_kinds=d.get("hidden_kinds"), primers=d.get("primers"), cds_translation=d.get("cds_translation"),
                        file_primers=d.get("file_primers"), db_primers=d.get("db_primers"), units=d.get("units"),
                        complement=d.get("complement"))
@@ -1117,7 +1115,7 @@ class MainWindow(QMainWindow):
         if display:
             ed.set_display(enzymes=self.enzymes_action.isChecked(), translation=self.translation_action.isChecked(),
                            complement=self.complement_action.isChecked(),
-                           collapse_genes=self.collapse_action.isChecked(), cds_only=self.cds_only_action.isChecked())
+                           cds_only=self.cds_only_action.isChecked())
         ed.display_changed.connect(self._sync_display_actions)
         self._show_lock(ed.dna_locked)
         self.search_bar.attach(ed)
@@ -1752,6 +1750,11 @@ class MainWindow(QMainWindow):
         if not seqs:
             QMessageBox.warning(self, "Empty track", f"No annotations in {path}.")
             return None
+        if notes := getattr(track, "notes", None):   # (a BAM has none)
+            if quiet:
+                ed.error.emit(f"{Path(path).name}: " + " ".join(notes))
+            else:
+                QMessageBox.warning(self, "Part of the track was not read", f"{path}\n\n" + "\n".join(notes))
         # Which sequence of the track is this document? Given (a project), same name ("chr1" = "1"), or the only one, or ask.
         seqid = seqid if seqid in seqs else match_contig(seqs, ed.doc.name, ed.fasta_record)
         if seqid is None and len(seqs) == 1 and not quiet:
@@ -1980,18 +1983,6 @@ class MainWindow(QMainWindow):
 
     def copy_reverse_complement(self):
         QGuiApplication.clipboard().setMimeData(self.editor.copy_reverse_complement_mime())
-
-    def group_as_gene(self):
-        """Features ticked in the feature table, else those inside the selected range."""
-        ed = self.editor
-        tables = self.workspace.views(FeatureTable)
-        chosen = tables[0].selected_indices() if tables else []
-        if len(chosen) < 2 and ed.end > ed.start:
-            chosen = features_inside(ed)
-        if not chosen:
-            self.statusBar().showMessage("Select the parts first (feature table rows, or a range covering them).", 5000)
-            return None
-        return group_as_gene(self, ed, chosen)
 
     def focus_find(self):
         self.search_bar.focus()

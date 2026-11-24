@@ -29,18 +29,26 @@ pub struct Primer {
     pub sequence: String,
 }
 
-/// Parse a `.dna` file from disk.
-pub fn read_file(path: &Path) -> io::Result<(Seq, Vec<Primer>)> {
+/// Parse a `.dna` file from disk. The third value says what was left out (see `parse_with_notes`).
+pub fn read_file(path: &Path) -> io::Result<(Seq, Vec<Primer>, Vec<String>)> {
     let data = std::fs::read(path)?;
     // `file_stem` = file name without extension; it becomes the record name.
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
-    let (mut seq, primers) = parse(&data)?;
+    let (mut seq, primers, notes) = parse_with_notes(&data)?;
     seq.name = name;
-    Ok((seq, primers))
+    Ok((seq, primers, notes))
 }
 
 /// Parse `.dna` bytes already in memory.
 pub fn parse(data: &[u8]) -> io::Result<(Seq, Vec<Primer>)> {
+    parse_with_notes(data).map(|(seq, primers, _)| (seq, primers))
+}
+
+/// `parse`, and sentences saying what the file held that was not read: features without a position, primer binding
+/// sites without a location or before any primer. (Gap segments and the file's duplicate "simplified" sites are not data
+/// and are not mentioned.)
+pub fn parse_with_notes(data: &[u8]) -> io::Result<(Seq, Vec<Primer>, Vec<String>)> {
+    let mut notes = Vec::new();
     let mut seq = Seq::empty();
     let mut primers = Vec::new();
     let mut have_dna = false;
@@ -89,14 +97,22 @@ pub fn parse(data: &[u8]) -> io::Result<(Seq, Vec<Primer>)> {
 
     let seq_len = seq.seq.len() as i64;
     if let Some(xml) = features_xml {
-        seq.features = parse_features(xml, seq_len)?;
+        let mut dropped = 0;
+        seq.features = parse_features(xml, seq_len, &mut dropped)?;
+        if dropped > 0 {
+            notes.push(format!("{dropped} feature(s) of the file have no position and were not read."));
+        }
     }
     if let Some(xml) = primers_xml {
-        let (list, bind_features) = parse_primers(xml, seq_len)?;
+        let mut dropped = 0;
+        let (list, bind_features) = parse_primers(xml, seq_len, &mut dropped)?;
         primers = list;
         seq.features.extend(bind_features);
+        if dropped > 0 {
+            notes.push(format!("{dropped} primer binding site(s) of the file have no location or no primer and were not read."));
+        }
     }
-    Ok((seq, primers))
+    Ok((seq, primers, notes))
 }
 
 /// Turn the features XML into gb-io features.
@@ -105,7 +121,8 @@ pub fn parse(data: &[u8]) -> io::Result<(Seq, Vec<Primer>)> {
 ///          <Segment range="10-200" color="#ff0000" type="standard"/>   (1-based, inclusive)
 ///          <Q name="note"><V text="..."/></Q>
 ///        </Feature>
-fn parse_features(xml: &[u8], seq_len: i64) -> io::Result<Vec<Feature>> {
+/// `dropped` counts the features that have no position (not kept).
+fn parse_features(xml: &[u8], seq_len: i64, dropped: &mut usize) -> io::Result<Vec<Feature>> {
     let mut reader = Reader::from_reader(xml);
     let mut features = Vec::new();
 
@@ -126,6 +143,8 @@ fn parse_features(xml: &[u8], seq_len: i64) -> io::Result<Vec<Feature>> {
         // Start = <Tag ...>, Empty = <Tag .../>, End = </Tag>. Both Start and Empty carry
         // attributes, so we handle them together.
         match reader.read_event().map_err(xml_err)? {
+            // A self-closing <Feature .../> has no segments and never gets an End event: counted here.
+            Event::Empty(e) if e.name().as_ref() == "Feature" => *dropped += 1,
             Event::Start(e) | Event::Empty(e) => match e.name().as_ref() {
                 "Feature" => {
                     kind = attr(&e, "type")?.unwrap_or_else(|| "misc_feature".into());
@@ -167,7 +186,8 @@ fn parse_features(xml: &[u8], seq_len: i64) -> io::Result<Vec<Feature>> {
             },
             Event::End(e) if e.name().as_ref() == "Feature" => {
                 if segments.is_empty() {
-                    continue; // malformed feature without a position: nothing to keep
+                    *dropped += 1; // malformed feature without a position: nothing to keep
+                    continue;
                 }
                 // `std::mem::take` moves the Vec out and leaves an empty one behind,
                 // ready for the next feature (no copy).
@@ -207,7 +227,8 @@ fn parse_features(xml: &[u8], seq_len: i64) -> io::Result<Vec<Feature>> {
 
 /// Primers XML: <Primer name=".." sequence=".."><BindingSite location="a-b" boundStrand="0|1">
 /// Returns the primer list plus one `primer_bind` feature per binding site.
-fn parse_primers(xml: &[u8], seq_len: i64) -> io::Result<(Vec<Primer>, Vec<Feature>)> {
+/// `dropped` counts the binding sites that have no location or follow no primer (not kept).
+fn parse_primers(xml: &[u8], seq_len: i64, dropped: &mut usize) -> io::Result<(Vec<Primer>, Vec<Feature>)> {
     let mut reader = Reader::from_reader(xml);
     let mut primers: Vec<Primer> = Vec::new();
     let mut features = Vec::new();
@@ -220,8 +241,10 @@ fn parse_primers(xml: &[u8], seq_len: i64) -> io::Result<(Vec<Primer>, Vec<Featu
                 }),
                 // The file lists each site twice; the copy marked simplified="1" is a duplicate.
                 "BindingSite" if attr(&e, "simplified")?.is_none() => {
-                    let Some(p) = primers.last() else { continue };
-                    let Some(range) = attr(&e, "location")? else { continue };
+                    let (Some(p), Some(range)) = (primers.last(), attr(&e, "location")?) else {
+                        *dropped += 1;
+                        continue;
+                    };
                     let mut parts = parse_range(&range, seq_len, 0)?;
                     let mut loc = if parts.len() == 1 { parts.pop().unwrap() } else { Location::Join(parts) };
                     if attr(&e, "boundStrand")?.as_deref() == Some("1") {
@@ -355,6 +378,28 @@ pub(crate) mod tests {
         assert_eq!(seq.features[4].kind, "primer_bind");
         // Binding sites are 0-based: "9-12" = bases 10..13 in GenBank numbering.
         assert_eq!(seq.features[4].location.to_gb_format(), "complement(10..13)");
+    }
+
+    #[test]
+    fn says_what_it_could_not_read() {
+        assert!(parse_with_notes(&sample_dna()).unwrap().2.is_empty(), "a clean file has no notes");
+        // A feature without a position, one with only a gap segment, a site with no location, a site before any primer.
+        let mut f = packet(0x09, b"SnapGene\x00\x01\x00\x0f\x00\x14");
+        f.extend(packet(0x00, b"\x01AAAACCCCGGGGTTTTACGT"));
+        f.extend(packet(0x0A, br#"<Features><Feature name="a" type="CDS"/>
+            <Feature name="b" type="CDS"><Segment range="1-5" type="gap"/></Feature>
+            <Feature name="c" type="CDS"><Segment range="1-5" type="standard"/></Feature></Features>"#));
+        f.extend(packet(0x05, br#"<Primers><Primer name="p1" sequence="ACGT"><BindingSite boundStrand="0"/>
+            <BindingSite location="0-3" boundStrand="0"/></Primer></Primers>"#));
+        let (seq, _, notes) = parse_with_notes(&f).unwrap();
+        assert_eq!(seq.features.len(), 2, "feature c and the one site that has a location");
+        assert_eq!(notes.len(), 2);
+        assert!(notes[0].starts_with("2 feature(s)") && notes[1].starts_with("1 primer binding site(s)"), "{notes:?}");
+        // A site before any primer is counted too.
+        let mut g = packet(0x09, b"SnapGene\x00\x01\x00\x0f\x00\x14");
+        g.extend(packet(0x00, b"\x01AAAACCCCGGGGTTTTACGT"));
+        g.extend(packet(0x05, br#"<Primers><BindingSite location="0-3"/></Primers>"#));
+        assert!(parse_with_notes(&g).unwrap().2[0].starts_with("1 primer binding site(s)"));
     }
 
     #[test]

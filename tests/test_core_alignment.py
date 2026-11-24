@@ -452,6 +452,7 @@ def test_folder_search_finds_a_query_in_its_file_record_place_and_strand(tmp_pat
     search_folder(tmp_path, b[500:560], progress=lambda done, total: calls.append(done), cancelled=lambda: len(calls) >= 1)
     assert calls == [1]
     # --- a file with more hits than PER_FILE: the best are listed and the cut is said, in the status line and in Copy ---
+    (tmp_path / "a.fa").unlink()   # (a one-record FASTA is circular, and a 60 bp query is longer than its 4 bp: a note of its own)
     unit = b[500:560]
     (tmp_path / "repeats.fa").write_text(">rep\n" + "".join(unit + a[i * 100:i * 100 + 100] for i in range(PER_FILE + 2)) + "\n")
     hits, _, _, notes = search_folder(tmp_path, unit)

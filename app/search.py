@@ -18,7 +18,7 @@ from opendna_core import Fasta, find_motif, find_protein
 import enzymes
 import genetic_code
 import multigb
-from editor import HIDDEN_KINDS, NAME_KEYS, feature_bounds
+from editor import HIDDEN_KINDS, NAME_KEYS, TRACK_HITS, feature_bounds
 from reference import is_fasta_file
 
 DNA = set("ACGTN")
@@ -140,9 +140,10 @@ def search_sequence(ed, query, opts):
         if needle in _feature_text(f, opts.details):
             hits.append(hit(*feature_bounds(f), "feature", f.label or f.kind, f.strand, feature=f.index))
     for t in ed.tracks:
-        for name, s, e, *_ in t.track.search(q, 500):
-            if name == t.seqid:
-                hits.append(hit(s, e, "track", q))
+        found = t.track.search(q, TRACK_HITS, t.seqid)
+        if len(found) >= TRACK_HITS:
+            note = (note + f" {t.name}: the search stopped at {TRACK_HITS:,} items: there may be more.").strip()
+        hits += [hit(s, e, "track", q) for _, s, e, *_ in found]
     if opts.primers:
         for site in ed.primer_sites:
             if needle in site.label.lower():
@@ -170,10 +171,11 @@ def search_sequence(ed, query, opts):
 # ---- the other sequences of a FASTA file ------------------------------------------------------------------------------------------------
 
 
-def search_file(path, records, current, current_seq, query, opts, stop, on_record):
+def search_file(path, records, current, current_seq, query, opts, stop, on_record, current_circular=False):
     """Search every sequence named in `records` of the FASTA file `path` for the DNA `query` (nothing else is searched in a
     file: names belong to the open sequence). `current` / `current_seq`: the open record and its bases, which may have unsaved
-    edits and so are not read from the file. Calls `on_record(name, [hit])` as each one is done; stops when `stop` is set.
+    edits and so are not read from the file; `current_circular` is its topology as the editor shows it (a FASTA record's own is
+    `Fasta.circular`: its header tag, else circular for a one-record file). Calls `on_record(name, [hit])` as each one is done; stops when `stop` is set.
     Runs in a worker thread: it opens its own file handle. Returns the DNA pattern searched, or None if the query is not one.
     A multi-record GenBank file is searched for names too (`current` is then not searched: the caller does it, with everything the
     open record has: primers, tracks, enzymes, translations)."""
@@ -206,7 +208,7 @@ def search_file(path, records, current, current_seq, query, opts, stop, on_recor
             on_record(name, sorted(hits, key=lambda h: (h.start, h.end))[:MAX_HITS])
             continue
         if name == current:
-            found = find_motif(current_seq, motif, mm, opts.iupac, opts.both, False, MAX_HITS)
+            found = find_motif(current_seq, motif, mm, opts.iupac, opts.both, current_circular, MAX_HITS)
         else:
             fasta = fasta or Fasta(str(path))
             found = fasta.search_motif(name, motif, mm, opts.iupac, opts.both, MAX_HITS)

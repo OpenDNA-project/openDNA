@@ -11,7 +11,8 @@ pub struct Orf {
     pub forward: bool,
 }
 
-/// ORFs of at least `min_codons` codons (stop included), ATG to stop, in all 6 frames.
+/// ORFs of at least `min_codons` codons (stop included), ATG to stop, in all 6 frames. An ORF with no stop before the end of a linear
+/// sequence is not reported (decided: only complete ORFs; a ring has no end).
 /// For each stop codon the longest ORF is reported (the first ATG after the previous stop).
 /// `circular`: the sequence is a ring, so an ORF may start near the end and finish after the origin;
 /// its `end` is then larger than the sequence length (the same convention as a feature that wraps).

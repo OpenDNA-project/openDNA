@@ -43,6 +43,13 @@ def file_records(path):
     return [n for n, *_ in multigb.records(path)] if multigb.is_multi_genbank(path) else None
 
 
+def said(doc, path):
+    """`doc`, after a WARNING line on stderr for each thing the file held that was not read (doc.notes)."""
+    for note in doc.notes:
+        print(f"WARNING: {path}: {note}", file=sys.stderr)
+    return doc
+
+
 def load(path):
     """The Document of a file. A file of several records (multi-FASTA, multi-record GenBank) is read one record at a time: `FILE#NAME`
     (the file need not be split); a bare file name is accepted when it holds exactly one record."""
@@ -60,7 +67,7 @@ def load(path):
         if names is None:
             if record is not None:
                 raise UserError(f"{path} holds one record: write the file name without #{record}.")
-            return Document(path)
+            return said(Document(path), path)
         listed = ", ".join(names[:8]) + (", ..." if len(names) > 8 else "")
         if record is None:
             if len(names) != 1:

@@ -14,18 +14,10 @@ Last full triage of the docs folder: 2026-11-20 (each older plan and audit was r
 ## 1. Silent drops (the tool leaves something out and does not say)
 
 Core (Rust):
-- `core/src/cas9.rs`: a guide over 32 bases or a sequence shorter than a site returns an empty list ("no sites"); a PAM base that is N never fits.
-- `core/src/search.rs` `find_motif`: sequence letters other than A, C, G, T, N never fit (U, R, Y...). `fasta.rs` `search_motif` is linear only.
-- `core/src/annotate.rs`: the protein pass runs only when no DNA hit was found; overlapping copies of a part are merged (the test is linear);
-  parts cut by a linear end are never reported.
-- `core/src/bio.rs`: an ORF that runs off a linear end is dropped. `document.rs`: `features_in` and `gc_bins` do not wrap a window.
-  `write_genbank` drops a stored primer_bind not matched by the supplied sites.
-- `core/src/dna_file.rs`, `embl.rs`, `tracks.rs`: features, binding sites or a final record without `//` dropped silently; a BED/GFF line
-  with end < start fails the whole track.
+- **Won't fix** (decided 2026-11-21): `core/src/annotate.rs` does not report a part cut by a linear end (a fragment). Only complete parts are hits.
+- **Won't fix** (decided 2026-11-21): `core/src/bio.rs` does not report an ORF that runs off a linear end (only complete ORFs, stop included).
 
 App (Python):
-- `app/editor.py`: `MAX_SITES` (50) and the track-search cap (500, also `app/search.py`) cut silently.
-- FASTA records are searched as linear (`app/search.py`, `app/reference.py`, `app/folder_search.py`), not said.
 - `app/reference.py` `split_genbank`: a last record without `//` is never searched.
 - `app/msa.py`: no warning when the alignment touches the band edge, none for circular inputs with different origins.
 - `app/primer_design.py`: candidates are cut to 25 per side before the uniqueness check.
@@ -35,8 +27,8 @@ App (Python):
 
 ## 2. Circular origin not handled (a feature through the origin is treated as linear)
 
-- `app/annotation.py`, `app/genes.py`: gene groups, `already_there`, `span_of` and `import_files` treat a part across the origin as linear
-  (a part is shown as not annotated and added twice; a gene master covers the whole plasmid).
+- `app/annotation.py`, `app/genes.py`: `already_there`, `span_of` and `import_files` treat a part across the origin as linear
+  (a part is shown as not annotated and added twice; `import_files` skips a multi-span part without saying).
 - `app/tools.py`: an ORF through the origin is translated only up to the origin; `annotated()` never matches it.
 - `app/protein.py`: extent, pin, highlight and residue selection of a CDS through the origin are linear (window only; found by reading).
 - `app/checkup.py` `_show`: a unit through the origin selects only the part before it.

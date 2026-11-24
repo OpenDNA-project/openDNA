@@ -162,6 +162,13 @@ def test_off_target_search_covers_every_record(genome, tmp_path, monkeypatch):
     assert sorted(windowed.whole) == sorted(whole.whole) and len(windowed.whole) == 2
     assert sorted(windowed.hits) == sorted(whole.hits)
     assert [h[1] for h in sorted(windowed.whole)] == [395, 700]
+    # --- a one-record FASTA is circular: a site across the origin (the primer cut at 14|10) is found once, in the windowed search too;
+    # the same file tagged [topology=linear] has no such site
+    wrap = PRIMER[10:] + dna(976) + PRIMER[:10]
+    write_fasta(wpath, [("chrW", wrap)])
+    assert [(h[1], h[2]) for h in Reference(wpath).search(PRIMER, PRIMER, 0, 12).whole] == [(990, 1014)]
+    write_fasta(wpath, [("chrW [topology=linear]", wrap)])
+    assert Reference(wpath).search(PRIMER, PRIMER, 0, 12).whole == []
 
 
 REPORT = {"reports": [{"accession": "GCF_000000001.1", "organism": {"organism_name": "Madeup coli"},

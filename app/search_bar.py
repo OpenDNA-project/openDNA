@@ -289,7 +289,7 @@ class SearchBar(QWidget):
         flag, token = threading.Event(), object()
         self.stop_flag, self.token = flag, token
         self.total, self.seen, self.want = len(names), 0, direction
-        path, current, bases = ed.path, ed.fasta_record, ed.doc.sequence()   # a copy: the document may change meanwhile
+        path, current, bases, circular = ed.path, ed.fasta_record, ed.doc.sequence(), ed.circular   # a copy: the document may change meanwhile
         own_too = ed.multi_genbank   # the open record is searched with everything it has, the other records from the file
         others = [n for n in names if n != current] if own_too else names
         self._mark()
@@ -306,7 +306,7 @@ class SearchBar(QWidget):
                     for h in own:
                         h.record = h.record or current
                     _relay.found.emit(token, current, own)
-                search.search_file(path, others, current, bases, query, opts, flag, lambda n, h: _relay.found.emit(token, n, h))
+                search.search_file(path, others, current, bases, query, opts, flag, lambda n, h: _relay.found.emit(token, n, h), current_circular=circular)
                 _relay.done.emit(token)
             except RuntimeError:
                 pass   # the program is closing: the relay is already gone

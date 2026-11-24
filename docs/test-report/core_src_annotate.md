@@ -4,17 +4,19 @@
 
 ## `finds_parts_on_both_strands_across_the_origin_and_as_protein`
 
-**Result:** ✅ passed · [line 201](../../core/src/annotate.rs#L201) · **Area:** Feature detection (known parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 207](../../core/src/annotate.rs#L207) · **Area:** Feature detection (known parts) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** 'Detect common features' could miss known parts on the reverse strand, across the origin, or as codon-changed CDSs, or report the wrong identity.
 
-'Detect common features' finds a part forward, a mutated part on the reverse strand with the right identity, a part split across the origin of a circle, and a codon-recoded CDS at the protein level.
+'Detect common features' finds a part forward, a mutated part on the reverse strand with the right identity, a part split across the origin of a circle, and a codon-recoded CDS at the protein level. It also checks that a coding part found as DNA is still searched as protein, so a recoded second copy is reported too. Two hits of one part that overlap only across the origin are merged (one kept, the first start on a tie).
 
 | # | Input | Expected output |
 |---|---|---|
 | 1 | circular plasmid built from random_dna(3000, seed 1): 40-bp promoter at 500 (+25 shift), revcomp of a 300-bp gene with 6 substitutions at 1040, promoter split 15/25 across the origin; parts [promoter, gene], coding [false,true], min_dna 0.95, min_protein 0.9 | contains (part 0, 525, len 40, fwd, DNA) and (0, n-15, 40, fwd, DNA); gene hit start 1065, reverse, DNA level, identity 294/300 (within 1e-6) |
 | 2 | same sequence as linear, promoter only | exactly 1 hit |
-| 3 | 51-bp CDS 'ATGCTGCTGCTG...TAA' vs synonymous recoding 'ATGTTATTGCTT...TAG' embedded at 200 in 200+51+200 random bp | exactly 1 hit: start 200, len 51, forward, protein=true, identity 1.0 |
+| 3 | circular 1,000 bp ring holding a 60-base run of a 15-base unit across the origin (starts 990..1049), part = unit x 3, circular and linear | circular: one hit, at 5 (the copies at 990 and 5 share 30 bases on the circle and are merged); linear: one hit, at 5 |
+| 4 | 51-bp CDS 'ATGCTGCTGCTG...TAA' vs synonymous recoding 'ATGTTATTGCTT...TAG' embedded at 200 in 200+51+200 random bp | exactly 1 hit: start 200, len 51, forward, protein=true, identity 1.0 |
+| 5 | host with a CDS as it is, 200 random bases, the same CDS recoded (same protein), 200 random bases; part marked coding | two hits: a DNA hit at 200 and a protein hit at 451 (the recoded copy is no longer hidden by the DNA copy) |
 
 **Review notes:**
 

@@ -296,6 +296,8 @@ pub enum Refresh {
 pub struct Document {
     pub record: Seq,
     pub primers: Vec<Primer>,
+    /// What the file held that the reader did not take (see dna_file.rs, embl.rs), as sentences; empty for a clean file.
+    pub notes: Vec<String>,
     undo_stack: Vec<Edit>,
     redo_stack: Vec<Edit>,
     /// Undo depth at the last save; `None` once that state can no longer be reached.
@@ -343,6 +345,7 @@ impl Document {
         Document {
             record,
             primers,
+            notes: Vec::new(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             saved_depth: Some(0),
@@ -373,20 +376,29 @@ impl Document {
             buf[..n].to_vec()
         };
         if head.first() == Some(&0x09) {
-            let (record, primers) = dna_file::read_file(path)?;
-            return Ok(Document::new(record, primers));
+            let (record, primers, notes) = dna_file::read_file(path)?;
+            let mut doc = Document::new(record, primers);
+            doc.notes = notes;
+            return Ok(doc);
         }
         // gb-io returns one `Seq` per record in the file (an EMBL file is first turned into GenBank text).
         let embl = crate::embl::looks_like_embl(&head);
+        let mut notes = Vec::new();
         let mut records = if embl {
             let text = String::from_utf8_lossy(&std::fs::read(path)?).into_owned();
-            gb_io::reader::parse_slice(crate::embl::to_genbank(&text).as_bytes())
+            let (genbank, found) = crate::embl::to_genbank(&text);
+            notes = found;
+            gb_io::reader::parse_slice(genbank.as_bytes())
         } else {
             gb_io::reader::parse_file(path)
         }
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {e}", if embl { "EMBL" } else { "GenBank" })))?;
         match records.len() {
-            1 => Ok(Document::new(records.pop().unwrap(), Vec::new())),
+            1 => {
+                let mut doc = Document::new(records.pop().unwrap(), Vec::new());
+                doc.notes = notes;
+                Ok(doc)
+            }
             0 => Err(io::Error::new(io::ErrorKind::InvalidData, "no GenBank record found")),
             // shortcut: refuse instead of silently dropping records on save; add multi-record
             // documents when a real file needs it.
@@ -425,12 +437,14 @@ impl Document {
         crate::fasta::write_replacing(src, dst, &name, &self.record.seq)
     }
 
-    /// Write a GenBank copy without changing the "saved" state (used for autosave).
+    /// Write a GenBank copy without changing the "saved" state (used for autosave). `primers`: see `genbank_record`.
     pub fn write_genbank(&self, path: &Path, primers: Option<Vec<Feature>>) -> io::Result<()> {
         write_record(&self.genbank_record(primers)?, path)
     }
 
     /// A copy of the record as `write_genbank` writes it: with `primers` instead of its own primer_bind features when given.
+    /// `primers` replaces EVERY primer_bind of the document: a stored primer that should stay (one with no exact site, say)
+    /// must be in the list, as the app's `Editor.file_primer_features` does.
     /// A copy, so the app can write it with Python's lock released while the window goes on reading (or editing) the document.
     pub fn genbank_record(&self, primers: Option<Vec<Feature>>) -> io::Result<Seq> {
         let mut copy = self.record.clone();
@@ -444,14 +458,14 @@ impl Document {
         Ok(copy)
     }
 
-    /// Open one sequence of a FASTA file (through its .fai index) as a linear document.
+    /// Open one sequence of a FASTA file (through its .fai index); its topology is `IndexedFasta::circular`'s.
     pub fn from_fasta(path: &Path, name: &str) -> io::Result<Self> {
         let mut fasta = crate::fasta::IndexedFasta::open(path)?;
         let length = fasta.entries.iter().find(|e| e.name == name).map(|e| e.length).unwrap_or(0);
         let seq = fasta.fetch(name, 0, length)?;
         let record = Seq {
             name: Some(name.to_string()),
-            topology: gb_io::seq::Topology::Linear,
+            topology: if fasta.circular(name)? { gb_io::seq::Topology::Circular } else { gb_io::seq::Topology::Linear },
             molecule_type: Some("DNA".into()),
             len: Some(seq.len()),
             seq,
@@ -462,8 +476,35 @@ impl Document {
 
     /// GC fraction in `bins` equal bins of [start, end) (NaN for an empty bin). Zoomed
     /// out (bins wider than 4 blocks) it sums cached per-block counts instead of reading
-    /// every base, so a whole-chromosome plot stays instant.
+    /// every base, so a whole-chromosome plot stays instant. On a circular sequence a window may pass the
+    /// end (at most one lap): the bases past it are the start of the sequence. On a linear one the part
+    /// past the end is clipped (there are no bases there).
     pub fn gc_bins(&self, start: usize, end: usize, bins: usize) -> Vec<f32> {
+        let n = self.len();
+        if self.record.topology != gb_io::seq::Topology::Circular || n == 0 || bins == 0 || end <= start {
+            return self.gc_bins_flat(start, end, bins);
+        }
+        let lap = start / n * n;
+        let (start, end) = (start - lap, (end - lap).min(start - lap + n));
+        if end <= n {
+            return self.gc_bins_flat(start, end, bins);
+        }
+        let width = (end - start) as f64 / bins as f64;
+        (0..bins)
+            .map(|i| {
+                let a = start + (i as f64 * width) as usize;
+                let b = start + ((i + 1) as f64 * width) as usize;
+                if b <= a {
+                    return f32::NAN;
+                }
+                // The part before the end and the part after it (the start of the sequence), weighted by their lengths.
+                let gc = |x: usize, y: usize| if y > x { self.gc_bins_flat(x, y, 1)[0] as f64 * (y - x) as f64 } else { 0.0 };
+                ((gc(a, b.min(n)) + gc(a.max(n) - n, b - n)) / (b - a) as f64) as f32
+            })
+            .collect()
+    }
+
+    fn gc_bins_flat(&self, start: usize, end: usize, bins: usize) -> Vec<f32> {
         let end = end.min(self.len());
         if bins == 0 || end <= start {
             return vec![f32::NAN; bins];
@@ -1114,16 +1155,21 @@ impl Document {
         move_features(&mut self.record.features, start as i64, end as i64, edit.inserted.len() as i64);
     }
 
-    /// Indices of features overlapping `[start, end)`.
+    /// Indices of features overlapping `[start, end)`. On a circular sequence the window may pass the end: the part past
+    /// it is the start of the sequence (so `end` up to `start + length`).
     ///
     /// shortcut: linear scan, ~microseconds for 10k features; switch to an interval tree
     /// when loading tracks with millions of entries (GFF/BAM, Phase 4).
     pub fn features_in(&self, start: i64, end: i64) -> Vec<usize> {
+        let n = self.len() as i64;
+        let wraps = self.record.topology == gb_io::seq::Topology::Circular && end > n;
         self.record
             .features
             .iter()
             .enumerate() // yields (index, feature) pairs, like Python's enumerate()
-            .filter(|(_, f)| locations::spans(&f.location).0.iter().any(|&(a, b)| a < end && b > start))
+            .filter(|(_, f)| {
+                locations::spans(&f.location).0.iter().any(|&(a, b)| (a < end && b > start) || (wraps && a < end - n && b > start - n))
+            })
             .map(|(i, _)| i)
             .collect()
     }
@@ -1876,6 +1922,24 @@ ORIGIN
         let bad = Feature { location: Location::simple_range(0, 999), ..primers[0].clone() };
         assert!(doc.save_genbank(&path, Some(vec![bad])).is_err());
         }
+    }
+
+    #[test]
+    fn a_window_through_the_origin_of_a_circle_wraps_for_features_and_gc() {
+        let circle = sample(); // AAAACCCCGGGGTTTTACGT, circular: ori = complement(join(18..20,1..3))
+        let ori = circle.record.features.iter().position(|f| locations::spans(&f.location).1 < 0).unwrap();
+        // Bases 22..24 of the second lap are bases 2..4 of the sequence: the part of ori after the origin.
+        assert!(circle.features_in(21, 24).contains(&ori));
+        assert!(!circle.features_in(5, 7).contains(&ori));
+        // A line has no second lap: the same window finds nothing there.
+        let line = Document::new_sequence("l", &circle.record.seq, false).unwrap();
+        assert!(line.features_in(21, 24).is_empty());
+        // GC of bases 18..22: G T then A A (the start of the sequence) = 1 of 4; a line clips to G T = 1 of 2.
+        assert_eq!(circle.gc_bins(18, 22, 1), vec![0.25]);
+        assert_eq!(line.gc_bins(18, 22, 1), vec![0.5]);
+        // Two bins: [G T] and [A A]; and a window longer than one lap is cut to one lap.
+        assert_eq!(circle.gc_bins(18, 22, 2), vec![0.5, 0.0]);
+        assert_eq!(circle.gc_bins(10, 40, 1), circle.gc_bins(10, 30, 1));
     }
 
     #[test]

@@ -268,19 +268,19 @@ class MapView(QWidget):
             length_px, room = self.width() - 40.0, self._room() - 80.0
         view = self._win() if not circular else None
         key = (self.width(), self._room(), circular, ed.length, view)
-        # ed.map_features is a new list whenever the features or the filter change: the cache holds on to it.
-        if self.layout_cache and self.layout_cache[0] == key and self.layout_cache[1] is ed.map_features:
+        # ed.shown is a new list whenever the features or the filter change: the cache holds on to it.
+        if self.layout_cache and self.layout_cache[0] == key and self.layout_cache[1] is ed.shown:
             return self.layout_cache[2]
-        features = ed.map_features
-        count = ed.map_lane_count
+        features = ed.shown
+        count = ed.lane_count
         if view is not None and view != (0.0, float(max(1, ed.length))):   # zoomed in: the features in view only
             features = [f for f in features if any(e > view[0] and s < view[1] for s, e in f.spans)]
-            count = 1 + max((ed.map_lanes[f.index] for f in features), default=-1)
+            count = 1 + max((ed.lanes[f.index] for f in features), default=-1)
         most = max(1, int(room / (MIN_BAND + 3)))
         budget = max(1, int(length_px / SPACING))
 
         if len(features) <= budget and count <= most:
-            layout = (features, ed.map_lanes, count, 0)   # everything fits: the editor's packing
+            layout = (features, ed.lanes, count, 0)   # everything fits: the editor's packing
         else:
             big = sorted(features, key=lambda f: sum(e - s for s, e in f.spans), reverse=True)
             lo, hi = 0, min(len(big), budget)   # the most of the largest features that fit `most` lanes (binary search)
@@ -292,7 +292,7 @@ class MapView(QWidget):
                     hi = k - 1
             lanes, count = pack_lanes(big[:lo])
             layout = ([f for f in features if f.index in lanes], lanes, count, len(features) - lo)
-        self.layout_cache = (key, ed.map_features, layout)
+        self.layout_cache = (key, ed.shown, layout)
         return layout
 
     # ---- the chromosome list (a FASTA file of several sequences) --------------------

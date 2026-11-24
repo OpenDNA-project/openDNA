@@ -24,7 +24,7 @@ pub struct GuideSite {
     /// How many of the guide's bases differ from the DNA.
     pub mismatches: usize,
     /// Which bases differ: bit `i` is set when guide base `i` (0 = the 5' end, far from the PAM) mismatches.
-    pub mask: u32,
+    pub mask: u64,
 }
 
 /// The complement of one base; anything that is not A, C, G or T is left alone.
@@ -67,27 +67,25 @@ fn iupac_fits(code: u8, base: u8) -> bool {
     }
 }
 
-/// Every site of each guide in `template`, on both strands, with at most `max_mismatches` mismatches in the
-/// protospacer and a PAM that fits `pam` exactly. All guides must have the same length (the first one's).
-/// Returns one list per guide, in the order given.
+/// What a search found: the sites of each guide (in the order given), and for each guide how many more would have been
+/// sites if an unknown base N of the DNA in the PAM were any base. Those are not reported (we cannot know), only counted.
+pub struct Found {
+    pub sites: Vec<Vec<GuideSite>>,
+    pub skipped: Vec<usize>,
+}
+
+/// The search for either kind of nuclease, on both strands, with at most `max_mismatches` mismatches in the
+/// protospacer and a PAM that fits `pam` exactly. `pam_first` says where the PAM sits on the strand the guide reads
+/// along: false (Cas9: protospacer, then PAM) or true (Cas12a: PAM, then protospacer, 5' of it). The site is the
+/// same length either way and is reported in top-strand coordinates, so only the two offsets below differ.
+/// The mismatch mask counts guide bases from the guide's own 5' end, which is next to the PAM for `pam_first`.
+/// All guides must have the same length, 1 to 64 (the mask is 64 bits), or the call fails: an empty answer
+/// would read as "no site". A sequence shorter than one site has none, which is a true empty answer
+/// (shortcut: a circular sequence shorter than a site could wrap onto itself and is not searched; plasmids never are).
 ///
 /// How it works: per strand, first find every place where the PAM pattern fits (about one base in 16 for
 /// NGG), then compare each guide with the bases in front of those places, giving up on a place as soon as it
 /// has too many mismatches. That makes a whole bacterial genome take a few tens of milliseconds per guide.
-pub fn find_guide_sites(
-    template: &[u8],
-    circular: bool,
-    guides: &[Vec<u8>],
-    pam: &[u8],
-    max_mismatches: usize,
-) -> Vec<Vec<GuideSite>> {
-    find_sites(template, circular, guides, pam, max_mismatches, false)
-}
-
-/// The same search for either kind of nuclease. `pam_first` says where the PAM sits on the strand the guide reads
-/// along: false (Cas9: protospacer, then PAM) or true (Cas12a: PAM, then protospacer, 5' of it). The site is the
-/// same length either way and is reported in top-strand coordinates, so only the two offsets below differ.
-/// The mismatch mask counts guide bases from the guide's own 5' end, which is next to the PAM for `pam_first`.
 pub fn find_sites(
     template: &[u8],
     circular: bool,
@@ -95,18 +93,24 @@ pub fn find_sites(
     pam: &[u8],
     max_mismatches: usize,
     pam_first: bool,
-) -> Vec<Vec<GuideSite>> {
-    let mut out: Vec<Vec<GuideSite>> = vec![Vec::new(); guides.len()];
+) -> Result<Found, String> {
+    let mut out = Found { sites: vec![Vec::new(); guides.len()], skipped: vec![0; guides.len()] };
     let n = template.len();
     if n == 0 || guides.is_empty() || pam.is_empty() {
-        return out;
+        return Ok(out);
     }
     let len = guides[0].len();
+    if len == 0 || len > 64 {
+        return Err(format!("a guide must be 1 to 64 bases long, this one has {len}"));
+    }
+    if guides.iter().any(|g| g.len() != len) {
+        return Err("all guides of one search must have the same length".to_string());
+    }
     let span = len + pam.len(); // bases in a site
     // Where, counted from the start of a site, the PAM and the protospacer begin.
     let (pam_at, guide_at) = if pam_first { (0, pam.len()) } else { (len, 0) };
-    if len == 0 || len > 32 || n + 1 < span {
-        return out; // the mask holds 32 bases; a sequence shorter than a site has none
+    if n + 1 < span {
+        return Ok(out);
     }
     // The guides as upper-case bytes, so a lower-case guide still matches.
     let guides_up: Vec<Vec<u8>> = guides.iter().map(|g| g.iter().map(|b| b.to_ascii_uppercase()).collect()).collect();
@@ -122,47 +126,57 @@ pub fn find_sites(
         }
         // Where a site could start on this strand.
         let starts = if circular { n } else { n + 1 - span };
-        // First pass: where does the PAM fit?
-        let mut pam_here = Vec::new();
+        // First pass: where does the PAM fit? And where would it fit if the N bases of the DNA were any base?
+        let (mut pam_here, mut pam_maybe) = (Vec::new(), Vec::new());
         for i in 0..starts {
             if i + span > strand.len() {
                 break;
             }
-            if pam.iter().enumerate().all(|(k, &code)| iupac_fits(code, strand[i + pam_at + k])) {
+            let at = &strand[i + pam_at..i + pam_at + pam.len()];
+            if pam.iter().zip(at).all(|(&code, &b)| iupac_fits(code, b)) {
                 pam_here.push(i);
+            } else if pam.iter().zip(at).all(|(&code, &b)| b == b'N' || iupac_fits(code, b)) {
+                pam_maybe.push(i);
             }
         }
-        // Second pass: compare each guide with the bases before each PAM.
-        for (g, guide) in guides_up.iter().enumerate() {
-            if guide.len() != len {
-                continue; // a guide of another length cannot be compared position by position
-            }
-            for &i in &pam_here {
-                let (mut mismatches, mut mask) = (0usize, 0u32);
-                for k in 0..len {
-                    // A base that is not A/C/G/T never equals a guide base, so it counts as a mismatch.
-                    if strand[i + guide_at + k] != guide[k] {
-                        mismatches += 1;
-                        mask |= 1 << k;
-                        if mismatches > max_mismatches {
-                            break;
-                        }
+        // Second pass: compare each guide with the bases before each PAM. A base that is not A/C/G/T never
+        // equals a guide base, so it counts as a mismatch. Some((mismatches, mask)) when within the limit.
+        let compare = |i: usize, guide: &[u8]| {
+            let (mut mismatches, mut mask) = (0usize, 0u64);
+            for k in 0..len {
+                if strand[i + guide_at + k] != guide[k] {
+                    mismatches += 1;
+                    mask |= 1 << k;
+                    if mismatches > max_mismatches {
+                        return None;
                     }
                 }
-                if mismatches <= max_mismatches {
+            }
+            Some((mismatches, mask))
+        };
+        for (g, guide) in guides_up.iter().enumerate() {
+            for &i in &pam_here {
+                if let Some((mismatches, mask)) = compare(i, guide) {
                     // Back to top-strand coordinates. A reverse-strand site that starts at `i` on the
                     // reverse complement occupies [n - i - span, n - i) on the top strand.
                     let start = if forward { i } else { (n as i64 - (i + span) as i64).rem_euclid(n as i64) as usize };
-                    out[g].push(GuideSite { start, end: start + span, forward, mismatches, mask });
+                    out.sites[g].push(GuideSite { start, end: start + span, forward, mismatches, mask });
                 }
             }
+            out.skipped[g] += pam_maybe.iter().filter(|&&i| compare(i, guide).is_some()).count();
         }
     }
     // Same order whatever the strand: by position, then forward before reverse.
-    for sites in &mut out {
+    for sites in &mut out.sites {
         sites.sort_by_key(|s| (s.start, !s.forward));
     }
-    out
+    Ok(out)
+}
+
+/// `find_sites` for a Cas9-type nuclease (protospacer, then PAM), sites only: for the tests.
+#[cfg(test)]
+fn find_guide_sites(template: &[u8], circular: bool, guides: &[Vec<u8>], pam: &[u8], max_mismatches: usize) -> Vec<Vec<GuideSite>> {
+    find_sites(template, circular, guides, pam, max_mismatches, false).unwrap().sites
 }
 
 #[cfg(test)]
@@ -263,21 +277,21 @@ mod tests {
         // Cas12a: the PAM (TTTV) is on the 5' side. On the top strand: TTTA, then the 20-base protospacer.
         let g = "ACGTTGCAAGTCCATGCATG";
         let t = format!("CCCCCTTTA{g}CCCCC");
-        let hits = find_sites(t.as_bytes(), false, &guide(g), b"TTTV", 0, true);
+        let hits = find_sites(t.as_bytes(), false, &guide(g), b"TTTV", 0, true).unwrap().sites;
         assert_eq!(hits[0].len(), 1);
         let h = &hits[0][0];
         assert_eq!((h.start, h.end, h.forward, h.mismatches), (5, 29, true, 0));
         // The same text is no site when the PAM must come after the protospacer.
-        assert!(find_sites(t.as_bytes(), false, &guide(g), b"TTTV", 0, false)[0].is_empty());
+        assert!(find_sites(t.as_bytes(), false, &guide(g), b"TTTV", 0, false).unwrap().sites[0].is_empty());
         // On the bottom strand the site reads reverse-complemented: protospacer first on the top strand, then the PAM's complement.
         let bottom = String::from_utf8(revcomp(format!("TTTC{g}").as_bytes())).unwrap();
         let t2 = format!("CCCCC{bottom}CCCCC");
-        let hits = find_sites(t2.as_bytes(), false, &guide(g), b"TTTV", 0, true);
+        let hits = find_sites(t2.as_bytes(), false, &guide(g), b"TTTV", 0, true).unwrap().sites;
         assert_eq!(hits[0].len(), 1);
         assert_eq!((hits[0][0].start, hits[0][0].end, hits[0][0].forward), (5, 29, false));
         // --- unequal flanks (5 / 10): top start 5, reverse-strand index 39 - 29 = 10 ---
         let t2 = format!("CCCCC{bottom}CCCCCCCCCC");
-        let hits = find_sites(t2.as_bytes(), false, &guide(g), b"TTTV", 0, true);
+        let hits = find_sites(t2.as_bytes(), false, &guide(g), b"TTTV", 0, true).unwrap().sites;
         assert_eq!(hits[0].iter().map(|s| (s.start, s.end, s.forward, s.mismatches)).collect::<Vec<_>>(), vec![(5, 29, false, 0)]);
     }
 
@@ -287,7 +301,40 @@ mod tests {
         let mut bent: Vec<u8> = g.bytes().collect();
         bent[0] = b'T'; // the base right after the PAM
         let t = format!("CCCCCTTTG{}CCCCC", String::from_utf8(bent).unwrap());
-        let hits = find_sites(t.as_bytes(), false, &guide(g), b"TTTV", 1, true);
+        let hits = find_sites(t.as_bytes(), false, &guide(g), b"TTTV", 1, true).unwrap().sites;
         assert_eq!((hits[0][0].mismatches, hits[0][0].mask), (1, 1));
+    }
+
+    #[test]
+    fn a_guide_the_mask_cannot_hold_is_an_error_not_an_empty_answer() {
+        let long = "A".repeat(40);
+        // 40 bases now fit (a 64-bit mask): the site with its PAM is found and its mask sees base 39.
+        let t = format!("CC{long}TGGCC");
+        let found = find_sites(t.as_bytes(), false, &[long.as_bytes().to_vec()], b"NGG", 0, false).unwrap();
+        assert_eq!(found.sites[0].len(), 1);
+        let bent = format!("CC{}CTGGCC", &long[..39]);
+        let found = find_sites(bent.as_bytes(), false, &[long.as_bytes().to_vec()], b"NGG", 1, false).unwrap();
+        assert_eq!(found.sites[0][0].mask, 1 << 39);
+        // 65 bases and guides of different lengths are refused, not answered with "no sites".
+        assert!(find_sites(b"ACGT", false, &[vec![b'A'; 65]], b"NGG", 0, false).is_err());
+        assert!(find_sites(t.as_bytes(), false, &[vec![b'A'; 20], vec![b'A'; 21]], b"NGG", 0, false).is_err());
+        // A sequence shorter than one site is a true "none", not an error.
+        assert!(find_sites(b"ACGT", false, &[vec![b'A'; 20]], b"NGG", 0, false).unwrap().sites[0].is_empty());
+    }
+
+    #[test]
+    fn a_site_that_only_an_unknown_base_in_the_pam_hides_is_counted() {
+        let g = "ACGTTGCAAGTCCATGCATG";
+        // The PAM is A?G with ? unknown: NGG would fit if N were a G, so it is counted, not reported.
+        let t = format!("TTTTT{g}ANGCCCCC");
+        let found = find_sites(t.as_bytes(), false, &guide(g), b"NGG", 0, false).unwrap();
+        assert_eq!((found.sites[0].len(), found.skipped[0]), (0, 1));
+        // A known PAM is a site and nothing is skipped.
+        let t = format!("TTTTT{g}AGGCCCCC");
+        let found = find_sites(t.as_bytes(), false, &guide(g), b"NGG", 0, false).unwrap();
+        assert_eq!((found.sites[0].len(), found.skipped[0]), (1, 0));
+        // A PAM where a known base contradicts the pattern is no near-site.
+        let t = format!("TTTTT{g}ANACCCCC");
+        assert_eq!(find_sites(t.as_bytes(), false, &guide(g), b"NGG", 0, false).unwrap().skipped[0], 0);
     }
 }

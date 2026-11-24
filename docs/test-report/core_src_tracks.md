@@ -4,7 +4,7 @@
 
 ## `gff_bed_and_queries`
 
-**Result:** ✅ passed · [line 239](../../core/src/tracks.rs#L239) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 262](../../core/src/tracks.rs#L262) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Loaded GFF/GTF/BED/VCF annotation tracks could show features off by one base, lose escaped names, or miss features in a region.
 

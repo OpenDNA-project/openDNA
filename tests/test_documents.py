@@ -24,7 +24,7 @@ import exports
 import fileio
 import primer_db
 import selftest
-from editor import Editor, reverse_complement
+from editor import MAX_SITES, Editor, reverse_complement
 from file_history import FileHistory
 from history_panel import group
 import autosave
@@ -413,6 +413,19 @@ def test_undo_history_steps(monkeypatch, tmp_path):
     ed.type_bases("C")
     assert not ed.redo() and names() == ["pFwd"], "a new edit drops what could have been redone, primer steps included"
 
+    # --- a primer that binds more places than are drawn: the first MAX_SITES are listed, the status line and the panel say how many,
+    # and a saved file keeps every exact site ---
+    fresh_db()
+    unit = "ACGTTGCAAGTCCATGCA"
+    rep = Editor(Document.new_sequence("rep", unit * (MAX_SITES + 10), False), tmp_path / "rep.gb")
+    rep.file_primer_set[("pRep", unit)] = ("pRep", unit)
+    said = []
+    rep.error.connect(said.append)
+    rep.match_primers()
+    assert len(rep.primer_sites) == MAX_SITES and rep.cut_primers() == {"pRep": MAX_SITES + 10}
+    assert said and f"{MAX_SITES + 10}" in said[-1] and f"first {MAX_SITES}" in said[-1], said
+    assert len([f for f in rep.file_primer_features() if f[0] == "primer_bind"]) == MAX_SITES + 10
+
     # --- editing and deleting a primer
     fresh_db()
     ed = editor()
@@ -635,7 +648,7 @@ def test_text_exports_and_the_project_file(tmp_path):
         exports.open_project(bad)
 
 
-# ---- gene groups ---------------------------------------------------------------------------------------------------------
+# ---- display switches ---------------------------------------------------------------------------------------------------------
 
 def grouped_genbank(path):
     """1,200 bp with six genes (each a gene + CDS sharing a /locus_tag), a misc_feature in gene F and one in no gene."""
@@ -655,12 +668,11 @@ def grouped_genbank(path):
     return path
 
 
-def test_gene_groups_and_display_switches(tmp_path):
-    """Features sharing a /locus_tag form one gene group; a display switch (collapse genes, hide a type) lays the features out
+def test_display_switches_and_kind_counts(tmp_path):
+    """A display switch (CDS only, hide a type) lays the features out
     again without reading them all from the core again (it also dropped the Local Align hits); the count of each type follows
     the edits."""
     ed = Editor(Document(str(grouped_genbank(tmp_path / "g.gb"))), tmp_path / "g.gb")
-    assert len(ed.groups) == 6 and len(ed.groups["T_F"].parts) == 2, "gene F: its CDS and the tagged misc_feature"
     assert ed.kind_counts == {"gene": 6, "CDS": 6, "misc_feature": 2}
     ed.query_hits = ["a hit"]
     reads = []
@@ -670,7 +682,7 @@ def test_gene_groups_and_display_switches(tmp_path):
     ed.set_display(hidden_kinds={"misc_feature"})
     assert not reads and ed.query_hits == ["a hit"]
     assert not any(f.kind == "misc_feature" for f in ed.shown)
-    ed.set_display(collapse_genes=not ed.collapse_genes)
+    ed.set_display(cds_only=not ed.cds_only)
     ed.set_display(hidden_kinds=())
     assert not reads and any(f.kind == "misc_feature" for f in ed.shown)
     ed.doc = real.__self__

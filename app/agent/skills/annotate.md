@@ -14,7 +14,7 @@ When pLannotate is installed (`wsltools status`; on Windows it runs inside WSL) 
 
 JSON: `hits` in order of position: `name`, `kind`, `start`..`end` (1-based), `strand`, `identity` (0..1), `protein_match` (found as protein: the DNA differs), `already_annotated` (the file already has a feature of that kind on exactly those bases, on the same strand for a CDS; a feature that only overlaps does not count, so a part inside or beside another one is listed as new: say so), `annotated_other_way` (the file has that kind on exactly those bases but in the other direction: the file's feature is probably backwards; say so), `found_by`, `source` (where the part comes from; for pLannotate its database after `pLannotate:`), `strength` (a measurement the source reports, with its units, for promoters and terminators).
 
-`--add NEW.gb` writes a copy of the plasmid with the hits that are **not** annotated yet added as features (never overwrites; the original is untouched). Features are added one per part, not grouped into genes. A CDS, promoter, RBS or primer binding site annotated the other way is turned round in the copy (its name and notes kept; `added.turned_round` counts them), as the window does; other types annotated the other way are left as they are.
+`--add NEW.gb` writes a copy of the plasmid with the hits that are **not** annotated yet added as features (never overwrites; the original is untouched). Features are added one per part. A CDS, promoter, RBS or primer binding site annotated the other way is turned round in the copy (its name and notes kept; `added.turned_round` counts them), as the window does; other types annotated the other way are left as they are.
 
 ## What to tell the user
 

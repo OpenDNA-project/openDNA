@@ -61,6 +61,21 @@ rebuilt or Python keeps importing the old module and the change appears to do no
 is the dev launcher: it rebuilds the core and opens the app on `demo/BW25113_2026.gb`. It locates the
 repo and `.venv` relative to itself; keep it and this file in agreement.
 
+## The changelog: every feature and fix adds a line
+
+`CHANGELOG.md` is the one place that says what changed in each version. The start page shows the running version's section at every opening
+("Full changelog..." opens the whole file), and the same section is the release description on GitHub (the text the updater shows).
+
+Whenever you add a feature or fix a bug a user can see, in the same change add one line under `## Unreleased` (top of the file), under the right label:
+
+- **Features**: `Added:`, `Changed:` or `Removed:` plus the line. At most 3 lines per version: merge related changes, drop the minor ones.
+- **Bugfixes**: one line per fix, what no longer goes wrong.
+- **UI/UX**: one line per change of the interface (layout, menus, labels, colours).
+
+Succinct, in the user's words, no file or function names. Not for refactors, tests, CI or docs. A label with no line is left empty.
+At release, rename `## Unreleased` to `## x.y.z (YYYY-MM-DD)`, drop its empty labels, add a fresh empty `## Unreleased`, and paste the
+version's section (without the `##` line) into the GitHub draft above **Downloads.**. `tests/test_project.py` checks the shape.
+
 ## The test report: keep it in step with the tests
 
 `docs/test-report/report.html` is the owner's way of checking that every test is relevant. It lists

@@ -1,6 +1,5 @@
 """Detect common features: find known parts (promoters, RBS, origins, markers, fluorescent
-proteins, terminators…) in the sequence and add the ones you tick, optionally grouped
-into genes (promoter + RBS + CDS + terminator on the same strand).
+proteins, terminators…) in the sequence and add the ones you tick.
 
 Parts come from the Features Database (parts_library.py: app/parts/*.tsv, bundled one file per
 source, and your own features, the source "Local"); Sources there says which sources are used.
@@ -42,13 +41,10 @@ tool_settings.register(TOOL, [
                         tip="Coding parts are also searched as protein, to find codon-optimized versions."),
     tool_settings.Param("min_length", "Ignore parts shorter than", 15, 6, 100, suffix=" bp",
                         tip="Short parts (operators, RBS) match by chance in large sequences."),
-    tool_settings.Param("group_genes", "Group promoter + RBS + CDS + terminator into genes", True),
-    tool_settings.Param("gene_reach", "…when within", 300, 0, 5000, step=50, suffix=" bp of the CDS"),
     tool_settings.Param("use_plannotate", "Also search with pLannotate (when installed)", True,
                         tip="pLannotate, the Barrick lab's plasmid annotator, is a separate tool that you install once (Install pLannotate). "
                             "Its features are listed beside the Features Database's, each marked with who found it."),
 ])
-KINDS_UPSTREAM = {"promoter": 0, "RBS": 1, "5'UTR": 1}
 OWN, THEIRS, BOTH = "openDNA", "pLannotate", "openDNA + pLannotate"   # the "Found by" values
 PROTEIN_DATABASES = {"fpbase", "swissprot"}   # pLannotate's searches that compare proteins (DIAMOND), not DNA (BLAST)
 
@@ -237,54 +233,10 @@ def turn_features(target, hits):
         target.set_feature(f.index, f.kind, turned(f.location), [tuple(q) for q in f.qualifiers])
 
 
-def gene_groups(hits, reach):
-    """[(CDS hit, [part hits])]: for each CDS, the promoter / RBS upstream and terminator
-    downstream on its strand within `reach` bp."""
-    out = []
-    for cds in (h for h in hits if h.kind == "CDS"):
-        fwd = cds.strand > 0
-        parts = []
-        for h in hits:
-            if h is cds or h.strand != cds.strand or h.kind == "CDS":
-                continue
-            upstream = (cds.start - h.end) if fwd else (h.start - cds.end)
-            downstream = (h.start - cds.end) if fwd else (cds.start - h.end)
-            if h.kind in KINDS_UPSTREAM and -10 <= upstream <= reach:
-                parts.append(h)
-            elif h.kind == "terminator" and -10 <= downstream <= reach:
-                parts.append(h)
-        if parts:
-            out.append((cds, parts))
-    return out
-
-
-def features_for(editor, chosen, group):
-    """Feature tuples for the ticked hits; with `group`, CDS + nearby parts become genes
-    (shared locus_tag + a gene feature), all added in one undo step."""
+def features_for(editor, chosen):
+    """Feature tuples for the ticked hits."""
     n = editor.length
-    tag_of = {}
-    extra = []
-    if group:
-        taken = set(editor.groups)
-        for cds, parts in gene_groups(chosen, tool_settings.value(TOOL, "gene_reach")):
-            if any(id(p) in tag_of for p in parts):
-                continue  # a promoter shared by two CDS stays ungrouped (ambiguous)
-            key = genes.unique_key(taken, cds.name)
-            taken.add(key)
-            members = [cds] + parts
-            for m in members:
-                tag_of[id(m)] = (key, cds.name)
-            lo, hi = min(m.start for m in members), max(m.end for m in members)
-            extra.append((genes.GENE, site_location(lo, hi, cds.strand, n),
-                          [("gene", cds.name), ("locus_tag", key), ("label", cds.name)]))
-    out = []
-    for h in chosen:
-        quals = [("label", h.name), ("note", note_for(h))]
-        if id(h) in tag_of:
-            key, gene = tag_of[id(h)]
-            quals += [("gene", gene), ("locus_tag", key)]
-        out.append((h.kind, site_location(h.start, h.end, h.strand, n), quals))
-    return out + extra
+    return [(h.kind, site_location(h.start, h.end, h.strand, n), [("label", h.name), ("note", note_for(h))]) for h in chosen]
 
 
 class InstallDialog(QDialog):
@@ -481,17 +433,16 @@ class DetectDialog(ToolDialog):
                 f"({', '.join(away)}). They are written straight into the file (no undo). Continue?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
-        group = tool_settings.value(TOOL, "group_genes")
         fresh = lambda hits: [h for h in hits if h.reversed is None]
         turn = lambda hits: [h for h in hits if h.reversed is not None]
         turn_features(self.editor, turn(here))   # (first: adding features may renumber them, and these are found by number)
         if fresh(here):
-            self.editor.add_features(features_for(self.editor, fresh(here), group))
+            self.editor.add_features(features_for(self.editor, fresh(here)))
         for name, hits in away.items():
             other = self.others[name]
             turn_features(other, turn(hits))
             if fresh(hits):
-                other.add_features(features_for(other, fresh(hits), group))
+                other.add_features(features_for(other, fresh(hits)))
             multigb.save_record_of(other)
         if away:
             multigb.forget_siblings(self.editor)

@@ -1,8 +1,5 @@
 """Sortable, filterable feature list. Selecting a row selects the feature everywhere.
 
-Gene groups (see genes.py) show as one row per gene; click its ▸ to list the parts below
-it (collapsed by default). Right-click: group selected features as a gene, ungroup, delete.
-
 Rows are computed once per document change and sorted/filtered as plain Python lists:
 Qt's QSortFilterProxyModel would call data() ~70 times per row while sorting, which took
 seconds on a 10k-feature genome.
@@ -16,16 +13,15 @@ import heapq
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, Qt
-from PySide6.QtGui import QFont, QGuiApplication, QKeySequence
+from PySide6.QtGui import QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
-    QAbstractItemView, QInputDialog, QLineEdit, QMenu, QMessageBox, QStyleOptionViewItem, QTableView, QVBoxLayout, QWidget,
+    QAbstractItemView, QLineEdit, QMenu, QStyleOptionViewItem, QTableView, QVBoxLayout, QWidget,
 )
 
 import genes
 import runner
-import validate
 import value_filter
-from uikit import ask, fit_columns, plural
+from uikit import fit_columns, plural
 from annotation import add_parts, feature_part
 from parts_library import source_of
 from editor import arrow, feature_key, reverse_complement
@@ -34,7 +30,6 @@ from primer_db import db, remove_primers
 
 COLUMNS = ["Name", "Type", "Location", "Length", "Strand"]
 FILTERED = ["Type", "Strand", "Source"]   # the columns with a filter by values (categories; the others are names / numbers)
-TOGGLE_PX = 18  # clicks this close to the left of a gene's name expand/collapse it
 
 
 class FeatureModel(QAbstractTableModel):
@@ -47,93 +42,31 @@ class FeatureModel(QAbstractTableModel):
         self.marked = set()   # columns filtered by values: their header shows the mark
         self.sort_column = self.columns.index("Location") if "Location" in self.columns else 0
         self.sort_order, self.filter_text = Qt.AscendingOrder, ""
-        self.expanded = set()  # keys of open gene groups
-        self.bold = QFont()
-        self.bold.setBold(True)
-        self.rows = []      # top level (genes, ungrouped features): (texts, sort keys, search, index, group key)
-        self.children = {}  # group key -> rows of its parts, in gene order
-        self.shown = []     # rows after filter + sort, parts under their open gene
+        self.rows = []      # every feature: (texts, sort keys, search, index)
+        self.shown = []     # rows after filter + sort
         self.reload()
 
-    def _row(self, f, group=None, part=False):
+    def _row(self, f):
         length = sum(e - s for s, e in f.spans)
-        name = f.label
-        if group is not None:
-            g = self.editor.groups[group]
-            name = f"{'▾' if group in self.expanded else '▸'} {f.label}  ({len(g.parts)} parts)"
-        elif part:
-            name = f"      {f.label}"
         way = arrow(f)
-        base = {"Name": (name, f.label.lower()), "Type": (f.kind, f.kind), "Location": (f.location, f.spans[0][0]),
+        base = {"Name": (f.label, f.label.lower()), "Type": (f.kind, f.kind), "Location": (f.location, f.spans[0][0]),
                 "Length": (f"{length:,}", length), "Strand": ({1: "→", -1: "←", 0: "—"}[way], way)}
         extra = getattr(self.editor, "feature_extra", {}).get(f.index, {})
         texts = tuple(base[c][0] if c in base else extra.get(c, "") for c in self.columns)
         keys = tuple(base[c][1] if c in base else extra.get(c, "").lower() for c in self.columns)
         search = " ".join((f.label, f.kind, f.location) + tuple(extra.values())).lower()
-        return (texts, keys, search, f.index, group)
+        return (texts, keys, search, f.index)
 
     def reload(self):
         self.beginResetModel()
-        ed = self.editor
-        self.rows = [self._row(f, master_key(ed, f)) for f in ed.features if f.index not in ed.part_of]
-        self.children = {k: [self._row(p, part=True) for p in g.parts] for k, g in ed.groups.items()}
+        self.rows = [self._row(f) for f in self.editor.features]
         self._arrange()
         self.endResetModel()
 
     def _arrange(self):
         needle = self.filter_text
-        shown = []
         top = sorted(self.rows, key=lambda r: r[1][self.sort_column], reverse=self.sort_order == Qt.DescendingOrder)
-        for r in top:
-            kids = self.children.get(r[4], []) if r[4] else []
-            hits = [k for k in kids if needle in k[2]] if needle else []
-            if needle and needle not in r[2] and not hits:
-                continue
-            shown.append(r)
-            if r[4] in self.expanded:
-                shown += kids
-            elif hits:  # a filter matching a part shows that part under its gene
-                shown += hits
-        self.shown = shown
-
-    def toggle(self, row):
-        key = self.shown[row][4]
-        if key:
-            self.set_expanded(key, key not in self.expanded)
-
-    def set_expanded(self, key, open_):
-        """Open or close one gene: only its row (the arrow) and the rows of its parts under it change. (It rebuilt and sorted the
-        rows of every feature and reset the table, then the columns were measured again: most of a second on a genome.)"""
-        if (key in self.expanded) == open_:
-            return
-        self.expanded ^= {key}
-        at = next((i for i, r in enumerate(self.shown) if r[4] == key), None)
-        if at is None:   # the gene is not on view (filtered out): nothing to redraw
-            return
-        old = self.shown[at]
-        new = self._row(self.editor.by_index[old[3]], key)   # its name now shows ▾ / ▸
-        self.rows[next(i for i, r in enumerate(self.rows) if r is old)] = new
-        kids = self.children.get(key, [])
-        ids = {id(k) for k in kids}
-        end = at + 1
-        while end < len(self.shown) and id(self.shown[end]) in ids:   # the parts shown under it now
-            end += 1
-        needle = self.filter_text
-        under = kids if open_ else [k for k in kids if needle in k[2]] if needle else []
-        self.fit_quiet = True   # (the parts hold what their gene holds: the columns need not be measured again)
-        try:
-            self.shown[at] = new
-            self.dataChanged.emit(self.index(at, 0), self.index(at, len(self.columns) - 1))
-            if end > at + 1:
-                self.beginRemoveRows(QModelIndex(), at + 1, end - 1)
-                del self.shown[at + 1:end]
-                self.endRemoveRows()
-            if under:
-                self.beginInsertRows(QModelIndex(), at + 1, at + len(under))
-                self.shown[at + 1:at + 1] = under
-                self.endInsertRows()
-        finally:
-            self.fit_quiet = False
+        self.shown = [r for r in top if needle in r[2]]
 
     def set_filter(self, text):
         self.beginResetModel()
@@ -148,10 +81,6 @@ class FeatureModel(QAbstractTableModel):
         self.layoutChanged.emit()
 
     def row_of(self, feature_index):
-        """Row of a feature; a part of a closed gene opens it first."""
-        key = self.editor.part_of.get(feature_index)
-        if key and key not in self.expanded and not any(r[3] == feature_index for r in self.shown):
-            self.set_expanded(key, True)
         return next((i for i, r in enumerate(self.shown) if r[3] == feature_index), None)
 
     def rowCount(self, parent=QModelIndex()):
@@ -167,7 +96,7 @@ class FeatureModel(QAbstractTableModel):
         return None
 
     def data(self, index, role=Qt.DisplayRole):
-        texts, _, _, feature_index, group = self.shown[index.row()]
+        texts, _, _, feature_index = self.shown[index.row()]
         if role == Qt.DisplayRole:
             return texts[index.column()]
         if role == Qt.ToolTipRole and len(str(texts[index.column()])) > 24:   # what an elided cell holds, in full
@@ -176,8 +105,6 @@ class FeatureModel(QAbstractTableModel):
             return int(Qt.AlignRight | Qt.AlignVCenter)
         if role == Qt.DecorationRole and index.column() == 0:
             return self.editor.colors[feature_index]
-        if role == Qt.FontRole and group:
-            return self.bold
         if role == Qt.ForegroundRole and self._hidden(feature_index):   # hidden on the sequence: greyed (right-click > Show)
             return QGuiApplication.palette().placeholderText()
         return None
@@ -192,15 +119,8 @@ class FeatureModel(QAbstractTableModel):
             self.dataChanged.emit(self.index(0, 0), self.index(len(self.shown) - 1, len(self.columns) - 1), [Qt.ForegroundRole])
 
 
-def master_key(editor, f):
-    """Group key if `f` is the gene feature of a group, else None."""
-    key = genes.group_key(f)
-    return key if f.kind == genes.GENE and key in editor.groups and editor.groups[key].master is f else None
-
-
-class GroupTableView(QTableView):
-    """A click on the ▸ of a gene row opens/closes it."""
-    MEASURED = 40   # cells measured per column: the longest different texts of the gene rows (bold) and of the others
+class FeatureTableView(QTableView):
+    MEASURED = 40   # cells measured per column: the longest different texts
 
     def sizeHintForColumn(self, column):
         """The widest cell of a column, every row counted, measured by Qt itself but only on the longest texts (the model holds
@@ -210,24 +130,15 @@ class GroupTableView(QTableView):
         rows = getattr(model, "shown", None)
         if rows is None or not rows:
             return super().sizeHintForColumn(column)
-        texts = ({}, {})   # text -> a row holding it: gene rows (bold), other rows
+        texts = {}   # text -> a row holding it
         for i, r in enumerate(rows):
-            texts[not r[4]].setdefault(str(r[0][column]), i)
+            texts.setdefault(str(r[0][column]), i)
         option = QStyleOptionViewItem()
         self.initViewItemOption(option)
         delegate = self.itemDelegateForColumn(column) or self.itemDelegate()
         widest = max(delegate.sizeHint(option, model.index(i, column)).width()   # the longest different texts (all of "→ ← —")
-                     for group in texts for _, i in heapq.nlargest(self.MEASURED, group.items(), key=lambda t: len(t[0])))
+                     for _, i in heapq.nlargest(self.MEASURED, texts.items(), key=lambda t: len(t[0])))
         return widest + (1 if self.showGrid() else 0)   # (as QTableView's own: the grid line)
-
-    def mousePressEvent(self, event):
-        index = self.indexAt(event.position().toPoint())
-        model = self.model()
-        if index.isValid() and index.column() == 0 and model.shown[index.row()][4] and \
-                event.position().x() - self.visualRect(index).left() < TOGGLE_PX + 16:  # 16 = color icon
-            model.toggle(index.row())
-            return
-        super().mousePressEvent(event)
 
 
 class FeatureTable(QWidget):
@@ -238,12 +149,12 @@ class FeatureTable(QWidget):
 
         self.filter = QLineEdit(placeholderText="Filter features…", clearButtonEnabled=True)
         self.filter.textChanged.connect(self.model.set_filter)
-        self.view = GroupTableView()
+        self.view = FeatureTableView()
         self.view.setModel(self.model)
         self.view.horizontalHeader().setSortIndicator(self.model.sort_column, Qt.AscendingOrder)
         self.view.setSortingEnabled(True)
         self.view.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.view.setSelectionMode(QAbstractItemView.ExtendedSelection)  # several, to group them
+        self.view.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.view.setEditTriggers(QAbstractItemView.NoEditTriggers)
         # columns as wide as what they hold, the name taking the room left (never a Strand column spread over the whole tab);
         # rows of one fixed height from the font (no per-row measuring)
@@ -314,13 +225,6 @@ class FeatureTable(QWidget):
         elif len(chosen) > 1:   # the same actions, applied to every selected feature
             features_actions(menu, self, ed, chosen)
             menu.addSeparator()
-        menu.addAction("Group as Gene…", lambda: group_as_gene(self, ed, chosen)).setEnabled(bool(chosen))
-        keys = {ed.part_of.get(i) or genes.group_key(ed.by_index[i]) for i in chosen if i in ed.by_index}
-        keys = [k for k in keys if k in ed.groups]
-        if len(keys) == 1:
-            menu.addAction("Ungroup Gene", lambda: genes.ungroup(ed, keys[0]))
-            menu.addAction("Delete Gene and Its Parts", lambda: genes.delete_gene(ed, keys[0]))
-        menu.addSeparator()
         menu.addAction("Add to Features Database", lambda: self.add_to_library(chosen)).setEnabled(bool(chosen))
         self.view.value_filter.cell_actions(menu, pos)   # show only / hide the value of the cell
         menu.exec(self.view.viewport().mapToGlobal(pos))
@@ -411,23 +315,10 @@ def set_translations(editor, cds, on):
 
 
 def delete_features(parent, editor, indices):
-    """Delete several features as one undo step; a gene among them asks once whether its parts go too."""
-    chosen = {i for i in indices if i in editor.by_index}
-    owned = set()   # parts of the selected genes
-    for i in chosen:
-        key = master_key(editor, editor.by_index[i])
-        if key:
-            owned |= {p.index for p in editor.groups[key].parts} - chosen
-    if owned:
-        answer = ask(parent, "Delete Features", f"The selection holds genes with {plural(len(owned), 'other part')}.",
-                     [("all", "Delete the Parts Too"), ("selected", "Delete the Selection Only")], default="selected",
-                     detail="Deleting the selection only leaves the other parts, ungrouped.")
-        if answer is None:
-            return
-        if answer == "all":
-            chosen |= owned
+    """Delete several features as one undo step."""
+    chosen = sorted(i for i in indices if i in editor.by_index)
     if chosen:
-        editor.edit_features([(i, None) for i in sorted(chosen)])
+        editor.edit_features([(i, None) for i in chosen])
 
 
 def feature_menu(parent, editor, index, global_pos):
@@ -534,7 +425,6 @@ def selection_menu(parent, editor, global_pos):
                    lambda: QGuiApplication.clipboard().setMimeData(editor.copy_reverse_complement_mime()))
     menu.addSeparator()
     menu.addAction("Add Feature…", lambda: edit_feature(window, editor))
-    menu.addAction("Add Gene…", lambda: group_as_gene(window, editor, features_inside(editor)))
     menu.addSeparator()
     menu.addAction("Add Primer (F)", lambda: PrimerDialog(window, editor).exec())
     menu.addAction("Add Primer (R)", lambda: reverse_primer_dialog(window, editor).exec())
@@ -570,54 +460,5 @@ def reverse_primer_dialog(parent, editor):
     return dialog
 
 
-def features_inside(editor):
-    """Indices of the features lying inside the selection (genes excluded)."""
-    inside = [(editor.start, editor.end)] if editor.end <= editor.length else editor.selected_spans()
-    return [f.index for f in editor.features
-            if f.kind != genes.GENE and any(a <= f.spans[0][0] and f.spans[-1][1] <= b for a, b in inside)]
-
-
-def group_as_gene(parent, editor, indices):
-    """Ask a name (default: the largest CDS's; a warning when there is no CDS) and group
-    `indices` under a new gene."""
-    feats = [editor.by_index[i] for i in indices if i in editor.by_index]
-    if not feats:
-        QMessageBox.information(parent, "Add gene", "No feature inside the selection to make a gene of.")
-        return None
-    cds = sorted((f for f in feats if f.kind == "CDS"), key=lambda f: -sum(e - s for s, e in f.spans))
-    prompt = f"Gene made of {plural(len(feats), 'feature')}: " + ", ".join(f.label for f in feats[:6]) + (
-        "…" if len(feats) > 6 else "") + "\n"
-    if not cds:
-        prompt += "\nNote: there is no CDS among them.\n"
-    name, ok = QInputDialog.getText(parent, "Group as Gene", prompt + "\nGene name:", text=(cds or feats)[0].label)
-    if not ok:
-        return None
-    if not name.strip():
-        QMessageBox.warning(parent, "Group as gene", "Give the gene a name.")
-        return None
-    problem = validate.text_problem(name.strip(), "gene name", 200)
-    if problem:
-        QMessageBox.warning(parent, "Group as gene", problem)
-        return None
-    try:
-        return genes.make_gene(editor, indices, name.strip())
-    except (OSError, ValueError) as e:
-        QMessageBox.warning(parent, "Group as gene", str(e))
-        return None
-
-
 def delete_feature(parent, editor, index):
-    """Delete a feature; for a gene, ask whether its parts go too."""
-    f = editor.by_index.get(index)
-    key = master_key(editor, f) if f is not None else None
-    if key and editor.groups[key].parts:
-        g = editor.groups[key]
-        answer = ask(parent, "Delete Gene", f"{f.label} is made of {plural(len(g.parts), 'part')}. Delete them too?",
-                     [("all", "Delete Gene and Parts"), ("gene", "Delete Gene Only")], default="gene",
-                     detail="Deleting the gene only leaves its parts, ungrouped.")
-        if answer == "all":
-            genes.delete_gene(editor, key)
-        elif answer == "gene":
-            genes.ungroup(editor, key)
-        return
     editor.delete_feature(index)

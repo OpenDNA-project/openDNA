@@ -13,11 +13,11 @@ them well. **[AUDIT.md](AUDIT.md) lists every test on one page with why it matte
 - **Input / Expected output**: the concrete cases, in the order the test runs them. Many tests are *topical*: one test function holds several sections, each a row.
 - **Review notes**: what the reviewer found could be stronger. **Fixed by the audit**: what was changed.
 
-## Totals (230 tests: 159 Python, 71 Rust)
+## Totals (237 tests: 159 Python, 78 Rust)
 
-Last run: ✅ 230 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
+Last run: ✅ 237 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
 
-Review: 🟡 adequate: 83 · 🟢 strong: 143 · 🔴 weak: 4
+Review: 🟡 adequate: 90 · 🟢 strong: 143 · 🔴 weak: 4
 
 ## Test files
 
@@ -59,15 +59,16 @@ Review: 🟡 adequate: 83 · 🟢 strong: 143 · 🔴 weak: 4
 | [`core/src/alignments.rs`](core_src_alignments.md) | 1 | 1 | 0 | 0 | 0 | 🟢 strong 1 |
 | [`core/src/annotate.rs`](core_src_annotate.md) | 1 | 1 | 0 | 0 | 0 | 🟢 strong 1 |
 | [`core/src/bio.rs`](core_src_bio.md) | 3 | 3 | 0 | 0 | 0 | 🟢 strong 3 |
-| [`core/src/cas9.rs`](core_src_cas9.md) | 8 | 8 | 0 | 0 | 0 | 🟡 adequate 4 · 🟢 strong 4 |
+| [`core/src/cas9.rs`](core_src_cas9.md) | 10 | 10 | 0 | 0 | 0 | 🟡 adequate 6 · 🟢 strong 4 |
 | [`core/src/code.rs`](core_src_code.md) | 7 | 7 | 0 | 0 | 0 | 🟡 adequate 5 · 🟢 strong 2 |
-| [`core/src/dna_file.rs`](core_src_dna_file.md) | 2 | 2 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 1 |
-| [`core/src/document.rs`](core_src_document.md) | 12 | 12 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 10 |
-| [`core/src/fasta.rs`](core_src_fasta.md) | 4 | 4 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 3 |
+| [`core/src/dna_file.rs`](core_src_dna_file.md) | 3 | 3 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 1 |
+| [`core/src/document.rs`](core_src_document.md) | 13 | 13 | 0 | 0 | 0 | 🟡 adequate 3 · 🟢 strong 10 |
+| [`core/src/embl.rs`](core_src_embl.md) | 1 | 1 | 0 | 0 | 0 | 🟡 adequate 1 |
+| [`core/src/fasta.rs`](core_src_fasta.md) | 5 | 5 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 3 |
 | [`core/src/locations.rs`](core_src_locations.md) | 3 | 3 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 1 |
 | [`core/src/primers.rs`](core_src_primers.md) | 5 | 5 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 3 · 🔴 weak 1 |
 | [`core/src/salis.rs`](core_src_salis.md) | 3 | 3 | 0 | 0 | 0 | 🟡 adequate 3 |
-| [`core/src/search.rs`](core_src_search.md) | 8 | 8 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 6 |
+| [`core/src/search.rs`](core_src_search.md) | 9 | 9 | 0 | 0 | 0 | 🟡 adequate 3 · 🟢 strong 6 |
 | [`core/src/tracks.rs`](core_src_tracks.md) | 1 | 1 | 0 | 0 | 0 | 🟡 adequate 1 |
 
 ## Rebuilding this report

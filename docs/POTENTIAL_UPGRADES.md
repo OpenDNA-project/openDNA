@@ -101,3 +101,4 @@ must release the GIL (`py.allow_threads`) for a Python thread to help; pure-Pyth
 ## 6. Tests
 
 - Test the Sidewinder "too few barcodes" failure; compare hairpin and dimer free energies with a published ntthal value; check digest fragment sizes against a reference, not only their sum.
+- Remove current sidewinder and add as an option to the synthesis tool 

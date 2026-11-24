@@ -474,6 +474,17 @@ def test_tracks_gff_bed_parsing_query_density_and_search(track_of_many, tmp_path
             core.Track(str(p))
     with pytest.raises(OSError):
         core.Track(str(tmp_path / "no_such_file.gff3"))
+    # a bad line among good ones is skipped and said: the count and the first one named; a clean file has no notes
+    p = tmp_path / "mixed.gff3"
+    p.write_text("##gff-version 3\nchr1\ts\tgene\t1\t20\t.\t+\t.\tName=ok\nchr1\ts\tgene\t10\t5\t.\t+\t.\tName=x\nchr1\ts\tgene\t0\t5\t.\t+\t.\tName=y\n")
+    mixed = core.Track(str(p))
+    assert [i[3] for i in mixed.query("chr1", 0, 100)[0]] == ["ok"]
+    assert mixed.notes == ["2 lines were skipped as not valid GFF/GTF (first: line 3, end before start)."]
+    bed = tmp_path / "mixed.bed"
+    bed.write_text("chr1\t5\t3\nchr1\t1\t9\tgood\n")
+    assert core.Track(str(bed)).notes == ["1 line was skipped as not valid BED (first: line 1, end before start)."]
+    bed.write_text("chr1\t1\t9\tgood\n")
+    assert core.Track(str(bed)).notes == []
     # --- bed with 3 to 12 columns ---
     full = ["chr1", "100", "200", "geneX", "500", "-", "110", "190", "255,0,0", "2", "10,20", "0,80"]
     for columns in range(3, 13):
@@ -554,6 +565,9 @@ def test_tracks_gff_bed_parsing_query_density_and_search(track_of_many, tmp_path
     assert [g[4] for g in t.search("écoli", 10)] == ["ÉCOLI-gene"], "unicode case folding too"
     assert t.search("ecoli", 10) == [], "no accent folding"
     assert len(t.search("lac", 3)) == 3 and len(t.search("lac")) == 12
+    # on one sequence: the limit counts only its items, in order of start (not the first matches of whichever sequence comes first)
+    assert [(g[0], g[1]) for g in t.search("lac", 3, "chr3")] == [("chr3", 0), ("chr3", 1), ("chr3", 2)]
+    assert [g[4] for g in t.search("lac", 100, "chr1")] == ["LacZ", "lacY"] and t.search("lac", 100, "nope") == []
     row = t.search("lacz")[0]
     assert row == ("chr1", 0, 10, 0, "LacZ", "bed")
     assert t.search("zzz") == []
@@ -645,6 +659,14 @@ def test_feature_locations_round_trip(tmp_path):
     doc.add_features([("misc_feature", "complement(join(190..200,1..10))", [])])
     f = doc.features()[-1]
     assert f.spans == [(189, 200), (0, 10)] and f.strand == -1
+    # --- an EMBL file cut short (no // after the last record) is read and says so; a whole one has no notes ---
+    embl = "ID   X1; SV 1; linear; genomic DNA; STD; UNC; 12 BP.\nSQ   Sequence 12 BP;\n     acgtacgtac gt        12\n"
+    src = tmp_path / "cut.embl"
+    src.write_text(embl)
+    cut = Document(str(src))
+    assert cut.sequence(0, None) == "acgtacgtacgt" and cut.notes == ["The last record has no `//` line: the file may be cut short."]
+    src.write_text(embl + "//\n")
+    assert Document(str(src)).notes == []
 
 
 @pytest.fixture(scope="module")
@@ -699,7 +721,15 @@ def test_genome_fasta_fetch_and_search_match_slicing_and_brute_force(genome, tmp
     for motif, mism in (("GARTTC", 0), ("ACGT", 1), ("NNGG", 0)):
         on_file = fa.search_motif("chr1", motif, max_mismatches=mism)
         on_string = core.find_motif(s, motif, max_mismatches=mism)
-        assert on_file == on_string
+        assert on_file == on_string          # (this file has several records, so each is linear)
+    # --- the topology of a FASTA record: its header tag, else one record = circular; a search and a document follow it ---
+    wrap = tmp_path / "wrap.fa"
+    wrap.write_text(">p\nTTCAAAAAGA\n")
+    assert core.Fasta(str(wrap)).circular("p") and core.Document.from_fasta(str(wrap), "p").circular
+    assert [h[:2] for h in core.Fasta(str(wrap)).search_motif("p", "GATTC", both=False)] == [(8, 13)], "GA|TTC across the origin"
+    wrap.write_text(">p [topology=linear]\nTTCAAAAAGA\n")
+    assert not core.Fasta(str(wrap)).circular("p") and not core.Document.from_fasta(str(wrap), "p").circular
+    assert core.Fasta(str(wrap)).search_motif("p", "GATTC", both=False) == []
     # --- search on both strands, overlapping hits, against a brute-force scan ---
     rng = random.Random(83)
     filler = lambda n: rand_dna(rng, n, "AC")     # no G or T, so no accidental hit for a motif that has both

@@ -4,11 +4,11 @@
 
 ## `test_release_metadata_and_exe_recipe_are_consistent`
 
-**Result:** ✅ passed in 0.91 s · [line 23](../../tests/test_project.py#L23) · **Area:** Release packaging · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.09 s · [line 23](../../tests/test_project.py#L23) · **Area:** Release packaging · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
-**Why it matters:** Without it, a release could ship with mismatched version numbers (breaking the updater) or a Windows exe missing data files the app needs (parts library, tool settings, 3D viewer), which only shows up for users of the frozen build.
+**Why it matters:** Without it, a release could ship with mismatched version numbers (breaking the updater) or a Windows exe missing data files the app needs (parts library, tool settings, 3D viewer), which only shows up for users of the frozen build; or a missing or malformed changelog would reach the start page and the release description.
 
-Checks project.py's version equals core/Cargo.toml and core/pyproject.toml and is major.minor.patch; URLs derive from REPO; name, author, update switch and file-type extensions are sane; every Path(__file__).with_name(...) data file is bundled by packaging/openDNA.spec and the spec's files exist; the icon is a valid multi-size .ico.
+Checks project.py's version equals core/Cargo.toml and core/pyproject.toml and is major.minor.patch; URLs derive from REPO; name, author, update switch and file-type extensions are sane; every Path(__file__).with_name(...) data file is bundled by packaging/openDNA.spec and the spec's files exist; the icon is a valid multi-size .ico. Also checks CHANGELOG.md: the first section is Unreleased, a section exists for project.VERSION, every other section is '## x.y.z (date)' with Features, Bugfixes, UI/UX labels in that order, each with '- ' lines, and at most 3 Features lines.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -19,12 +19,14 @@ Checks project.py's version equals core/Cargo.toml and core/pyproject.toml and i
 | 5 | Scan app/*.py for Path(__file__).with_name("x") | finds at least parts, sponsors.json, tools.toml, vendor; each name appears quoted in the spec; spec bundles vendor/3Dmol-min.js and its LICENSE |
 | 6 | Paths named in the spec as APP/... or ROOT/...; fixed list of data files | all exist |
 | 7 | packaging/openDNA.ico header and directory | type 1 icon; each entry square, 32 bpp, inside the file; sizes include 16, 32, 48, 256 |
+| 8 | CHANGELOG.md headings and section bodies | first heading Unreleased; project.VERSION has a section; others '## x.y.z (YYYY-MM-DD)'; labels from Features/Bugfixes/UI/UX in order, each with '- ' lines; Features at most 3 lines |
 
 **Review notes:**
 
 - Not a test of DNA editing; it is a release-hygiene check. Relevant for packaging but could be marked as such.
 - The bundling check is text matching on the spec ('"name"' appears anywhere), so a name mentioned but not actually bundled would pass.
 - Only catches data files reached through the exact with_name("...") pattern.
+- The changelog check is about shape only: it cannot know that a line is true or that a user-visible change was written down.
 
 **Fixed by the audit of November 2026:**
 
@@ -32,7 +34,7 @@ Checks project.py's version equals core/Cargo.toml and core/pyproject.toml and i
 
 ## `test_old_data_folder_is_copied_once`
 
-**Result:** ✅ passed in 0.01 s · [line 94](../../tests/test_project.py#L94) · **Area:** Data folder migration · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 109](../../tests/test_project.py#L109) · **Area:** Data folder migration · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, users upgrading from the program's old name could lose their primers and settings, or a later start could overwrite their new data with the old copy.
 
@@ -51,7 +53,7 @@ Checks copy_old_data copies the old-name data folder to the new location when th
 
 ## `test_welcome_slots_hold_four_and_expire`
 
-**Result:** ✅ passed in 0.00 s · [line 108](../../tests/test_project.py#L108) · **Area:** Welcome page · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 123](../../tests/test_project.py#L123) · **Area:** Welcome page · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date.
 

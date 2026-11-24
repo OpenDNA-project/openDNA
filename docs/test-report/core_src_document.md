@@ -4,7 +4,7 @@
 
 ## `features_follow_every_kind_of_edit`
 
-**Result:** ✅ passed · [line 1251](../../core/src/document.rs#L1251) · **Area:** Document editing / undo · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1297](../../core/src/document.rs#L1297) · **Area:** Document editing / undo · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an insert, delete or replace could move, grow, shrink or drop annotations (plain, complement, joined, fuzzy) so they no longer sit on their bases.
 
@@ -50,7 +50,7 @@ An insertion inside a feature grows it, marks the document modified, and undo/re
 
 ## `edits_are_validated_and_empty_or_overwrite_edits_behave`
 
-**Result:** ✅ passed · [line 1457](../../core/src/document.rs#L1457) · **Area:** Document editing / validation · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 1503](../../core/src/document.rs#L1503) · **Area:** Document editing / validation · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, bad ranges or letters could corrupt the sequence or be silently dropped, and empty or overwrite edits could change bases or features they should not.
 
@@ -80,7 +80,7 @@ Inverted ranges, ranges past the end and invalid letters are refused and leave n
 
 ## `genbank_text_and_qualifiers_survive_saves_and_edits`
 
-**Result:** ✅ passed · [line 1540](../../core/src/document.rs#L1540) · **Area:** GenBank I/O · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1586](../../core/src/document.rs#L1586) · **Area:** GenBank I/O · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, saving could rewrap, unquote or alter qualifier text and a GenBank file would no longer reload as it was written.
 
@@ -101,7 +101,7 @@ Qualifiers wrapped over several lines are joined correctly on read (spaces in no
 
 ## `feature_edits_and_translation_refresh_are_single_undo_steps`
 
-**Result:** ✅ passed · [line 1623](../../core/src/document.rs#L1623) · **Area:** Feature editing / undo · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1669](../../core/src/document.rs#L1669) · **Area:** Feature editing / undo · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a feature change or a /translation refresh could take several undos, or one undo could leave the annotations half restored.
 
@@ -122,7 +122,7 @@ Adding and deleting features are undo steps; multi-line qualifier text is normal
 
 ## `copy_paste_and_reverse_complement_keep_features_on_their_bases`
 
-**Result:** ✅ passed · [line 1697](../../core/src/document.rs#L1697) · **Area:** Copy/paste with features · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1743](../../core/src/document.rs#L1743) · **Area:** Copy/paste with features · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, pasted or reverse-complemented annotations could land on the wrong bases or strand.
 
@@ -150,7 +150,7 @@ Copying a range brings the overlapping part of features with relative coordinate
 
 ## `primer_sites_and_pcr_products`
 
-**Result:** ✅ passed · [line 1836](../../core/src/document.rs#L1836) · **Area:** PCR product · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1882](../../core/src/document.rs#L1882) · **Area:** PCR product · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a PCR product could have the wrong bases or tails, and saving primer sites could change the document or its undo history.
 
@@ -169,9 +169,28 @@ A PCR product is a new linear, unsaved document with primer tails added and feat
 
 - (was saving_replaces_primer_sites_without_touching_the_document) Comment says 'nothing written' for the bad site but the file content after the failed save is not checked.
 
+## `a_window_through_the_origin_of_a_circle_wraps_for_features_and_gc`
+
+**Result:** ✅ passed · [line 1928](../../core/src/document.rs#L1928) · **Area:** Document windows · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** A feature or GC value in the stretch just after the origin of a circular sequence could be left out of a window that runs through the origin, without a word.
+
+On a circular document features_in and gc_bins treat a window past the length as the start of the sequence (at most one lap); on a linear document the part past the end is clipped.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | circular 20 bp sample, features_in(21, 24) and features_in(5, 7) | ori (join 18..20,1..3) found in the first, not in the second |
+| 2 | the same bases as a linear document, features_in(21, 24) | no feature |
+| 3 | gc_bins(18, 22, 1) on the circle / on the line | [0.25] (G T A A) / [0.5] (G T clipped) |
+| 4 | gc_bins(18, 22, 2) on the circle; gc_bins(10, 40, 1) vs gc_bins(10, 30, 1) | [0.5, 0.0]; equal (cut to one lap) |
+
+**Review notes:**
+
+- Only the small unblocked path of gc_bins across the origin is tried, not the cached-block path of a long sequence.
+
 ## `gc_bins_exact_and_from_blocks`
 
-**Result:** ✅ passed · [line 1882](../../core/src/document.rs#L1882) · **Area:** GC content plot · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 1946](../../core/src/document.rs#L1946) · **Area:** GC content plot · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** The GC-content plot could show wrong values, or stale values after an edit or undo on long sequences that use the block cache.
 
@@ -193,7 +212,7 @@ GC fractions per bin are exact for short ranges and correct through the cached-b
 
 ## `circular_edits_across_the_origin`
 
-**Result:** ✅ passed · [line 1902](../../core/src/document.rs#L1902) · **Area:** Circular editing across the origin · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 1966](../../core/src/document.rs#L1966) · **Area:** Circular editing across the origin · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, edits, copies and features across a plasmid's origin could lose or shift bases.
 
@@ -220,7 +239,7 @@ Copying across the origin brings an origin-spanning feature as one contiguous ra
 
 ## `rotating_and_making_linear`
 
-**Result:** ✅ passed · [line 2048](../../core/src/document.rs#L2048) · **Area:** Rotate (set origin) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 2112](../../core/src/document.rs#L2112) · **Area:** Rotate (set origin) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, rotating a circle or making it linear could move features off their bases or not undo back to the circle.
 
@@ -244,7 +263,7 @@ Rotating a circular sequence moves bases and features; an origin-spanning featur
 
 ## `history_texts_and_the_modified_flag`
 
-**Result:** ✅ passed · [line 2104](../../core/src/document.rs#L2104) · **Area:** History panel · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 2168](../../core/src/document.rs#L2168) · **Area:** History panel · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could describe steps wrongly and the unsaved-changes flag could lie, so changes could be lost on close.
 
@@ -265,7 +284,7 @@ The history summary records position, removed length, inserted text and feature 
 
 ## `random_edits_undo_redo_follow_a_snapshot_and_string_model`
 
-**Result:** ✅ passed · [line 2284](../../core/src/document.rs#L2284) · **Area:** Document editing / undo (model-based) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 2348](../../core/src/document.rs#L2348) · **Area:** Document editing / undo (model-based) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Some combination of edits, pastes, rotations, flips, undo, redo and save could corrupt the bases, desynchronise undo/redo, or get the unsaved-changes flag wrong.
 
@@ -282,7 +301,7 @@ The history summary records position, removed length, inserted text and feature 
 
 ## `edited_ranges_follow_edits_undo_redo_the_origin_and_save`
 
-**Result:** ✅ passed · [line 2441](../../core/src/document.rs#L2441) · **Area:** Edited-bases highlight · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 2505](../../core/src/document.rs#L2505) · **Area:** Edited-bases highlight · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the blue marking of edited bases could point at the wrong bases after edits, undo, redo or a save.
 

@@ -4,11 +4,11 @@
 
 ## `test_sequence_search_engine`
 
-**Result:** ✅ passed in 0.03 s · [line 60](../../tests/test_search.py#L60) · **Area:** Sequence search (Find) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 60](../../tests/test_search.py#L60) · **Area:** Sequence search (Find) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the Find box could miss DNA matches on the other strand or with IUPAC/mismatches, fail across the origin, ignore its options for names, primers, enzymes and translations, or search outside the selection.
 
-Runs search.search_sequence on a 2000 bp random sequence with planted sites and checks DNA, IUPAC, fuzzy, circular, protein, name/detail/primer/enzyme, scope and FASTA-file searches, plus the editor's search-hit bookkeeping.
+Runs search.search_sequence on a 2000 bp random sequence with planted sites and checks DNA, IUPAC, fuzzy, circular, protein, name/detail/primer/enzyme, scope and FASTA-file searches, plus the editor's search-hit bookkeeping. It also checks that an ambiguity code in the sequence fits a query that accepts all it stands for, and that the core refuses an unsearchable query letter with a ValueError.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -25,6 +25,7 @@ Runs search.search_sequence on a 2000 bp random sequence with planted sites and 
 | 11 | FASTA file chrA/chrB, GGTACC; 'kinase' | chrA (200,206), chrB (120,126) one hit per palindrome; non-DNA query returns None |
 | 12 | set_search_hits with strands | -1 kept; no strand or both strands -> 0; empty clears |
 | 13 | enzymes_named('muni'), enzymes_named('ecor') | ['MfeI'] (an isoschizomer's name finds the listed enzyme); EcoRI, EcoRV first for the prefix |
+| 14 | core.find_motif on 'TTGARTTCTT': query GARTTC and GAATTC with IUPAC on; GARTTC with IUPAC off; GAXTTC | [(2, 8, 1, 0)]; []; ValueError 'IUPAC codes are off'; ValueError 'not a base' |
 
 **Review notes:**
 

@@ -110,7 +110,7 @@ Runs the Checkup on the annotated demo plasmid pBAD30_eilR and on the same bases
 
 ## `test_unit_features_keep_their_geometry_and_survive_a_file_round_trip`
 
-**Result:** ✅ passed in 0.01 s · [line 318](../../tests/test_checkup.py#L318) · **Area:** Transcription unit features · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 318](../../tests/test_checkup.py#L318) · **Area:** Transcription unit features · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a transcription unit saved into a file could be drawn with the wrong +1, the wrong thick/thin split or lost altogether on reload, and old files written under the program's former name would stop working.
 

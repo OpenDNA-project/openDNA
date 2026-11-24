@@ -53,24 +53,25 @@ pub(crate) fn pattern_mask(c: u8, iupac: bool) -> u8 {
     }
 }
 
-/// The bits of a base of the sequence: A, C, G, T one bit, N all four, anything else 0.
+/// The bits of a base of the sequence, upper or lower case: A, C, G, T one bit, U as T, an IUPAC code the bases it
+/// stands for (R = A or G, ... N = all four), anything else 0 (it fits nothing).
 const fn base_table() -> [u8; 256] {
     let mut t = [0u8; 256];
-    t[b'A' as usize] = 1;
-    t[b'a' as usize] = 1;
-    t[b'C' as usize] = 2;
-    t[b'c' as usize] = 2;
-    t[b'G' as usize] = 4;
-    t[b'g' as usize] = 4;
-    t[b'T' as usize] = 8;
-    t[b't' as usize] = 8;
-    t[b'N' as usize] = 15;
-    t[b'n' as usize] = 15;
+    let codes: [(u8, u8); 16] = [
+        (b'A', 1), (b'C', 2), (b'G', 4), (b'T', 8), (b'U', 8), (b'R', 5), (b'Y', 10), (b'S', 6),
+        (b'W', 9), (b'K', 12), (b'M', 3), (b'B', 14), (b'D', 13), (b'H', 11), (b'V', 7), (b'N', 15),
+    ];
+    let mut i = 0;
+    while i < codes.len() {
+        t[codes[i].0 as usize] = codes[i].1;
+        t[codes[i].0.to_ascii_lowercase() as usize] = codes[i].1;
+        i += 1;
+    }
     t
 }
 static BASE: [u8; 256] = base_table();
 
-/// Does the sequence base `b` fit the pattern position `mask`? A degenerate base of the sequence (N) fits only a
+/// Does the sequence base `b` fit the pattern position `mask`? A degenerate base of the sequence (N, R...) fits only a
 /// pattern position that accepts every base it could be.
 #[inline]
 fn fits(mask: u8, b: u8) -> bool {
@@ -79,6 +80,19 @@ fn fits(mask: u8, b: u8) -> bool {
     }
     let m = BASE[b as usize];
     m != 0 && m & !mask == 0
+}
+
+/// `Err` naming the first letter of `motif` that cannot be searched for: not a base, or an IUPAC code while `iupac` is off.
+/// (`find_motif` itself answers "no hit" for such a motif; callers that take a motif from a user use this first, so the
+/// answer is never a silent empty list.)
+pub fn check_motif(motif: &[u8], iupac: bool) -> Result<(), String> {
+    match motif.iter().find(|&&c| pattern_mask(c, iupac) == 0) {
+        None => Ok(()),
+        Some(&c) if matches!(c.to_ascii_uppercase(), b'R' | b'Y' | b'S' | b'W' | b'K' | b'M' | b'B' | b'D' | b'H' | b'V') => {
+            Err(format!("'{}' is an IUPAC code and IUPAC codes are off", c as char))
+        }
+        Some(&c) => Err(format!("'{}' is not a base", c as char)),
+    }
 }
 
 /// The pattern as it reads on the other strand: reversed, each position's bases complemented (A<->T, C<->G).
@@ -364,6 +378,26 @@ mod tests {
     }
 
     #[test]
+    fn an_ambiguity_code_in_the_sequence_fits_a_query_that_accepts_all_it_stands_for() {
+        // Sequence GARTTC (R = A or G): query R and N accept both, plain A does not, and U in the sequence is T.
+        let seq = b"AAGARTTCAA";
+        assert_eq!(starts(&find_motif(seq, b"GARTTC", 0, true, false, false, 10)), vec![(2, true, 0)]);
+        assert_eq!(find_motif(seq, b"GANTTC", 0, true, false, false, 10).len(), 1);
+        assert!(find_motif(seq, b"GAATTC", 0, true, false, false, 10).is_empty());
+        assert_eq!(starts(&find_motif(seq, b"GAATTC", 1, true, false, false, 10)), vec![(2, true, 1)], "a plain A against R is a mismatch");
+        assert_eq!(find_motif(b"ggaauucc", b"GAATTC", 0, true, false, false, 10).len(), 1, "U and lower case");
+        // With IUPAC off the query is plain bases, and the sequence's R still fits no plain one.
+        assert!(find_motif(seq, b"GAGTTC", 0, false, false, false, 10).is_empty());
+        // The reverse strand: CCRGG read from the bottom is CCYGG, which the sequence's CCYGG fits (Y against Y).
+        assert_eq!(starts(&find_motif(b"TTCCYGGTT", b"CCRGG", 0, true, true, false, 10)), vec![(2, false, 0)]);
+        // check_motif names a letter that cannot be searched, instead of the silent empty answer.
+        assert!(check_motif(b"GARTTC", true).is_ok() && check_motif(b"GATTACA", false).is_ok() && check_motif(b"", true).is_ok());
+        assert!(check_motif(b"GARTTC", false).unwrap_err().contains("'R'"));
+        assert!(check_motif(b"GAXTTC", true).unwrap_err().contains("'X'"));
+        assert!(check_motif(b"GANTTC", false).is_ok(), "N is a plain letter when IUPAC is off (it matches an N of the sequence)");
+    }
+
+    #[test]
     fn allows_a_number_of_mismatches_and_reports_how_many() {
         let seq = b"TTTGAATTCTTTGAGTTCTTTGAGCTCTTT"; // GAATTC, then 1 off, then 2 off
         let hits = find_motif(seq, b"GAATTC", 1, true, true, false, 100);
@@ -390,12 +424,12 @@ mod tests {
 
     #[test]
     fn many_motifs_in_one_pass_match_find_motif_one_by_one() {
-        // A made-up sequence with lower case, N and a letter that is not a base; sites plain, palindromic, degenerate and short.
+        // A made-up sequence with lower case, N, R, Y, U and a letter that is not a base; sites plain, palindromic, degenerate and short.
         let mut seq = Vec::new();
         let mut x: u32 = 7;
         for _ in 0..3000 {
             x = x.wrapping_mul(1_103_515_245).wrapping_add(12_345);
-            seq.push(b"ACGTacgtNACGTACGTX"[(x >> 16) as usize % 18]);
+            seq.push(b"ACGTacgtNACGTACGTXRyU"[(x >> 16) as usize % 21]);
         }
         let motifs: [&[u8]; 9] = [b"GAATTC", b"GGTCTC", b"GCNNNNNNNGC", b"RGATCY", b"AC", b"CCWGG", b"GAAGAC", b"NNN", b"GAXTTC"];
         for circular in [false, true] {

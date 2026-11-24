@@ -24,11 +24,14 @@ pub struct Item {
 pub struct Track {
     items: HashMap<String, Vec<Item>>, // sequence name -> items sorted by start
     max_end: HashMap<String, Vec<u64>>,
+    /// What the file held that was not read (lines that are not valid), as sentences; empty when all was read.
+    pub notes: Vec<String>,
 }
 
 impl Track {
     /// Read a .bed file, or a GFF3/GTF file (anything else). Whole-sequence entries
-    /// (GFF "region"/"chromosome"/"source") are skipped, like the GenBank `source`.
+    /// (GFF "region"/"chromosome"/"source") are skipped, like the GenBank `source`. A line that is not valid is skipped and
+    /// counted in `notes` (the first one is named); a file with no valid line at all is an error.
     pub fn open(path: &Path) -> io::Result<Self> {
         let lower = path.to_string_lossy().to_lowercase();
         let bed = lower.ends_with(".bed");
@@ -42,6 +45,7 @@ impl Track {
         };
         let format = if bed { "BED" } else if vcf { "VCF" } else { "GFF/GTF" };
         let mut items: HashMap<String, Vec<Item>> = HashMap::new();
+        let (mut skipped, mut first_bad) = (0usize, None);
         for (n, line) in reader.lines().enumerate() {
             let line = line?;
             if line.starts_with("##FASTA") {
@@ -52,17 +56,25 @@ impl Track {
             }
             let parsed = if bed { parse_bed(&line) } else if vcf { parse_vcf(&line) } else { parse_gff(&line) };
             match parsed {
-                Some(Some((seq, item))) => items.entry(seq).or_default().push(item),
-                Some(None) => {} // a line we deliberately skip
-                None => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("{}: line {} is not valid {format}", path.display(), n + 1),
-                    ))
+                Ok(Some((seq, item))) => items.entry(seq).or_default().push(item),
+                Ok(None) => {} // a line we deliberately skip
+                Err(why) => {
+                    skipped += 1;
+                    first_bad.get_or_insert((n + 1, why));
                 }
             }
         }
-        Ok(Track::from_items(items))
+        let mut notes = Vec::new();
+        if let Some((line, why)) = first_bad {
+            if items.is_empty() {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, format!("{}: line {line} is not valid {format} ({why})", path.display())));
+            }
+            let count = if skipped == 1 { "1 line was".to_string() } else { format!("{skipped} lines were") };
+            notes.push(format!("{count} skipped as not valid {format} (first: line {line}, {why})."));
+        }
+        let mut track = Track::from_items(items);
+        track.notes = notes;
+        Ok(track)
     }
 
     pub fn from_items(mut items: HashMap<String, Vec<Item>>) -> Self {
@@ -73,7 +85,7 @@ impl Track {
             let ends: Vec<u64> = list.iter().scan(0, |m, i| { *m = (*m).max(i.end); Some(*m) }).collect();
             max_end.insert(seq.clone(), ends);
         }
-        Track { items, max_end }
+        Track { items, max_end, notes: Vec::new() }
     }
 
     /// Sequence names with their number of items.
@@ -125,11 +137,12 @@ impl Track {
         counts
     }
 
-    /// Items whose name contains `needle` (case-insensitive), at most `limit`.
-    pub fn search(&self, needle: &str, limit: usize) -> Vec<(&str, &Item)> {
+    /// Items whose name contains `needle` (case-insensitive), at most `limit`; with `only`, only those on that sequence (in
+    /// order of start), so the limit never counts matches elsewhere.
+    pub fn search(&self, needle: &str, limit: usize, only: Option<&str>) -> Vec<(&str, &Item)> {
         let needle = needle.to_lowercase();
         let mut out = Vec::new();
-        for (seq, list) in &self.items {
+        for (seq, list) in self.items.iter().filter(|(s, _)| only.map_or(true, |o| s.as_str() == o)) {
             for item in list {
                 if item.name.to_lowercase().contains(&needle) {
                     out.push((seq.as_str(), item));
@@ -143,19 +156,29 @@ impl Track {
     }
 }
 
-/// GFF3 / GTF line -> (sequence, item). `None` = malformed, `Some(None)` = skipped type.
-fn parse_gff(line: &str) -> Option<Option<(String, Item)>> {
+/// A track line's result: Ok(Some) an item, Ok(None) a line skipped on purpose, Err why the line is not valid.
+type Parsed = Result<Option<(String, Item)>, &'static str>;
+
+fn number(s: &str, what: &'static str) -> Result<u64, &'static str> {
+    s.parse().map_err(|_| what)
+}
+
+/// GFF3 / GTF line -> (sequence, item).
+fn parse_gff(line: &str) -> Parsed {
     let f: Vec<&str> = line.split('\t').collect();
     if f.len() < 9 {
-        return None;
+        return Err("fewer than 9 columns");
     }
     if matches!(f[2], "region" | "chromosome" | "source" | "contig") {
-        return Some(None);
+        return Ok(None);
     }
-    let start: u64 = f[3].parse().ok()?;
-    let end: u64 = f[4].parse().ok()?;
-    if start == 0 || end < start {
-        return None;
+    let start = number(f[3], "start is not a number")?;
+    let end = number(f[4], "end is not a number")?;
+    if start == 0 {
+        return Err("start is 0 (GFF counts from 1)");
+    }
+    if end < start {
+        return Err("end before start");
     }
     let strand = match f[6] { "+" => 1, "-" => -1, _ => 0 };
     // GFF3: key=value;...   GTF: key "value"; ...
@@ -170,41 +193,41 @@ fn parse_gff(line: &str) -> Option<Option<(String, Item)>> {
         .find_map(|k| attrs.get(*k).filter(|v| !v.is_empty())) // an empty `Name=` falls through to the next attribute
         .cloned()
         .unwrap_or_else(|| f[2].to_string());
-    Some(Some((f[0].to_string(), Item { start: start - 1, end, strand, name, kind: f[2].to_string() })))
+    Ok(Some((f[0].to_string(), Item { start: start - 1, end, strand, name, kind: f[2].to_string() })))
 }
 
 /// BED line (0-based start, end-exclusive) -> (sequence, item).
-fn parse_bed(line: &str) -> Option<Option<(String, Item)>> {
+fn parse_bed(line: &str) -> Parsed {
     let f: Vec<&str> = line.split(|c| c == '\t' || c == ' ').filter(|s| !s.is_empty()).collect();
     if f.len() < 3 {
-        return None;
+        return Err("fewer than 3 columns");
     }
-    let start: u64 = f[1].parse().ok()?;
-    let end: u64 = f[2].parse().ok()?;
+    let start = number(f[1], "start is not a number")?;
+    let end = number(f[2], "end is not a number")?;
     if end < start {
-        return None;
+        return Err("end before start");
     }
     let strand = match f.get(5) { Some(&"+") => 1, Some(&"-") => -1, _ => 0 };
     let name = f.get(3).map(|s| s.to_string()).unwrap_or_default();
-    Some(Some((f[0].to_string(), Item { start, end, strand, name, kind: "bed".into() })))
+    Ok(Some((f[0].to_string(), Item { start, end, strand, name, kind: "bed".into() })))
 }
 
 /// VCF line (CHROM POS ID REF ALT ...) -> (sequence, item spanning the REF bases), named
 /// "ID REF>ALT" (long alleles shortened), kind "variant".
-fn parse_vcf(line: &str) -> Option<Option<(String, Item)>> {
+fn parse_vcf(line: &str) -> Parsed {
     let f: Vec<&str> = line.split('\t').collect();
     if f.len() < 5 {
-        return None;
+        return Err("fewer than 5 columns");
     }
-    let pos: u64 = f[1].parse().ok()?;
+    let pos = number(f[1], "position is not a number")?;
     if pos == 0 {
-        return None;
+        return Err("position is 0 (VCF counts from 1)");
     }
     let short = |s: &str| if s.len() > 12 { format!("{}…", s.chars().take(10).collect::<String>()) } else { s.to_string() };
     let change = format!("{}>{}", short(f[3]), short(f[4]));
     let name = if f[2] == "." { change } else { format!("{} {change}", f[2]) };
     let item = Item { start: pos - 1, end: pos - 1 + f[3].len().max(1) as u64, strand: 0, name, kind: "variant".into() };
-    Some(Some((f[0].to_string(), item)))
+    Ok(Some((f[0].to_string(), item)))
 }
 
 /// GFF3 escapes special characters as %XX (e.g. "%2C" = ",").
@@ -262,7 +285,7 @@ chr2\tsrc\tgene\t5\t6\t.\t.\t.\tgene_id \"x1\"; gene_name \"tiny\"\n\
         // --- every bin (100 bp each): lacZ 9..100 -> bin 0; big 49..900 -> bins 0..8; araC 199..300 -> bins 1, 2
         // (the region line is skipped) ---
         assert_eq!(t.density("chr1", 0, 1000, 10), vec![2, 2, 2, 1, 1, 1, 1, 1, 1, 0]);
-        assert_eq!(t.search("ARA", 10)[0].1.name, "araC");
+        assert_eq!(t.search("ARA", 10, None)[0].1.name, "araC");
 
         let bed = dir.join("ge_test.bed");
         std::fs::write(&bed, "track name=x\nchr1\t0\t10\tfirst\t0\t-\nchr1 20 30\n").unwrap();

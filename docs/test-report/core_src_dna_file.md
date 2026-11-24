@@ -4,7 +4,7 @@
 
 ## `reads_synthetic_file`
 
-**Result:** ✅ passed · [line 332](../../core/src/dna_file.rs#L332) · **Area:** SnapGene .dna import · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 355](../../core/src/dna_file.rs#L355) · **Area:** SnapGene .dna import · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Opening a SnapGene .dna file could lose or misplace its features, primers, topology or description.
 
@@ -22,9 +22,27 @@ A synthetic .dna file is parsed into sequence, topology, definition, features (w
 
 - The primer site (0-based '9-12' -> 10..13) is not where 'GGGG' would actually anneal in this synthetic sequence, so the test fixes the 0-based convention by assertion only; it cannot confirm it against real bases (the code comment says real files were checked).
 
+## `says_what_it_could_not_read`
+
+**Result:** ✅ passed · [line 384](../../core/src/dna_file.rs#L384) · **Area:** SnapGene .dna reader · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** Features or primer sites of a .dna file could be left out of the sequence view without a word.
+
+A clean file has no notes; features without a position (self-closing, or only a gap segment), primer binding sites without a location and sites before any primer are counted in the notes, and the good ones are still read.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | the synthetic sample file | no notes |
+| 2 | 3 features (one empty, one with only a gap segment, one good); 1 primer with a site without location and a good site | 2 features kept (the good feature and the good site); notes: '2 feature(s) ... not read.' and '1 primer binding site(s) ... not read.' |
+| 3 | a primers packet holding a binding site before any <Primer> | note '1 primer binding site(s)...' |
+
+**Review notes:**
+
+- The GUI dialog that shows the notes is not tested (no widget tests).
+
 ## `rejects_other_files`
 
-**Result:** ✅ passed · [line 361](../../core/src/dna_file.rs#L361) · **Area:** SnapGene .dna import · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 406](../../core/src/dna_file.rs#L406) · **Area:** SnapGene .dna import · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Opening a non-.dna or a damaged .dna file could give an empty document instead of an error.
 

@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.69 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.71 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -31,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.28 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.94 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -52,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 18.30 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 18.57 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -100,11 +100,11 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.07 s · [line 375](../../tests/test_documents.py#L375) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 375](../../tests/test_documents.py#L375) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
-Checks the names of annotation steps, that primer database add/rename/edit/delete/import are undo steps interleaved with base edits without setting the modified flag, that conflicting external primer changes are left alone with a message, that the DNA lock blocks base edits and their undo but not feature edits, and the FileHistory log ordering across records.
+Checks the names of annotation steps, that primer database add/rename/edit/delete/import are undo steps interleaved with base edits without setting the modified flag, that conflicting external primer changes are left alone with a message, that the DNA lock blocks base edits and their undo but not feature edits, and the FileHistory log ordering across records. It also checks that a primer with more sites than are drawn is reported (status line, cut_primers) and that saving writes every exact site.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -119,14 +119,16 @@ Checks the names of annotation steps, that primer database add/rename/edit/delet
 | 9 | Delete a1, someone adds a different a1, undo | the other a1 kept; error mentions a1 and 'used now' |
 | 10 | DNA lock on after typing ACGT | type, backspace, paste refused with 'locked' message; feature add allowed and undoable; undo of typed bases refused; after unlock undo restores the sequence |
 | 11 | FileHistory observe calls for records A and B (edits, undo in A, undo in B, redo in B, new edit in A), reset, steps() | undo_log/redo_log exactly as listed at each step (e.g. ['A','B','A'] then ['A','B'],['A']); reset empties; steps gives undo [(A,a1),(B,b1),(A,a2)] and redo [(A,a3),(B,b2)] |
+| 12 | a 60-copy repeat sequence and a primer that binds all 60 places (MAX_SITES = 50); match_primers, then file_primer_features | 50 sites listed, cut_primers() == {'pRep': 60}, the status line says 60 places and the first 50, and the saved file gets all 60 primer_bind features |
 
 **Review notes:**
 
 - Five fairly independent features (annotation step names, primer undo, primer conflicts, DNA lock, FileHistory) in one test; the DNA lock and FileHistory parts could be separate tests.
+- The primers panel row text for a cut primer (and the status line in the GUI) is not checked, only the editor's values and message.
 
 ## `test_copy_reverse_complement_keeps_annotations_flipped`
 
-**Result:** ✅ passed in 0.01 s · [line 496](../../tests/test_documents.py#L496) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 509](../../tests/test_documents.py#L509) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin.
 
@@ -153,7 +155,7 @@ Copies a selection as reverse complement and pastes it into another document, ch
 
 ## `test_text_exports_and_the_project_file`
 
-**Result:** ✅ passed in 0.03 s · [line 559](../../tests/test_documents.py#L559) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 572](../../tests/test_documents.py#L572) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.
 
@@ -183,30 +185,29 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 
 - 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: GFF3 and BED coordinates are never checked (only header, line count and one strand column), so off-by-one starts, swapped start/end or a wrong seqid pass; a GFF3 with 0-based starts is malformed. \| Project round trip compares sequence and feature COUNT only: lost or altered qualifiers/locations, and primer sites written via file_primer_features(), are not checked.
 
-## `test_gene_groups_and_display_switches`
+## `test_display_switches_and_kind_counts`
 
-**Result:** ✅ passed in 0.01 s · [line 658](../../tests/test_documents.py#L658) · **Area:** Feature display / gene groups · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 671](../../tests/test_documents.py#L671) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
-**Why it matters:** Without it, gene + CDS pairs might not group by locus_tag, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
+**Why it matters:** Without it, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 
-Builds a 1200 bp GenBank with six gene/CDS pairs sharing locus_tags plus two misc_features, and checks grouping, per-type counts, that display switches reuse the cached features (a spy counts core reads) and keep query hits, and that counts update after adding a feature.
+Builds a 1200 bp GenBank with six gene/CDS pairs plus two misc_features, and checks per-type counts, that display switches reuse the cached features (a spy counts core reads) and keep query hits, and that counts update after adding a feature.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | Editor on the generated file | 6 gene groups; group T_F has 2 parts (CDS and tagged misc_feature); kind_counts {gene:6, CDS:6, misc_feature:2} |
+| 1 | Editor on the generated file | kind_counts {gene:6, CDS:6, misc_feature:2} |
 | 2 | Spy on doc.features; set_display(hidden_kinds={misc_feature}) | no features() call; query_hits kept; no misc_feature in shown |
-| 3 | Toggle collapse_genes, then hidden_kinds=() | still no features() call; misc_feature shown again |
+| 3 | Toggle cds_only, then hidden_kinds=() | still no features() call; misc_feature shown again |
 | 4 | Add repeat_region 1001..1010 | kind_counts repeat_region 1, gene still 6 |
 
 **Review notes:**
 
 - Docstring says the switch 'also dropped the Local Align hits' while the test asserts they are kept; it refers to an old bug and reads backwards.
-- Group T_F expects 2 parts although gene F has a gene, a CDS and a misc_feature; the intent (the gene feature is the group head, not a part) is not explained in the test.
-- Does not check collapse_genes actually changes what is shown.
+- Does not check that the cds_only toggle changes what is shown (test_cds_only_hides_a_gene_at_exactly_a_cds_and_edits_keep_the_bases does).
 
 ## `test_label_text_is_black_or_white_by_contrast_and_always_readable`
 
-**Result:** ✅ passed in 0.05 s · [line 683](../../tests/test_documents.py#L683) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 695](../../tests/test_documents.py#L695) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Feature names drawn on a light or mid-tone colour could be hard or impossible to read.
 
@@ -225,7 +226,7 @@ text_color_on picks black or white by WCAG contrast ratio, so the letters on any
 
 ## `test_table_sort_key_puts_numbers_in_order_before_words`
 
-**Result:** ✅ passed in 0.00 s · [line 699](../../tests/test_documents.py#L699) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 711](../../tests/test_documents.py#L711) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A click on a table header could put 1,200 before 95, or scatter a column of locations, sizes and dates.
 
