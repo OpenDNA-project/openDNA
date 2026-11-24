@@ -167,7 +167,7 @@ hover for its name. On a PDB entry the chains are aligned to the protein, so the
 line above the model says when only part of the protein is in it. *Open 3D view in the browser* shows a self-contained
 page (3Dmol.js): cartoon, sticks or surface, coloured by confidence (pLDDT, as AlphaFold DB does), rainbow or chain. *Save PDB…* keeps the
 file. A prediction is a model, not a measurement: low-confidence (orange) parts are not reliable.
-**Right-click a primer** (sequence view, map, alignment view or Primers panel) for *Edit…* and *Delete from Primer Database*. *Hide in This File* stops drawing that primer on this file only (it stays in the primer database, and the
+Two primers never share a name: a name already used by a primer of the database or of the file is refused, and a file that brings the same name twice (with two sequences, or a name the database uses for another sequence) opens with the later ones named name_1, name_2. **Right-click a primer** (sequence view, map, alignment view or Primers panel) for *Edit…* and *Delete from Primer Database*. *Hide in This File* stops drawing that primer on this file only (it stays in the primer database, and the
 choice lasts until the file is closed, and a project keeps it); the Primers view still lists it, greyed and marked "(hidden)": right-click it there →
 *Show in This File*. Select several primers in the Primers panel and right-click: delete them from the database, import them, hide or
 show them all at once.

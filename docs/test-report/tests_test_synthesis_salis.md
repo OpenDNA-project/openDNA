@@ -4,7 +4,7 @@
 
 ## `test_the_forest_gives_scikit_learns_answer_for_every_sequence_of_the_paper`
 
-**Result:** ✅ passed in 0.71 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.81 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** A mistake in reading the exported forest would make every synthesis verdict wrong without any error.
 

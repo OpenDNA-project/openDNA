@@ -954,3 +954,23 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     assert ed2.hidden_primers == {"pFwd2"} and ed2.in_file("pFwd2", template[100:124]) and not ed2.in_file("pFwd", template[100:124])
     ed2.undo()
     assert ed2.hidden_primers == {"pFwd"} and ed2.in_file("pFwd", template[100:124])
+    # --- two primers never share a name: the database refuses the name of a primer of the file, for a new primer or a rename ---
+    ed2.import_primers([("only here", template[200:224])])
+    assert primer_db.add_primer(ed2, "only here", template[300:324]) == "conflict"
+    assert primer_db.add_primers(ed2, [("only here", template[300:324])])["conflict"] == ["only here"]
+    assert not primer_db.update_primer(ed2, "pFwd", "only here", template[100:124], "")
+    assert primer_db.db().find("only here") is None and primer_db.db().find("pFwd") is not None
+    # a file that comes with two primers of one name (or the database's name with another sequence): name_1, name_2... (saved so)
+    a, b, c = template[200:224], template[300:324], rc(template[500:524])
+    doc = Document.new_sequence("dup", template, True)
+    for label, seq, where in (("x", a, "201..224"), ("x", b, "301..324"), ("x", a, "201..224"), ("pFwd", c, "complement(501..524)")):
+        doc.set_feature(None, "primer_bind", where, [("label", label), ("note", f"sequence: {seq}")])
+    dup = Editor(doc, tmp_path / "dup.gb")
+    assert sorted(dup.file_primer_set.values()) == [("pFwd_1", c), ("x", a), ("x_1", b)]
+    dup.save(tmp_path / "dup.gb")
+    assert sorted({f.label for f in Document(str(tmp_path / "dup.gb")).features() if f.kind == "primer_bind"}) == ["pFwd_1", "x", "x_1"]
+    # a hand-edited database list with one name twice: the second is name_1
+    listed = tmp_path / "dup_primers.tsv"
+    rows = [["name", "sequence", "note", "added"], ["P", "ACGTACGTACGTACGTAC", "", ""], ["P", "TTTTACGTACGTACGTAC", "", ""]]
+    listed.write_text("".join("\t".join(r) + "\n" for r in rows), encoding="utf-8")
+    assert [r["name"] for r in primer_db.PrimerDB(listed).rows] == ["P", "P_1"]

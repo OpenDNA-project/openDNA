@@ -92,9 +92,9 @@ Opens the sample .dna file with 15 primers and their stored primer_bind features
 
 ## `test_editor_primer_sites_pcr_product_specificity_and_save`
 
-**Result:** ✅ passed in 0.03 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.06 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
-**Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule; or a site below the minimum Tm could still be drawn, or hiding a primer could crash the sequence view, or the primers and sites hidden in a file could be lost when it is saved and opened again, or the file be unreadable by other programs.
+**Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule; or a site below the minimum Tm could still be drawn, or hiding a primer could crash the sequence view, or the primers and sites hidden in a file could be lost when it is saved and opened again, or the file be unreadable by other programs, or two primers could share a name (in the database, a file, or both).
 
 Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack. It keeps only the sites whose annealed bases reach the minimum Tm (mismatches counted, also in the background genome and the tooltip), ranks a primer's sites (mismatches near the 3' end first), draws only the best with Best site only, and shows or hides single sites by hand: kept for the session (as a project saves them), dropped with a site that no longer binds, all dropped under another binding rule. The hidden primers and sites are saved in the GenBank file as a COMMENT and read back from it.
 
@@ -119,6 +119,9 @@ Uses Editor objects with primers to check mismatch positions in template coordin
 | 17 | undo all steps | 4 steps; sequence/features/primers back to empty |
 | 18 | edit after adding primer, then save | stored site moved to (110,134) |
 | 19 | pFwd in the file of a second editor, hidden there, renamed pFwd2 in the database (update_primer); then Undo | hidden primers {pFwd2}, pFwd2 in the file and pFwd not; after Undo hidden {pFwd} and pFwd in the file |
+| 20 | 'only here' made a primer of the second editor's file; add_primer / add_primers of that name with another sequence; update_primer renaming pFwd to it | 'conflict'; reported in conflict; False; the database has no 'only here' and still pFwd |
+| 21 | a file with primer_bind x (seq a), x (seq b), x (seq a again), pFwd (another sequence than the database's pFwd); opened, saved, read back | the file's primers pFwd_1, x, x_1; the saved file's primer_bind labels pFwd_1, x, x_1 |
+| 22 | a primers.tsv holding P twice (two sequences) | PrimerDB rows named P, P_1 |
 
 **Review notes:**
 

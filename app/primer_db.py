@@ -158,6 +158,25 @@ def copy_old_data(new=None):
     return True
 
 
+def unique_name(name, taken):
+    """`name`, or name_1, name_2… the first not in `taken`."""
+    i, out = 0, name
+    while out in taken:
+        i += 1
+        out = f"{name}_{i}"
+    return out
+
+
+def name_taken(editor, name, sequence, exclude=None):
+    """Is `name` another primer's among those `editor` matches (the database's, its file's own, the temporary ones)? Not the
+    primer `exclude` (name, sequence) being edited; the same name with the same sequence is the same primer."""
+    if editor is None:
+        return False
+    seq = "".join(sequence.split()).upper()
+    skip = (exclude[0], exclude[1].upper()) if exclude else None
+    return any(n == name and s.upper() != seq and (n, s.upper()) != skip for n, s in editor.primer_list())
+
+
 class PrimerDB:
     def __init__(self, path):
         self.path = Path(path)
@@ -165,6 +184,10 @@ class PrimerDB:
         if self.path.exists():
             with open(self.path, encoding="utf-8", newline="") as fh:
                 self.rows = [{k: r.get(k) or "" for k in FIELDS} for r in csv.DictReader(fh, delimiter="\t")]
+        taken = set()   # two primers never share a name: a hand-edited list's second one becomes name_1 (written at the next save)
+        for r in self.rows:
+            r["name"] = unique_name(r["name"], taken)
+            taken.add(r["name"])
 
     def save(self):
         tmp = self.path.with_suffix(".tmp")  # write then rename: never a half-written DB
@@ -344,7 +367,10 @@ def _in_file(editor, rows, present):
 
 def add_primer(editor, name, sequence, note=""):
     """db().add, as a history step: "added", "exists" or "conflict". A primer made from this document's sequence also
-    becomes one of the file's own primers (drawn as a regular primer, written on Save)."""
+    becomes one of the file's own primers (drawn as a regular primer, written on Save). A name another primer of the file
+    has is a "conflict" too."""
+    if name_taken(editor, name.strip(), sequence):
+        return "conflict"
     result = db().add(name, sequence, note)
     if result == "added" and editor is not None:
         row = dict(db().find(name.strip()))
@@ -366,7 +392,9 @@ def add_primers(editor, primers, what="Added", in_file=False):
     """db().add_many, as one history step. Returns its report. `in_file`: the primers belong to this document too (designed
     for its sequence), not only to the database."""
     before = {r["name"] for r in db().rows}
-    report = db().add_many(primers)
+    taken = [n for n, s in primers if name_taken(editor, n.strip(), s)]   # (a primer of the file has the name)
+    report = db().add_many([p for p in primers if p[0] not in taken])
+    report["conflict"] += taken
     if report["added"] and editor is not None:
         indexed = [(i, dict(r)) for i, r in enumerate(db().rows) if r["name"] not in before]
         rows = [r for _, r in indexed]
@@ -392,9 +420,9 @@ def pair(row):
 
 
 def update_primer(editor, old_name, name, sequence, note):
-    """db().update, as a history step. False if `name` belongs to another primer."""
+    """db().update, as a history step. False if `name` belongs to another primer (of the database or the file)."""
     before = dict(db().find(old_name))
-    if not db().update(old_name, name, sequence, note):
+    if name_taken(editor, name.strip(), sequence, pair(before)) or not db().update(old_name, name, sequence, note):
         return False
     after = dict(db().find(name.strip()))
     if editor is not None and after != before:

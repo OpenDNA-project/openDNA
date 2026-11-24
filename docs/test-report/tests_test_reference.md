@@ -29,7 +29,7 @@ With a fake 3-record genome, checks the primer genome check finds copies on chr2
 
 ## `test_ncbi_genome_search_and_download`
 
-**Result:** ✅ passed in 0.01 s · [line 187](../../tests/test_reference.py#L187) · **Area:** NCBI genome download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 187](../../tests/test_reference.py#L187) · **Area:** NCBI genome download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, searching NCBI for a reference genome could build wrong URLs, and downloading one could produce a broken FASTA (records joined without newlines), leave partial files, or download the same genome repeatedly.
 

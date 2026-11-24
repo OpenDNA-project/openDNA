@@ -27,7 +27,7 @@ from tool_settings import Param, SettingsDialog
 from reference import Reference, as_reference
 from sequence_view import TEMP_COLOR
 from uikit import dispose_progress, fit_columns, plural, show_after
-from primer_db import (ORDER_FORMATS, PLATE_SIZE, PURIFICATIONS, SCALES, export_order, conditions, tm_rule, MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, BINDING, binding, db,  # noqa: F401 (re-exported)
+from primer_db import (ORDER_FORMATS, PLATE_SIZE, PURIFICATIONS, SCALES, export_order, conditions, tm_rule, MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, name_taken, BINDING, binding, db,  # noqa: F401 (re-exported)
                        primer_problem, update_primer)
 import theme
 
@@ -623,15 +623,15 @@ class PrimerDialog(QDialog):
             return
         if self.in_file:
             if (name, seq) != self.in_file:
-                if any(p[0] == name and p != self.in_file for p in self.editor.primer_list()):
-                    QMessageBox.warning(self, "Name in use", f"There is already a primer '{name}' here.")
+                if name_taken(self.editor, name, seq, self.in_file):
+                    QMessageBox.warning(self, "Name in use", f"Another primer is already named '{name}'.")
                     return
                 self.editor.change_file_primer(self.in_file, (name, seq))
             super().accept()
             return
         ok = update_primer(self.editor, self.old["name"], name, seq, note) if self.old else add_primer(self.editor, name, seq, note) in ("added", "exists")
         if not ok:
-            QMessageBox.warning(self, "Name in use", f"The primer database already has a primer '{name}'.")
+            QMessageBox.warning(self, "Name in use", f"Another primer, in the Primer Database or this file, is already named '{name}'.")
             return
         super().accept()
 

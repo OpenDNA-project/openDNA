@@ -28,7 +28,7 @@ from perf import timed
 from uikit import SYNC_LIMIT, Latest
 from units import is_tu
 import tool_settings
-from primer_db import BINDING, PCR, binding, db, notifier, tm_rule
+from primer_db import BINDING, PCR, binding, db, notifier, tm_rule, unique_name
 
 PRIMER_KIND = "primer_bind"
 # `source` spans the whole record (.dna files hide it too). `primer_bind` features stored in
@@ -451,13 +451,16 @@ class Editor(QObject):
 
     def _primers_stored_in_file(self):
         """{(name, SEQUENCE): (name, sequence)} of the primers the opened file stores: its primer_bind features (the full
-        sequence from the note, else the annealed bases) and, for a .dna file, its primer list."""
-        out = {}
-        for name, seq in self.doc.primers():
+        sequence from the note, else the annealed bases) and, for a .dna file, its primer list. Two primers never share a name: one
+        whose name the database or an earlier one of the file has (with another sequence) is name_1, name_2… (Save writes that)."""
+        out, in_db = {}, {r["name"]: r["sequence"].upper() for r in db().rows}
+        stored = list(self.doc.primers()) + [(f.label, self._stored_sequence(f)) for f in self.doc.features() if f.kind == PRIMER_KIND]
+        for name, seq in stored:
+            if (name, seq.upper()) in out:
+                continue
+            taken = {n for n, _ in out} | {n for n, s in in_db.items() if s != seq.upper()}
+            name = unique_name(name, taken)
             out[(name, seq.upper())] = (name, seq)
-        for f in self.doc.features():
-            if f.kind == PRIMER_KIND:
-                out.setdefault(self._stored_key(f), (f.label, self._stored_sequence(f)))
         return out
 
     def _stored_sequence(self, f):
