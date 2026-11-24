@@ -896,7 +896,7 @@ class MainWindow(QMainWindow):
         """Switching to another record of the file: the display settings, the lock and the letter size are the file's, not the
         record's, so they stay as they were."""
         ed = self.editor
-        ed.untranslated, ed.hidden_features = set(old.untranslated), set(old.hidden_features)
+        ed.untranslated, ed.hidden_features = set(old.untranslated), set(old.hidden_features) | ed.hidden_features   # (+ the record's own)
         ed.set_display(enzymes=old.show_enzymes, enzyme_filter=old.enzyme_filter, translation=old.show_translation,
                        hidden_kinds=old.hidden_kinds, primers=old.show_primers,
                        cds_translation=old.show_cds_translation, file_primers=old.show_file_primers,
@@ -912,7 +912,8 @@ class MainWindow(QMainWindow):
         ed = self.editor
         d = meta.get("display", {})
         ed.untranslated = {tuple(x) for x in d.get("untranslated", [])}
-        ed.hidden_features = {tuple(x) for x in d.get("hidden_features", [])}
+        meta.setdefault("hidden_features", d.get("hidden_features", []))   # (a project of 0.8.7 or older keeps them in "display")
+        ed.apply_display_choices(meta)   # (before set_display, which lays them out)
         ed.set_display(enzymes=d.get("enzymes"), enzyme_filter=EnzymeFilter.from_dict(d.get("enzyme_filter")), translation=d.get("translation"), cds_only=d.get("cds_only"),
                        hidden_kinds=d.get("hidden_kinds"), primers=d.get("primers"), cds_translation=d.get("cds_translation"),
                        file_primers=d.get("file_primers"), db_primers=d.get("db_primers"), units=d.get("units"),
@@ -929,7 +930,6 @@ class MainWindow(QMainWindow):
         said = [m for m in (genetic_code.adopt(meta.get("genetic_code")), codon_usage.adopt(meta.get("codon_usage"))) if m]
         if said:
             self.statusBar().showMessage(" ".join(said), 8000)
-        ed.apply_display_choices(meta)
         if missing:
             QMessageBox.warning(self, "Project", "These files of the project were not found (moved or deleted):\n\n" + "\n".join(missing))
 

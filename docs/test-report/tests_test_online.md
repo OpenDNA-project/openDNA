@@ -4,7 +4,7 @@
 
 ## `test_ncbi_client_search_cache_rate_limit_and_errors`
 
-**Result:** ✅ passed in 6.04 s · [line 153](../../tests/test_online.py#L153) · **Area:** NCBI download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 6.05 s · [line 153](../../tests/test_online.py#L153) · **Area:** NCBI download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it fetching sequences from NCBI could break, send wrong parameters, ignore NCBI's request rate limit (getting the user blocked), cache error pages as sequence files or fail on a temporary 429.
 
@@ -29,7 +29,7 @@ With a fake E-utilities endpoint, checks search results and request parameters, 
 
 ## `test_structure_sources_cache_and_auto_order`
 
-**Result:** ✅ passed in 0.13 s · [line 208](../../tests/test_online.py#L208) · **Area:** 3D structure: sources and cache · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.12 s · [line 208](../../tests/test_online.py#L208) · **Area:** 3D structure: sources and cache · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the protein 3D view could pick the wrong source, accept invalid input, ignore its cache, hide why every source failed, or break the user's own local folding command.
 

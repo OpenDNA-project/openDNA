@@ -738,8 +738,28 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     ed.set_primers_hidden(["p"], True)
     ed.set_primers_hidden(["p"], False)
     assert lanes_ready and all(lanes_ready)
+    # a primer of the file only (not in the database), renamed: one primer under the new name, Undo brings the old one back
+    ed.import_primers([("q", good)])
+    ed.change_file_primer(("q", good), ("q renamed", good))
+    assert ed.in_file("q renamed", good) and not ed.in_file("q", good)
+    assert {s.label for s in ed.primer_sites} >= {"q renamed"} and "q" not in {s.label for s in ed.primer_sites}
+    ed.undo()
+    assert ed.in_file("q", good) and not ed.in_file("q renamed", good)
+    ed.redo()
     ed.set_primers_hidden(["a primer, with spaces"], True)
     assert ed.doc.modified
+    # a feature hidden with the features table's Visible box is saved too (its name with a comma, its location with one)
+    from feature_table import FeatureModel
+    from PySide6.QtCore import Qt
+    ed.set_feature(None, "misc_feature", "join(11..60,80..90)", [("label", "a feature, hidden")])
+    model = FeatureModel(ed)
+    (row,) = [i for i, r in enumerate(model.shown) if r[0][0] == "a feature, hidden"]
+    box = model.index(row, model.columns.index("Visible"))
+    assert model.data(box, Qt.CheckStateRole) == Qt.Checked
+    assert model.setData(box, Qt.Unchecked.value, Qt.CheckStateRole) and model.data(box, Qt.CheckStateRole) == Qt.Unchecked
+    hidden_feature = ("misc_feature", "a feature, hidden", "join(11..60,80..90)")
+    assert ed.hidden_features == {hidden_feature} and not any(f.label == "a feature, hidden" for f in ed.shown)
+    ed.hidden_features.add(("misc_feature", "renamed since", "1..5"))   # (hidden, then renamed: not saved)
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "hidden.gb"
         with tool_settings.override({(primer_db.BINDING, "min_tm"): 99.0}):   # (p, imported here, is saved as its exact site anyway)
@@ -749,7 +769,9 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
         assert len(SeqIO.read(path, "genbank").seq) == len(template)
         again = Editor(Document(str(path)), path)
         assert again.hidden_primers == {"a primer, with spaces"} and again.saved_site_choices() == ed.saved_site_choices()
+        assert again.hidden_features == {hidden_feature} and not any(f.label == "a feature, hidden" for f in again.shown)
         assert again.in_file("p", good)   # (a file keeps every exact site of its primers, also below the minimum Tm)
+        assert again.in_file("q renamed", good) and not again.in_file("q", good)   # (the renamed primer, not the old one)
         # a primer taken out of the file is not written back
         again.import_primers([("p", good)], False)
         again.save(path)
@@ -926,3 +948,29 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     ed2.save(tmp_path / "t2.gb")
     moved = Document(str(tmp_path / "t2.gb"))
     assert [(f.label, tuple(f.spans)) for f in moved.features() if f.kind == "primer_bind"] == [("pFwd", ((110, 134),))]
+    # renamed in the database while hidden here: still hidden, under its new name (and back with Undo)
+    ed2.set_primers_hidden(["pFwd"], True)
+    assert primer_db.update_primer(ed2, "pFwd", "pFwd2", template[100:124], "")
+    assert ed2.hidden_primers == {"pFwd2"} and ed2.in_file("pFwd2", template[100:124]) and not ed2.in_file("pFwd", template[100:124])
+    ed2.undo()
+    assert ed2.hidden_primers == {"pFwd"} and ed2.in_file("pFwd", template[100:124])
+    # --- two primers never share a name: the database refuses the name of a primer of the file, for a new primer or a rename ---
+    ed2.import_primers([("only here", template[200:224])])
+    assert primer_db.add_primer(ed2, "only here", template[300:324]) == "conflict"
+    assert primer_db.add_primers(ed2, [("only here", template[300:324])])["conflict"] == ["only here"]
+    assert not primer_db.update_primer(ed2, "pFwd", "only here", template[100:124], "")
+    assert primer_db.db().find("only here") is None and primer_db.db().find("pFwd") is not None
+    # a file that comes with two primers of one name (or the database's name with another sequence): name_1, name_2... (saved so)
+    a, b, c = template[200:224], template[300:324], rc(template[500:524])
+    doc = Document.new_sequence("dup", template, True)
+    for label, seq, where in (("x", a, "201..224"), ("x", b, "301..324"), ("x", a, "201..224"), ("pFwd", c, "complement(501..524)")):
+        doc.set_feature(None, "primer_bind", where, [("label", label), ("note", f"sequence: {seq}")])
+    dup = Editor(doc, tmp_path / "dup.gb")
+    assert sorted(dup.file_primer_set.values()) == [("pFwd_1", c), ("x", a), ("x_1", b)]
+    dup.save(tmp_path / "dup.gb")
+    assert sorted({f.label for f in Document(str(tmp_path / "dup.gb")).features() if f.kind == "primer_bind"}) == ["pFwd_1", "x", "x_1"]
+    # a hand-edited database list with one name twice: the second is name_1
+    listed = tmp_path / "dup_primers.tsv"
+    rows = [["name", "sequence", "note", "added"], ["P", "ACGTACGTACGTACGTAC", "", ""], ["P", "TTTTACGTACGTACGTAC", "", ""]]
+    listed.write_text("".join("\t".join(r) + "\n" for r in rows), encoding="utf-8")
+    assert [r["name"] for r in primer_db.PrimerDB(listed).rows] == ["P", "P_1"]

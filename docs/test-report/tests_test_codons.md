@@ -18,7 +18,7 @@ Checks the invariant that a recoded CDS translates to the same protein on either
 
 ## `test_codon_choice_follows_the_table_and_the_edit_is_one_undo_step`
 
-**Result:** ✅ passed in 0.03 s · [line 113](../../tests/test_codons.py#L113) · **Area:** Codon recoding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 113](../../tests/test_codons.py#L113) · **Area:** Codon recoding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, recoding could ignore the chosen usage table (defeating its purpose), be irreproducible between runs, or leave the document in a state undo cannot restore.
 

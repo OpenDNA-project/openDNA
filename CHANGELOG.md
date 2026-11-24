@@ -8,8 +8,12 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 **Features**
 
 **Bugfixes**
+- Renaming a primer of the file that is not in the Primer Database renames it instead of adding a copy beside it; an assembly's primers not saved yet keep their name until Save puts them in the database.
+- Two primers never share a name: the database refuses a name a primer of the file has, and a file (or primer list) that brings a name twice opens with name_1, name_2.
+- Features hidden by hand stay hidden after the file is saved and opened again (kept with the hidden primers).
 
 **UI/UX**
+- The features table has a Visible column: untick a feature to stop drawing it, tick it to bring it back.
 
 ## 0.8.7 (2026-11-24)
 

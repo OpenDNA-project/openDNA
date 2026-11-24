@@ -4,7 +4,7 @@
 
 ## `test_primer_check_levels_follow_their_limits`
 
-**Result:** ✅ passed in 0.00 s · [line 75](../../tests/test_primer_design.py#L75) · **Area:** Primer quality checks · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 75](../../tests/test_primer_design.py#L75) · **Area:** Primer quality checks · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the green/orange/red verdicts on a primer could fire at the wrong value or ignore the user's own limits, so primers that will not work would look fine (or vice versa) before they are ordered.
 
@@ -68,7 +68,7 @@ Checks that on a circular 3000 bp sequence the designer returns pairs for a targ
 
 ## `test_the_files_written_for_ordering`
 
-**Result:** ✅ passed in 0.01 s · [line 244](../../tests/test_primer_design.py#L244) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 244](../../tests/test_primer_design.py#L244) · **Area:** Oligo order files · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the plate file sent to a synthesis company could put oligos in the wrong wells, overflow past well 96, drop the scale or purification, or corrupt names and sequences - a real-money error.
 

@@ -72,7 +72,9 @@ file (one step in the History, the file is marked modified) and Save writes it a
 database's hundreds of primers no longer end up in every file. Edit…, Delete from Primer Database and Hide in This File stay as they were.
 Right-click a feature in any view to edit or delete it. In the feature table, select several rows (click, then Shift- or
 Ctrl-click) and right-click: Delete, Hide All / Show All and Show Translation apply to all of them at once (deleting is one
-undo step). The toolbar's range box selects a stretch: type 101..200 (or 101-200, 101 to 200)
+undo step). The feature table's **Visible** column ticks what is drawn: untick a feature to stop drawing it (it stays in the
+file), tick it to bring it back. Features hidden this way stay hidden when the file is saved and opened again, like hidden
+primers (a GenBank comment other programs ignore). The toolbar's range box selects a stretch: type 101..200 (or 101-200, 101 to 200)
 and press Enter; on a circular sequence 3700..50 runs through the origin, and one number puts the cursor after that base. Ctrl+wheel (or Ctrl+= / Ctrl+- / Ctrl+0) sizes the sequence view's letters.
 History (the hourglass in the toolbar, Ctrl+H; shares the side panel with the filter) lists the changes in words, typing grouped,
 and goes back to before any of them (or forward again; or drag ▶ Current sequence). Adding, editing and deleting features, and
@@ -165,7 +167,7 @@ hover for its name. On a PDB entry the chains are aligned to the protein, so the
 line above the model says when only part of the protein is in it. *Open 3D view in the browser* shows a self-contained
 page (3Dmol.js): cartoon, sticks or surface, coloured by confidence (pLDDT, as AlphaFold DB does), rainbow or chain. *Save PDB…* keeps the
 file. A prediction is a model, not a measurement: low-confidence (orange) parts are not reliable.
-**Right-click a primer** (sequence view, map, alignment view or Primers panel) for *Edit…* and *Delete from Primer Database*. *Hide in This File* stops drawing that primer on this file only (it stays in the primer database, and the
+Two primers never share a name: a name already used by a primer of the database or of the file is refused, and a file that brings the same name twice (with two sequences, or a name the database uses for another sequence) opens with the later ones named name_1, name_2. **Right-click a primer** (sequence view, map, alignment view or Primers panel) for *Edit…* and *Delete from Primer Database*. *Hide in This File* stops drawing that primer on this file only (it stays in the primer database, and the
 choice lasts until the file is closed, and a project keeps it); the Primers view still lists it, greyed and marked "(hidden)": right-click it there →
 *Show in This File*. Select several primers in the Primers panel and right-click: delete them from the database, import them, hide or
 show them all at once.
