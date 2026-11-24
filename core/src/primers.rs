@@ -81,10 +81,146 @@ pub fn tm(seq: &[u8], c: &Conditions) -> Option<f64> {
     if symmetric {
         ds += -1.4;
     }
-    ds += salt_ds(s.len(), c);
+    Some(melt(dh, ds, s.len(), symmetric, c))
+}
+
+/// Tm in °C of a duplex of `len` pairs with these nearest-neighbour sums (salt and strand concentration applied here).
+fn melt(dh: f64, ds: f64, len: usize, symmetric: bool, c: &Conditions) -> f64 {
     let ct = c.primer_nm * 1e-9;
     let k = if symmetric { ct } else { ct / 4.0 };
-    Some(dh * 1000.0 / (ds + R * k.ln()) - 273.15)
+    dh * 1000.0 / (ds + salt_ds(len, c) + R * k.ln()) - 273.15
+}
+
+/// Nearest-neighbour stacks with one mismatched pair, "XY/AB" = top 5'-XY-3' over bottom 3'-AB-5' (ΔH kcal/mol, ΔS cal/(K·mol)):
+/// Allawi & SantaLucia 1997-98, Peyret et al. 1999 (Biopython's DNA_IMM1, without inosine). A stack is also found turned
+/// around (the whole key reversed), as Biopython looks it up; together they cover all 96 stacks with one mismatch.
+const MISMATCH_NN: [([u8; 5], f64, f64); 51] = [
+    (*b"AG/TT", 1.0, 0.9),
+    (*b"AT/TG", -2.5, -8.3),
+    (*b"CG/GT", -4.1, -11.7),
+    (*b"CT/GG", -2.8, -8.0),
+    (*b"GG/CT", 3.3, 10.4),
+    (*b"GG/TT", 5.8, 16.3),
+    (*b"GT/CG", -4.4, -12.3),
+    (*b"GT/TG", 4.1, 9.5),
+    (*b"TG/AT", -0.1, -1.7),
+    (*b"TG/GT", -1.4, -6.2),
+    (*b"TT/AG", -1.3, -5.3),
+    (*b"AA/TG", -0.6, -2.3),
+    (*b"AG/TA", -0.7, -2.3),
+    (*b"CA/GG", -0.7, -2.3),
+    (*b"CG/GA", -4.0, -13.2),
+    (*b"GA/CG", -0.6, -1.0),
+    (*b"GG/CA", 0.5, 3.2),
+    (*b"TA/AG", 0.7, 0.7),
+    (*b"TG/AA", 3.0, 7.4),
+    (*b"AC/TT", 0.7, 0.2),
+    (*b"AT/TC", -1.2, -6.2),
+    (*b"CC/GT", -0.8, -4.5),
+    (*b"CT/GC", -1.5, -6.1),
+    (*b"GC/CT", 2.3, 5.4),
+    (*b"GT/CC", 5.2, 13.5),
+    (*b"TC/AT", 1.2, 0.7),
+    (*b"TT/AC", 1.0, 0.7),
+    (*b"AA/TC", 2.3, 4.6),
+    (*b"AC/TA", 5.3, 14.6),
+    (*b"CA/GC", 1.9, 3.7),
+    (*b"CC/GA", 0.6, -0.6),
+    (*b"GA/CC", 5.2, 14.2),
+    (*b"GC/CA", -0.7, -3.8),
+    (*b"TA/AC", 3.4, 8.0),
+    (*b"TC/AA", 7.6, 20.2),
+    (*b"AA/TA", 1.2, 1.7),
+    (*b"CA/GA", -0.9, -4.2),
+    (*b"GA/CA", -2.9, -9.8),
+    (*b"TA/AA", 4.7, 12.9),
+    (*b"AC/TC", 0.0, -4.4),
+    (*b"CC/GC", -1.5, -7.2),
+    (*b"GC/CC", 3.6, 8.9),
+    (*b"TC/AC", 6.1, 16.4),
+    (*b"AG/TG", -3.1, -9.5),
+    (*b"CG/GG", -4.9, -15.3),
+    (*b"GG/CG", -6.0, -15.8),
+    (*b"TG/AG", 1.6, 3.6),
+    (*b"AT/TT", -2.7, -10.8),
+    (*b"CT/GT", -5.0, -15.8),
+    (*b"GT/CT", -2.2, -8.4),
+    (*b"TT/AT", 0.2, -1.5),
+];
+
+fn mismatch_nn(top: &[u8], bottom: &[u8]) -> Option<(f64, f64)> {
+    let key = [top[0], top[1], b'/', bottom[0], bottom[1]];
+    let turned = [bottom[1], bottom[0], b'/', top[1], top[0]];
+    MISMATCH_NN.iter().find(|(k, _, _)| *k == key || *k == turned).map(|&(_, h, s)| (h, s))
+}
+
+fn complement(b: u8) -> u8 {
+    match b {
+        b'A' => b'T',
+        b'T' => b'A',
+        b'G' => b'C',
+        b'C' => b'G',
+        x => x,
+    }
+}
+
+/// Tm in °C of `primer` annealed at a site whose bases are `target`: the primer's sense, the same length, equal to the primer where
+/// every base pairs (so a perfect site is `tm(primer)`). A mismatched pair inside the duplex takes its stacks from MISMATCH_NN.
+/// `None`: lengths differ, a base is not A/C/G/T, or fewer than 2 pairs are left.
+///
+/// shortcut: mismatched pairs at the ends are left out of the duplex (no terminal-mismatch or dangling-end terms; a site found by
+/// `binding_sites` starts and ends on a pair), and a stack of two mismatches in a row adds nothing (no data; Biopython skips it
+/// too). Add those terms if sites with such ends or runs need a closer Tm.
+pub fn site_tm(primer: &[u8], target: &[u8], c: &Conditions) -> Option<f64> {
+    let (top, target) = (clean(primer), clean(target));
+    if top.len() != target.len() || top.iter().chain(&target).any(|b| !b"ACGT".contains(b)) {
+        return None;
+    }
+    if top == target {
+        return tm(&top, c);
+    }
+    let pairs = |i: usize| top[i] == target[i];
+    let (Some(first), Some(last)) = ((0..top.len()).find(|&i| pairs(i)), (0..top.len()).rposition(|i| pairs(i))) else {
+        return None;
+    };
+    if last <= first {
+        return None;
+    }
+    let (mut dh, mut ds) = (0.0, 0.0);
+    for end in [top[first], top[last]] {
+        let (h, e) = end_term(end);
+        dh += h;
+        ds += e;
+    }
+    for i in first..last {
+        let (h, e) = match (pairs(i), pairs(i + 1)) {
+            (true, true) => nn(&top[i..i + 2]),
+            (false, false) => (0.0, 0.0),
+            _ => mismatch_nn(&top[i..i + 2], &[complement(target[i]), complement(target[i + 1])]).unwrap_or((0.0, 0.0)),
+        };
+        dh += h;
+        ds += e;
+    }
+    Some(melt(dh, ds, last + 1 - first, false, c))
+}
+
+/// The sites of `binding_sites(template, primer, circular, ...)` that melt at `min_tm` °C or above (`site_tm`: the primer's
+/// annealed bases on the template's, mismatches counted). A Tm that cannot be computed (an ambiguity code) keeps the site;
+/// `min_tm` <= 0 keeps every site. The one minimum-Tm rule of every primer site the app finds.
+pub fn warm_sites(sites: Vec<Site>, template: &[u8], primer: &[u8], circular: bool, min_tm: f64, c: &Conditions) -> Vec<Site> {
+    if min_tm <= 0.0 || template.is_empty() {
+        return sites;
+    }
+    let n = template.len();
+    sites
+        .into_iter()
+        .filter(|s| {
+            let annealed = &primer[primer.len() - s.len.min(primer.len())..];
+            let top: Vec<u8> = (s.start..s.start + s.len).map(|i| template[if circular { i % n } else { i.min(n - 1) }]).collect();
+            let target = if s.forward { top } else { revcomp(&top) };
+            site_tm(annealed, &target, c).is_none_or(|t| t >= min_tm)
+        })
+        .collect()
 }
 
 /// Lowest and highest Tm (°C) of a primer that may contain IUPAC codes: it is a mixture of every oligo the codes
@@ -405,6 +541,48 @@ pub fn revcomp(seq: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warm_sites_keep_what_melts_high_enough() {
+        // A primer and a copy with 2 mismatches, on either strand: the minimum Tm keeps or drops each by its own Tm.
+        let c = Conditions::default();
+        let p = b"AGCGGATAACAATTTCACACAGGA";
+        let copy = b"AGCGGCTAACAATTTCACGCAGGA";
+        let (perfect, lowered) = (tm(p, &c).unwrap(), site_tm(p, copy, &c).unwrap());
+        let spacer = b"TTTTTTTTTT";
+        let template = [&spacer[..], &p[..], &spacer[..], &revcomp(copy), &spacer[..]].concat();
+        let found = |min: f64| -> Vec<(usize, bool)> {
+            let sites = binding_sites(&template, p, false, SEED, 2, EXACT_3P);
+            warm_sites(sites, &template, p, false, min, &c).iter().map(|s| (s.start, s.forward)).collect()
+        };
+        assert_eq!(found(0.0), vec![(10, true), (44, false)]);
+        assert_eq!(found(lowered - 0.1), vec![(10, true), (44, false)]);
+        assert_eq!(found(lowered + 0.1), vec![(10, true)]);
+        assert!(found(perfect + 0.1).is_empty());
+        // across the origin of a circle: the site's bases are read through it
+        let circle = [&p[12..], &[b'T'; 20][..], &p[..12]].concat();
+        let sites = binding_sites(&circle, p, true, SEED, 0, EXACT_3P);
+        assert_eq!(sites.len(), 1);
+        assert_eq!(warm_sites(sites, &circle, p, true, perfect - 0.1, &c).len(), 1);
+        let sites = binding_sites(&circle, p, true, SEED, 0, EXACT_3P);
+        assert!(warm_sites(sites, &circle, p, true, perfect + 0.1, &c).is_empty());
+    }
+
+    #[test]
+    fn site_tm_with_mismatches() {
+        // Against Biopython's Tm_NN (c_seq = the complement of the site, DNA_IMM1, saltcorr=5, dnac1 = dnac2 = primer/2).
+        let c = Conditions::default();
+        let p = b"AGCGGATAACAATTTCACACAGGA";
+        assert_eq!(site_tm(p, p, &c), tm(p, &c));   // a perfect site is the primer's own Tm
+        let one = site_tm(p, b"AGCGGATAACATTTTCACACAGGA", &c).unwrap();   // A·A at 12
+        assert!((one - 56.58200646427804).abs() < 0.01, "{one}");
+        let two = site_tm(p, b"AGCGGCTAACAATTTCACGCAGGA", &c).unwrap();   // A·G at 6, A·C at 19
+        assert!((two - 52.154985731372165).abs() < 0.01, "{two}");
+        assert!(two < one && one < tm(p, &c).unwrap());
+        // ends that do not pair are left out: the same as the shorter duplex
+        assert_eq!(site_tm(b"TAGCGGATAACAATTTCACACAGGA", b"GAGCGGATAACAATTTCACACAGGA", &c), tm(p, &c));
+        assert!(site_tm(p, b"AGC", &c).is_none() && site_tm(b"ACGN", b"ACGT", &c).is_none());
+    }
 
     #[test]
     fn tm_and_tm_range_of_plain_and_degenerate_primers() {

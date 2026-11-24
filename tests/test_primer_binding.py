@@ -667,6 +667,39 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     ed = editor_with(template, False, [("f", core), ("r", rc(core))])
     assert [s.mismatch_at for s in ed.primer_sites] == [[], []]
 
+    # --- the minimum Tm of a site: of the bases that anneal there (the 5' tail does not count) ---
+    template = dna(400)
+    tailed = "GGGGCCCCGG" + template[100:120]
+    annealed = primer_panel.melting_temp(template[100:120])
+    ed = editor_with(template, False, [("t", tailed)])
+    for low, sites in ((annealed - 0.1, 1), (annealed + 0.1, 0), (0.0, 1)):
+        with tool_settings.override({(primer_db.BINDING, "min_tm"): low}):
+            ed.match_primers()
+            assert len(ed.primer_sites) == sites, low
+            binds = next(c for c in primer_panel.primer_checks(ed, tailed, "cached") if c[0] == "Binds here")
+            assert binds[1] == ("ok" if sites else "warn"), low
+    # its mismatches lower a site's Tm, everywhere: the sites drawn, Binds here, the tooltip, the background genome
+    from hover import describe_primer
+    from opendna_core import site_tm
+    from reference import as_reference
+    primer = template[200:224]
+    copy = mutate(primer, [10, 15])
+    mismatched = template[:200] + copy + template[224:]
+    perfect, lowered = primer_panel.melting_temp(primer), site_tm(primer, copy)
+    assert lowered < perfect - 3
+    ed = editor_with(mismatched, False, [("m", primer)])
+    genome = as_reference(Document.new_sequence("g", mismatched, False))
+    for low, sites in ((lowered - 0.1, 1), (lowered + 0.1, 0)):
+        warm = {"min_tm": low, **primer_panel.conditions()}
+        with tool_settings.override({(primer_db.BINDING, "min_tm"): low}):
+            ed.match_primers()
+            assert len(ed.primer_sites) == sites, low
+            binds = next(c for c in primer_panel.primer_checks(ed, primer, "cached") if c[0] == "Binds here")
+            assert binds[1] == ("ok" if sites else "warn"), low
+            assert genome.search(primer, primer, 2, primer_db.binding()[0], warm=warm).n_hits == sites, low
+            if sites:
+                assert f"Tm {lowered:.1f} °C" in describe_primer(ed, ed.primer_sites[0].key)
+
     # --- the best site, and sites shown or hidden by hand ---
     template = dna(600)
     good = template[100:124]
@@ -687,6 +720,41 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     assert drawn() == [300, 450] and "p" not in ed.hidden_primers
     saved = ed.saved_site_choices()
     assert saved["rule"] == [SEED, 3, 2] and sorted(map(tuple, saved["primers"]["p"]["sites"])) == [(1, 124, False), (1, 474, True)]
+    # a minimum Tm that hides the sites, then lowered again: the choices made by hand are still there
+    with tool_settings.override({(primer_db.BINDING, "min_tm"): 99.0}):
+        ed.match_primers()
+        assert ed.primer_sites == []
+    ed.match_primers()
+    assert ed.saved_site_choices() == saved
+    # --- saved with the file, as a GenBank COMMENT (other programs read it as text), and read back when it is opened ---
+    ed.import_primers([("p", good)])
+    # the Primer Database's In file box: unticked takes it out of the file (once), ticked brings it back
+    assert ed.import_primers([("p", good)], False) == 1 and not ed.in_file("p", good)
+    assert ed.import_primers([("p", good)], False) == 0
+    assert ed.import_primers([("p", good)]) == 1 and ed.in_file("p", good)
+    lanes_ready = []   # the views redraw on these signals: every primer drawn has its lane by then
+    for signal in (ed.changed, ed.primers_changed, ed.display_changed, ed.modified_changed):
+        signal.connect(lambda: lanes_ready.append(all(s.key in ed.primer_lanes for s in ed.drawn_primers)))
+    ed.set_primers_hidden(["p"], True)
+    ed.set_primers_hidden(["p"], False)
+    assert lanes_ready and all(lanes_ready)
+    ed.set_primers_hidden(["a primer, with spaces"], True)
+    assert ed.doc.modified
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "hidden.gb"
+        with tool_settings.override({(primer_db.BINDING, "min_tm"): 99.0}):   # (p, imported here, is saved as its exact site anyway)
+            ed.save(path)
+        assert "COMMENT     openDNA-display:" in path.read_text()
+        from Bio import SeqIO
+        assert len(SeqIO.read(path, "genbank").seq) == len(template)
+        again = Editor(Document(str(path)), path)
+        assert again.hidden_primers == {"a primer, with spaces"} and again.saved_site_choices() == ed.saved_site_choices()
+        assert again.in_file("p", good)   # (a file keeps every exact site of its primers, also below the minimum Tm)
+        # a primer taken out of the file is not written back
+        again.import_primers([("p", good)], False)
+        again.save(path)
+        assert not Editor(Document(str(path)), path).in_file("p", good)
+    ed.set_primers_hidden(["a primer, with spaces"], False)
     # --- kept for the session (a project keeps them); dropped with a site that no longer binds, and all of them under another rule ---
     ed.doc.delete(450, 474)
     ed.match_primers()
@@ -770,7 +838,11 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     assert by_name["Binds here"][0] == "ok", "its own site is not counted as mis-priming"
     # the same from a reverse primer: its 3' end is the start of `primer`, matched elsewhere on the top strand
     partial_rev = template[:400] + primer[:12] + "".join(other(c) for c in primer[12:15]) + template[415:]
-    assert checks_by_name(editor_with(partial_rev, False, []), rc(primer))["Non-specific (sequence)"][0] == "warn"
+    with tool_settings.override({(primer_db.BINDING, "min_tm"): 0.0}):
+        assert checks_by_name(editor_with(partial_rev, False, []), rc(primer))["Non-specific (sequence)"][0] == "warn"
+    # ... but a 3' match that melts below the minimum Tm of a site (40 °C) does not prime: not counted
+    assert primer_panel.melting_temp(primer[:12]) < 40
+    assert checks_by_name(editor_with(partial_rev, False, []), rc(primer))["Non-specific (sequence)"][0] == "ok"
     # the whole primer a second time: red
     ed = editor_with(template[:400] + primer + template[424:], False, [])
     checks = primer_panel.primer_checks(ed, primer)

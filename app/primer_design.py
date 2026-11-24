@@ -17,7 +17,7 @@ from types import SimpleNamespace
 from opendna_core import dimer, hairpin, tm
 
 from editor import reverse_complement
-from primer_panel import conditions, homology_settings
+from primer_panel import conditions, homology_settings, tm_rule
 from uikit import plural
 
 KEEP = 25  # best candidates per side that get the (slower) uniqueness check and pairing
@@ -101,11 +101,12 @@ def design(editor, start, end, tm_target=60.0, min_len=18, max_len=25, window=0,
                 c.update(start=(b - length) % n, end=(b - length) % n + length, raw=b)
                 revs.append(c)
     seed, _ = homology_settings()
+    rule = tm_rule()   # (a 3' match below the minimum Tm of a site does not count)
     for side in (fwds, revs):
         side.sort(key=lambda c: c["penalty"])
         del side[KEEP:]
         for c in side:  # other places the 3' end could prime, in this sequence
-            extra = len(editor.doc.binding_sites(c["seq"], 0, seed)) - 1
+            extra = len(editor.doc.binding_sites(c["seq"], 0, seed, **rule)) - 1
             if extra > 0:
                 c["penalty"] += 5 * extra
                 c["notes"].append(f"3′ matches {plural(extra, 'other site')}")

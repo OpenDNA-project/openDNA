@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from opendna_core import find_motif, find_primers
 
+import primer_db
 from assembly import anneal_len, snapshot
 from editor import reverse_complement as rc
 
@@ -78,7 +79,7 @@ def design_primers(genome, cassette, start, end, left=HOMOLOGY, right=HOMOLOGY, 
 
 def amplicon(template, circular, fwd, rev):
     """The PCR product of primers `fwd` and `rev` (5'->3', tails allowed) on a template string, tails included."""
-    found = find_primers(template, circular, [fwd, rev], 1)
+    found = find_primers(template, circular, [fwd, rev], 1, **primer_db.tm_rule())   # (a site below the minimum Tm does not prime)
     exact = [[h for h in hits if h[3] == 0] or hits for hits in found]   # (a site with no mismatch beats one that comes first with some)
     f = [h for h in exact[0] if h[2] == 1]
     r = [h for h in exact[1] if h[2] == -1]

@@ -5,7 +5,7 @@ follows (primer_db.notifier)."""
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QFileDialog, QHBoxLayout, QWidget
 
 import icons
 import primer_db
@@ -54,16 +54,15 @@ class _WideCombo(QComboBox):
     while the box stays small in the toolbar."""
 
     def showPopup(self):
-        self.view().window().installEventFilter(self)   # (once: Qt ignores a filter installed twice)
+        # Wide before Qt opens it: its roll-down animation (QRollEffect) takes the list's width when it starts, and keeps it
+        self.view().setMinimumWidth(self.width() * 3 // 2)
         super().showPopup()
-
-    def eventFilter(self, obj, event):
-        # Placed as it is shown, before it is drawn: it opens at its width and place, it is not seen moving there
-        if event.type() == QEvent.Show and obj is self.view().window():
-            width = max(obj.width(), self.width() * 3 // 2)
-            right = self.mapToGlobal(self.rect().topRight()).x()
-            obj.setGeometry(right - width + 1, obj.y(), width, obj.height())
-        return False
+        pop = self.view().window()
+        x = max(self.mapToGlobal(self.rect().topRight()).x() - pop.width() + 1, self.screen().availableGeometry().left())
+        for w in QApplication.topLevelWidgets():   # the animation, where the list was: moved with it (before either is drawn)
+            if w.metaObject().className() == "QRollEffect" and w.pos() == pop.pos():
+                w.move(x, w.y())
+        pop.move(x, pop.y())
 
 
 class ReferencePicker(QWidget):

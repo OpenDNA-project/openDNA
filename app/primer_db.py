@@ -90,7 +90,10 @@ tool_settings.register(BINDING, [
           tip="The polymerase starts at the 3′ end: these bases never tolerate a mismatch."),
     Param("mismatches", "Mismatches allowed", 2, 0, 29,
           tip="Mismatches allowed in the compared bases (never in the exact 3′ ones). 0 = exact sites only."),
-    Param("best_only", "Best site only", False,
+    Param("min_tm", "Minimum Tm of a site", 40.0, 0.0, 100.0, suffix=" °C",
+          tip="A site counts only if the primer's bases that anneal there melt at this temperature or above (PCR conditions,\n"
+              "mismatches are not taken off). 0 = no minimum."),
+    Param("best_only", "Show only the best binding site by default", False,
           tip="Fewest mismatches in the last 5 bases, then fewest mismatches, then the longest annealed part; ties are all shown.\n"
               "Also in the Display filter."),
     Param("homology_seed", "3′ check: bases", 12, 6, 20, suffix=" nt", tip="Bases at the primer's 3′ end compared for the mis-priming check"),
@@ -100,6 +103,17 @@ tool_settings.register(BINDING, [
           tip="A FASTA or GenBank file; one with several sequences (chromosomes) is searched in full. Empty: no background genome."),
 ], check=_binding_check)
 tool_settings.PAGE_OF.update({PCR: "Primers", BINDING: "Primers"})
+
+
+def conditions():
+    """The PCR conditions of every Tm (Settings > Primers), as keyword arguments of tm()."""
+    return dict(tool_settings.values(PCR))
+
+
+def tm_rule():
+    """The minimum Tm of a site and the PCR conditions, as keyword arguments of find_primers / Document.binding_sites: the core
+    keeps only the sites that melt that high, their mismatches counted. Every search for a primer's sites passes them."""
+    return {"min_tm": tool_settings.value(BINDING, "min_tm"), **conditions()}
 
 
 def binding():

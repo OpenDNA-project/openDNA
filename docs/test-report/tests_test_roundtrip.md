@@ -4,7 +4,7 @@
 
 ## `test_real_files_round_trip_and_agree_with_biopython`
 
-**Result:** ✅ passed in 2.06 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 2.25 s · [line 132](../../tests/test_roundtrip.py#L132) · **Area:** GenBank round trip · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a real plasmid or genome could silently drop or alter features, qualifiers or bases, or write a file other tools read differently.
 
@@ -67,7 +67,7 @@ Saves made-up records that hit the edges of the GenBank format, reloads them wit
 
 ## `test_qualifier_text_survives_and_is_written_as_documented`
 
-**Result:** ✅ passed in 0.17 s · [line 358](../../tests/test_roundtrip.py#L358) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.15 s · [line 358](../../tests/test_roundtrip.py#L358) · **Area:** GenBank qualifiers · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, notes with quotes, unicode or long text could be mangled, wrapped badly or gain spaces when saved, so other tools (or a reload) would show different annotation text.
 
@@ -84,7 +84,7 @@ Writes a feature with awkward qualifier values and checks the reload equals the 
 
 ## `test_primers_survive_save`
 
-**Result:** ✅ passed in 0.03 s · [line 428](../../tests/test_roundtrip.py#L428) · **Area:** Primers in saved files · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 428](../../tests/test_roundtrip.py#L428) · **Area:** Primers in saved files · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, primers attached to a plasmid (from a .dna file or imported from the database) could vanish or lose their full sequence when the file is saved as GenBank.
 
@@ -105,7 +105,7 @@ Checks primer_bind features passed to save_genbank are written with name and ful
 
 ## `test_fasta_files_are_read_like_biopython`
 
-**Result:** ✅ passed in 0.03 s · [line 484](../../tests/test_roundtrip.py#L484) · **Area:** FASTA reading · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 484](../../tests/test_roundtrip.py#L484) · **Area:** FASTA reading · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a multi-sequence FASTA (genomes, Windows line endings, BOM, lower case) could return wrong bases at line breaks or include stray characters, corrupting what the user sees and edits.
 
@@ -122,7 +122,7 @@ Checks the indexed FASTA reader against Biopython for record list, full fetches,
 
 ## `test_fasta_writing_is_the_string_edit_of_the_file`
 
-**Result:** ✅ passed in 0.02 s · [line 536](../../tests/test_roundtrip.py#L536) · **Area:** FASTA writing · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 536](../../tests/test_roundtrip.py#L536) · **Area:** FASTA writing · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, saving an edited chromosome back into a multi-FASTA could damage the other records, lose CRLF or a BOM, leave a stale index, or write the wrong edited bases.
 

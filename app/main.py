@@ -58,7 +58,7 @@ import project
 import runner
 import wip
 import db_tabs
-from reference_picker import ReferencePicker
+import reference_picker
 import theme
 import track_check
 import track_import
@@ -544,7 +544,7 @@ class MainWindow(QMainWindow):
         row2.addWidget(self.code_group)
         self._show_code_switch()
         tool_settings.notifier.changed.connect(lambda tool: tool == genetic_code.TOOL and self._show_code_switch())
-        self.reference_picker = ReferencePicker(self)
+        self.reference_picker = reference_picker.ReferencePicker(self)
         self.reference_picker.changed.connect(lambda: self.editor is not None and self.primer_options_changed())
         row2.addWidget(labelled("Background genome:", self.reference_picker, line()))
         # The side panel folds away to the window's edge; these buttons (or Ctrl+Shift+F, Ctrl+H) open it.
@@ -929,10 +929,7 @@ class MainWindow(QMainWindow):
         said = [m for m in (genetic_code.adopt(meta.get("genetic_code")), codon_usage.adopt(meta.get("codon_usage"))) if m]
         if said:
             self.statusBar().showMessage(" ".join(said), 8000)
-        for name in meta.get("hidden_primers", []):
-            ed.set_primer_hidden(name, True)
-        if isinstance(meta.get("primer_sites"), dict):
-            ed.load_site_choices(meta["primer_sites"])
+        ed.apply_display_choices(meta)
         if missing:
             QMessageBox.warning(self, "Project", "These files of the project were not found (moved or deleted):\n\n" + "\n".join(missing))
 
@@ -1091,6 +1088,8 @@ class MainWindow(QMainWindow):
         sequence of the FASTA file `path` that `doc` holds. `layout`: the tabs to open with
         (an Open DNA Project's own); everything else opens with the standard ones. `display` False: the caller sets the display
         options itself (another record of the file keeps the file's: laying a genome out twice took most of the switch)."""
+        if display and reference_picker.current():   # a file opens with no background genome (pick one in the box)
+            reference_picker.use(None)
         self.editor = ed = Editor(doc, path)
         ed.untitled = untitled
         ed.fasta_record = record
@@ -1109,6 +1108,7 @@ class MainWindow(QMainWindow):
         self.autosaved_version = ed.version
         ed.match_elsewhere()   # a multi-record file: where the primers bind on the other records
         ed.changed.connect(self._update_title)
+        ed.modified_changed.connect(self._update_title)
         if record:   # a file of several records has one history: Undo goes back through all of them
             ed.file_history, ed.file_histories, ed.file_undo_steps = self.file_history, self._file_histories, self.undo_file_steps
             ed.changed.connect(lambda: ed is self.editor and self._observe_history())
@@ -1897,6 +1897,7 @@ class MainWindow(QMainWindow):
         if self._autosaving is not None:   # the last one is still being written
             return
         target, version, gen = autosave_path(ed.path, ed.fasta_record), ed.version, self._autosave_gen
+        ed._write_display()   # (here, on the GUI thread: the document is not written to from the autosave's thread)
 
         def write():
             try:
