@@ -6,6 +6,14 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 ## Unreleased
 
 **Features**
+
+**Bugfixes**
+
+**UI/UX**
+
+## 0.8.6 (2026-11-24)
+
+**Features**
 - Changed: a FASTA file's topology is read from its header ([topology=circular] or [topology=linear]); with no tag, one sequence is circular and several are linear.
 - Changed: importing a GFF3/GTF track asks which feature types to keep (with their number of lines) and offers each line's colour and note; projects keep the choice.
 - Added: where a primer binds is set in Settings (3′ bases compared, how many must match exactly, mismatches); Best site only, and a single binding site can be hidden without hiding the primer. Hidden primers and sites now last until the file is closed (a project keeps them).
