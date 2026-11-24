@@ -4,7 +4,7 @@
 
 ## `test_binding_agrees_with_the_documented_rules_written_in_python`
 
-**Result:** ✅ passed in 0.12 s · [line 170](../../tests/test_primer_binding.py#L170) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.13 s · [line 170](../../tests/test_primer_binding.py#L170) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer binding sites shown on the map could deviate from the documented seed/extension rules on any of thousands of combinations of mismatches, tails, strands and topologies.
 
@@ -106,7 +106,7 @@ Uses Editor objects with primers to check mismatch positions in template coordin
 | 4 | 24-base primer on a copy with 2 mismatches (positions 10, 15); minimum Tm just under, just over site_tm of that copy | 1 site, Binds here ok, 1 genome hit, tooltip shows that Tm; then no site, warn, no genome hit |
 | 5 | 24-base primer at 100, copies at 300 (mismatch 4 bases from the 3' end) and 450 (mismatches 3 and 6, far from it) | sites 100, 300, 450; rank order 100, 450, 300; only 100 is best; all drawn with Best site only off |
 | 6 | Best site only on; then tick 450; then (off) hide 100 | [100]; [100, 450]; [300, 450], primer not hidden; saved rule [15,3,2], sites {(1,124,False),(1,474,True)}; a 99 °C minimum hides every site, back to 40 °C the choices are unchanged |
-| 7 | import p to the file; take it out (twice), import it again; hide then show p; hide primer 'a primer, with spaces', save as GenBank with a 99 °C minimum Tm, open it again; take p out of the reopened file, save, open | 1 then 0 primers taken out, 1 imported back; every drawn primer has its lane on every signal the views redraw on; document modified; a 'COMMENT     openDNA-display:' line; Biopython reads 600 bp; hidden primers and site choices equal to the saved ones; p still part of the file; then p no longer part of it |
+| 7 | import p to the file; take it out (twice), import it again; hide then show p; import q to the file and rename it 'q renamed' (change_file_primer), undo, redo; hide primer 'a primer, with spaces'; add misc_feature 'a feature, hidden' at join(11..60,80..90) and untick its Visible box in the features table model, plus a hidden key of no feature (renamed since); save as GenBank with a 99 °C minimum Tm, open it again; take p out of the reopened file, save, open | 1 then 0 primers taken out, 1 imported back; every drawn primer has its lane on every signal the views redraw on; only 'q renamed' is in the file and drawn, Undo brings back q alone; document modified; a 'COMMENT     openDNA-display:' line; Biopython reads 600 bp; box ticked then unticked, the feature not drawn; hidden primers, hidden feature and site choices equal to the saved ones (the feature still not drawn); p still part of the file, 'q renamed' too and not q; then p no longer part of it |
 | 8 | delete bases 450..474 and match again; then 1 mismatch allowed | only (1,124,False) kept; then no choice left |
 | 9 | 30 bases over origin with mismatches at 4 and 20 | spans [(n-15,n),(0,15)], mismatch_at [n-11, 5], 2 mismatches |
 | 10 | F at 100..124 with 8-base tail, R at 300..324 with 10-base tail | product_range (100,324); product = tail + template[100:324] + rc(tail), length 242, linear |
@@ -118,6 +118,7 @@ Uses Editor objects with primers to check mismatch positions in template coordin
 | 16 | editor with feature, edit, undo/redo, two primers, save twice | document, features, history unchanged; modified False; no primer_bind in doc; file holds pFwd (100,124,+1) and pRev (400,424,-1); identical bytes on second save |
 | 17 | undo all steps | 4 steps; sequence/features/primers back to empty |
 | 18 | edit after adding primer, then save | stored site moved to (110,134) |
+| 19 | pFwd in the file of a second editor, hidden there, renamed pFwd2 in the database (update_primer); then Undo | hidden primers {pFwd2}, pFwd2 in the file and pFwd not; after Undo hidden {pFwd} and pFwd in the file |
 
 **Review notes:**
 

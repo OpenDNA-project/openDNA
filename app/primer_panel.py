@@ -486,11 +486,22 @@ class PrimerDialog(QDialog):
     def __init__(self, parent, editor, name=None):
         super().__init__(parent)
         self.editor, self.old = editor, db().find(name) if name else None
-        self.setWindowTitle(f"Primer {name}" if self.old else "New Primer")
+        # A primer drawn here that is not in the database: one of the file's own is edited in the file; a temporary one (an
+        # assembly's, designed and not saved) keeps its name and sequence until Save puts it in the database (a rename here
+        # added a second primer beside it).
+        drawn = None if self.old or not name else next((p for p in editor.primer_list() if p[0] == name), None)
+        self.in_file = drawn if drawn and editor.in_file(*drawn) else None
+        unsaved = drawn and not self.in_file
+        if self.old:
+            self.setWindowTitle(f"Primer {name}")
+        elif drawn:
+            self.setWindowTitle(f"Primer {name} ({'in this file only' if self.in_file else 'not saved yet'})")
+        else:
+            self.setWindowTitle("New Primer")
         self.setMinimumWidth(640)
-        self.name = QLineEdit(self.old["name"] if self.old else self._free_name())
+        self.name = QLineEdit(self.old["name"] if self.old else drawn[0] if drawn else self._free_name())
         self.name.setMaxLength(max(MAX_NAME, len(self.name.text())))   # not shorter than a name already in the database
-        start = self.old["sequence"] if self.old else editor.selected_sequence()
+        start = self.old["sequence"] if self.old else drawn[1] if drawn else editor.selected_sequence()
         if len(start) > MAX_PRIMER:   # a long selection is not a primer: leave the box empty rather than cut it
             start = ""
         self.sequence = dna_field(QLineEdit(start))
@@ -500,6 +511,14 @@ class PrimerDialog(QDialog):
         self.note.setMaxLength(max(MAX_NOTE, len(self.note.text())))
         self.reverse = QCheckBox("Reverse complement")
         self.reverse.toggled.connect(lambda: self.sequence.setText(reverse_complement(self.sequence.text())))
+        if self.in_file:
+            self.note.setEnabled(False)
+            self.note.setToolTip("A primer of this file only has no note (the Primer Database keeps notes)")
+        if unsaved:
+            for box in (self.name, self.sequence):
+                box.setReadOnly(True)
+                box.setToolTip("Save puts this primer in the Primer Database; rename or change it afterwards")
+            self.reverse.setEnabled(False)
         self.info = QLabel()
         # Every check with a mark: ✓ fine, ? worth a look, ✗ a problem.
         self.report = ReportView(10)
@@ -601,6 +620,14 @@ class PrimerDialog(QDialog):
         if problem:
             QMessageBox.warning(self, "Invalid primer", problem)
             (self.name if not name or any(c.isspace() and c != " " for c in name) else self.sequence).setFocus()
+            return
+        if self.in_file:
+            if (name, seq) != self.in_file:
+                if any(p[0] == name and p != self.in_file for p in self.editor.primer_list()):
+                    QMessageBox.warning(self, "Name in use", f"There is already a primer '{name}' here.")
+                    return
+                self.editor.change_file_primer(self.in_file, (name, seq))
+            super().accept()
             return
         ok = update_primer(self.editor, self.old["name"], name, seq, note) if self.old else add_primer(self.editor, name, seq, note) in ("added", "exists")
         if not ok:

@@ -154,13 +154,13 @@ def project_meta(editor, project_path, layout=None):
         "dna_locked": ed.dna_locked,
         "genetic_code": genetic_code.project_entry(),   # the code and the codon table in use travel with the project
         "codon_usage": codon_usage.project_entry(),
-        **ed.display_choices(),   # the primers and sites hidden by hand (with the binding rule the sites were chosen under)
+        **ed.display_choices(),   # the features, primers and sites hidden by hand (with the binding rule the sites were chosen under)
         "tracks": [{"path": t.path, "relative": _relative(t.path, project_path), "seqid": t.seqid, "types": t.types, "fields": t.fields}
                    for t in ed.tracks if getattr(t, "path", None)],
         "alignments": [{"path": a.path, "relative": _relative(a.path, project_path), "seqid": a.seqid}
                        for a in ed.alignments if getattr(a, "path", None)],
         "display": {"enzymes": ed.show_enzymes, "enzyme_filter": ed.enzyme_filter._asdict(),
-                    "hidden_features": sorted(list(k) for k in ed.hidden_features), "translation": ed.show_translation, "complement": ed.show_complement, "cds_only": ed.cds_only,
+                    "translation": ed.show_translation, "complement": ed.show_complement, "cds_only": ed.cds_only,
                     "hidden_kinds": sorted(ed.hidden_kinds), "primers": ed.show_primers, "file_primers": ed.show_file_primers,
                     "db_primers": ed.show_db_primers, "units": ed.show_units,
                     "cds_translation": ed.show_cds_translation, "untranslated": sorted(ed.untranslated)},

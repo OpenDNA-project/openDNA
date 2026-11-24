@@ -79,7 +79,7 @@ Checks that Sidewinder's toeholds are taken from the product itself (scarless), 
 
 ## `test_products_keep_every_orf_on_its_own_bases`
 
-**Result:** ✅ passed in 0.06 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an assembled product could annotate a CDS a few bases off, so the user reads a shifted frame and the wrong protein without any error being shown.
 

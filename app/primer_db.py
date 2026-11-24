@@ -386,6 +386,11 @@ def add_primers(editor, primers, what="Added", in_file=False):
     return report
 
 
+def pair(row):
+    """A database row's (name, sequence)."""
+    return row["name"], row["sequence"]
+
+
 def update_primer(editor, old_name, name, sequence, note):
     """db().update, as a history step. False if `name` belongs to another primer."""
     before = dict(db().find(old_name))
@@ -398,9 +403,9 @@ def update_primer(editor, old_name, name, sequence, note):
                 return f"Primer {source['name']} was changed since: left as it is."
             if not db().update(source["name"], target["name"], target["sequence"], target["note"]):
                 return f"The name {target['name']} is used now: primer {source['name']} left as it is."
-            editor.rename_in_file(source, target)
+            editor.rename_in_file(pair(source), pair(target))
             return None
-        editor.rename_in_file(before, after)
+        editor.rename_in_file(pair(before), pair(after))
         what = f"Renamed primer {before['name']} to {after['name']}" if before["name"] != after["name"] else f"Edited primer {after['name']}"
         editor.record_external(what, lambda: switch(after, before), lambda: switch(before, after))
     return True

@@ -2442,8 +2442,8 @@
      "expected": "[100]; [100, 450]; [300, 450], primer not hidden; saved rule [15,3,2], sites {(1,124,False),(1,474,True)}; a 99 °C minimum hides every site, back to 40 °C the choices are unchanged"
     },
     {
-     "input": "import p to the file; take it out (twice), import it again; hide then show p; hide primer 'a primer, with spaces', save as GenBank with a 99 °C minimum Tm, open it again; take p out of the reopened file, save, open",
-     "expected": "1 then 0 primers taken out, 1 imported back; every drawn primer has its lane on every signal the views redraw on; document modified; a 'COMMENT     openDNA-display:' line; Biopython reads 600 bp; hidden primers and site choices equal to the saved ones; p still part of the file; then p no longer part of it"
+     "input": "import p to the file; take it out (twice), import it again; hide then show p; import q to the file and rename it 'q renamed' (change_file_primer), undo, redo; hide primer 'a primer, with spaces'; add misc_feature 'a feature, hidden' at join(11..60,80..90) and untick its Visible box in the features table model, plus a hidden key of no feature (renamed since); save as GenBank with a 99 °C minimum Tm, open it again; take p out of the reopened file, save, open",
+     "expected": "1 then 0 primers taken out, 1 imported back; every drawn primer has its lane on every signal the views redraw on; only 'q renamed' is in the file and drawn, Undo brings back q alone; document modified; a 'COMMENT     openDNA-display:' line; Biopython reads 600 bp; box ticked then unticked, the feature not drawn; hidden primers, hidden feature and site choices equal to the saved ones (the feature still not drawn); p still part of the file, 'q renamed' too and not q; then p no longer part of it"
     },
     {
      "input": "delete bases 450..474 and match again; then 1 mismatch allowed",
@@ -2488,6 +2488,10 @@
     {
      "input": "edit after adding primer, then save",
      "expected": "stored site moved to (110,134)"
+    },
+    {
+     "input": "pFwd in the file of a second editor, hidden there, renamed pFwd2 in the database (update_primer); then Undo",
+     "expected": "hidden primers {pFwd2}, pFwd2 in the file and pFwd not; after Undo hidden {pFwd} and pFwd in the file"
     }
    ],
    "oracle": "hand-computed",

@@ -72,7 +72,9 @@ file (one step in the History, the file is marked modified) and Save writes it a
 database's hundreds of primers no longer end up in every file. Edit…, Delete from Primer Database and Hide in This File stay as they were.
 Right-click a feature in any view to edit or delete it. In the feature table, select several rows (click, then Shift- or
 Ctrl-click) and right-click: Delete, Hide All / Show All and Show Translation apply to all of them at once (deleting is one
-undo step). The toolbar's range box selects a stretch: type 101..200 (or 101-200, 101 to 200)
+undo step). The feature table's **Visible** column ticks what is drawn: untick a feature to stop drawing it (it stays in the
+file), tick it to bring it back. Features hidden this way stay hidden when the file is saved and opened again, like hidden
+primers (a GenBank comment other programs ignore). The toolbar's range box selects a stretch: type 101..200 (or 101-200, 101 to 200)
 and press Enter; on a circular sequence 3700..50 runs through the origin, and one number puts the cursor after that base. Ctrl+wheel (or Ctrl+= / Ctrl+- / Ctrl+0) sizes the sequence view's letters.
 History (the hourglass in the toolbar, Ctrl+H; shares the side panel with the filter) lists the changes in words, typing grouped,
 and goes back to before any of them (or forward again; or drag ▶ Current sequence). Adding, editing and deleting features, and

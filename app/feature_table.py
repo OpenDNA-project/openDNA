@@ -28,7 +28,7 @@ from editor import arrow, feature_key, reverse_complement
 from file_tabs import page_of
 from primer_db import db, remove_primers
 
-COLUMNS = ["Name", "Type", "Location", "Length", "Strand"]
+COLUMNS = ["Name", "Type", "Location", "Length", "Strand", "Visible"]   # Visible: a box, unticked for a feature hidden by hand
 FILTERED = ["Type", "Strand", "Source"]   # the columns with a filter by values (categories; the others are names / numbers)
 
 
@@ -50,7 +50,7 @@ class FeatureModel(QAbstractTableModel):
         length = sum(e - s for s, e in f.spans)
         way = arrow(f)
         base = {"Name": (f.label, f.label.lower()), "Type": (f.kind, f.kind), "Location": (f.location, f.spans[0][0]),
-                "Length": (f"{length:,}", length), "Strand": ({1: "→", -1: "←", 0: "—"}[way], way)}
+                "Length": (f"{length:,}", length), "Strand": ({1: "→", -1: "←", 0: "—"}[way], way), "Visible": ("", 0)}   # (Visible: a box, sorted in _arrange)
         extra = getattr(self.editor, "feature_extra", {}).get(f.index, {})
         texts = tuple(base[c][0] if c in base else extra.get(c, "") for c in self.columns)
         keys = tuple(base[c][1] if c in base else extra.get(c, "").lower() for c in self.columns)
@@ -65,7 +65,9 @@ class FeatureModel(QAbstractTableModel):
 
     def _arrange(self):
         needle = self.filter_text
-        top = sorted(self.rows, key=lambda r: r[1][self.sort_column], reverse=self.sort_order == Qt.DescendingOrder)
+        c = self.sort_column
+        key = (lambda r: not self._hidden(r[3])) if self.columns[c] == "Visible" else (lambda r: r[1][c])   # (changes without a reload)
+        top = sorted(self.rows, key=key, reverse=self.sort_order == Qt.DescendingOrder)
         self.shown = [r for r in top if needle in r[2]]
 
     def set_filter(self, text):
@@ -107,16 +109,31 @@ class FeatureModel(QAbstractTableModel):
             return self.editor.colors[feature_index]
         if role == Qt.ForegroundRole and self._hidden(feature_index):   # hidden on the sequence: greyed (right-click > Show)
             return QGuiApplication.palette().placeholderText()
+        if role == Qt.CheckStateRole and self.columns[index.column()] == "Visible":
+            return Qt.Unchecked if self._hidden(feature_index) else Qt.Checked
         return None
+
+    def flags(self, index):
+        out = super().flags(index)
+        return out | Qt.ItemIsUserCheckable if self.columns[index.column()] == "Visible" else out
+
+    def setData(self, index, value, role=Qt.EditRole):
+        """The Visible box: hide or show the feature (as right-click > Hide feature / Show feature)."""
+        f = self.editor.by_index.get(self.shown[index.row()][3])
+        if role != Qt.CheckStateRole or f is None:
+            return False
+        self.editor.set_features_hidden([feature_key(f)], Qt.CheckState(value) != Qt.Checked)
+        return True
 
     def _hidden(self, feature_index):
         f = self.editor.by_index.get(feature_index)
         return f is not None and feature_key(f) in self.editor.hidden_features
 
     def repaint_rows(self):
-        """A feature was hidden or shown: only the colour of the rows changes."""
+        """A feature was hidden or shown: only the colour and the Visible box of the rows change."""
         if self.shown:
-            self.dataChanged.emit(self.index(0, 0), self.index(len(self.shown) - 1, len(self.columns) - 1), [Qt.ForegroundRole])
+            self.dataChanged.emit(self.index(0, 0), self.index(len(self.shown) - 1, len(self.columns) - 1),
+                                  [Qt.ForegroundRole, Qt.CheckStateRole])
 
 
 class FeatureTableView(QTableView):

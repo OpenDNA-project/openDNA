@@ -365,7 +365,7 @@ class Editor(QObject):
         # Display filter (side panel): feature types not drawn, primers on/off, and the
         # amino acids drawn inside CDS arrows (all CDSs, minus those switched off one by one).
         self.hidden_kinds = set()
-        self.hidden_features = set()    # feature_key of the features hidden one by one (right-click > Hide)
+        self.hidden_features = set()    # feature_key of the features hidden one by one (right-click > Hide, the Visible column)
         self.show_file_primers = True   # Display filter > Primers: the file's own (and designed, unsaved) primers
         self.show_db_primers = False    # ... and the primers of the database that bind here (hidden until switched on)
         self.show_units = True          # ... transcription units (units.py), whatever their feature type
@@ -475,20 +475,38 @@ class Editor(QObject):
         """Is the primer (name, sequence) one of this file's own?"""
         return (name, sequence.upper()) in self.file_primer_set
 
-    def set_in_file(self, pairs, present):
+    def set_in_file(self, pairs, present, match=True):
         """Add / remove primers [(name, sequence)] among the file's own, without a history step (the caller records one)."""
         for n, q in pairs:
             if present:
                 self.file_primer_set[(n, q.upper())] = (n, q)
             else:
                 self.file_primer_set.pop((n, q.upper()), None)
-        self.match_primers()
+        if match:
+            self.match_primers()
 
     def rename_in_file(self, before, after):
-        """A database primer was edited (row dicts): the file's own copy follows it."""
-        if self.in_file(before["name"], before["sequence"]):
-            self.set_in_file([(before["name"], before["sequence"])], False)
-            self.set_in_file([(after["name"], after["sequence"])], True)
+        """A primer was edited, (name, sequence) `before` to `after`: the file's own copy follows it, and so do its being hidden
+        and its site choices (dropped by the match when the sequence changed)."""
+        old, new = before[0], after[0]
+        if old in self.hidden_primers:
+            self.hidden_primers = self.hidden_primers - {old} | {new}
+        if old in self.site_choices:
+            self.site_choices[new] = self.site_choices.pop(old)
+        if self.in_file(*before):
+            self.set_in_file([before], False, match=False)
+            self.set_in_file([after], True)
+        elif new in self.hidden_primers or new in self.site_choices:
+            self.match_primers()   # (the database's own change matched before they moved)
+
+    def change_file_primer(self, before, after):
+        """Edit… on a primer of this file that is not in the database: `after` (name, sequence) replaces `before` among the
+        file's own (Save writes it, not the old one), as one history step."""
+        self.rename_in_file(before, after)
+        what = f"Renamed primer {before[0]} to {after[0]}" if before[0] != after[0] else f"Edited primer {after[0]}"
+        self.record_external(what, lambda: self.rename_in_file(after, before), lambda: self.rename_in_file(before, after))
+        self.doc.modified = True
+        self.changed.emit()
 
     def import_primers(self, pairs, present=True):
         """Import to This Sequence: make the primers `pairs` [(name, sequence)] part of this file (the regular primer
@@ -728,18 +746,23 @@ class Editor(QObject):
                                                     for name, e in self.site_choices.items()}}
 
     def _choice_changed(self):
-        """A primer or site was shown or hidden: the file saves it (_write_display), so it has something to save. Not a FASTA file
+        """A feature, primer or site was shown or hidden: the file saves it (_write_display), so it has something to save. Not a FASTA file
         (no place for it)."""
         if not self.fasta_record or self.multi_genbank:
             self.doc.modified = True
             self.modified_changed.emit()   # (not `changed`: nothing was edited, every view would redo its layout)
 
     def display_choices(self):
-        """The primers and sites hidden in this file, as a project (exports.project_meta) and the file's DISPLAY_NOTE keep them."""
-        return {"hidden_primers": sorted(self.hidden_primers), "primer_sites": self.saved_site_choices()}
+        """The features, primers and sites hidden in this file, as a project (exports.project_meta) and the file's DISPLAY_NOTE
+        keep them. Only features the document has (one renamed, moved or deleted since it was hidden is not kept)."""
+        hidden = self.hidden_features & {feature_key(f) for f in self.features}
+        return {"hidden_features": sorted(list(k) for k in hidden), "hidden_primers": sorted(self.hidden_primers),
+                "primer_sites": self.saved_site_choices()}
 
     def apply_display_choices(self, saved):
-        """Take the primers and sites hidden that a project or the file kept (display_choices); not a change to save."""
+        """Take the features, primers and sites hidden that a project or the file kept (display_choices); not a change to save."""
+        if "hidden_features" in saved:   # (laid out by the caller: _refresh, or the project's set_display)
+            self.hidden_features = {tuple(str(x) for x in k) for k in saved["hidden_features"] if len(k) == 3}
         self.hidden_primers = {str(n) for n in saved.get("hidden_primers") or []}
         if isinstance(saved.get("primer_sites"), dict):
             self.load_site_choices(saved["primer_sites"])
@@ -748,7 +771,7 @@ class Editor(QObject):
         self.display_changed.emit()
 
     def _read_display(self):
-        """The primers and sites hidden when the file was saved (its DISPLAY_NOTE comment)."""
+        """The features, primers and sites hidden when the file was saved (its DISPLAY_NOTE comment)."""
         for comment in self.doc.comments:
             if comment.startswith(DISPLAY_NOTE):
                 try:   # (the writer wraps long lines: the note has no space of its own, see _write_display)
@@ -757,10 +780,10 @@ class Editor(QObject):
                     pass   # a hand-edited note: nothing hidden
 
     def _write_display(self):
-        """The primers and sites hidden, as the document's DISPLAY_NOTE comment (written with the file), or none when nothing is.
+        """The features, primers and sites hidden, as the document's DISPLAY_NOTE comment (written with the file), or none when nothing is.
         Spaces in names are escaped, so the only spaces are the ones added after commas for the writer to wrap at."""
         kept = [c for c in self.doc.comments if not c.startswith(DISPLAY_NOTE)]
-        if self.hidden_primers or self.site_choices:
+        if self.hidden_features or self.hidden_primers or self.site_choices:
             saved = json.dumps(self.display_choices(), separators=(",", ":"))
             kept.append(DISPLAY_NOTE + " " + saved.replace(" ", r"\u0020").replace(",", ", "))
         if kept != self.doc.comments:   # (autosave calls this on its thread, after the GUI thread did: then nothing to write)
@@ -1004,6 +1027,7 @@ class Editor(QObject):
                 self.current_feature = None
             self._lay_out()
             self.display_changed.emit()
+            self._choice_changed()
 
     def visible_features(self, start, end, overlays=True):
         """Features drawn in [start, end) (not those of hidden types); with `overlays`, the tools' temporary ones too."""

@@ -27,7 +27,7 @@ Checks cut positions for degenerate sites, 3' overhangs, enzymes cutting on both
 
 ## `test_what_a_cut_says_about_itself`
 
-**Result:** ✅ passed in 0.09 s · [line 140](../../tests/test_enzymes_and_guides.py#L140) · **Area:** Restriction site tooltips · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.10 s · [line 140](../../tests/test_enzymes_and_guides.py#L140) · **Area:** Restriction site tooltips · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the tooltip a user reads before ordering a digest could state the wrong cut base, the wrong overhang or the wrong strand, which is the only place those numbers are explained.
 
@@ -91,7 +91,7 @@ Checks off-target counting by mismatch class in the construct and in a reference
 
 ## `test_a_saved_guide_site_is_read_back_and_round_trips_in_the_file`
 
-**Result:** ✅ passed in 0.01 s · [line 314](../../tests/test_enzymes_and_guides.py#L314) · **Area:** Guide site storage and display · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 314](../../tests/test_enzymes_and_guides.py#L314) · **Area:** Guide site storage and display · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a saved guide could come back from a GenBank file with the protospacer, PAM or cut drawn in the wrong place, be unreadable in other software, or break for files written under the program's former name.
 

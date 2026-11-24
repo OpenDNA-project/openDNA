@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.58 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.57 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -31,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.43 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.14 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -52,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 20.54 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 17.04 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -155,7 +155,7 @@ Copies a selection as reverse complement and pastes it into another document, ch
 
 ## `test_text_exports_and_the_project_file`
 
-**Result:** ✅ passed in 0.03 s · [line 572](../../tests/test_documents.py#L572) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.04 s · [line 572](../../tests/test_documents.py#L572) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.
 
@@ -187,7 +187,7 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 
 ## `test_display_switches_and_kind_counts`
 
-**Result:** ✅ passed in 0.00 s · [line 672](../../tests/test_documents.py#L672) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 672](../../tests/test_documents.py#L672) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 

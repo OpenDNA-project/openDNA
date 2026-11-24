@@ -56,7 +56,7 @@ Checks that a promoter without a terminator runs round a circle or to the end of
 
 ## `test_origins_and_prediction_thresholds`
 
-**Result:** ✅ passed in 0.14 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.13 s · [line 241](../../tests/test_checkup.py#L241) · **Area:** Replication origins and prediction noise · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the Checkup could name the wrong origin family (or miss that a plasmid has none, or needs a pir host), and the motif predictors could flood a real plasmid with chance hits.
 
