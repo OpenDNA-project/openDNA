@@ -6,6 +6,14 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 ## Unreleased
 
 **Features**
+
+**Bugfixes**
+
+**UI/UX**
+
+## 0.8.7 (2026-11-24)
+
+**Features**
 - Added: the Primer Database's Match column says where each primer binds the file open in the window, those primers listed first; its In file box (or right-click > Import) adds a primer to that file or takes it out.
 - Changed: a file opens with no background genome; pick one in the toolbar's genome box. Primer binding has a minimum Tm of a site (40 °C by default), on the sequence and in the background genome; a site's Tm now counts its mismatches.
 
