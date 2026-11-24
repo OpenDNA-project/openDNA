@@ -9,17 +9,19 @@ from PySide6.QtWidgets import QComboBox, QFileDialog, QHBoxLayout, QWidget
 
 import icons
 import primer_db
+import tool_settings
+from sourcefiles import recent_store
 
-RECENT = 3
+RECENT = 8
 KEY = "primers/recent_genomes"
 OFF = "No background genome"
 ADD = "Add genome file…"
-FILTER = "Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas);;All files (*)"
+FILTER = primer_db.GENOME_FILTER
 
 
 def recent():
     """The last background genomes used, newest first (only files that still exist)."""
-    raw = primer_db.settings().value(KEY, [])
+    raw = recent_store().value(KEY, [])
     paths = [raw] if isinstance(raw, str) and raw else list(raw or [])
     return [p for p in paths if p and Path(p).is_file()][:RECENT]
 
@@ -29,27 +31,39 @@ def remember(path):
     if not path:
         return
     path = str(path)
-    primer_db.settings().setValue(KEY, [path] + [p for p in recent() if Path(p) != Path(path)][:RECENT - 1])
+    recent_store().setValue(KEY, [path] + [p for p in recent() if Path(p) != Path(path)][:RECENT - 1])
 
 
 def current():
     """The genome in use, or None when the genome check is off or there is no genome at all."""
     from primer_panel import genome_path
-    if primer_db.settings().value("primers/genome_check", "true") != "true":
-        return None
     return genome_path() or None
 
 
 def use(path):
-    """Check primers against `path` from now on (None: against no genome)."""
-    s = primer_db.settings()
+    """Check primers against `path` from now on (None: against no genome). The same setting as Settings > Primers > Genome file."""
     if path:
-        s.setValue("primers/genome", str(path))
-        s.setValue("primers/genome_check", "true")
+        tool_settings.set_value(primer_db.BINDING, "genome", str(path))
         remember(path)
-    else:
-        s.setValue("primers/genome_check", "false")
-    primer_db.notifier.changed.emit()   # every window re-checks its primers (and its box shows the choice)
+    tool_settings.set_value(primer_db.BINDING, "genome_check", bool(path))
+    tool_settings.notifier.changed.emit(primer_db.BINDING)   # every window re-checks its primers (and its box shows the choice)
+
+
+class _WideCombo(QComboBox):
+    """A combo box whose list opens half as wide again as the box, its right edge on the box's: a genome's whole file name shows
+    while the box stays small in the toolbar."""
+
+    def showPopup(self):
+        self.view().window().installEventFilter(self)   # (once: Qt ignores a filter installed twice)
+        super().showPopup()
+
+    def eventFilter(self, obj, event):
+        # Placed as it is shown, before it is drawn: it opens at its width and place, it is not seen moving there
+        if event.type() == QEvent.Show and obj is self.view().window():
+            width = max(obj.width(), self.width() * 3 // 2)
+            right = self.mapToGlobal(self.rect().topRight()).x()
+            obj.setGeometry(right - width + 1, obj.y(), width, obj.height())
+        return False
 
 
 class ReferencePicker(QWidget):
@@ -59,21 +73,21 @@ class ReferencePicker(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.box = QComboBox(minimumContentsLength=9, sizeAdjustPolicy=QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.box = _WideCombo(minimumContentsLength=9, sizeAdjustPolicy=QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.box.setMaximumWidth(self.box.fontMetrics().horizontalAdvance("M" * 9) + 40)
         self.box.activated.connect(self._chosen)
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.box)
-        primer_db.notifier.changed.connect(self.refresh)   # (a QObject slot: the link goes with the box)
+        tool_settings.notifier.changed.connect(self._settings_changed)   # (a QObject slot: the link goes with the box)
         self.refresh()
 
     def refresh(self):
-        """The last genomes used (the one in use first if it is not among them, e.g. the default one), "no genome", "add"."""
+        """The last genomes used (the one in use joins them, however it was set: here, Settings, a download), "no genome", "add"."""
         now = current()
+        if now and not any(Path(p) == Path(now) for p in recent()):
+            remember(now)
         paths = recent()
-        if now and not any(Path(p) == Path(now) for p in paths):
-            paths = [now] + paths[:RECENT - 1]
         icon = icons.genome_icon(self.palette())
         self.box.blockSignals(True)
         self.box.clear()
@@ -89,6 +103,10 @@ class ReferencePicker(QWidget):
         shown = self.box.currentData()
         self.box.setToolTip(f"Background genome: {shown}\nPrimers and guides are checked against it for other binding sites."
                             if shown else "No background genome: primers and guides are checked against this sequence only.")
+
+    def _settings_changed(self, tool):
+        if tool == primer_db.BINDING:   # the genome setting, from here, Settings or a download
+            self.refresh()
 
     def _chosen(self, i):
         path = self.box.itemData(i)

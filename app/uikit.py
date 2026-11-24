@@ -5,7 +5,7 @@ import time
 
 import shiboken6
 
-from PySide6.QtCore import QEvent, QEventLoop, QModelIndex, QObject, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QEventLoop, QModelIndex, QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication, QHeaderView, QMessageBox, QProgressDialog, QPushButton, QStyle, QStyleOptionViewItem, QTableView, QTreeView,
 )
@@ -38,8 +38,8 @@ def no_auto_default(*widgets):
 
 
 def _column_settings():
-    from primer_db import data_dir
-    return QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat)
+    from primer_db import window_state
+    return window_state()
 
 
 class _Fitter(QObject):
@@ -130,12 +130,15 @@ class _Fitter(QObject):
         return False
 
     ARROW = 14   # room for a sort arrow beside a header's text
+    tight = frozenset()   # columns as wide as their cells only (a checkbox, a short number): the header's text is cut
 
     def content_width(self, column):
         """Its widest cell, or its header's text with the style's margins and room for a sort arrow (and a filter mark).
         (Not Qt's own measure of the header section: with sorting on, it gives every column the room of the sort arrow at the
         style's size, which the Windows style makes large, so every column came out tens of pixels wider than it needs.)"""
         v, h = self.view, self.header
+        if column in self.tight:
+            return self.cells_width(column) + 8
         margin = v.style().pixelMetric(QStyle.PM_HeaderMargin, None, h)
         text = str(v.model().headerData(column, Qt.Horizontal) or "")
         title = h.fontMetrics().horizontalAdvance(text) + 2 * margin + self.ARROW

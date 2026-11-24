@@ -70,7 +70,7 @@ class Fake:
 
 def forget_state():
     """The remembered update state and the setting emptied."""
-    (data_dir() / "updates.ini").unlink(missing_ok=True)
+    updater.window_state().remove("updates")
     store = tool_settings.store()
     store.remove("Updates/check")
     store.sync()

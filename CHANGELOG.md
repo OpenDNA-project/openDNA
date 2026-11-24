@@ -7,10 +7,23 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 
 **Features**
 - Changed: a FASTA file's topology is read from its header ([topology=circular] or [topology=linear]); with no tag, one sequence is circular and several are linear.
+- Changed: importing a GFF3/GTF track asks which feature types to keep (with their number of lines) and offers each line's colour and note; projects keep the choice.
+- Added: where a primer binds is set in Settings (3′ bases compared, how many must match exactly, mismatches); Best site only, and a single binding site can be hidden without hiding the primer. Hidden primers and sites now last until the file is closed (a project keeps them).
 
 **Bugfixes**
+- A GFF3 track made only of `region` lines is no longer read as empty: only a line covering the whole sequence is left unticked.
+- A GFF3 feature across the origin (end before start) is one feature on a circular sequence instead of an unreadable line; on a linear sequence openDNA offers to make it circular.
+- Restore Defaults on the Primers settings page now restores 2 mismatches, the number used before any change.
+- The NCBI API key is no longer kept as plain text: it goes to the system's secure store, like the synthesis logins.
+- The start page and the full changelog fit on the screen again: what is new and the sponsor column scroll instead of growing past it.
 
 **UI/UX**
+- Start page: larger, the logo top left with Full changelog beside the welcome lines, the sponsors over the whole height, the links in the bottom bar beside Continue; the Assembly button is gone.
+- The start page opens at the first start of each day; *Show at every startup* (off by default) replaces *Don't show at startup*.
+- The Display filter has a Best site only switch under the primer sources; right-click a primer site for Hide This Site, or untick a primer or one of its sites in the Primers panel's Visible column.
+- Primers panel: a primer's sites are listed straight under it (a primer with one site is a single row), Match says whether each is on the sequence or the background genome; the panel is no wider than the Features view and opening a primer keeps the column widths.
+- No background genome is set at first (it was the example E. coli genome): pick one in the toolbar's genome box or Settings → Primers. The box keeps the last 8 genomes used, however they were set, and its list opens wider to show their full names.
+- Settings → Primers is built like the other pages: PCR conditions, Primer binding (with the background genome) and Primer checks.
 
 ## 0.8.5 (2026-11-20)
 

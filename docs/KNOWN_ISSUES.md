@@ -53,7 +53,6 @@ App (Python):
 - `core/src/document.rs`: feature lookup is a linear scan (a `shortcut:` comment says to switch to an interval tree for very large files).
 - `app/structure.py` `fetch` does not refuse a non-https URL in general (every caller passes a fixed https URL; AlphaFold's is checked separately).
 - Right-click Paste in a sequence field only goes through the validator (the old input audit, not re-checked after `clean_pasted`).
-- The NCBI API key is stored as plain text in `ncbi.ini` (`app/ncbi_dialog.py`, `app/ncbi.py`); `app/secret_store.py` (system keyring) is not used for it.
 - `app/idt.py` is not verified against the live IDT service (its header says so): endpoints, scope, error bodies and terms of use are as published by third parties.
 
 ## 4. Interface (found by the 2026 UI passes, still present)

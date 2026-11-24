@@ -4,7 +4,7 @@
 
 ## `test_binding_agrees_with_the_documented_rules_written_in_python`
 
-**Result:** ✅ passed in 0.14 s · [line 173](../../tests/test_primer_binding.py#L173) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.13 s · [line 170](../../tests/test_primer_binding.py#L170) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer binding sites shown on the map could deviate from the documented seed/extension rules on any of thousands of combinations of mismatches, tails, strands and topologies.
 
@@ -21,7 +21,7 @@ Compares find_primers with a Python re-implementation of the documented rules on
 
 ## `test_binding_mismatches_seed_tails_and_extension`
 
-**Result:** ✅ passed in 0.04 s · [line 234](../../tests/test_primer_binding.py#L234) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 231](../../tests/test_primer_binding.py#L231) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, specific binding rules (where a mismatch is allowed, how far the annealed part extends, how tails are handled) could change and primers would be shown binding where they do not, or not where they do.
 
@@ -48,7 +48,7 @@ Checks each documented binding rule with exact expected sites: every single-mism
 
 ## `test_binding_origin_ends_repeats_and_letters`
 
-**Result:** ✅ passed in 0.02 s · [line 419](../../tests/test_primer_binding.py#L419) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 416](../../tests/test_primer_binding.py#L416) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, primers on circular plasmids across the origin, repeated or palindromic sites, lower-case/RNA/IUPAC primers or N in the template could produce missing, duplicated or wrong sites.
 
@@ -73,7 +73,7 @@ Checks site lists for repeated, tandem and palindromic sites, sites across the o
 
 ## `test_binding_matches_the_primer_sites_stored_in_the_real_dna_file`
 
-**Result:** ✅ passed in 0.00 s · [line 583](../../tests/test_primer_binding.py#L583) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 580](../../tests/test_primer_binding.py#L580) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer sites the app computes could disagree with those SnapGene stored in a real lab file, which is the most direct check that users see the same sites as in their other tool.
 
@@ -92,26 +92,29 @@ Opens the sample .dna file with 15 primers and their stored primer_bind features
 
 ## `test_editor_primer_sites_pcr_product_specificity_and_save`
 
-**Result:** ✅ passed in 0.04 s · [line 643](../../tests/test_primer_binding.py#L643) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
-**Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites.
+**Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule.
 
-Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack.
+Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack. It also ranks a primer's sites (mismatches near the 3' end first), draws only the best with Best site only, and shows or hides single sites by hand: kept for the session (as a project saves them), dropped with a site that no longer binds, all dropped under another binding rule.
 
 | # | Input | Expected output |
 |---|---|---|
 | 1 | mismatch_indices('ACGTNR','ACCTGA') | [2] (N and R pair with what they stand for) |
 | 2 | 30 bp core at 100 with mismatch at k in 3/5/12/20/25 and tails of 0/6/12 bases, fwd and rev | mismatch_at [100+k], 1 mismatch, start 100/end 130, tail length reported |
-| 3 | 30 bases over origin with mismatches at 4 and 20 | spans [(n-15,n),(0,15)], mismatch_at [n-11, 5], 2 mismatches |
-| 4 | F at 100..124 with 8-base tail, R at 300..324 with 10-base tail | product_range (100,324); product = tail + template[100:324] + rc(tail), length 242, linear |
-| 5 | R upstream of F: linear; circular with GG/CC tails | None; (350,574) and product wrapping the origin, length 228 |
-| 6 | F over origin, R at 100..124 with 6-base tail | product_range (n-12, n+124), length 142 |
-| 7 | reverse primer with 1 mismatch | product carries the primer's base |
-| 8 | non-specific check, sequence: unique; last 12 bases elsewhere; whole primer twice; tailed and rc | ok; warn with '404–415 →'; bad with '2 places'; tail ignored; rc same |
-| 9 | non-specific check, genome: none; other genome; partial; rc copy; genome = the sequence | info; ok; warn; bad; info |
-| 10 | editor with feature, edit, undo/redo, two primers, save twice | document, features, history unchanged; modified False; no primer_bind in doc; file holds pFwd (100,124,+1) and pRev (400,424,-1); identical bytes on second save |
-| 11 | undo all steps | 4 steps; sequence/features/primers back to empty |
-| 12 | edit after adding primer, then save | stored site moved to (110,134) |
+| 3 | 24-base primer at 100, copies at 300 (mismatch 4 bases from the 3' end) and 450 (mismatches 3 and 6, far from it) | sites 100, 300, 450; rank order 100, 450, 300; only 100 is best; all drawn with Best site only off |
+| 4 | Best site only on; then tick 450; then (off) hide 100 | [100]; [100, 450]; [300, 450], primer not hidden; saved rule [15,3,2], sites {(1,124,False),(1,474,True)} |
+| 5 | delete bases 450..474 and match again; then 1 mismatch allowed | only (1,124,False) kept; then no choice left |
+| 6 | 30 bases over origin with mismatches at 4 and 20 | spans [(n-15,n),(0,15)], mismatch_at [n-11, 5], 2 mismatches |
+| 7 | F at 100..124 with 8-base tail, R at 300..324 with 10-base tail | product_range (100,324); product = tail + template[100:324] + rc(tail), length 242, linear |
+| 8 | R upstream of F: linear; circular with GG/CC tails | None; (350,574) and product wrapping the origin, length 228 |
+| 9 | F over origin, R at 100..124 with 6-base tail | product_range (n-12, n+124), length 142 |
+| 10 | reverse primer with 1 mismatch | product carries the primer's base |
+| 11 | non-specific check, sequence: unique; last 12 bases elsewhere; whole primer twice; tailed and rc | ok; warn with '404–415 →'; bad with '2 places'; tail ignored; rc same |
+| 12 | non-specific check, genome: none; other genome; partial; rc copy; genome = the sequence | info; ok; warn; bad; info |
+| 13 | editor with feature, edit, undo/redo, two primers, save twice | document, features, history unchanged; modified False; no primer_bind in doc; file holds pFwd (100,124,+1) and pRev (400,424,-1); identical bytes on second save |
+| 14 | undo all steps | 4 steps; sequence/features/primers back to empty |
+| 15 | edit after adding primer, then save | stored site moved to (110,134) |
 
 **Review notes:**
 

@@ -19,6 +19,7 @@ import icons
 from uikit import plural
 import theme
 import tool_settings
+from primer_db import BINDING
 from enzymes import MAX_DRAWN_CUTS, PRESETS, EnzymeFilter
 from sequence_view import primer_color
 
@@ -265,6 +266,12 @@ class EnzymeCriteria(QWidget):
         self.changed.emit(self.filter())
 
 
+def _set_best_only(on):
+    """Display filter > Best site only: the global setting (Settings > Primers), so every window follows."""
+    tool_settings.set_value(BINDING, "best_only", on)
+    tool_settings.notifier.changed.emit(BINDING)
+
+
 class DisplayPanel(QScrollArea):
     def __init__(self, editor):
         super().__init__()
@@ -287,6 +294,10 @@ class DisplayPanel(QScrollArea):
             swatch=PrimerSwatch(True),
             tip="Primers that are only in the primer database (not in this file), drawn like temporary primers. "
                 "Right-click one > Import to This Sequence to make it part of the file.")
+        self.best_sites = self._switch(
+            "Best site only", tool_settings.value(BINDING, "best_only"), _set_best_only,
+            tip="Of each primer, only the site it binds best (fewest mismatches near the 3′ end, then fewest, then the longest); "
+                "ties are all shown. The same setting as Settings > Primers, for every file. Tick a site in the Primers view to show it anyway.")
         self._rule()
         self.expander = QToolButton(autoRaise=True, checkable=True, arrowType=Qt.RightArrow, focusPolicy=Qt.NoFocus,
                                     toolTip="Show / hide the criteria of the sites drawn (number of sites, size, ends, inventory...)")
@@ -414,14 +425,15 @@ class DisplayPanel(QScrollArea):
         return box if swatch is None else (box, swatch)
 
     def _code_changed(self, tool):
-        if tool == genetic_code.TOOL:
+        if tool in (genetic_code.TOOL, BINDING):
             self.refresh()
 
     def refresh(self):
         ed = self.editor
         self._paint_icons()
         self.frames.setText("3-frame translation" + genetic_code.table_note())   # "· Table 11" when not the standard code
-        for box, on in ((self.all_primers, ed.show_primers), (self.file_primers, ed.show_file_primers), (self.db_primers, ed.show_db_primers), (self.enzymes, ed.show_enzymes),
+        for box, on in ((self.all_primers, ed.show_primers), (self.file_primers, ed.show_file_primers), (self.db_primers, ed.show_db_primers),
+                        (self.best_sites, tool_settings.value(BINDING, "best_only")), (self.enzymes, ed.show_enzymes),
                         (self.cds, ed.show_cds_translation), (self.frames, ed.show_translation), (self.strands, ed.show_complement),
                         (self.units, ed.show_units)):
             box.blockSignals(True)  # mirror the state without sending it back

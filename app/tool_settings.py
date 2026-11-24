@@ -3,7 +3,9 @@ value(tool, key), and Tools → Settings shows one page per view or tool, listed
 the new-tab picker (Views, Annotations, Tools) and a General group, each page with a form built from the declarations (a page
 without options says so). Stored in settings.ini in the app data folder (tests use a temp folder).
 
-A change emits notifier.changed(tool), so open tools can redo their work.
+A change emits notifier.changed(tool), so open tools can redo their work. Every setting is declared once (its default, limits
+and tip live in the Param and nowhere else); a tool whose settings limit each other gives `register` a `check` that brings
+them back in range, applied both on OK and on every read, so a hand-edited settings.ini cannot break the tool.
 """
 import os
 from contextlib import contextmanager
@@ -12,13 +14,15 @@ from types import SimpleNamespace
 from PySide6.QtCore import QObject, QSettings, Qt, Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFrame, QGroupBox, QLabel, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
-    QPushButton, QScrollArea, QSpinBox, QStackedWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QFileDialog, QFrame, QGroupBox, QLabel, QLineEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QFormLayout, QHBoxLayout, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget, QTreeWidget, QTreeWidgetItem,
+    QVBoxLayout, QWidget,
 )
 
-from primer_db import data_dir
+from user_error import UserError
 
 TOOLS = {}  # tool name -> [Param], in declaration order
+CHECKS = {}  # tool name -> check(values): brings settings that limit each other back in range (see register)
 # The name a tool's page shows when it differs from its key (the key stays: it is where users' saved values are stored)
 LABELS = {"Detect Features": "Detect Common Features"}
 
@@ -47,12 +51,13 @@ def page_layout():
     return groups + [(GENERAL, GENERAL_PAGES + list(dict.fromkeys(extra)))]
 
 
-def Param(key, label, default, minimum=None, maximum=None, step=None, suffix="", tip="", choices=None, info=None):
+def Param(key, label, default, minimum=None, maximum=None, step=None, suffix="", tip="", choices=None, info=None, browse=None):
     """One setting. Its type follows `default`: bool -> checkbox, int / float -> spin box,
-    str with `choices` -> drop-down list. `info`: optional function of the chosen value giving a small read-only line
+    str with `choices` -> drop-down list, other str -> a line of text (with `browse`, a file filter: a Browse… button beside it).
+    `info`: optional function of the chosen value giving a small read-only line
     shown under the drop-down (e.g. the stop and start codons of the selected genetic code)."""
     return SimpleNamespace(key=key, label=label, default=default, minimum=minimum, maximum=maximum,
-                           step=step, suffix=suffix, tip=tip, choices=choices, info=info)
+                           step=step, suffix=suffix, tip=tip, choices=choices, info=info, browse=browse)
 
 
 class _Notifier(QObject):
@@ -63,14 +68,32 @@ notifier = _Notifier()
 
 
 def store():
+    from primer_db import data_dir   # (here, not at the top: primer_db declares its settings with this module)
     return QSettings(str(data_dir() / "settings.ini"), QSettings.IniFormat)
 
 
-def register(tool, params):
+# The layout of settings.ini. Bump it when a saved key is renamed or changes meaning, and convert the older layout in stamp_format.
+FORMAT, FORMAT_KEY = 1, "openDNA/format"
+
+
+def stamp_format():
+    """Write the layout number at start (never lowering one a newer openDNA wrote)."""
+    s = store()
+    if not s.contains(FORMAT_KEY):
+        s.setValue(FORMAT_KEY, FORMAT)
+
+
+def register(tool, params, check=None):
+    """Declare a tool's settings. `check(values)`: for settings that limit each other; it changes `values` ({key: value}) in
+    place to bring them back in range and returns a sentence saying what it changed ("" when nothing), or raises UserError
+    for a value it cannot fix (Settings then stays open)."""
     TOOLS[tool] = list(params)
+    if check is not None:
+        CHECKS[tool] = check
+    _cache.pop(tool, None)
 
 
-_cache = {}  # (tool, key) -> value: reading settings.ini takes ~ms, and drawing asks per base
+_cache = {}  # tool -> {key: value}: reading settings.ini takes ~ms, and drawing asks per base
 
 
 _overrides = {}   # (tool, key) -> value of a run that was given one (never saved): see `override`
@@ -92,23 +115,39 @@ def override(values):
 def value(tool, key):
     if (tool, key) in _overrides:
         return _overrides[tool, key]
-    if (tool, key) not in _cache:
-        _cache[tool, key] = _read(tool, key)
-    return _cache[tool, key]
+    return values(tool)[key]
 
 
-def _read(tool, key):
-    p = next(p for p in TOOLS[tool] if p.key == key)
-    raw = store().value(f"{tool}/{key}", p.default)
+def values(tool):
+    """{key: value} of every setting of `tool` as saved (each within its limits, and passed through the tool's check)."""
+    if tool not in _cache:
+        saved = store()
+        got = {p.key: _read(saved, tool, p) for p in TOOLS[tool]}
+        if tool in CHECKS:
+            try:
+                CHECKS[tool](got)
+            except UserError:   # a value the check cannot fix (a missing file...): it is the reader's to handle
+                pass
+        _cache[tool] = got
+    given = {k: v for (t, k), v in _overrides.items() if t == tool} if _overrides else None
+    return {**_cache[tool], **given} if given else _cache[tool]
+
+
+def _read(saved, tool, p):
+    raw = saved.value(f"{tool}/{p.key}", p.default)
     # QSettings gives strings back from an .ini file: convert to the default's type.
     if isinstance(p.default, bool):
         return raw if isinstance(raw, bool) else str(raw).lower() in ("true", "1")
     if p.choices:
         return raw if raw in p.choices else p.default
     try:
-        return type(p.default)(raw)
+        v = type(p.default)(raw)
     except (TypeError, ValueError):
         return p.default
+    if isinstance(v, (int, float)):   # a hand-edited file stays within the limits the Settings box allows
+        v = max(v, p.minimum) if p.minimum is not None else v
+        v = min(v, p.maximum) if p.maximum is not None else v
+    return v
 
 
 PERFORMANCE = "Performance"
@@ -126,8 +165,9 @@ def cores():
 
 
 def set_value(tool, key, v):
+    """Save one setting (the caller emits notifier.changed(tool) once it has set all it changes)."""
     store().setValue(f"{tool}/{key}", v)
-    _cache.pop((tool, key), None)
+    _cache.pop(tool, None)
 
 
 class Pages(QWidget):
@@ -278,6 +318,9 @@ class SettingsDialog(QDialog):
             w.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)   # not as wide as the longest choice (a long list)
             w.setMinimumContentsLength(32)
             w.setCurrentText(v)
+        elif isinstance(p.default, str):
+            w = _PathBox(p.browse) if p.browse else QLineEdit()
+            w.setText(v)
         elif isinstance(p.default, int):
             w = QSpinBox(minimum=p.minimum if p.minimum is not None else 0,
                          maximum=p.maximum if p.maximum is not None else 1_000_000, suffix=p.suffix)
@@ -294,6 +337,8 @@ class SettingsDialog(QDialog):
     def _get(w):
         if isinstance(w, QCheckBox):
             return w.isChecked()
+        if isinstance(w, (QLineEdit, _PathBox)):
+            return w.text().strip()
         return w.currentText() if isinstance(w, QComboBox) else w.value()
 
     @staticmethod
@@ -302,6 +347,8 @@ class SettingsDialog(QDialog):
             w.setChecked(v)
         elif isinstance(w, QComboBox):
             w.setCurrentText(v)
+        elif isinstance(w, (QLineEdit, _PathBox)):
+            w.setText(v)
         else:
             w.setValue(v)
 
@@ -316,12 +363,55 @@ class SettingsDialog(QDialog):
         for w in self.custom.values():   # a custom page that refuses (a wrong file name...) keeps the dialog open
             if not w.save():
                 return
+        chosen = {}   # tool -> {key: value} as the boxes show them
+        for (name, key), (_, w) in self.widgets.items():
+            chosen.setdefault(name, {})[key] = self._get(w)
+        notes = []
+        for name, got in chosen.items():
+            if name in CHECKS:
+                try:
+                    note = CHECKS[name](got)
+                except UserError as e:
+                    QMessageBox.warning(self, LABELS.get(name, name), str(e))
+                    self.tabs.show_page(PAGE_OF.get(name, name))
+                    return
+                if note:
+                    notes.append(note)
+                    for key, v in got.items():   # the boxes show what is saved
+                        self._put(self.widgets[name, key][1], v)
         changed = set()
-        for (name, key), (p, w) in self.widgets.items():
-            v = self._get(w)
-            if v != value(name, key):
-                set_value(name, key, v)
-                changed.add(name)
+        for name, got in chosen.items():
+            before = dict(values(name))   # (set_value empties the tool's cache: read it once)
+            for key, v in got.items():
+                if v != before[key]:
+                    set_value(name, key, v)
+                    changed.add(name)
+        if notes:
+            QMessageBox.information(self, "Settings", "\n".join(notes))
         super().accept()
         for name in changed:
             notifier.changed.emit(name)
+
+
+class _PathBox(QWidget):
+    """A file name and a Browse… button (a Param with `browse`)."""
+
+    def __init__(self, file_filter):
+        super().__init__()
+        self.line = QLineEdit()
+        self.line.setMinimumWidth(self.line.fontMetrics().horizontalAdvance("M") * 24)   # room for a file name
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.line)
+        row.addWidget(QPushButton("Browse…", clicked=lambda: self._browse(file_filter)))
+
+    def _browse(self, file_filter):
+        path, _ = QFileDialog.getOpenFileName(self, "Choose a file", self.line.text(), file_filter)
+        if path:
+            self.line.setText(path)
+
+    def text(self):
+        return self.line.text()
+
+    def setText(self, v):
+        self.line.setText(v)

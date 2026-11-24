@@ -48,7 +48,13 @@ file, project or unsaved sequence is first saved as GenBank, and the records are
 tracks loaded with File → Load Track: GFF3/GTF/BED annotations, VCF variants and BAM alignments
 (coverage + reads; the `.bai` is made if missing; several files at once). Click a track's name to hide
 it, right-click it for expanded/condensed/hidden and a log scale, drag the line under it to resize; the
-Legend button in the genome view's header opens a window explaining every colour and mark. Edit → Circular
+Legend button in the genome view's header opens a window explaining every colour and mark. A GFF3/GTF file first lists its
+feature types with their number of lines: untick the ones you do not want (a type whose lines only cover the whole sequence, such
+as a `region` line naming the chromosome, starts unticked). The same window offers the extra fields the file has: each line's
+colour (`color=` or `colour=`, written as `#257215`, `37,114,21`, a colour name or an Artemis number; a colour that cannot be
+read is drawn in the track's colour, with a warning) and its note (`Note`, `product`, `description`, shown when hovering). A feature
+whose end comes before its start crosses the origin: on a circular sequence it is one feature; on a linear one openDNA says the
+sequence is probably circular and offers to make it circular and read the file again. A project keeps what was chosen. Edit → Circular
 Sequence (or the Circular toolbar button) switches topology, asking where to break when making it
 linear (that base becomes base 1); circular sequences loop in the sequence view (shown twice, a red bar at the
 origin), so selections, copy/paste and deletions can run through the origin. Help → Troubleshooting → Performance Timings
@@ -120,7 +126,7 @@ over 100 million are not fetched (use NCBI Datasets).
 **Opening files by double-click (File Associations).** The first time the program starts, it asks whether you want to open .gb, .dna and FASTA files with openDNA by default. Answer Yes and openDNA is added to Windows' "Open with" list for these file types. This is for your user account only and needs no administrator rights and no installer. Windows does not allow a program to make itself the default, so you finish in Windows Settings (Default apps): the program opens that page; click openDNA, then choose it for each file type you want (or right-click a file, then Open with > Choose another app > openDNA > Always). You can register or remove the registration at any time in Help > File Associations…. If you move the program file, the registration still points at the old place; the program notices at the next start and offers to update it. Because the program file is not code-signed, Windows SmartScreen may warn the first time you run a downloaded copy; right-click the .exe, choose Properties and tick Unblock. Only one copy of the program runs: double-clicking a file while openDNA is already open hands the file to it, and it opens as a tab of the window you used last (or in a window of its own, if View > Open Files in Tabs is off). Starting the program still takes a few seconds, because the single-file program unpacks itself first.
 **Run Setup Again** (Help > Run Setup Again…): the installer's choices, for when you installed an older version or skipped them, without reinstalling. One window shows each as it is now and changes nothing until you press OK: openDNA in Windows' "Open with" list for sequence files (Windows only, and only from the installed program), how many CPU cores openDNA may use (also in Tools > Settings > General > Performance), and setting up pLannotate and the Terminal's tools (several hundred MB, a few minutes; offered only when WSL2 already works on Windows, or bash elsewhere: openDNA never installs WSL itself). It also offers ViennaRNA, which the Synthesis tab's calculator needs and the installer does not include (its licence does not allow bundling it): 2 to 14 MB downloaded from pypi.org, nothing of your sequences sent.
 **Updates.** openDNA can look for a newer version on GitHub once a day when it starts (Tools > Settings > Updates turns this off), and Help > Check for Updates… looks right away. When a new version exists, a window shows what changed. "Install and restart" downloads the new `oDNA_beta.exe`, checks it against the published SHA-256 checksum (a download that does not match is deleted, never installed), replaces the running program and starts the new one. "Later" asks again next time, and "Skip this version" stays quiet until the next release. Only github.com is contacted, over HTTPS, and nothing but the version request is sent. The checksum protects against a damaged or tampered download, not against a hijacked release, so download from the official releases page only. If openDNA is in a protected folder (such as Program Files) or an antivirus holds the file, it says so and links to the releases page so you can replace the file by hand. Run from source, it cannot replace itself, and neither do the macOS and Linux versions: they say a new version exists and link to the releases page. Until the project is public, updates are switched off and the menu item says so.
-**Start page** (Help > Welcome): opens at the first start of each day. On the left: what changed (once, after an update), the recent files (also in File → Open Recent; click one to open it; right-click to pin it to the top or remove it from the list, the file itself is not touched), buttons for Open File, New Sequence, Import from NCBI, Assembly and the demo plasmid (opened as a new unsaved file), and Check for Updates, whose answer shows next to the button. On the right: the sponsors, a tip of the day and links. Tick *Don't show at startup* to stop it opening by itself; untick it from Help > Welcome to bring it back. To open it at startup anyway, start the program with `--welcome` (`oDNA_beta.exe --welcome`, or `--welcome` after a file name); it ignores "already shown today" and the tick, and leaves the tick as it was.
+**Start page** (Help > Welcome): opens at the first start of each day. On the left: what is new in this version (Full changelog shows every version), the recent files (also in File → Open Recent; click one to open it; right-click to pin it to the top or remove it from the list, the file itself is not touched), buttons for Open File, New Sequence, Import from NCBI and the demo plasmid (opened as a new unsaved file), and Check for Updates, whose answer shows next to the button; a tip of the day under them, the sponsors on the right and links along the bottom. Tick *Show at every startup* to have it open each time the program starts instead of once a day. To open it at one startup anyway, start the program with `--welcome` (`oDNA_beta.exe --welcome`, or `--welcome` after a file name); it ignores "already shown today" and leaves the tick as it was.
 **Primer design** (select the target, then right-click it → *Design Primers for This Sequence…*, or Primers → Design Primers for
 Selection…): opens the designer in its own window over the main one, already run on the selection; the selected pair is drawn in the sequence view as **temporary primers** (teal, "pair1_F" /
 "pair1_R": they are not in the primer database and have no menu yet) so you see where each one binds, and each row you click shows its pair.
@@ -160,9 +166,17 @@ line above the model says when only part of the protein is in it. *Open 3D view 
 page (3Dmol.js): cartoon, sticks or surface, coloured by confidence (pLDDT, as AlphaFold DB does), rainbow or chain. *Save PDB…* keeps the
 file. A prediction is a model, not a measurement: low-confidence (orange) parts are not reliable.
 **Right-click a primer** (sequence view, map, alignment view or Primers panel) for *Edit…* and *Delete from Primer Database*. *Hide in This File* stops drawing that primer on this file only (it stays in the primer database, and the
-choice is remembered for the file and kept in projects); the Primers view still lists it, greyed and marked "(hidden)": right-click it there →
+choice lasts until the file is closed, and a project keeps it); the Primers view still lists it, greyed and marked "(hidden)": right-click it there →
 *Show in This File*. Select several primers in the Primers panel and right-click: delete them from the database, import them, hide or
 show them all at once.
+
+**Where a primer binds.** Settings → Primers sets the rule: how many bases at the primer's 3′ end are compared (15), how many of
+them must match exactly (3) and how many mismatches the others may have (2); the drawn sites, the *Binds here* check and the
+command line all use it. *Best site only* (also in the Display filter) draws, of each primer, only the site it binds best: fewest
+mismatches in the last 5 bases, then fewest mismatches, then the longest annealed part (ties are all drawn). To hide one site
+and keep the others, right-click it → *Hide This Site*, or untick it under its primer in the Primers panel (tick a site there to show
+it even when it is not the best). The choice lasts until the file is closed, and a project keeps it; a change of the binding rule starts
+afresh, since it finds other sites.
 
 **Feature direction.** A feature is drawn with an arrow (its strand) unless it has no direction: *misc_feature* has none by default, and
 the feature dialog's *Direction* (Forward → / Reverse ← / None) changes it for any feature. GenBank has no "no direction" location, so a
@@ -347,11 +361,13 @@ primer to edit it). **Help** explains the tab and shows where the database is ke
 (rows with no sequence, letters that are not bases, names used twice), with *Open Folder* (the Help button of the database's tab shows the same).
 The restriction enzymes are listed in Tools → Restriction Digest, with the Owned box of the enzyme inventory.
 
-**Binding sites of a primer.** In the Primers view, open a primer (its ▸) to see its sites, grouped by where they are: *On this
-sequence*, *On the other sequences of this file* (a file of several records), and *On the background genome* (the toolbar's genome
-box), the last searched when you open the primer (it says *searching…* meanwhile; a large genome takes a few seconds). Each site
-shows the primer's annealing bases with those that do not pair with the template in **red**, its length and Tm, and how it matches
-(in the genome: the whole primer, or only its 3′ end). Click a column header to sort.
+**Binding sites of a primer.** In the Primers view, open a primer (its ▸) to see its sites: on this sequence, on the other
+sequences of this file (their name first), then in the background genome (the toolbar's genome box; none is set at first), searched
+when you open the primer (a line says *searching…* meanwhile; a large genome takes a few seconds). **Match** says which map the site
+is on (*Sequence* or *Background*) and how it binds (in the genome: the whole primer, or only its 3′ end). Each site shows the
+primer's annealing bases with those that do not pair with the template in **red**, its length and Tm. A primer with a single
+site is one row: Match is that site's, its place is in the name's tooltip. The first column (an eye), **Visible**, ticks what is drawn: a primer's box hides or shows the whole primer in this file, a site's box only that site. Opening
+or closing a primer never changes the columns' widths. Click a column header to sort.
 
 **Degenerate primers.** A primer may contain IUPAC codes (R, Y, S, W, K, M, B, D, H, V, N), for a gene family or a variable site. In a
 primer, such a letter matches every base it stands for, so `R` binds A or G and `N` binds anything; that position counts as a match,

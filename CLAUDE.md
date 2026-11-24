@@ -143,6 +143,23 @@ Mistakes made on the last one, and what to do instead:
 - **Commit with `tests.json` untouched only when no test changed.** A pure refactor needs no report
   rebuild; adding or renaming a test does (see above).
 
+## Where a setting goes
+
+Everything is kept in the data folder (`primer_db.data_dir()`), in three files, plus the keyring and the open file:
+
+- **A choice the user makes** (a tool's parameter): a `Param` registered with `tool_settings.register`, read with `tool_settings.value`.
+  It lands in `settings.ini` with its default, limits and Settings page. The theme (`View/theme`) is the one key there without a page.
+- **What the interface remembers** (window size, column widths, a dialog's last choices, the updater's dates): `primer_db.window_state("<group>")`,
+  one group per part, in `window.ini`. Tests delete this file before each test.
+- **History** (recent files, recent background genomes): `sourcefiles.recent_store()`, in `recent.ini`.
+- **Secrets** (API keys, logins): `secret_store`, never a file.
+- **What belongs to one open file** (hidden primers and sites, display switches, tracks): an attribute of the `Editor`, gone when the file
+  closes; `exports.project_meta` saves it in an `.odp` project.
+- **A value given on the command line**: `tool_settings.override`, never written.
+
+Never open a new `.ini` or JSON file for settings. When a saved key of `settings.ini` is renamed or changes meaning, raise
+`tool_settings.FORMAT` and convert the older layout in `stamp_format`.
+
 ## The command line for agents
 
 `app/cli.py` (`.venv\Scripts\python.exe -m app.cli ...`; installed as `oDNA-cli.exe`, a console build of the same bundle, see `packaging/openDNA.spec`)

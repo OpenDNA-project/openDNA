@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
-from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, Qt, QUrl
+from PySide6.QtCore import QPointF, QProcess, QRectF, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox,
@@ -26,7 +26,7 @@ import runner
 from add_record import document_records, files_records
 from editor import mono_font
 from local_align import LocalAlignDialog
-from primer_db import data_dir
+from primer_db import window_state
 from uikit import run_busy
 
 HISTORY_KEY, HISTORY_MAX = "terminal/history", 500
@@ -120,7 +120,7 @@ class HistoryLine(QLineEdit):
 
     def __init__(self):
         super().__init__(placeholderText="bash command ($REF = this sequence as FASTA, $DOC = its file, open <file> to view a result)")
-        self.settings = QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat)
+        self.settings = window_state()
         saved = self.settings.value(HISTORY_KEY, []) or []
         self.history = [saved] if isinstance(saved, str) else list(saved)   # an .ini gives a one-item list back as a str
         self.at = len(self.history)

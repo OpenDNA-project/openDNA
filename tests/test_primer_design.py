@@ -54,7 +54,7 @@ def checks(monkeypatch):
     limits = dict(DEFAULT_LIMITS)
     tm = {"value": 60.0}
     monkeypatch.setattr(PP, "limit", lambda key: limits[key])
-    monkeypatch.setattr(PP, "conditions", lambda: {key: default for key, _, default, _ in PP.CONDITIONS})
+    monkeypatch.setattr(PP, "conditions", lambda: {p.key: p.default for p in tool_settings.TOOLS[primer_db.PCR]})
     monkeypatch.setattr(PP, "melting_temp", lambda seq: tm["value"])
     monkeypatch.setattr(PP, "genome", lambda: None)
     ed = editor_of(random_dna(400, 9))
@@ -78,9 +78,8 @@ def test_primer_check_levels_follow_their_limits(checks):
     primer has none."""
     # --- the limits are the declared defaults, and the settings live in the data folder, not the registry ---
     from PySide6.QtCore import QSettings
-    s = primer_db.settings()
-    assert s.format() == QSettings.IniFormat and Path(s.fileName()) == primer_db.data_dir() / "primers.ini"
-    assert PP.settings is primer_db.settings
+    s = tool_settings.store()
+    assert s.format() == QSettings.IniFormat and Path(s.fileName()) == primer_db.data_dir() / "settings.ini"
     assert {p.key: p.default for p in tool_settings.TOOLS[PP.CHECKS]} == DEFAULT_LIMITS
     assert [PP.band(v, 52, 65, 7) for v in (51.9, 52, 65, 65.1, 72, 72.1, 45, 44.9)] == \
         ["warn", "ok", "ok", "warn", "warn", "bad", "warn", "bad"]

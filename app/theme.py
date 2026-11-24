@@ -1,22 +1,19 @@
 """Light and dark themes (View > Theme): System follows the operating system, Light and Dark force one.
 Qt (6.8 and later) restyles every widget, the title bar included, when the colour scheme is set, and the
 views that draw themselves read their colours from the palette, so nothing else needs to know."""
-from PySide6.QtCore import QRectF, QSettings, Qt
+from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPalette
 from PySide6.QtWidgets import QProxyStyle, QStyle, QStyleFactory, QStyleOptionMenuItem
 
-from primer_db import data_dir
+import tool_settings
 
+KEY = "View/theme"   # in settings.ini, chosen in View > Theme (not on a Settings page)
 THEMES = {"system": ("System", Qt.ColorScheme.Unknown), "light": ("Light", Qt.ColorScheme.Light), "dark": ("Dark", Qt.ColorScheme.Dark)}
-
-
-def _settings():
-    return QSettings(str(data_dir() / "theme.ini"), QSettings.IniFormat)
 
 
 def saved():
     """The theme chosen last time ("system" if none)."""
-    name = _settings().value("theme", "system")
+    name = tool_settings.store().value(KEY, "system")
     return name if name in THEMES else "system"
 
 
@@ -31,7 +28,7 @@ def apply(name, remember=True):
         _linked = True
     apply_highlight()
     if remember:
-        _settings().setValue("theme", name)
+        tool_settings.store().setValue(KEY, name)
     return name
 
 

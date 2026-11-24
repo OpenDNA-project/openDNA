@@ -13,12 +13,13 @@ FASTA_EXT = {".fa", ".fasta", ".fna", ".fas", ".ffn", ".frn", ".mfa"}
 OPEN_FILTER = "Sequences (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas);;All files (*)"
 
 
-def _settings():
+def recent_store():
+    """recent.ini: the files and background genomes used lately."""
     return QSettings(str(data_dir() / "recent.ini"), QSettings.IniFormat)
 
 
 def _existing(key):
-    value = _settings().value(key, [])
+    value = recent_store().value(key, [])
     paths = [value] if isinstance(value, str) else list(value or [])
     return [p for p in paths if Path(p).exists()]
 
@@ -31,7 +32,7 @@ def recent_files():
 def add_recent(path):
     path = str(Path(path).resolve())
     paths = [path] + [p for p in recent_files() if p != path]
-    _settings().setValue(KEY, paths[:MAX_RECENT])
+    recent_store().setValue(KEY, paths[:MAX_RECENT])
 
 
 def pinned_files():
@@ -41,13 +42,13 @@ def pinned_files():
 
 def set_pinned(path, pinned):
     paths = [p for p in pinned_files() if p != path]
-    _settings().setValue(PIN_KEY, paths + [path] if pinned else paths)
+    recent_store().setValue(PIN_KEY, paths + [path] if pinned else paths)
 
 
 def remove_recent(path):
     """Off the start page: out of the recent list and unpinned (the file itself is not touched)."""
     set_pinned(path, False)
-    _settings().setValue(KEY, [p for p in recent_files() if p != path])
+    recent_store().setValue(KEY, [p for p in recent_files() if p != path])
 
 
 def read_document(parent, path):

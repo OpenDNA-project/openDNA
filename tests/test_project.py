@@ -136,3 +136,9 @@ def test_welcome_slots_hold_four_and_expire(tmp_path, monkeypatch):
     f.write_text(json.dumps({"slots": [{"name": "A"}]}), encoding="utf-8")
     monkeypatch.setattr(sponsors, "FILE", f)
     assert sponsors.load() == ([{"name": "A"}, {}, {}], "", "SPONSORED")   # no "until": never expires; padded to three, old default
+    # It opens by itself once a day by default; ticking "Show at every startup" opens it at each start.
+    assert sponsors.due() and not sponsors.every_start()
+    sponsors.settings().setValue("sponsors/last_shown", date.today().isoformat())
+    assert not sponsors.due()
+    sponsors.settings().setValue("sponsors/every_start", True)
+    assert sponsors.due()

@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 
-from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton,
     QWidget,
@@ -19,7 +19,7 @@ from opendna_core import Document, Fasta, align
 import multigb
 import tool_settings
 from local_align import TOOL, strand_text, time_limit_note, warn_time_limit
-from primer_db import data_dir
+from primer_db import window_state
 from reference import is_fasta_file
 from sourcefiles import FASTA_EXT
 from tools import empty_hint
@@ -114,7 +114,7 @@ class FolderSearchPanel(QWidget):
         super().__init__()
         self.win, self.get_query, self.say, self.on_start, self.on_busy, self.hits, self.notes = win, get_query, say, on_start, on_busy, [], []
         self.thread, self.state = None, None
-        self.folder = QLineEdit(str(QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat).value(FOLDER_KEY, "")),
+        self.folder = QLineEdit(str(window_state().value(FOLDER_KEY, "")),
                                 placeholderText="Folder of sequence files")
         self.bar = QProgressBar(maximumWidth=160, visible=False)
         self.table = DataTable(self.COLUMNS, filtered=["Strand"])
@@ -148,7 +148,7 @@ class FolderSearchPanel(QWidget):
         if not Path(folder).is_dir():
             self.say("Pick an existing folder")
             return
-        QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat).setValue(FOLDER_KEY, folder)
+        window_state().setValue(FOLDER_KEY, folder)
         self.state = SimpleNamespace(done=0, total=0, cancel=False, result=None, error=None)
         s = self.state
 

@@ -168,13 +168,14 @@ pub struct Site {
 /// overlap, ...) that does not bind. A shorter seed (e.g. 12) finds weaker 3' homology:
 /// places where the primer could mis-prime.
 pub const SEED: usize = 15;
-/// The last 3 bases at the 3' end must match exactly: the polymerase starts there.
-const EXACT_3P: usize = 3;
+/// Default number of bases at the 3' end that must match exactly: the polymerase starts there.
+pub const EXACT_3P: usize = 3;
 
 /// All binding sites of `primer` on either strand.
 /// shortcut: brute-force scan, ~0.2 s on a 5 Mb genome; use an index (FM/k-mer) if
 /// whole-genome primer lists become slow.
-pub fn binding_sites(template: &[u8], primer: &[u8], circular: bool, seed: usize, max_mismatches: usize) -> Vec<Site> {
+/// `exact_3p`: bases at the 3' end that must match exactly (at most the seed).
+pub fn binding_sites(template: &[u8], primer: &[u8], circular: bool, seed: usize, max_mismatches: usize, exact_3p: usize) -> Vec<Site> {
     let p = clean(primer);
     // A degenerate base in the primer (R, N, ...) matches every base it stands for; the template is compared letter for letter.
     let same = |t: u8, q: u8| t == q || (b"ACGT".iter().position(|&x| x == t).map_or(0, |i| 1u8 << i) & pattern_mask(q, true)) != 0;
@@ -183,6 +184,7 @@ pub fn binding_sites(template: &[u8], primer: &[u8], circular: bool, seed: usize
         return Vec::new(); // too short to bind specifically
     }
     let seed = p.len().min(seed).min(n);
+    let exact_3p = exact_3p.min(seed);
     // Template base at position i (wrapping on circular templates); None outside.
     let base = |i: i64| -> Option<u8> {
         if circular {
@@ -206,15 +208,15 @@ pub fn binding_sites(template: &[u8], primer: &[u8], circular: bool, seed: usize
     let rc = revcomp(&p);
     let rev_seed = &rc[..seed];
     for i in 0..last_start {
-        // Forward: mismatches allowed except in the last EXACT_3P bases of the seed.
-        if let Some(mm) = seed_mismatches(&base, i as i64, fwd_seed, max_mismatches, &same, |k| k + EXACT_3P >= seed) {
+        // Forward: mismatches allowed except in the last `exact_3p` bases of the seed.
+        if let Some(mm) = seed_mismatches(&base, i as i64, fwd_seed, max_mismatches, &same, |k| k + exact_3p >= seed) {
             let (ext, ext_mm) = extend(reach, &same, |j| Some((base(i as i64 - 1 - j as i64)?, p[p.len() - seed - 1 - j])));
             let len = (seed + ext).min(n);
             let start = (i as i64 - ext as i64).rem_euclid(n as i64) as usize;
             sites.push(Site { start, len, forward: true, mismatches: mm + ext_mm });
         }
-        // Reverse: the primer's 3' end is the first EXACT_3P bases of `rev_seed`.
-        if let Some(mm) = seed_mismatches(&base, i as i64, rev_seed, max_mismatches, &same, |k| k < EXACT_3P) {
+        // Reverse: the primer's 3' end is the first `exact_3p` bases of `rev_seed`.
+        if let Some(mm) = seed_mismatches(&base, i as i64, rev_seed, max_mismatches, &same, |k| k < exact_3p) {
             let (ext, ext_mm) = extend(reach, &same, |j| Some((base((i + seed + j) as i64)?, rc[seed + j])));
             sites.push(Site { start: i, len: (seed + ext).min(n), forward: false, mismatches: mm + ext_mm });
         }
@@ -473,17 +475,17 @@ mod tests {
             (v[2], v[8], v[12]) = ('R', 'N', 'Y');
             v.into_iter().collect::<String>()
         };
-        let sites = binding_sites(template.as_bytes(), primer.as_bytes(), false, SEED, 0);
+        let sites = binding_sites(template.as_bytes(), primer.as_bytes(), false, SEED, 0, EXACT_3P);
         let starts: Vec<usize> = sites.iter().filter(|s| s.forward).map(|s| s.start).collect();
         assert_eq!(starts, vec![20, 60, 100]);
         assert!(sites.iter().all(|s| s.len == 20 && s.mismatches == 0));
         // a base outside the code is still a mismatch (template has A where Y allows only C/T)
         let off = template.replacen(&variant('A', 'C', 'C'), &variant('A', 'C', 'A'), 1);
-        let starts: Vec<usize> = binding_sites(off.as_bytes(), primer.as_bytes(), false, SEED, 0).iter().map(|s| s.start).collect();
+        let starts: Vec<usize> = binding_sites(off.as_bytes(), primer.as_bytes(), false, SEED, 0, EXACT_3P).iter().map(|s| s.start).collect();
         assert_eq!(starts, vec![60, 100]);
         // a degenerate base in the template still matches only the identical letter
         let n_template = template.replacen(&variant('A', 'C', 'C'), &variant('A', 'C', 'N'), 1);
-        let starts: Vec<usize> = binding_sites(n_template.as_bytes(), primer.as_bytes(), false, SEED, 0).iter().map(|s| s.start).collect();
+        let starts: Vec<usize> = binding_sites(n_template.as_bytes(), primer.as_bytes(), false, SEED, 0, EXACT_3P).iter().map(|s| s.start).collect();
         assert_eq!(starts, vec![60, 100]);
         // --- a degenerate reverse primer binds the bottom strand through complemented codes ---
         let site2 = "ACGTTGCAGGCTAGCTAGGA";
@@ -491,7 +493,7 @@ mod tests {
         // reverse primer = reverse complement of the site, with R in place of the base opposite the site's Y-compatible C/T
         let mut rc = revcomp(site2.as_bytes());
         rc[5] = b'R'; // faces a C on the top strand; R = A/G pairs with T/C
-        let rev_sites = binding_sites(rev_template.as_bytes(), &rc, false, SEED, 0);
+        let rev_sites = binding_sites(rev_template.as_bytes(), &rc, false, SEED, 0, EXACT_3P);
         assert_eq!(rev_sites.iter().filter(|s| !s.forward).map(|s| (s.start, s.len, s.mismatches)).collect::<Vec<_>>(), vec![(20, 20, 0)]);
     }
 
@@ -505,23 +507,23 @@ mod tests {
         // (10..14) still anneal (-2 for the mismatch, +4 after it).
         let mut fwd = template[10..34].to_vec();
         fwd[4] = b'C';
-        assert_eq!(binding_sites(template, &fwd, false, SEED, 0),
+        assert_eq!(binding_sites(template, &fwd, false, SEED, 0, EXACT_3P),
                    vec![Site { start: 10, len: 24, forward: true, mismatches: 1 }]);
         // Only 2 good bases after a mismatch: not worth it, they stay a tail.
         let mut short = template[10..34].to_vec();
         short[2] = b'C';
-        assert_eq!(binding_sites(template, &short, false, SEED, 0)[0].start, 13);
+        assert_eq!(binding_sites(template, &short, false, SEED, 0, EXACT_3P)[0].start, 13);
         // Reverse strand: its seed is on the left (10..25), the extension goes right.
         let mut top = template[10..34].to_vec();
         top[19] = b'A'; // base 29
         let rev = revcomp(&top);
-        assert_eq!(binding_sites(template, &rev, false, SEED, 0),
+        assert_eq!(binding_sites(template, &rev, false, SEED, 0, EXACT_3P),
                    vec![Site { start: 10, len: 24, forward: false, mismatches: 1 }]);
         // Two wrong bases in a row stop it: they and what lies beyond are a tail.
         let mut two = template[10..34].to_vec();
         two[5] = b'A';
         two[6] = b'A';
-        let sites = binding_sites(template, &two, false, SEED, 0);
+        let sites = binding_sites(template, &two, false, SEED, 0, EXACT_3P);
         assert_eq!((sites[0].start, sites[0].len, sites[0].mismatches), (17, 17, 0));
     }
 
@@ -532,28 +534,33 @@ mod tests {
         let template = b"TTTTTTTTTTACGTACGGATCCAGTTGACCATGGTTTTTTTTTTTT";
         // Forward primer = top strand 10..34 with a 6-base 5' tail.
         let fwd = b"GAATTCACGTACGGATCCAGTTGACCATGG";
-        let sites = binding_sites(template, fwd, false, SEED, 0);
+        let sites = binding_sites(template, fwd, false, SEED, 0, EXACT_3P);
         assert_eq!(sites, vec![Site { start: 10, len: 24, forward: true, mismatches: 0 }]);
         // Reverse primer: reverse complement of 14..34.
         let rev = revcomp(&template[14..34]);
-        let sites = binding_sites(template, &rev, false, SEED, 0);
+        let sites = binding_sites(template, &rev, false, SEED, 0, EXACT_3P);
         assert_eq!(sites, vec![Site { start: 14, len: 20, forward: false, mismatches: 0 }]);
         // One mismatch in the seed (not at the 3' end): only found when allowed.
         let mut one_off = fwd.to_vec();
         one_off[20] = b'A'; // was T
-        assert!(binding_sites(template, &one_off, false, SEED, 0).is_empty());
-        assert_eq!(binding_sites(template, &one_off, false, SEED, 1)[0].mismatches, 1);
+        assert!(binding_sites(template, &one_off, false, SEED, 0, EXACT_3P).is_empty());
+        assert_eq!(binding_sites(template, &one_off, false, SEED, 1, EXACT_3P)[0].mismatches, 1);
         // A mismatch at the 3'-terminal base never binds.
         let mut bad_end = fwd.to_vec();
         *bad_end.last_mut().unwrap() = b'A';
-        assert!(binding_sites(template, &bad_end, false, SEED, 2).is_empty());
+        assert!(binding_sites(template, &bad_end, false, SEED, 2, EXACT_3P).is_empty());
+        // A mismatch 5 bases from the 3' end: allowed with the default 3 exact bases, not when the last 5 must match exactly.
+        let mut near_end = fwd.to_vec();
+        near_end[25] = b'A'; // was C
+        assert_eq!(binding_sites(template, &near_end, false, SEED, 1, EXACT_3P)[0].mismatches, 1);
+        assert!(binding_sites(template, &near_end, false, SEED, 1, 5).is_empty());
     }
 
     #[test]
     fn site_across_the_origin() {
         let template = b"GGATCCAGTTTTTTTTTTTTTTTTTTACGTACGGATCC";
         let primer = b"ACGTACGGATCCGGATCCAG"; // last 8 bases continue at the start
-        let sites = binding_sites(template, primer, true, SEED, 0);
+        let sites = binding_sites(template, primer, true, SEED, 0, EXACT_3P);
         assert_eq!(sites, vec![Site { start: 26, len: 20, forward: true, mismatches: 0 }]);
     }
 

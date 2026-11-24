@@ -164,18 +164,21 @@ def effective_settings(extra):
     import codon_usage
     import genetic_code
     import primer_panel
-    from primer_db import settings
-    saved = settings()
+    import tool_settings
+    from primer_db import BINDING, PCR
+    saved = tool_settings.store()
+    sourced = lambda tool, keys: {k: {"value": tool_settings.value(tool, k), "source": "saved in openDNA" if saved.contains(f"{tool}/{k}") else "default"}
+                                  for k in keys}
     usage = codon_usage.active()
     seed, mismatches = primer_panel.homology_settings()
-    genome = primer_panel.default_genome()
+    genome = primer_panel.genome_path()
     return {
         **extra,
-        "pcr_conditions": {k: {"value": v, "source": "saved in openDNA" if saved.contains(f"pcr/{k}") else "default"}
-                           for k, v in primer_panel.conditions().items()},
+        "pcr_conditions": sourced(PCR, primer_panel.conditions()),
         "genetic_code_table": {"value": genetic_code.table_id(), "source": "openDNA settings"},
         "codon_usage_table": {"value": usage.name if usage else None,
                               "source": "openDNA settings" if usage else "none: ties between codons are broken alphabetically"},
+        "primer_binding": sourced(BINDING, ("seed", "exact_3p", "mismatches")),
         "primer_checks": {"homology_seed": {"value": seed, "source": "openDNA settings"}, "homology_mismatches": {"value": mismatches, "source": "openDNA settings"},
                           "background_genome": {"value": genome, "source": "openDNA settings (Primers > Options)" if genome else "none set: no genome check"}},
     }

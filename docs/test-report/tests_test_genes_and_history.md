@@ -20,7 +20,7 @@ Checks that "CDS only" hides a gene feature at exactly the bases and strand of a
 
 ## `test_history_texts`
 
-**Result:** ✅ passed in 0.01 s · [line 90](../../tests/test_genes_and_history.py#L90) · **Area:** Edit history wording · **Checked against:** regression value · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 90](../../tests/test_genes_and_history.py#L90) · **Area:** Edit history wording · **Checked against:** regression value · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the History panel - the user's only record of what an edit actually did - could describe an edit wrongly or lump several edits into one line, making a mistake impossible to trace back.
 

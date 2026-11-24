@@ -329,10 +329,11 @@ def feature_menu(parent, editor, index, global_pos):
     menu.exec(global_pos)
 
 
-def primer_actions(menu, editor, name):
+def primer_actions(menu, editor, name, site=None):
     """Edit / Delete for the primer called `name`: it is a primer of the database, so deleting it takes it out of every sequence
     (a step in this document's history: Undo brings it back). Import to This Sequence makes a primer that is only in the database
-    (or a temporary one) part of this file. A primer that is not in the database (a temporary one) cannot be edited or deleted."""
+    (or a temporary one) part of this file. A primer that is not in the database (a temporary one) cannot be edited or deleted.
+    `site` (the site right-clicked): Hide This Site hides only it; Show All Sites brings back the ones not drawn."""
     menu.addSection(name)
     known = db().find(name) is not None
     edit = menu.addAction("Edit…", lambda: editor.edit_primer_requested.emit(name))
@@ -352,6 +353,13 @@ def primer_actions(menu, editor, name):
     hidden = name in editor.hidden_primers
     toggle = menu.addAction("Show in This File" if hidden else "Hide in This File", lambda: editor.set_primer_hidden(name, not hidden))
     toggle.setToolTip("Stop drawing this primer on this file; it stays in the primer database (the Primers view shows it again)")
+    sites = [s for s in editor.primer_sites if s.label == name]
+    if site is not None and len(sites) > 1 and editor.site_shown(site):
+        menu.addAction("Hide This Site", lambda: editor.set_sites_shown([site], False)).setToolTip(
+            "Stop drawing only this binding site; the primer's other sites stay (the Primers view lists it, unticked)")
+    unshown = [s for s in sites if not editor.site_shown(s)]
+    if unshown:
+        menu.addAction(f"Show All Sites ({len(unshown)} not shown)", lambda: editor.set_sites_shown(unshown, True))
 
 
 def primers_actions(menu, editor, names):
@@ -407,7 +415,7 @@ def primer_menu(parent, editor, key, global_pos):
         return
     editor.select_primer(key)
     menu = QMenu(parent)
-    primer_actions(menu, editor, site.label)
+    primer_actions(menu, editor, site.label, site)
     menu.exec(global_pos)
 
 

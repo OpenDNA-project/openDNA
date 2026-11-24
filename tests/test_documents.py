@@ -616,7 +616,7 @@ def test_text_exports_and_the_project_file(tmp_path):
     # --- the project file
     track = tmp_path / "extra.gff3"
     track.write_text(f"{ed.doc.name}\tx\tgene\t10\t50\t.\t+\t.\tName=g1\n")
-    ed.tracks.append(SimpleNamespace(name=track.name, path=str(track), seqid=ed.doc.name))   # as the window's load_track does
+    ed.tracks.append(SimpleNamespace(name=track.name, path=str(track), seqid=ed.doc.name, types=["gene"], fields=[]))   # as the window's load_track does
     ed.set_display(enzymes=True, hidden_kinds={"misc_feature"})
     ed.dna_locked = True
     site = ed.doc.sequence()[100:120]
@@ -629,6 +629,7 @@ def test_text_exports_and_the_project_file(tmp_path):
         meta = json.loads(z.read("project.json"))
     assert meta["version"] == exports.PROJECT_VERSION and meta["dna_locked"]
     assert meta["tracks"][0]["relative"] == "extra.gff3" and meta["tracks"][0]["path"] == str(track)
+    assert meta["tracks"][0]["types"] == ["gene"] and set(meta["primer_sites"]) == {"rule", "primers"}   # what was imported, sites hidden by hand
     assert meta["display"]["enzymes"] and meta["display"]["hidden_kinds"] == ["misc_feature"]
     assert not list(tmp_path.glob("*.part")), "written through a temporary file"
     doc, back = exports.open_project(project)

@@ -10,11 +10,11 @@ The program-wide choice "open files in tabs, or in windows of their own" is `ope
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QSettings, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QMenu, QSizePolicy, QStackedLayout, QTabBar, QVBoxLayout, QWidget
 
-from primer_db import data_dir
+from primer_db import window_state
 
 
 class FileSet:
@@ -85,7 +85,7 @@ def page_of(widget):
 
 
 def window_settings():
-    return QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat)
+    return window_state()
 
 
 class _Mode(QObject):

@@ -208,6 +208,25 @@ def genome_icon(palette=None):
     return _icon(_genome, palette)
 
 
+def _eye(p, s):
+    """An eye: its outline (two arcs meeting at the corners) and the pupil."""
+    _line(p, s, 0.08)
+    brush = p.brush()
+    p.setBrush(Qt.NoBrush)
+    outline = QPainterPath(QPointF(s * 0.06, s * 0.5))
+    outline.quadTo(QPointF(s * 0.5, s * 0.08), QPointF(s * 0.94, s * 0.5))
+    outline.quadTo(QPointF(s * 0.5, s * 0.92), QPointF(s * 0.06, s * 0.5))
+    p.drawPath(outline)
+    p.setPen(Qt.NoPen)
+    p.setBrush(brush)
+    p.drawEllipse(QPointF(s / 2, s / 2), s * 0.15, s * 0.15)
+
+
+def eye_icon(palette=None):
+    """Visible (the Primers view's column of what is drawn)."""
+    return _icon(_eye, palette)
+
+
 # ---- the header of a pane (workspace.Pane): its options, split right / below, close. Drawn, so they look the same on every
 # computer (the font symbols they were depended on the fonts installed: other sizes, other baselines, or empty boxes) ----
 def _cog(p, s):

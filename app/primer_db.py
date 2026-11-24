@@ -13,7 +13,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QSettings, QStandardPaths, Signal
 
+from opendna_core import BINDING_SEED, EXACT_3P
 import fileio
+import tool_settings
+from tool_settings import Param
+from user_error import UserError
 
 FIELDS = ["name", "sequence", "note", "added"]
 MAX_PRIMER, MAX_NAME, MAX_NOTE = 200, 60, 200   # a longer "primer" is a sequence (and would stall the checks); a name this long is a mistake
@@ -51,15 +55,57 @@ class _Notifier(QObject):
 notifier = _Notifier()
 
 
-def binding_mismatches():
-    """Mismatches allowed in a primer's last 15 bases (never the 3 at the 3' end) for a
-    site to be shown: 0 = exact sites only; 1+ also shows where it almost binds (default 2)."""
-    return int(settings().value("primers/binding_mismatches", 2))
+GENOME_FILTER = "Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas);;All files (*)"
+
+# The Primers page of Tools > Settings: declared here once (defaults, limits), read everywhere through tool_settings.
+PCR = "PCR conditions"   # for every Tm (Primer3's defaults); no sodium or no primer at all makes the Tm meaningless, hence the minimums
+tool_settings.register(PCR, [
+    Param("na_mm", "Na⁺/K⁺ (mM)", 50.0, 1.0, 2000),
+    Param("mg_mm", "Mg²⁺ (mM)", 1.5, 0.0, 100),
+    Param("dntp_mm", "dNTPs (mM)", 0.6, 0.0, 100),
+    Param("primer_nm", "Primer (nM)", 50.0, 1.0, 100000),
+])
 
 
-def settings():
-    """The primer and PCR settings: an .ini file in the data folder like every other setting, not the Windows registry."""
-    return QSettings(str(data_dir() / "primers.ini"), QSettings.IniFormat)
+def _binding_check(v):
+    """The binding settings limit each other: the exact 3′ bases are part of the compared ones, and the mismatches fit in the rest.
+    A background genome that is switched on must be a file."""
+    notes = []
+    if v["exact_3p"] > v["seed"]:
+        v["exact_3p"] = v["seed"]
+        notes.append(f"exact 3′ bases lowered to {v['seed']} (the bases compared)")
+    if v["mismatches"] > v["seed"] - v["exact_3p"]:
+        v["mismatches"] = v["seed"] - v["exact_3p"]
+        notes.append(f"mismatches lowered to {v['mismatches']} (the bases compared minus the exact 3′ ones)")
+    if v["genome_check"] and v["genome"] and not Path(v["genome"]).is_file():
+        raise UserError(f"There is no file '{v['genome']}'. Browse for the genome (FASTA or GenBank), or clear the box for none.")
+    return "Primer binding: " + "; ".join(notes) + "." if notes else ""
+
+
+BINDING = "Primer binding"   # where a primer is drawn, its "Binds here" check, the 3′ mis-priming check and the background genome
+tool_settings.register(BINDING, [
+    Param("seed", "3′ bases compared", BINDING_SEED, 8, 30, suffix=" nt",
+          tip="A site is where the primer's last bases match the sequence (then the match extends toward the 5′ end)."),
+    Param("exact_3p", "Of which exact at the 3′ end", EXACT_3P, 1, 30, suffix=" nt",
+          tip="The polymerase starts at the 3′ end: these bases never tolerate a mismatch."),
+    Param("mismatches", "Mismatches allowed", 2, 0, 29,
+          tip="Mismatches allowed in the compared bases (never in the exact 3′ ones). 0 = exact sites only."),
+    Param("best_only", "Best site only", False,
+          tip="Fewest mismatches in the last 5 bases, then fewest mismatches, then the longest annealed part; ties are all shown.\n"
+              "Also in the Display filter."),
+    Param("homology_seed", "3′ check: bases", 12, 6, 20, suffix=" nt", tip="Bases at the primer's 3′ end compared for the mis-priming check"),
+    Param("homology_mismatches", "3′ check: mismatches", 0, 0, 3),
+    Param("genome_check", "Also check a genome", True),
+    Param("genome", "Genome file", "", browse=GENOME_FILTER,
+          tip="A FASTA or GenBank file; one with several sequences (chromosomes) is searched in full. Empty: no background genome."),
+], check=_binding_check)
+tool_settings.PAGE_OF.update({PCR: "Primers", BINDING: "Primers"})
+
+
+def binding():
+    """(bases compared at the 3′ end, of which exact, mismatches allowed): the one rule for where a primer binds."""
+    v = tool_settings.values(BINDING)
+    return v["seed"], v["exact_3p"], v["mismatches"]
 
 
 def data_dir():
@@ -67,6 +113,15 @@ def data_dir():
     path = Path(folder)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def window_state(group=None):
+    """window.ini in the data folder: what the interface remembers between sessions that is not a setting (window size, column
+    widths, the search bar's and dialogs' last choices, the updater's and the sponsor banner's dates), one group per part."""
+    state = QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat)
+    if group:
+        state.beginGroup(group)
+    return state
 
 
 OLD_DATA_NAME = "OpenGenEdit"   # the program's name before openDNA

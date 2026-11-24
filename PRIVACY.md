@@ -50,7 +50,7 @@ What is in it:
 |---|---|
 | `primers.tsv` | Your primer database (name, sequence, note, date added). |
 | `parts.tsv` | Your own part library, if you imported parts (the program's built-in library is inside the program). |
-| `settings.ini`, `theme.ini`, `workspace.ini`, `window.ini`, `image_export.ini`, `recent.ini`, `search.ini` | Tool settings, light / dark theme, window and tab layout, window size and place, side-panel width, View switches and column widths, image export choices, "snooze the welcome window" date, recently opened file paths, search options. |
+| `settings.ini`, `theme.ini`, `workspace.ini`, `window.ini`, `image_export.ini`, `recent.ini`, `search.ini` | Tool settings, light / dark theme, window and tab layout, window size and place, side-panel width, View switches and column widths, image export choices, the date the welcome window last opened and whether it opens at every start, recently opened file paths, search options. |
 | `ncbi.ini` | The NCBI window's options: your **NCBI API key if you typed it, stored as plain text** (the field is masked on screen only). |
 | `structure.ini` | The 3D structure window's options, including the text of the *Local command*, if you typed one. |
 | `primers.ini` | PCR conditions (salt, Mg2+, dNTP, primer concentration) and the primer options, including the path of the reference-genome file you chose. |

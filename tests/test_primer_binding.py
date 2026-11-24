@@ -23,13 +23,11 @@ import pytest
 os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
-from PySide6.QtCore import QSettings
-
 from opendna_core import Document, Fasta, find_primers
 
-import editor as editor_module
 import primer_db
 import primer_panel
+import tool_settings
 import tools
 from editor import Editor
 from primer_db import add_primer
@@ -79,14 +77,13 @@ def sites_at(template, primer, lo, hi, circular=False, max_mismatches=1, seed=SE
 
 @pytest.fixture(autouse=True)
 def private_state(tmp_path, monkeypatch):
-    """Never the user's primer database or settings: a private database, and the primer mismatch limit and the primer
-    panel's settings read from a file in the temp folder."""
+    """Never the user's primer database or settings: a private database, the binding rule at its defaults with 2 mismatches
+    (whatever the settings file says), no background genome."""
     monkeypatch.setattr(primer_db, "_db", primer_db.PrimerDB(tmp_path / "primers.tsv"))
-    monkeypatch.setattr(editor_module, "binding_mismatches", lambda: 2)
-    monkeypatch.setattr(primer_panel, "binding_mismatches", lambda: 1)
-    ini = QSettings(str(tmp_path / "options.ini"), QSettings.IniFormat)
-    monkeypatch.setattr(primer_panel, "settings", lambda: ini)
     monkeypatch.setattr(primer_panel, "genome", lambda: None)
+    rule = {(primer_db.BINDING, p.key): p.default for p in tool_settings.TOOLS[primer_db.BINDING]}
+    with tool_settings.override({**rule, (primer_db.BINDING, "mismatches"): 2}):
+        yield
 
 
 # ---- the rules written again, independently of the Rust code ---------------------------------------------------------------
@@ -643,7 +640,9 @@ def checks_by_name(ed, primer):
 def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypatch):
     """Primer sites in an editor: mismatch positions in template coordinates (both strands, tails, across the origin); a pair's
     PCR product (tails, a reverse primer upstream, across the origin, a mismatched primer); the non-specific priming check in
-    the sequence and in a genome; sites written on save change neither the document nor its undo stack."""
+    the sequence and in a genome; sites written on save change neither the document nor its undo stack. The best site (fewest
+    mismatches near the 3' end) is the one drawn with Best site only; a site shown or hidden by hand stays so, the primer with it,
+    until the binding rule changes or the site no longer binds."""
     rng.seed(643)   # this test's own data, whatever ran before it (the exact coordinates below must not depend on test order)
     # --- the mismatched letters of a site (what the primer list colours red): N and R pair with what they stand for ---
     assert primer_panel.mismatch_indices("ACGTNR", "ACCTGA") == [2]
@@ -667,6 +666,34 @@ def test_editor_primer_sites_pcr_product_specificity_and_save(tmp_path, monkeypa
     # an exact primer has none
     ed = editor_with(template, False, [("f", core), ("r", rc(core))])
     assert [s.mismatch_at for s in ed.primer_sites] == [[], []]
+
+    # --- the best site, and sites shown or hidden by hand ---
+    template = dna(600)
+    good = template[100:124]
+    # two more copies: a mismatch 4 bases from the 3' end, and two mismatches far from it (more mismatches, but not near the end)
+    template = template[:300] + mutate(good, [20]) + template[324:450] + mutate(good, [3, 6]) + template[474:]
+    ed = editor_with(template, False, [("p", good)])
+    by_start = {site.start: site for site in ed.primer_sites}
+    assert sorted(by_start) == [100, 300, 450]
+    assert sorted(by_start, key=lambda k: by_start[k].rank) == [100, 450, 300], "3'-end mismatches count first, then all of them"
+    assert [k for k, site in by_start.items() if site.best] == [100]
+    drawn = lambda: sorted(site.start for site in ed.drawn_primers)
+    assert drawn() == [100, 300, 450], "Best site only is off: every site"
+    with tool_settings.override({(primer_db.BINDING, "best_only"): True}):
+        assert drawn() == [100]
+        ed.set_sites_shown([by_start[450]], True)    # ticked by hand: drawn anyway
+        assert drawn() == [100, 450]
+    ed.set_sites_shown([by_start[100]], False)       # Hide This Site: only that site, the primer stays
+    assert drawn() == [300, 450] and "p" not in ed.hidden_primers
+    saved = ed.saved_site_choices()
+    assert saved["rule"] == [SEED, 3, 2] and sorted(map(tuple, saved["primers"]["p"]["sites"])) == [(1, 124, False), (1, 474, True)]
+    # --- kept for the session (a project keeps them); dropped with a site that no longer binds, and all of them under another rule ---
+    ed.doc.delete(450, 474)
+    ed.match_primers()
+    assert sorted(map(tuple, ed.saved_site_choices()["primers"]["p"]["sites"])) == [(1, 124, False)]
+    with tool_settings.override({(primer_db.BINDING, "mismatches"): 1}):
+        ed.match_primers()
+        assert ed.site_choices == {}
 
     # --- two mismatches and across the origin ---
     template = dna(300)

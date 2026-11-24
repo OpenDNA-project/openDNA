@@ -6,16 +6,15 @@ is never stored: Editor.match_primers recomputes it on the current sequence afte
 edit, including sites with a few mismatches ("almost binds", orange, the mismatched bases written on the line).
 """
 from html import escape
-import sys
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QEventLoop, QObject, QPointF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPalette
+from PySide6.QtCore import QEventLoop, QObject, QPointF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPalette, QPolygonF
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFrame,
+    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFrame,
     QApplication, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QProgressDialog, QPushButton,
-    QSpinBox, QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 from opendna_core import dimer, hairpin, tm, tm_range
@@ -28,32 +27,16 @@ from tool_settings import Param, SettingsDialog
 from reference import Reference, as_reference
 from sequence_view import TEMP_COLOR
 from uikit import dispose_progress, fit_columns, plural, show_after
-from primer_db import (ORDER_FORMATS, PLATE_SIZE, PURIFICATIONS, SCALES, export_order, MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, binding_mismatches, db, notifier,  # noqa: F401 (re-exported)
-                       primer_problem, settings, update_primer)
+from primer_db import (ORDER_FORMATS, PLATE_SIZE, PURIFICATIONS, SCALES, export_order, MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, BINDING, binding, db, PCR,  # noqa: F401 (re-exported)
+                       primer_problem, update_primer)
 import theme
 
-# Where a demo genome may sit: the repository folder, or (the one-file exe unpacks itself into a temp folder) next to the exe.
-ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-# key, label, default (Primer3's defaults), max
-CONDITIONS = [("na_mm", "Na⁺/K⁺ (mM)", 50.0, 2000), ("mg_mm", "Mg²⁺ (mM)", 1.5, 100),
-              ("dntp_mm", "dNTPs (mM)", 0.6, 100), ("primer_nm", "Primer (nM)", 50.0, 100000)]
 MAX_LISTED = 8     # positions listed in a report before "... and N more"
 
 
-# Smallest value that still gives a meaningful Tm: no sodium or no primer at all makes the salt / concentration terms
-# undefined (the Tm came out as -273 °C). Mg and dNTPs may be 0.
-CONDITION_MINIMUM = {"na_mm": 1.0, "primer_nm": 1.0}
-
-
 def conditions():
-    s = settings()
-    out = {}
-    for key, _, default, _ in CONDITIONS:
-        try:
-            out[key] = max(float(s.value(f"pcr/{key}", default)), CONDITION_MINIMUM.get(key, 0.0))
-        except (TypeError, ValueError):   # a hand-edited settings file
-            out[key] = default
-    return out
+    """The PCR conditions of every Tm (Settings > Primers), as keyword arguments of tm()."""
+    return dict(tool_settings.values(PCR))
 
 
 def melting_temp(seq):
@@ -111,25 +94,14 @@ def structure_text(seq):
 def homology_settings():
     """(3'-end bases that must match, mismatches allowed in them) for the mis-priming check.
     Default 12 nt exact: ~0.5 chance hits per primer in a 5 Mb genome (1 mismatch: ~15)."""
-    s = settings()
-    return int(s.value("primers/homology_seed", 12)), int(s.value("primers/homology_mismatches", 0))
-
-
-def default_genome():
-    """The example E. coli BW25113 genome (demo folder, or next to the app), if present. Import > DNA > Background Genome from
-    NCBI sets another one."""
-    for path in (ROOT / "demo" / "BW25113_2026.gb", ROOT / "BW25113_2026.gb"):
-        if path.exists():
-            return str(path)
-    return ""
+    v = tool_settings.values(BINDING)
+    return v["homology_seed"], v["homology_mismatches"]
 
 
 def genome_path():
-    """Off-target genome file, or "" when the check is off / no file."""
-    s = settings()
-    if s.value("primers/genome_check", "true") != "true":
-        return ""
-    return s.value("primers/genome", "") or default_genome()
+    """Off-target genome file, or "" when the check is off / none is set (the default: no background genome)."""
+    v = tool_settings.values(BINDING)
+    return v["genome"] if v["genome_check"] else ""
 
 
 _genomes = {}  # (path, modified time) -> Reference, so the genome file is opened (and indexed) once per session
@@ -370,7 +342,8 @@ def primer_checks(editor, sequence, genome_mode="wait"):
                        f"ΔG {s['self']:.1f} (3′ end {s['self3']:.1f}) kcal/mol"))
 
     n = editor.length
-    sites = editor.doc.binding_sites(sequence, binding_mismatches())
+    seed3, exact, mismatches = binding()
+    sites = editor.doc.binding_sites(sequence, mismatches, seed3, exact)
     checks.append(("Binds here", "ok" if sites else "warn",
                    _listing([site_text(*x, n) for x in sites]) if sites else "nowhere in this sequence"))
     seed, mm = homology_settings()
@@ -626,88 +599,6 @@ class PrimerDialog(QDialog):
         super().accept()
 
 
-class OptionsForm(QWidget):
-    """PCR conditions for Tm, which near-matches to show, and the 3' mis-priming check: the Primers page of Tools > Settings.
-    `save()` stores them (False, with a message, when the genome file is wrong); `defaults()` puts the declared values back."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        form = QFormLayout(self)
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
-        current = conditions()
-        self.boxes = {}
-        for key, label, _, maximum in CONDITIONS:
-            box = QDoubleSpinBox(decimals=2, minimum=CONDITION_MINIMUM.get(key, 0.0), maximum=maximum, value=current[key])
-            form.addRow(label, box)
-            self.boxes[key] = box
-        self.binding_mm = QSpinBox(minimum=0, maximum=3, value=binding_mismatches())
-        self.binding_mm.setToolTip("Show sites where the primer's last 15 bases match with up to this many\n"
-                                   "mismatches (never in the 3 bases at the 3' end). 0 = exact sites only.")
-        form.addRow("Show sites with up to … mismatches", self.binding_mm)
-        seed, mm = homology_settings()
-        self.seed = QSpinBox(minimum=6, maximum=20, value=seed)
-        self.seed.setToolTip("Bases at the primer's 3' end compared for the mis-priming check")
-        self.homology_mm = QSpinBox(minimum=0, maximum=3, value=mm)
-        form.addRow("3′ check: bases", self.seed)
-        form.addRow("3′ check: mismatches", self.homology_mm)
-        s = settings()
-        self.genome_check = QCheckBox("Also check a genome", checked=s.value("primers/genome_check", "true") == "true")
-        self.genome = QLineEdit(s.value("primers/genome", ""))
-        self.genome.setPlaceholderText(f"default: {default_genome() or 'none found'}")
-        row = QHBoxLayout()
-        row.addWidget(self.genome)
-        row.addWidget(QPushButton("Browse…", clicked=self._browse))
-        form.addRow("", self.genome_check)
-        form.addRow("Genome file", row)
-        self.genome_note = QLabel(wordWrap=True)
-        ref = genome()
-        self.genome_note.setText(f"Background genome now: {genome_label_text(ref)}. A FASTA or GenBank file with several sequences "
-                                 "(chromosomes) is searched in full, one sequence at a time." if ref is not None
-                                 else "No readable background genome now. A FASTA or GenBank file with several sequences "
-                                 "(chromosomes) is searched in full.")
-        form.addRow("", self.genome_note)
-
-    def _browse(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Genome for off-target check", "",
-                                              "Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas);;All files (*)")
-        if path:
-            self.genome.setText(path)
-
-    def defaults(self):
-        for key, _, default, _ in CONDITIONS:
-            self.boxes[key].setValue(default)
-        self.binding_mm.setValue(1)
-        self.seed.setValue(12)
-        self.homology_mm.setValue(0)
-        self.genome_check.setChecked(True)
-        self.genome.clear()
-
-    def save(self):
-        path = self.genome.text().strip()
-        if self.genome_check.isChecked() and path and not Path(path).is_file():
-            QMessageBox.warning(self, "Genome file", f"There is no file '{path}'. Browse for the genome (FASTA or GenBank), "
-                                "or clear the box to use the default.")
-            self.genome.setFocus()
-            return False
-        s = settings()
-        for key, box in self.boxes.items():
-            s.setValue(f"pcr/{key}", box.value())
-        s.setValue("primers/binding_mismatches", self.binding_mm.value())
-        s.setValue("primers/homology_seed", self.seed.value())
-        s.setValue("primers/homology_mismatches", self.homology_mm.value())
-        s.setValue("primers/genome_check", "true" if self.genome_check.isChecked() else "false")
-        s.setValue("primers/genome", self.genome.text().strip())
-        if self.genome_check.isChecked() and self.genome.text().strip():
-            import reference_picker
-            reference_picker.remember(self.genome.text().strip())   # the toolbar's box lists it
-        notifier.changed.emit()  # re-match primers with the new rules
-        return True
-
-
-tool_settings.register_page("Primers", OptionsForm)
-
-
 def open_options(parent):
     """Tools > Settings on the Primers page; True when OK was pressed (the primer lists then redo their matching)."""
     return SettingsDialog(parent, "Primers").exec() == QDialog.Accepted
@@ -793,8 +684,11 @@ def export_for_ordering(parent, names=None):
 
 
 MISMATCHES = Qt.UserRole + 2   # on a site's sequence cell: the indices of its bases that do not pair (drawn red)
-GENOME_KIND = "genome"   # the GROUP_ROLE value of the genome group, the only one redone alone when a primer is opened or its search ends
-GROUP_ROLE = Qt.UserRole + 3   # on the rows that group a primer's sites ("On this sequence", "On the reference genome")
+# The rows of the background genome under a primer (its sites, and a note: searching…, no site…), the only ones redone alone when
+# a primer is opened or its search ends; they come after the primer is opened, so they never set a column's width.
+GENOME_KIND, GENOME_NOTE = "genome", "genome note"
+GROUP_ROLE = Qt.UserRole + 3   # GENOME_KIND or GENOME_NOTE on those rows
+SITE_ROLE = Qt.UserRole + 4    # on a primer with one site (no row of its own under it): what a click on that site's row would select
 MISMATCH_COLOR, MISMATCH_COLOR_SELECTED = "#d32f2f", "#ffcdd2"
 _PAIRS = {"A": "A", "C": "C", "G": "G", "T": "T", "U": "T", "R": "AG", "Y": "CT", "S": "CG", "W": "AT", "K": "GT", "M": "AC",
           "B": "CGT", "D": "AGT", "H": "ACT", "V": "ACG", "N": "ACGT"}
@@ -827,24 +721,68 @@ class _PanelSignals(QObject):
 
 
 class PrimerTree(QTreeWidget):
-    """The primers' tree. Its Name column is as wide as the names and sites: the rows that group a primer's sites ("On the
-    background genome, …") run across the whole row, so their long label does not count."""
+    """The primers' tree. Its indent is small (a site sits just under its primer), so its ▸ / ▾ are drawn here at a size of their
+    own, and a click on one, or just beside it, opens or closes the primer instead of starting a selection. Each column is as wide as the primers and their sites on this file, opened or not, so opening or
+    closing a primer never changes a width; the background genome's rows (added when a primer is opened) do not count: a long
+    one is cut, its tooltip says it whole."""
+
+    INDENT = 10     # px per level (Qt's 20 pushed the sites far right)
+    ARROW = 8       # the ▸ / ▾, px
+    SLACK = 6       # a click this far right of the arrow still opens or closes the primer
+
+    def _opens(self, item):
+        return item is not None and (item.childCount() > 0 or item.childIndicatorPolicy() == QTreeWidgetItem.ShowIndicator)
+
+    def drawBranches(self, painter, rect, index):
+        item = self.itemFromIndex(index)
+        if not self._opens(item):
+            return
+        c = QPointF(rect.right() - self.indentation() / 2 + 1, rect.center().y())
+        h = self.ARROW / 2
+        points = ([QPointF(c.x() - h, c.y() - h / 2), QPointF(c.x() + h, c.y() - h / 2), QPointF(c.x(), c.y() + h / 2 + 1)]
+                  if item.isExpanded() else
+                  [QPointF(c.x() - h / 2, c.y() - h), QPointF(c.x() + h / 2 + 1, c.y()), QPointF(c.x() - h / 2, c.y() + h)])
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self.palette().color(QPalette.Text))
+        painter.drawPolygon(QPolygonF(points))
+        painter.restore()
+
+    def mousePressEvent(self, event):
+        pos = event.position().toPoint()
+        index = self.indexAt(pos)
+        item = self.itemFromIndex(index) if index.isValid() and index.column() == 0 else None
+        if event.button() == Qt.LeftButton and self._opens(item):
+            left = self.visualRect(index).left()
+            if left - self.indentation() <= pos.x() <= left + self.SLACK:
+                item.setExpanded(not item.isExpanded())
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):   # (a quick second click on the arrow: opened and closed again, not an edit)
+        index = self.indexAt(event.position().toPoint())
+        item = self.itemFromIndex(index) if index.isValid() and index.column() == 0 else None
+        if self._opens(item) and event.position().x() <= self.visualRect(index).left() + self.SLACK:
+            return self.mousePressEvent(event)
+        super().mouseDoubleClickEvent(event)
 
     def sizeHintForColumn(self, column):
-        if column != 0:
-            return super().sizeHintForColumn(column)
-        fm, widest = self.fontMetrics(), 0
-
-        def walk(item, depth):
-            nonlocal widest
-            if not item.isFirstColumnSpanned():
-                widest = max(widest, fm.horizontalAdvance(item.text(0)) + depth * self.indentation())
-            if item.isExpanded():
-                for k in range(item.childCount()):
-                    walk(item.child(k), depth + 1)
+        option = QStyleOptionViewItem()
+        self.initViewItemOption(option)
+        widest = 0
         for i in range(self.topLevelItemCount()):
-            walk(self.topLevelItem(i), 1 if self.rootIsDecorated() else 0)
-        return widest + 12
+            top = self.topLevelItem(i)
+            for depth, item in [(0, top)] + [(1, top.child(k)) for k in range(top.childCount())]:
+                if item.data(0, GROUP_ROLE):
+                    continue
+                index = self.indexFromItem(item, column)
+                width = self.itemDelegateForIndex(index).sizeHint(option, index).width()
+                if column == 0:
+                    width += (depth + self.rootIsDecorated()) * self.indentation()
+                widest = max(widest, width)
+        return widest
 
 
 class MismatchDelegate(QStyledItemDelegate):
@@ -898,9 +836,16 @@ class PrimerPanel(QWidget):
         super().__init__()
         self.editor = editor
         self.database = getattr(editor, "database", None)
-        self.columns = self.COLUMNS + (self.DATABASE_COLUMNS if self.database else [])
+        # A file's list ticks what is drawn, a whole primer or one site of it, in a Visible column shown first (added last, so
+        # every other column keeps its index)
+        self.columns = self.COLUMNS + (self.DATABASE_COLUMNS if self.database else ["Visible"])
+        self.visible = None if self.database else len(self.columns) - 1
         self.tree = PrimerTree()
         self.tree.setHeaderLabels(self.columns)
+        if self.visible is not None:   # an eye, not a word: the column is only as wide as its checkboxes
+            self.tree.headerItem().setText(self.visible, "")
+            self.tree.header().moveSection(self.visible, 0)
+            self._paint_eye()
         self.tree.setUniformRowHeights(True)
         # (before fit_columns: a tree's header stretches its last column by default, and that width would count as one the user
         # dragged, never fitted again)
@@ -908,12 +853,18 @@ class PrimerPanel(QWidget):
         # Columns as wide as what they hold; the sequence is cut at 24 bases (drag the column wider to read more) so this panel
         # is no wider than the Features table in the same pane: switching between the two keeps the pane's width. The note
         # (the database), else the structure, takes the room left.
-        fit_columns(self.tree, stretch=self.columns.index("Note" if self.database else "Structure"),
-                    cap=self.tree.fontMetrics().horizontalAdvance("G" * 24) + 24)
+        fitter = fit_columns(self.tree, stretch=self.columns.index("Note" if self.database else "Structure"),
+                             cap=self.tree.fontMetrics().horizontalAdvance("G" * 24) + 24)
+        # Visible, Length, Tm: as wide as a checkbox or a number (their header is cut; its tooltip names it)
+        fitter.tight = frozenset(c for c in (self.visible, 2, 3) if c is not None)
+        for c in fitter.tight:
+            self.tree.headerItem().setToolTip(c, self.columns[c])
+        self.tree.setIndentation(PrimerTree.INDENT)   # a site sits just under its primer
         self.tree.setToolTip("Tm: of the bases that anneal at that site (5' tail excluded)")
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)   # several primers: Import to This Sequence for all
         self.tree.currentItemChanged.connect(self._select)
         self.tree.itemDoubleClicked.connect(lambda item, _: self.edit(item))
+        self.tree.itemChanged.connect(self._ticked)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._menu)
         self.expanded = set()  # primer names the user opened; kept across refreshes
@@ -921,6 +872,7 @@ class PrimerPanel(QWidget):
         self.tree.itemCollapsed.connect(lambda item: item.parent() is None and self.expanded.discard(item.data(0, Qt.UserRole)))
         self.tree.setItemDelegateForColumn(1, MismatchDelegate(self.tree))
         self._searching = set()   # primers whose genome search is running
+        self._waiting = []        # primers (their sequence) whose genome search waits its turn (one runs at a time)
         self._failed = {}         # primer sequence (upper case) -> why its genome search failed
         self._genome_signals = _PanelSignals(self)
         self._genome_signals.done.connect(self._genome_found)
@@ -938,6 +890,7 @@ class PrimerPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.count = QLabel()
         self.count.setEnabled(False)   # greyed: a detail
+        self.count.setMinimumWidth(1)   # cut rather than widen the pane (see minimumSizeHint)
         self.edit_button = None
         if not self.database:   # the Primer Database tab has these buttons (and its own) in its header
             # The same header as the database tabs': the count on the left, the actions as one group on the right.
@@ -962,6 +915,11 @@ class PrimerPanel(QWidget):
         editor.display_changed.connect(self._display_changed)
         self.reload()
 
+    def minimumSizeHint(self):
+        """As narrow as the Features view (its table's minimum): switching a pane between the two never widens it; the buttons
+        above the list are squeezed instead."""
+        return QSize(self.tree.minimumSizeHint().width(), super().minimumSizeHint().height())
+
     def _sources(self):
         """The primer sources switched on in the Display filter: (From this sequence, From the database)."""
         return self.editor.show_file_primers, self.editor.show_db_primers
@@ -976,8 +934,14 @@ class PrimerPanel(QWidget):
         if self.edit_button is not None:
             self.edit_button.setEnabled(self.tree.currentItem() is not None and bool(self.tree.selectedItems()))
 
+    def _paint_eye(self):
+        import icons
+        self.tree.headerItem().setIcon(self.visible, icons.eye_icon(self.palette()))
+
     def theme_changed(self):
-        """Light / dark switch (theme.refresh_views): the greyed (hidden) and temporary primers take the new colours."""
+        """Light / dark switch (theme.refresh_views): the greyed (hidden) and temporary primers, and the eye, take the new colours."""
+        if self.visible is not None:
+            self._paint_eye()
         self.reload()
 
     def reload(self):
@@ -990,6 +954,7 @@ class PrimerPanel(QWidget):
             elsewhere.setdefault(site.label, []).append(site)
             groups.setdefault(site.label, [])
         rows, filtered = {}, 0
+        genome_on = genome() is not None
         cut = ed.cut_primers()   # primers with more sites than are listed (the first MAX_SITES of each sequence are)
         if self.database:   # every primer of the database, also one that binds nowhere (an ambiguity code...)
             rows = {r["name"]: r for r in db().rows}
@@ -1027,113 +992,153 @@ class PrimerPanel(QWidget):
                 group.setForeground(0, QColor(TEMP_COLOR))
                 group.setToolTip(0, "Not part of this file: from the primer database (or designed, not saved). "
                                     "Right-click > Import to This Sequence keeps it in the file.")
-            if name in ed.hidden_primers:   # still listed, greyed: right-click > Show in This File
-                group.setText(0, f"{name} (hidden)")
-                for col in range(len(self.columns)):
-                    group.setForeground(col, self.palette().color(QPalette.PlaceholderText))
-                group.setToolTip(0, "Hidden in this file (right-click > Show in This File); still in the primer database")
+            if self.visible is not None:   # ticked: drawn in this file (set before the row is in the tree: no signal)
+                hidden = name in ed.hidden_primers
+                group.setFlags(group.flags() | Qt.ItemIsUserCheckable)
+                group.setCheckState(self.visible, Qt.Unchecked if hidden else Qt.Checked)
+                group.setToolTip(self.visible, "Untick to stop drawing this primer in this file; it stays in the primer database")
+                if hidden:   # still listed, greyed
+                    for col in range(len(self.columns)):
+                        group.setForeground(col, self.palette().color(QPalette.PlaceholderText))
             self._add_sites(group, seq, sites, away, lengths)
-            for item in [group] + _below(group):
-                for col in (2, 3):
-                    item.setTextAlignment(col, Qt.AlignRight | Qt.AlignVCenter)
+            if not group.childCount() and genome_on:
+                self._genome_arrow(group, seq)
+            self._align(group)
             self.tree.addTopLevelItem(group)
             group.setExpanded(name in self.expanded)  # collapsed unless the user opened it
-            self._open_groups(group)
+            self._span_notes(group)
             if name == keep:   # the primer picked stays picked (its row only: the sites may have moved)
                 self.tree.setCurrentItem(group)
         self._apply_sort()
-        # No row opens: no column of empty room for the ▸ on every row.
-        self.tree.setRootIsDecorated(any(self.tree.topLevelItem(i).childCount() for i in range(self.tree.topLevelItemCount())))
+        self._decorate()
         self.tree.blockSignals(False)
         n = len(groups)
         text = plural(n, "primer") if self.database else f"{plural(n, 'primer')} on this sequence"
         if filtered:
             text += f" ({filtered} more not shown: Display filter)"
         self.count.setText(text)
+        self.count.setToolTip(text)   # (cut in a narrow pane)
         self._can_edit()
 
-    # ---- the sites of a primer, grouped by where they are -------------------------------------------------------------------
+    # ---- the sites of a primer: Match says where (Sequence: this file; Background: the background genome) -----------------------
     def _add_sites(self, group, seq, sites, away, lengths):
-        """Under a primer: the sites on this sequence, on the other sequences of the file, and in the background genome, each a
-        group of its own; in each site's sequence the bases that do not pair with the template are red (MismatchDelegate)."""
+        """Under a primer: its sites on this sequence, on the other sequences of the file (their name first), then in the
+        background genome; in each site's sequence the bases that do not pair with the template are red (MismatchDelegate)."""
         ed = self.editor
         if sites and not self.database:   # (the database's own list document is not a sequence of yours)
-            rows = []
             for site in sites:
                 bound = seq[-sum(e - s for s, e in site.spans):]
                 template = "".join(ed.doc.sequence(a, b) for a, b in site.spans)
-                rows.append(self._site_row(location_text(site.start, site.end, site.strand, ed.length), bound,
-                                           template if site.strand > 0 else reverse_complement(template),
-                                           ("", site.start), site.key))
-            self._group(group, f"On this sequence ({len(rows)})", rows)
-        if away:
-            rows = [self._site_row(f"{site.record}: " + location_text(site.start, site.end, site.strand, lengths.get(site.record, site.end)),
-                                   site.sequence[-(site.end - site.start):],
-                                   getattr(site, "bases", None) if site.strand > 0 or getattr(site, "bases", None) is None
-                                   else reverse_complement(site.bases),
-                                   (site.record, site.start), (site.record, site.start, site.end))   # a click opens that record
-                    for site in away]
-            self._group(group, f"On the other sequences of this file ({len(rows)})", rows)
+                row = self._site_row(location_text(site.start, site.end, site.strand, ed.length), bound,
+                                     template if site.strand > 0 else reverse_complement(template), ("", site.start), site.key)
+                row.setFlags(row.flags() | Qt.ItemIsUserCheckable)   # ticked: drawn (set before the row is in the tree: no signal)
+                row.setCheckState(self.visible, Qt.Checked if ed.site_shown(site) else Qt.Unchecked)
+                row.setToolTip(self.visible, "Untick to stop drawing this site (the primer's other sites stay)"
+                               + (" · best site" if site.best else ""))
+                group.addChild(row)
+        for site in away:
+            bases = getattr(site, "bases", None)
+            group.addChild(self._site_row(
+                f"{site.record}: " + location_text(site.start, site.end, site.strand, lengths.get(site.record, site.end)),
+                site.sequence[-(site.end - site.start):], bases if site.strand > 0 or bases is None else reverse_complement(bases),
+                (site.record, site.start), (site.record, site.start, site.end)))   # a click opens that record
+        ticked = lambda row: not row.flags() & Qt.ItemIsUserCheckable or row.checkState(self.visible) == Qt.Checked
+        if group.childCount() == 1 and ticked(group.child(0)):
+            self._fold(group, len(seq))
         if group.data(0, Qt.UserRole) in self.expanded:   # the genome is searched only for a primer opened
-            self._genome_group(group, seq)
+            self._genome_rows(group, seq)
 
-    def _genome_group(self, group, seq):
+    @staticmethod
+    def _fold(group, length):
+        """A primer with one site is one row: the site's match on it (its mismatches red in the primer's sequence), its place in
+        the name's tooltip, a click selects it. (A site unticked by hand keeps its row: its box ticks it again.)"""
+        row = group.takeChild(0)
+        group.setText(4, row.text(4))
+        group.setData(1, MISMATCHES, [k + length - len(row.text(1)) for k in row.data(1, MISMATCHES) or []])
+        group.setData(0, SITE_ROLE, row.data(0, Qt.UserRole))
+        group.setToolTip(0, "\n".join(x for x in (row.text(0), group.toolTip(0)) if x))
+
+    def _genome_rows(self, group, seq):
         q = genome_query(self.editor, seq)
         if q is None:
             return
         result = genome_cached(self.editor, seq)
         if result is None and seq.upper() in self._failed:
-            self._group(group, f"On the background genome: the search failed ({self._failed[seq.upper()]})", [], GENOME_KIND)
-            return
+            return self._note(group, f"{q[0].name}: the search failed ({self._failed[seq.upper()]})")
         if result is None:
-            self._search_genome(seq)
-            self._group(group, "On the background genome: searching…", [], GENOME_KIND)
-            return
-        rows = []
+            self._search_genome(seq, first=True)
+            return self._note(group, f"{q[0].name}: searching…")
+        listed = 0
         for whole, hits in ((True, result.whole), (False, result.hits)):
             for h in hits:
                 name, start, end, strand, _, length, circular = h
                 bases = result.bases.get((name, start, end, strand)) if hasattr(result, "bases") else None
-                rows.append(self._site_row(site_in_record(h), seq[-(end - start):],
-                                           None if bases is None else bases if strand > 0 else reverse_complement(bases),
-                                           (name, start), None, "whole primer" if whole else "3′ end"))
-        more = result.n_whole + result.n_hits - len(rows)
-        label = f"On the background genome, {q[0].name} ({result.n_whole + result.n_hits}" + (f", {more} not listed" if more > 0 else "") + ")"
-        if not result.complete:
-            label += ": not searched to the end"
-        if not rows:
-            label = f"On the background genome, {q[0].name}: no site" + ("" if result.complete else " in the part searched")
-        self._group(group, label, rows, GENOME_KIND)
+                where = site_in_record(h)
+                row = self._site_row(where, seq[-(end - start):],
+                                     None if bases is None else bases if strand > 0 else reverse_complement(bases),
+                                     (name, start), None, "whole primer" if whole else "3′ end", "Background")
+                row.setData(0, GROUP_ROLE, GENOME_KIND)
+                row.setToolTip(0, where)   # (its column may be narrower: these rows do not set its width)
+                group.addChild(row)
+                listed += 1
+        more = result.n_whole + result.n_hits - listed
+        if not listed:
+            self._note(group, f"{q[0].name}: no site" + ("" if result.complete else " in the part searched"))
+        elif more > 0 or not result.complete:
+            self._note(group, f"{q[0].name}: " + "; ".join(
+                x for x in (f"{more} more not listed" if more > 0 else "", "" if result.complete else "not searched to the end") if x))
 
-    def _site_row(self, where, bound, template, sort_key, data, kind=""):
-        """One binding site: where, the primer's annealing bases (mismatches red when the template is known), length, Tm, match."""
+    def _site_row(self, where, bound, template, sort_key, data, kind="", source="Sequence"):
+        """One binding site: where, the primer's annealing bases (mismatches red when the template is known), length, Tm, and
+        Match: the map it is on (Sequence, Background), how it binds there."""
         tb = tm_text(bound)
         marks = mismatch_indices(bound, template) if template is not None and len(template) == len(bound) else None
         match = "" if marks is None else "exact" if not marks else plural(len(marks), 'mismatch')
-        row = SortItem([where, bound, str(len(bound)), tb or "–",
-                        ", ".join(x for x in (kind, match) if x)])
-        row.keys = {0: sort_key, 2: len(bound), 3: tm_sort_key(bound), 4: len(marks or [])}
+        row = SortItem([where, bound, str(len(bound)), tb or "–", ", ".join(x for x in (source, kind, match) if x)])
+        row.keys = {0: sort_key, 2: len(bound), 3: tm_sort_key(bound), 4: (source, len(marks or []))}
         row.setData(0, Qt.UserRole, data)
         row.setData(1, MISMATCHES, marks or [])
         if marks:
             row.setToolTip(1, "Red: the primer's base does not pair with the template there")
         return row
 
-    def _group(self, parent, label, rows, kind=None):
+    def _note(self, parent, label):
+        """A line about the background genome's search under a primer (searching…, no site…), in italics across the row."""
         g = QTreeWidgetItem([label])
         f = g.font(0)
         f.setItalic(True)
         g.setFont(0, f)
-        g.setData(0, GROUP_ROLE, kind or True)
+        g.setData(0, GROUP_ROLE, GENOME_NOTE)
         parent.addChild(g)
-        g.addChildren(rows)
-        return g
 
-    def _search_genome(self, seq):
-        """Search the background genome for `seq` on a worker thread, then show the sites (one search at a time per sequence)."""
-        if seq.upper() in self._searching:
+    def _genome_arrow(self, group, seq):
+        """A primer with no row under it (one site, folded) opens only to show its sites in the background genome: its ▸ is there
+        only once the genome is known to have some (or the search failed: opened, it says why). The search runs in the
+        background; the Primer Database's list (every primer) searches only the primer opened, so its ▸ is always there."""
+        if self.database:
+            return group.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+        result = genome_cached(self.editor, seq)
+        if result is None and seq.upper() not in self._failed:
+            self._search_genome(seq)
+        found = seq.upper() in self._failed or (result is not None and result.n_whole + result.n_hits > 0)
+        group.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator if found else QTreeWidgetItem.DontShowIndicator)
+
+    def _decorate(self):
+        """No row opens: no column of empty room for the ▸ on every row."""
+        items = [self.tree.topLevelItem(i) for i in range(self.tree.topLevelItemCount())]
+        self.tree.setRootIsDecorated(any(i.childCount() or i.childIndicatorPolicy() == QTreeWidgetItem.ShowIndicator for i in items))
+
+    def _search_genome(self, seq, first=False):
+        """Search the background genome for `seq` on a worker thread, then show the sites. One search runs at a time: the others
+        wait their turn, a primer just opened (`first`) ahead of the rest."""
+        key = seq.upper()
+        if key in self._searching:
             return
-        self._searching.add(seq.upper())
+        if self._searching:
+            self._waiting = [w for w in self._waiting if w.upper() != key]   # (as typed: a lowercase 5' tail is not searched)
+            self._waiting.insert(0, seq) if first else self._waiting.append(seq)
+            return
+        self._searching.add(key)
         editor, signals = self.editor, self._genome_signals
 
         def work():
@@ -1152,10 +1157,20 @@ class PrimerPanel(QWidget):
         self._searching.discard(key)
         if error:
             self._failed[key] = error   # not searched again at each refresh: the group says why
-        for i in range(self.tree.topLevelItemCount()):   # the primers opened that have this sequence: only their genome group changes
+        for i in range(self.tree.topLevelItemCount()):   # the primers that have this sequence: only their genome rows change
             item = self.tree.topLevelItem(i)
-            if item.text(1).upper() == key and item.data(0, Qt.UserRole) in self.expanded:
+            if item.text(1).upper() != key:
+                continue
+            if item.data(0, Qt.UserRole) in self.expanded:
                 self._refresh_genome(item)
+            elif not item.childCount():
+                self._genome_arrow(item, item.text(1))
+        self._decorate()
+        while self._waiting:   # the next one waiting (unless it was found meanwhile)
+            seq = self._waiting.pop(0)
+            if genome_cached(self.editor, seq) is None and genome_query(self.editor, seq) is not None:
+                self._search_genome(seq)
+                break
 
     def _expanded(self, item):
         if item.parent() is None:
@@ -1173,20 +1188,28 @@ class PrimerPanel(QWidget):
                 return
 
     def _refresh_genome(self, item):
-        """Redo the genome group under the primer `item` alone, the rest of the list (and its scroll position) untouched."""
+        """Redo the genome rows under the primer `item` alone, the rest of the list (and its scroll position) untouched."""
         self.tree.blockSignals(True)   # no site gets selected by the change
         for i in reversed(range(item.childCount())):
-            if item.child(i).data(0, GROUP_ROLE) == GENOME_KIND:
+            if item.child(i).data(0, GROUP_ROLE):
                 item.removeChild(item.child(i))
-        self._genome_group(item, item.text(1))
-        self._open_groups(item)
+        self._genome_rows(item, item.text(1))
+        self._align(item)
+        self._span_notes(item)
         self.tree.setRootIsDecorated(True)
         self.tree.blockSignals(False)
 
-    def _open_groups(self, group):
-        for i in range(group.childCount()):   # the groups of sites (this sequence, the genome) open with it
-            group.child(i).setExpanded(True)
-            group.child(i).setFirstColumnSpanned(True)   # their label across the row (only once it is in the tree)
+    @staticmethod
+    def _align(group):
+        """Numbers (length, Tm) on the right, in every row of a primer, the genome's added later too."""
+        for item in [group] + _below(group):
+            for col in (2, 3):
+                item.setTextAlignment(col, Qt.AlignRight | Qt.AlignVCenter)
+
+    def _span_notes(self, group):
+        for i in range(group.childCount()):   # a note's text across the row (only once it is in the tree)
+            if group.child(i).data(0, GROUP_ROLE) == GENOME_NOTE:
+                group.child(i).setFirstColumnSpanned(True)
 
     def _sort_by(self, column):
         """A header clicked: sort by it, ascending; clicked again: descending."""
@@ -1205,8 +1228,9 @@ class PrimerPanel(QWidget):
         if item is None:
             return
         key = item.data(0, Qt.UserRole)
-        if item.parent() is None:  # a primer: select its first site on this sequence
-            key = next((row.data(0, Qt.UserRole) for row in _below(item) if isinstance(row.data(0, Qt.UserRole), str)), None)
+        if item.parent() is None:  # a primer: select its site, else its first site on this sequence
+            key = item.data(0, SITE_ROLE) or next(
+                (row.data(0, Qt.UserRole) for row in _below(item) if isinstance(row.data(0, Qt.UserRole), str)), None)
         elif item.data(0, GROUP_ROLE):
             return
         if isinstance(key, tuple):   # a site on another record: open it (after this click: the panel is replaced)
@@ -1234,9 +1258,24 @@ class PrimerPanel(QWidget):
             if len(chosen) > 1 and name in chosen:   # several primers selected: every action applies to all of them
                 primers_actions(menu, self.editor, chosen)
             else:
-                primer_actions(menu, self.editor, name)
+                primer_actions(menu, self.editor, name, self.editor.site_by_key.get(item.data(0, Qt.UserRole)))
             self.tree.value_filter.cell_actions(menu, pos)   # show only / hide the value of the cell
             menu.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def _ticked(self, item, column):
+        """A Visible checkbox: a primer's shows or hides it in this file, a site's that site only."""
+        if column != self.visible or self.visible is None:
+            return
+        ed, on = self.editor, item.checkState(column) == Qt.Checked
+        # (after this signal: the change rebuilds the tree, and the clicked row must not be deleted while Qt still handles it)
+        if item.parent() is None:
+            name = item.data(0, Qt.UserRole)
+            if on == (name in ed.hidden_primers):
+                QTimer.singleShot(0, lambda: ed.set_primer_hidden(name, not on))
+            return
+        site = ed.site_by_key.get(item.data(0, Qt.UserRole))
+        if site is not None and on != ed.site_shown(site):
+            QTimer.singleShot(0, lambda: ed.set_sites_shown([site], on))
 
     def edit(self, item):
         if item is not None:

@@ -7,7 +7,7 @@ from html import escape
 from pathlib import Path
 from types import SimpleNamespace
 
-from PySide6.QtCore import QObject, QSettings, Qt, QUrl, Signal
+from PySide6.QtCore import QObject, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox,
@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 import structure
-from primer_db import data_dir
+from primer_db import window_state
 import theme
 import wip
 from data_table import DataTable
@@ -39,7 +39,7 @@ class StructureDialog(QDialog):
         self.name, self.protein, self.result, self.token = name, protein, None, None
         self.links = list(links)   # the PDB codes the feature links (structure.pdb_links)
         self.job = None   # the request under way: its local command can be stopped (see cancel)
-        self.settings = QSettings(str(data_dir() / "structure.ini"), QSettings.IniFormat)
+        self.settings = window_state("structure")
         self.setWindowTitle(f"3D Structure of {name}")
         self.resize(560, 330)
         self.source = QComboBox()

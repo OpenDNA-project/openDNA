@@ -17,7 +17,11 @@ def _fresh_window_settings():
         yield
         return
     (data_dir() / "window.ini").unlink(missing_ok=True)
+    import secret_store   # never the real keyring (the NCBI key...): this run's memory only
+    keep, secret_store.keyring = secret_store.keyring, None
+    secret_store._session.clear()
     yield
+    secret_store.keyring = keep
 
 
 def pytest_sessionfinish(session, exitstatus):

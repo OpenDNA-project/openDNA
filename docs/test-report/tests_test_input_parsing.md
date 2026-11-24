@@ -4,7 +4,7 @@
 
 ## `test_typed_or_imported_text_is_parsed_or_refused_with_a_reason`
 
-**Result:** ✅ passed in 0.02 s · [line 22](../../tests/test_input_parsing.py#L22) · **Area:** Input checking: typed and imported text · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 22](../../tests/test_input_parsing.py#L22) · **Area:** Input checking: typed and imported text · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the range box could select the wrong bases, pasted protein text could keep junk characters, and bad names, NCBI keys or primer lists could end up stored in the primer database.
 

@@ -301,12 +301,12 @@ impl Document {
 
     /// Where `primer` anneals: list of (start, end, strand, mismatches), top-strand
     /// coordinates; on circular records `end` can be > length (wraps through the origin).
-    /// `seed` = how many 3'-end bases must match; use ~12 to look for mis-priming.
-    #[pyo3(signature = (primer, max_mismatches=1, seed=primers::SEED))]
-    fn binding_sites(&self, py: Python<'_>, primer: &str, max_mismatches: usize, seed: usize) -> Vec<(usize, usize, i8, usize)> {
+    /// `seed` = how many 3'-end bases must match; use ~12 to look for mis-priming. `exact_3p` of them must match exactly.
+    #[pyo3(signature = (primer, max_mismatches=1, seed=primers::SEED, exact_3p=primers::EXACT_3P))]
+    fn binding_sites(&self, py: Python<'_>, primer: &str, max_mismatches: usize, seed: usize, exact_3p: usize) -> Vec<(usize, usize, i8, usize)> {
         let record = &self.inner.record;
         let circular = record.topology == Topology::Circular;
-        let sites = py.allow_threads(|| primers::binding_sites(&record.seq, primer.as_bytes(), circular, seed, max_mismatches));
+        let sites = py.allow_threads(|| primers::binding_sites(&record.seq, primer.as_bytes(), circular, seed, max_mismatches, exact_3p));
         sites
             .into_iter()
             .map(|s| (s.start, s.start + s.len, if s.forward { 1 } else { -1 }, s.mismatches))
@@ -557,10 +557,10 @@ struct Track {
     inner: tracks::Track,
 }
 
-type TrackItem = (u64, u64, i8, String, String); // start, end, strand, name, kind
+type TrackItem = (u64, u64, i8, String, String, Option<String>, Option<String>); // start, end, strand, name, kind, colour, note
 
 fn item_tuple(i: &tracks::Item) -> TrackItem {
-    (i.start, i.end, i.strand, i.name.clone(), i.kind.clone())
+    (i.start, i.end, i.strand, i.name.clone(), i.kind.clone(), i.color.as_deref().map(str::to_string), i.note.as_deref().map(str::to_string))
 }
 
 #[pymethods]
@@ -581,7 +581,29 @@ impl Track {
         self.inner.notes.clone()
     }
 
-    /// (items overlapping [start, end) as (start, end, strand, name, kind), more_than_limit)
+    /// [(type, number of items, every one covers its whole sequence)], in order of name.
+    fn types(&self) -> Vec<(String, usize, bool)> {
+        self.inner.types()
+    }
+
+    /// (items with a colour, items with a note)
+    fn field_counts(&self) -> (usize, usize) {
+        self.inner.field_counts()
+    }
+
+    /// [(colour as the file writes it, number of items)]
+    fn colors(&self) -> Vec<(String, usize)> {
+        self.inner.colors()
+    }
+
+    /// Keep only the items of `types`; the items of `seq` that cross the origin become one item each on a circle of
+    /// `circular_length` bases (their end past it), or are left out (None: a linear sequence). Returns how many were left out.
+    #[pyo3(signature = (types, seq, circular_length=None))]
+    fn keep(&mut self, types: Vec<String>, seq: &str, circular_length: Option<u64>) -> usize {
+        self.inner.keep(&types, seq, circular_length)
+    }
+
+    /// (items overlapping [start, end) as (start, end, strand, name, kind, colour or None, note or None), more_than_limit)
     #[pyo3(signature = (seq, start, end, limit=5000))]
     fn query(&self, py: Python<'_>, seq: &str, start: u64, end: u64, limit: usize) -> (Vec<TrackItem>, bool) {
         let inner = &self.inner;
@@ -753,12 +775,12 @@ fn tm_range(seq: &str, na_mm: f64, mg_mm: f64, dntp_mm: f64, primer_nm: f64) -> 
     primers::tm_range(seq.as_bytes(), &primers::Conditions { na_mm, mg_mm, dntp_mm, primer_nm })
 }
 
-/// `opendna_core.find_primers(template, circular, primers, max_mismatches, seed)`:
+/// `opendna_core.find_primers(template, circular, primers, max_mismatches, seed, exact_3p)`:
 /// binding sites of every primer on a sequence string, as one list of
 /// (start, end, strand, mismatches) per primer. Takes a copy of the sequence (not a
 /// Document), so it can run in a background thread while the document is being edited.
 #[pyfunction]
-#[pyo3(signature = (template, circular, primers, max_mismatches=1, seed=primers::SEED))]
+#[pyo3(signature = (template, circular, primers, max_mismatches=1, seed=primers::SEED, exact_3p=primers::EXACT_3P))]
 fn find_primers(
     py: Python<'_>,
     template: &str,
@@ -766,6 +788,7 @@ fn find_primers(
     primers: Vec<String>,
     max_mismatches: usize,
     seed: usize,
+    exact_3p: usize,
 ) -> Vec<Vec<(usize, usize, i8, usize)>> {
     // Uppercase once here instead of on every comparison.
     let upper = template.to_ascii_uppercase();
@@ -773,7 +796,7 @@ fn find_primers(
         primers
             .iter()
             .map(|p| {
-                primers::binding_sites(upper.as_bytes(), p.as_bytes(), circular, seed, max_mismatches)
+                primers::binding_sites(upper.as_bytes(), p.as_bytes(), circular, seed, max_mismatches, exact_3p)
                     .into_iter()
                     .map(|s| (s.start, s.start + s.len, if s.forward { 1 } else { -1 }, s.mismatches))
                     .collect()
@@ -963,6 +986,9 @@ fn salis_hairpin_gc(py: Python<'_>, seq: &str) -> (f64, Option<(usize, usize)>) 
 /// The module itself: `import opendna_core`. The function name must match the module name.
 #[pymodule]
 fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // The primer-binding defaults, declared here only: the Settings page reads them.
+    m.add("BINDING_SEED", primers::SEED)?;
+    m.add("EXACT_3P", primers::EXACT_3P)?;
     m.add_function(wrap_pyfunction!(tm, m)?)?;
     m.add_function(wrap_pyfunction!(tm_range, m)?)?;
     m.add_function(wrap_pyfunction!(quick_align, m)?)?;

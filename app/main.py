@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 from PySide6 import __version__ as pyside_version
 from PySide6.QtCore import QEvent, Qt, QTimer, qVersion
-from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QColor, QGuiApplication, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialogButtonBox, QDockWidget, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QDialog, QSizePolicy, QToolButton, QVBoxLayout, QWidget,
@@ -22,7 +22,7 @@ from opendna_core import Bam, Document, Fasta, Track
 
 from display_panel import DisplayPanel
 from history_panel import HistoryPanel, side_panel_width
-from editor import Editor, clean_pasted, primer_sequence, remember_hidden_primers
+from editor import Editor, clean_pasted, primer_sequence
 from shortcuts import ShortcutsDialog
 from sponsors import SponsorsDialog, show_at_startup, tip_of_the_day
 from feature_dialog import edit_feature
@@ -61,6 +61,7 @@ import db_tabs
 from reference_picker import ReferencePicker
 import theme
 import track_check
+import track_import
 from track_check import match_contig   # (tests/test_multi_record.py reads it from here)
 from sequence_view import SequenceView
 from terminal import Terminal
@@ -83,7 +84,7 @@ import autosave
 from autosave import autosave_path
 from add_record import AddRecordsDialog
 import multigb
-from uikit import background_jobs, in_background, plural, run_busy
+from uikit import ask, background_jobs, in_background, plural, run_busy
 
 tool_settings.register_page(genetic_code.TOOL, codon_dialog.UsageBox)   # the codon usage line of the Genetic code page
 
@@ -845,7 +846,7 @@ class MainWindow(QMainWindow):
             self.autosave_file = recovery
         add_recent(path)
         # Another sequence of the FASTA file that is open: its tracks (GFF, BAM...) follow, each on the sequence of the same name.
-        carry = ([e.path for e in old.tracks + old.alignments if getattr(e, "path", None)]
+        carry = ([e for e in old.tracks + old.alignments if getattr(e, "path", None)]
                  if old is not None and record and old.fasta_record and Path(old.path) == Path(path) else [])
         keep_tabs = same_file and meta is None
         letters = self.sequence_view.size if same_file else None
@@ -873,7 +874,9 @@ class MainWindow(QMainWindow):
         if doc.notes:
             QMessageBox.warning(self, "Part of the file was not read", f"{path}\n\n" + "\n".join(doc.notes))
         if carry:
-            skipped = [Path(p).name for p in carry if self.load_track(p, quiet=True) is None]
+            # (each with the types and fields chosen when it was imported)
+            skipped = [Path(e.path).name for e in carry
+                       if self.load_track(e.path, quiet=True, types=getattr(e, "types", None), fields=getattr(e, "fields", None)) is None]
             if skipped:
                 self.statusBar().showMessage(f"No data for {record} in: {', '.join(skipped)}", 8000)
         if meta is not None:
@@ -920,13 +923,16 @@ class MainWindow(QMainWindow):
             if found is None:
                 missing.append(entry["path"])
             else:
-                self.load_track(found, entry.get("seqid"))
+                self.load_track(found, entry.get("seqid"), types=entry.get("types", track_import.ALL),
+                                fields=entry.get("fields", track_import.ALL))
         self.set_dna_locked(bool(meta.get("dna_locked")))
         said = [m for m in (genetic_code.adopt(meta.get("genetic_code")), codon_usage.adopt(meta.get("codon_usage"))) if m]
         if said:
             self.statusBar().showMessage(" ".join(said), 8000)
         for name in meta.get("hidden_primers", []):
             ed.set_primer_hidden(name, True)
+        if isinstance(meta.get("primer_sites"), dict):
+            ed.load_site_choices(meta["primer_sites"])
         if missing:
             QMessageBox.warning(self, "Project", "These files of the project were not found (moved or deleted):\n\n" + "\n".join(missing))
 
@@ -1394,8 +1400,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Save Failed", f"{new}\n\n{e}")
             return False
         ed.path = new
-        if ed.hidden_primers:
-            remember_hidden_primers(new, ed.hidden_primers)
         multigb.forget_siblings(ed)
         add_recent(new)
         self._drop_autosave()
@@ -1735,9 +1739,11 @@ class MainWindow(QMainWindow):
         paths, _ = QFileDialog.getOpenFileNames(self, "Load tracks", "", filters)
         return [entry for entry in map(self.load_track, paths) if entry is not None]
 
-    def load_track(self, path, seqid=None, quiet=False):
+    def load_track(self, path, seqid=None, quiet=False, types=None, fields=None):
         """Add a GFF3/GTF/BED/VCF file as a track of the genome view (and to Find), or a
-        BAM file as coverage + reads. `quiet`: no questions: None when the track has nothing for this sequence."""
+        BAM file as coverage + reads. `quiet`: no questions: None when the track has nothing for this sequence.
+        `types`, `fields`: the feature types and extra fields to keep (a project's; track_import.ALL: everything); None: asked
+        for a GFF/GTF file (see _track_choice)."""
         ed = self.editor
         bam = str(path).lower().endswith(".bam")
         try:
@@ -1766,6 +1772,17 @@ class MainWindow(QMainWindow):
                                              f"Which sequence of {Path(path).name} is {ed.doc.name}?", seqs, 0, False)
             if not ok:
                 return None
+        if not bam:
+            chosen = self._track_choice(track, path, seqid, quiet, types, fields)
+            if chosen is None:
+                return None
+            types, fields, again = chosen
+            if again:   # the sequence was made circular: read again (its warnings were said), so the features across the origin come back
+                return self.load_track(path, seqid, True, types, fields)
+            if not any(s == seqid for s, _ in track.sequences()):
+                if not quiet:
+                    QMessageBox.warning(self, "Empty track", f"{Path(path).name}: no feature of the chosen types on {seqid}.")
+                return None
         # Does it belong to this sequence? A warning only: the track is loaded anyway (a renamed or edited sequence is common).
         problems = track_check.mismatches(ed, None if bam else track, seqid, lengths[seqid] if bam else None, path)
         if problems and quiet:
@@ -1778,12 +1795,49 @@ class MainWindow(QMainWindow):
                                     cache=None, depth_pending=False, error=None, variants=None)
             ed.alignments.append(entry)
         else:
-            entry = SimpleNamespace(name=Path(path).name, path=str(path), track=track, seqid=seqid)
+            colors, unread = track_import.colors_of(track) if "color" in fields else ({}, "")
+            if unread and quiet:
+                ed.error.emit(f"{Path(path).name}: {unread}")
+            elif unread:
+                QMessageBox.warning(self, "Track colours", f"{Path(path).name}: {unread}")
+            # wraps: items end past the length (they cross the origin of this circle), so drawing also looks one turn on
+            entry = SimpleNamespace(name=Path(path).name, path=str(path), track=track, seqid=seqid, types=types, fields=fields,
+                                    colors={raw: QColor(c) for raw, c in colors.items() if c}, show_notes="note" in fields,
+                                    wraps=ed.circular and bool(track.query(seqid, ed.length, 1 << 62, 1)[0]))
             ed.tracks.append(entry)
             ed._search_text = None
         self.set_genome_visible(True)
         ed.display_changed.emit()
         return entry
+
+    def _track_choice(self, track, path, seqid, quiet, types, fields):
+        """Which feature types and extra fields of an annotation track to keep: the dialog for a GFF/GTF file (every type with its
+        number of lines; none for a BED or VCF file, a project that says, or `quiet`), and what to do with features across the
+        origin when this sequence is linear. Keeps them in `track`; (types, fields, read again) or None when cancelled."""
+        ed = self.editor
+        found, extra = track.types(), track_import.detected_fields(track)
+        gff = not {kind for kind, _, _ in found} <= {"bed", "variant"}   # (the core names BED and VCF items so)
+        if types is None and gff and not quiet:
+            dialog = track_import.TrackImportDialog(self, Path(path).name, found, extra)
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            types, fields = dialog.choice()
+        if types == track_import.ALL or not gff:
+            types = [kind for kind, _, _ in found]
+        elif types is None:   # quiet: the types the dialog ticks
+            types = [kind for kind, _, whole in found if not whole]
+        if fields in (None, track_import.ALL):
+            fields = list(extra)
+        dropped = track.keep(types, seqid, ed.length if ed.circular else None)
+        if dropped:
+            text = (f"{plural(dropped, 'feature')} of {Path(path).name} cross the origin (the end comes before the start), and this "
+                    "sequence is linear: it is probably a circular sequence annotated as linear.")
+            if quiet:
+                ed.error.emit(text + " Those features were left out.")
+            elif ask(self, "Features across the origin", text, [("circular", "Make Circular and Re-import"), ("as_is", "Import As Is")],
+                     "circular", "Import As Is leaves them out.") == "circular" and self.set_circular(True):
+                return types, fields, True
+        return types, fields, False
 
     def import_parts(self, paths=None):
         """Every named feature of your own files goes in the Features Database, as a Local feature."""
@@ -2123,6 +2177,7 @@ if __name__ == "__main__":
     app.setWindowIcon(app_icon())
     app.setApplicationName(project.NAME)   # the data folder is then %APPDATA%\openDNA whether run from source or as the exe
     copy_old_data()   # settings and primers kept under the old name come along, before anything reads (or makes) the data folder
+    tool_settings.stamp_format()
     # Already running: this launch only hands its files over (full paths: they are relative to where it was started) and ends.
     files = [os.path.abspath(a) for a in sys.argv[1:] if a != WELCOME_FLAG]
     if single_instance.send_to_running(files):

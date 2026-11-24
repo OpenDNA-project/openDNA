@@ -7,7 +7,7 @@ runs on Enter (the file in a worker thread, the hits streaming in per sequence).
 import threading
 from dataclasses import replace
 
-from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QRadioButton, QSizePolicy, QSpinBox, QToolButton, QVBoxLayout, QWidget,
@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 import icons
 import search
-from primer_db import data_dir
+from primer_db import window_state
 from search import Options
 from uikit import SYNC_LIMIT, Latest
 
@@ -85,7 +85,7 @@ class SearchBar(QWidget):
         self.rank, self.file_path = {}, None             # file search: the order of the sequences; the file the hits are from
         self.token, self.stop_flag, self.want, self.total, self.seen = None, threading.Event(), 0, 0, 0
         self.job = Latest(self, "Search")   # the open sequence searched in a thread when it is long
-        self.settings = QSettings(str(data_dir() / "search.ini"), QSettings.IniFormat)
+        self.settings = window_state("search")
         self.timer = QTimer(self, singleShot=True, interval=LIVE_MS, timeout=self._live)
 
         self.box = _Box(placeholderText="Find sequence or name…", clearButtonEnabled=True)   # (the rest: tooltip)

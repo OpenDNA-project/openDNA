@@ -15,14 +15,14 @@ import re
 from contextlib import contextmanager
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QRect, QSettings, QSize, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QImage, QImageWriter, QPainter, QPalette, QRegion
 from PySide6.QtSvg import QSvgGenerator
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLabel, QSpinBox, QWidget,
 )
 
-from primer_db import data_dir
+from primer_db import window_state
 import theme
 
 ACTIVE = False   # True while an export paints: views with cached pixmaps draw directly
@@ -32,7 +32,7 @@ INCH_CM = 2.54
 
 
 def settings():
-    return QSettings(str(data_dir() / "image_export.ini"), QSettings.IniFormat)
+    return window_state("image_export")
 
 
 def light_wanted():

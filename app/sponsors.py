@@ -1,5 +1,5 @@
 """Startup page: the welcome message, what is new, recent files, quick actions and an update check on the left; sponsor slots,
-a tip and links on the right. Shown at the first start of each day (unless turned off) and from Help → Welcome.
+a tip and links on the right. Shown at the first start of each day (at every start if the user asks) and from Help → Welcome.
 
 Slots (up to 4) come from sponsors.json next to this file (bundled in the exe): name, text, url, button, until,
 image. An empty slot shows "Your ad here". The page is labelled as sponsored content
@@ -11,11 +11,11 @@ import json
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QFont, QPixmap
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QPushButton,
-    QTextBrowser, QVBoxLayout,
+    QScrollArea, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 import changelog
@@ -24,7 +24,7 @@ import online
 import project
 import updater
 from citations import CitationsDialog
-from primer_db import data_dir
+from primer_db import window_state
 from sourcefiles import pinned_files, recent_files, remove_recent, set_pinned
 
 FILE = Path(__file__).with_name("sponsors.json")
@@ -82,25 +82,25 @@ def load(today=None):
 
 
 def settings():
-    return QSettings(str(data_dir() / "workspace.ini"), QSettings.IniFormat)
+    return window_state()
 
 
-def hidden():
-    """The user ticked "Don't show at startup" (Help > Welcome still opens the page, and unticking it there undoes this)."""
-    return settings().value("sponsors/never", False, type=bool)
+def every_start():
+    """The user ticked "Show at every startup" (off by default: the page opens once a day)."""
+    return settings().value("sponsors/every_start", False, type=bool)
 
 
 def due():
-    """Show the page at startup? Once a day, at the first start of the day, unless the user turned it off."""
-    return not hidden() and settings().value("sponsors/last_shown", "") != date.today().isoformat()
+    """Show the page at startup? At the first start of the day, or at every start if the user asked for it."""
+    return every_start() or settings().value("sponsors/last_shown", "") != date.today().isoformat()
 
 
 def welcome_html():
     """The opening message: who made it, that it is free, and where the official download is."""
     by = f"{project.AUTHOR} (<a href='mailto:{project.CONTACT_EMAIL}'>{project.CONTACT_EMAIL}</a>)" if project.CONTACT_EMAIL else project.AUTHOR
-    return (f"Version {project.VERSION}. Developed by {by}.<br><br>"
+    return (f"Version {project.VERSION}. Developed by {by}.<br>"
             f"{project.NAME} is <b>free software</b> (AGPL-3.0). The official download is "
-            f"<a href='{project.REPO_URL}'>github.com/{project.REPO}</a>.<br><br>"
+            f"<a href='{project.REPO_URL}'>github.com/{project.REPO}</a>.<br>"
             f"Bugs and feature requests: <a href='{project.ISSUES_URL}'>GitHub Issues</a> "
             "(Help &gt; Report a Problem).")
 
@@ -111,11 +111,19 @@ class ChangelogDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"{project.NAME} changelog")
-        self.resize(640, 640)
-        view = QTextBrowser()
+        view = QTextBrowser(openExternalLinks=True)
         view.setMarkdown(changelog.text())
         layout = QVBoxLayout(self)
         layout.addWidget(view)
+        fit_screen(self)
+        self.resize(640, 640)   # bounded by fit_screen's maximum
+
+
+def fit_screen(dialog):
+    """Never larger than the screen it opens on (less room for the title bar and frame)."""
+    area = ((dialog.parentWidget() or dialog).screen() or QGuiApplication.primaryScreen()).availableGeometry()
+    dialog.setMaximumSize(area.width() - 20, area.height() - 60)
+    dialog.setMinimumWidth(min(dialog.minimumWidth(), area.width() - 20))
 
 
 def tip_of_the_day(offset=0):
@@ -147,13 +155,15 @@ class SponsorsDialog(QDialog):
         self.setMinimumWidth(820)
         slots, contact, heading = load()
         dark = self.palette().window().color().lightness() < 128
-        logo = QLabel(alignment=Qt.AlignCenter, accessibleName=project.NAME)
+        logo = QLabel(alignment=Qt.AlignLeft, accessibleName=project.NAME)
         logo.setPixmap(wordmark(dark))
         title = QLabel(welcome_html(), wordWrap=True, openExternalLinks=True)
 
         notes = changelog.section(project.VERSION)   # shown at every opening: the changelog is the page's news
-        self.news = QLabel(f"**New in {project.VERSION}**\n\n{notes}" if notes else "", textFormat=Qt.MarkdownText, wordWrap=True,
-                           frameShape=QFrame.StyledPanel)
+        # A scrolling box, not a label: a label grows with the notes and pushes the page past the screen.
+        self.news = QTextBrowser(openExternalLinks=True, frameShape=QFrame.StyledPanel)
+        self.news.setMarkdown(f"**New in {project.VERSION}**\n\n{notes}" if notes else "")
+        self.news.setMaximumHeight(180)
         self.news.setVisible(bool(notes))
         self.full_changelog = QPushButton("Full changelog…", clicked=lambda: ChangelogDialog(self).exec())
         self.full_changelog.setVisible(bool(changelog.text()))
@@ -169,8 +179,7 @@ class SponsorsDialog(QDialog):
         # Quick actions: each needs the main window behind the page (absent in tests), and leaves the page.
         actions = QHBoxLayout()
         self.quick = {}
-        for label, method in (("Open File…", "choose_file"), ("New Sequence…", "new_file"), ("Import from NCBI…", "import_ncbi"),
-                              ("Assembly", "show_assembly")):
+        for label, method in (("Open File…", "choose_file"), ("New Sequence…", "new_file"), ("Import from NCBI…", "import_ncbi")):
             button = QPushButton(label, clicked=lambda _=False, m=method: self._run(m))
             button.setEnabled(hasattr(parent, method))
             actions.addWidget(button)
@@ -190,55 +199,67 @@ class SponsorsDialog(QDialog):
         update_row.addWidget(self.update_button)
         update_row.addWidget(self.update_status, 1)
 
+        self.tip_offset = 0
+        self.tip = QLabel(wordWrap=True, textFormat=Qt.RichText)
+        self.tip.linkActivated.connect(self._link)
+        self._show_tip()
+
+        intro = QHBoxLayout()
+        intro.addWidget(title, 1)
+        intro.addWidget(self.full_changelog, alignment=Qt.AlignTop)
         left = QVBoxLayout()
-        left.addWidget(title)
+        left.addWidget(logo)
+        left.addLayout(intro)
         left.addWidget(self.news)
-        left.addWidget(self.full_changelog, alignment=Qt.AlignLeft)
         left.addSpacing(8)
         left.addWidget(_heading("RECENT FILES"))
         left.addWidget(self.recent, 1)
         left.addLayout(actions)
         left.addSpacing(8)
         left.addLayout(update_row)
+        left.addSpacing(8)
+        left.addWidget(_heading("TIP"))
+        left.addWidget(self.tip)
 
-        # Right: sponsors one above the other (none yet: no empty "Your ad here" boxes in a test version), a tip, links.
+        # Right: the sponsors one above the other, the whole height (none yet: no empty "Your ad here" boxes in a test version).
+        # It scrolls: four cards can be taller than a laptop screen.
         sponsored = any(s.get("name") for s in slots)
         self.cards = [self._card(s, contact, dark) for s in slots] if sponsored else []
-        right = QVBoxLayout()
-        if sponsored:
-            right.addWidget(_heading(heading))  # advertising, identified as such
-            for card in self.cards:
-                right.addWidget(card)
-            right.addSpacing(8)
-        self.tip_offset = 0
-        self.tip = QLabel(wordWrap=True, textFormat=Qt.RichText)
-        self.tip.linkActivated.connect(self._link)
-        self._show_tip()
-        right.addWidget(_heading("TIP"))
-        right.addWidget(self.tip)
-        right.addSpacing(8)
-        right.addWidget(_heading("LINKS"))
-        links = QLabel(f"<a href='{USER_GUIDE_URL}'>User Guide</a><br><a href='app:shortcuts'>Keyboard Shortcuts</a><br>"
-                       "<a href='app:citations'>Citations</a><br><a href='app:report'>Report a Problem</a><br>"
-                       f"<a href='{project.RELEASES_URL}'>All Releases</a>", textFormat=Qt.RichText)
-        links.linkActivated.connect(self._link)
-        right.addWidget(links)
-        right.addStretch()
-
         columns = QHBoxLayout()
         columns.addLayout(left, 3)
-        columns.addSpacing(16)
-        columns.addLayout(right, 2)
+        if sponsored:
+            right = QVBoxLayout()
+            right.setContentsMargins(0, 0, 0, 0)
+            right.addWidget(_heading(heading))  # advertising, identified as such
+            for card in self.cards:
+                right.addWidget(card, 1)
+            side = QScrollArea(widgetResizable=True, frameShape=QFrame.NoFrame,
+                               horizontalScrollBarPolicy=Qt.ScrollBarAlwaysOff)
+            side.setWidget(QWidget())
+            side.widget().setLayout(right)
+            columns.addSpacing(16)
+            columns.addWidget(side, 2)
 
-        self.snooze = QCheckBox("Don't show at startup (Help > Welcome opens this page)", checked=hidden())
+        # Bottom bar: the links, the startup switch and Continue (which only closes the page).
+        links = QLabel(" · ".join((f"<a href='{USER_GUIDE_URL}'>User Guide</a>", "<a href='app:shortcuts'>Keyboard Shortcuts</a>",
+                                   "<a href='app:citations'>Citations</a>", "<a href='app:report'>Report a Problem</a>",
+                                   f"<a href='{project.RELEASES_URL}'>All Releases</a>")), textFormat=Qt.RichText)
+        links.linkActivated.connect(self._link)
+        self.every_start = QCheckBox("Show at every startup", checked=every_start(),
+                                     toolTip="Unticked, the page opens at the first start of each day; Help > Welcome opens it any time")
         buttons = QDialogButtonBox(QDialogButtonBox.Ok)
         buttons.button(QDialogButtonBox.Ok).setText("Continue")
         buttons.accepted.connect(self.accept)
+        bottom = QHBoxLayout()
+        bottom.addWidget(links)
+        bottom.addStretch()
+        bottom.addWidget(self.every_start)
+        bottom.addWidget(buttons)
         layout = QVBoxLayout(self)
-        layout.addWidget(logo)
         layout.addLayout(columns, 1)
-        layout.addWidget(self.snooze)
-        layout.addWidget(buttons)
+        layout.addLayout(bottom)
+        fit_screen(self)
+        self.resize(1100, 820)   # bounded by fit_screen's maximum
 
     # ---- recent files ----
 
@@ -384,14 +405,14 @@ class SponsorsDialog(QDialog):
         return card
 
     def done(self, result):
-        settings().setValue("sponsors/never", self.snooze.isChecked())
+        settings().setValue("sponsors/every_start", self.every_start.isChecked())
         super().done(result)
 
 
 def show_at_startup(parent, force=False):
     """Over the main window without blocking it (a file opened from the command line keeps
     loading behind). Counts as today's showing even if closed at once. force (the --welcome
-    option): shown even if already shown today or turned off."""
+    option): shown even if already shown today."""
     if force or due():
         settings().setValue("sponsors/last_shown", date.today().isoformat())
         dialog = SponsorsDialog(parent)

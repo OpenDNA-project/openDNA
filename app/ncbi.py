@@ -22,10 +22,11 @@ import zipfile
 from dataclasses import dataclass
 from urllib.parse import quote, urlencode
 
-from PySide6.QtCore import QSettings
-
+import secret_store
 import structure
 from primer_db import data_dir
+
+KEY_NAME = "NCBI API key"
 
 BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 DATABASES = {"Nucleotide / genome (GenBank)": "nuccore", "Protein": "protein"}
@@ -41,8 +42,17 @@ _lock = threading.Lock()
 
 
 def saved_key():
-    """The API key the user saved in Import from NCBI ("" when none)."""
-    return str(QSettings(str(data_dir() / "ncbi.ini"), QSettings.IniFormat).value("api_key", ""))
+    """The API key the user saved in Import from NCBI ("" when none): in the system's secure store (secret_store)."""
+    return str(secret_store.load(KEY_NAME).get("api_key", ""))
+
+
+def save_key(key):
+    """Keep the API key typed in Import from NCBI (an empty one is forgotten)."""
+    if key != saved_key():
+        if key:
+            secret_store.save(KEY_NAME, {"api_key": key})
+        else:
+            secret_store.forget(KEY_NAME)
 
 
 class NcbiError(Exception):

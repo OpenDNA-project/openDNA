@@ -14,7 +14,6 @@ import pytest
 os.environ["OPENDNA_DATA_DIR"] = tempfile.mkdtemp(prefix="opendna_test_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
-from PySide6.QtCore import QSettings
 
 from opendna_core import Document, Fasta
 
@@ -22,6 +21,8 @@ import cas9
 import ncbi
 import primer_panel
 import reference
+import tool_settings
+from primer_db import BINDING
 from editor import Editor, reverse_complement as rc
 from reference import Reference
 
@@ -57,14 +58,10 @@ def genome(tmp_path, monkeypatch):
     chr3 = dna(300) + rc(PRIMER) + dna(700)
     path = tmp_path / "genome.fa"
     write_fasta(path, [("chr1", chr1), ("chr2", chr2), ("chr3", chr3)])
-    s = QSettings(str(tmp_path / "options.ini"), QSettings.IniFormat)
-    monkeypatch.setattr(primer_panel, "settings", lambda: s)
-    s.setValue("primers/genome_check", "true")
-    s.setValue("primers/genome", str(path))
-    s.setValue("primers/homology_seed", 12)
-    s.setValue("primers/homology_mismatches", 0)
     primer_panel._genomes.clear()
-    yield path, (chr1, chr2, chr3)
+    with tool_settings.override({(BINDING, "genome_check"): True, (BINDING, "genome"): str(path),
+                                 (BINDING, "homology_seed"): 12, (BINDING, "homology_mismatches"): 0}):
+        yield path, (chr1, chr2, chr3)
     primer_panel._genomes.clear()
 
 
@@ -96,9 +93,8 @@ def test_off_target_search_covers_every_record(genome, tmp_path, monkeypatch):
     assert level == "bad" and "chr3:" in text and "chr2:" not in text
     one = path.with_name("one.fa")
     write_fasta(one, [("chr2", chr2)])
-    primer_panel.settings().setValue("primers/genome", str(one))
-    assert genome_check(open_chr2, PRIMER) == ("info", "this sequence is the genome")
-    primer_panel.settings().setValue("primers/genome", str(path))
+    with tool_settings.override({(BINDING, "genome"): str(one)}):
+        assert genome_check(open_chr2, PRIMER) == ("info", "this sequence is the genome")
 
     # --- out of time or cancelled
     primer_panel._genomes.clear()

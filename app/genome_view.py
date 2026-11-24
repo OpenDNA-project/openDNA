@@ -500,18 +500,23 @@ class GenomeCanvas(QWidget):
             top, h = row
             lh = self.lane_h(t.name)
             color = QColor(TRACK_COLORS[i % len(TRACK_COLORS)])
-            items, more = t.track.query(t.seqid, int(vs), int(math.ceil(ve)), DENSE)
+            a, b = int(vs), int(math.ceil(ve))
+            items, more = t.track.query(t.seqid, a, b, DENSE)
             if more:
-                counts = t.track.density(t.seqid, int(vs), int(math.ceil(ve)), max(1, int(W // 2)))
+                counts = t.track.density(t.seqid, a, b, max(1, int(W // 2)))
                 self._bars(p, counts, top, h, color, self.style(t.name).scale)
                 continue
-            boxes = [(self.x(s), self.x(e), (s, e, strand, name)) for s, e, strand, name, _ in items]
-            for lane, x0, x1, (s, e, strand, name) in pack(boxes, self.lanes(t.name, h)):
+            # On a circle an item across the origin ends past the length: its part after the origin is one turn on.
+            shifted = t.track.query(t.seqid, a + ed.length, b + ed.length, DENSE)[0] if t.wraps and ed.circular else []
+            boxes = [(self.x(item[0] - turn), self.x(item[1] - turn), item)
+                     for found, turn in ((items, 0), (shifted, ed.length)) for item in found]
+            for lane, x0, x1, (s, e, strand, name, _, raw, note) in pack(boxes, self.lanes(t.name, h)):
                 r = QRectF(max(left, x0), top + lane * lh, max(1.5, min(left + W, x1) - max(left, x0)), lh - 2)
-                p.fillRect(r, color)
-                self.hits.append((r, ("range", s, e)))
+                own = t.colors.get(raw, color)   # the file's colour, when it was imported and read
+                p.fillRect(r, own)
+                self.hits.append((r, ("range", s, e, note if t.show_notes else None)))
                 if lh >= 11 * self.scale() and r.width() > fm.horizontalAdvance(name) + 6:
-                    p.setPen(text_color_on(color))
+                    p.setPen(text_color_on(own))
                     p.drawText(r, Qt.AlignCenter, name)
         lap("annotation tracks")
 
@@ -1018,6 +1023,10 @@ class GenomeCanvas(QWidget):
                 any(r.adjusted(-1, -2, 1, 2).contains(pt) for r, _ in self.hits) or self.name_at(x, y) is not None
                 or (x < self.left - 4 and self.hit_row_at(y) >= 0)))
             self.setCursor(Qt.SplitVCursor if self.edge_at(y) else Qt.PointingHandCursor if clickable else Qt.ArrowCursor)
+            # a track item's note (GFF Note / product), when a track was imported with it
+            if any(t.show_notes for t in self.editor.tracks):
+                self.setToolTip(next((act[3] for r, act in reversed(self.hits) if act[0] == "range" and act[3]
+                                      and r.adjusted(-1, -2, 1, 2).contains(pt)), ""))
             return
         mode, x0, vs, ve, _ = self.drag
         x = event.position().x()

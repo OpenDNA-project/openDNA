@@ -18,7 +18,7 @@ numbers and tracks need, and paintEvent draws them there.
 """
 import math
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, QSettings, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPalette, QPen, QPolygonF, QTextBlockFormat, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox, QGridLayout, QLabel, QScrollArea, QSizePolicy, QTextEdit, QToolTip, QVBoxLayout, QWidget,
@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 import structure
 import theme
-from primer_db import data_dir
+from primer_db import window_state
 from structure_view import KYTE_DOOLITTLE, PROPERTY, SS_COLOURS, VOLUME
 
 TRACKS = {   # name -> (label at the start of its row, what it shows, needs a 3D model); in the order they are drawn
@@ -50,7 +50,7 @@ SS_NAMES = {"H": "helix", "E": "strand", "-": "neither helix nor strand"}
 
 
 def _settings():
-    return QSettings(str(data_dir() / "window.ini"), QSettings.IniFormat)
+    return window_state()
 
 
 def saved_tracks():

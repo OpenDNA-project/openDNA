@@ -426,12 +426,13 @@ def track_of_many(tmp_path_factory):
 
 def test_tracks_gff_bed_parsing_query_density_and_search(track_of_many, tmp_path):
     """GFF3 / GTF / BED tracks: escaped attributes, names, coordinates, 3 to 12 BED columns, headers, malformed lines refused;
-    query equals a brute-force overlap (and the limit flag), density bins equal the overlap count, search is case-insensitive
-    and limited."""
+    every type counted (a whole-sequence region flagged) and only the kept ones queried; a feature across the origin is one item
+    on a circle and left out (counted) on a linear sequence; colours read in every way files write them; query equals a
+    brute-force overlap (and the limit flag), density bins equal the overlap count, search is case-insensitive and limited."""
     # --- gff3 escaped attributes names and coordinates ---
     path = tmp_path / "t.gff3"
     path.write_text("##gff-version 3\n"
-                    "chr1\tsrc\tregion\t1\t1000\t.\t+\t.\tID=chr1\n"                              # whole-sequence entries are skipped
+                    "chr1\tsrc\tregion\t1\t1000\t.\t+\t.\tID=chr1\n"                              # whole-sequence: not ticked at import
                     "chr1\tsrc\tgene\t10\t100\t.\t+\t.\tID=g1;Name=big%2Cgene\n"                   # %2C = comma
                     "chr1\tsrc\tgene\t120\t180\t.\t-\t.\tID=g2;Name=a%3Bb%3Dc\n"                   # ; and = escaped
                     "chr1\tsrc\tgene\t200\t300\t.\t.\t.\tName=100%25 %C3%A9\n"                      # %25 = %, %C3%A9 = e acute
@@ -442,6 +443,9 @@ def test_tracks_gff_bed_parsing_query_density_and_search(track_of_many, tmp_path
                     "chr1\tsrc\tgene\t400\t400\t.\t+\t.\tName=onebase\n"                            # one base long
                     "##FASTA\n>chr1\nACGT\n")
     t = core.Track(str(path))
+    assert ("region", 1, True) in t.types() and ("gene", 4, False) in t.types()
+    assert t.colors() == [("red", 1)] and t.field_counts() == (1, 0)
+    assert t.keep([k for k, _, whole in t.types() if not whole], "chr1") == 0
     items, more = t.query("chr1", 0, 1000, 100)
     assert not more
     assert [i[3] for i in items] == ["big,gene", "a;b=c", "100% é", "araC", "bad%ZZ", "gtfname", "tRNA", "onebase"], "in start order"
@@ -463,8 +467,7 @@ def test_tracks_gff_bed_parsing_query_density_and_search(track_of_many, tmp_path
         p.write_text(f"c\ts\tgene\t1\t5\t.\t+\t.\t{attrs}\n")
         assert core.Track(str(p)).query("c", 0, 10)[0][0][3] == f"v_{order[k]}"
     # --- gff malformed lines are errors not crashes ---
-    for i, line in enumerate(["chr1\ts\tgene\t10\t5\t.\t+\t.\tName=x",       # end before start
-                              "chr1\ts\tgene\t0\t5\t.\t+\t.\tName=x",        # GFF is 1-based: 0 is no position
+    for i, line in enumerate(["chr1\ts\tgene\t0\t5\t.\t+\t.\tName=x",        # GFF is 1-based: 0 is no position
                               "chr1\ts\tgene\tten\t20\t.\t+\t.\tName=x",     # not a number
                               "chr1\ts\tgene\t1\t20\t.\t+",                  # too few columns
                               "just some text"]):
@@ -476,10 +479,25 @@ def test_tracks_gff_bed_parsing_query_density_and_search(track_of_many, tmp_path
         core.Track(str(tmp_path / "no_such_file.gff3"))
     # a bad line among good ones is skipped and said: the count and the first one named; a clean file has no notes
     p = tmp_path / "mixed.gff3"
-    p.write_text("##gff-version 3\nchr1\ts\tgene\t1\t20\t.\t+\t.\tName=ok\nchr1\ts\tgene\t10\t5\t.\t+\t.\tName=x\nchr1\ts\tgene\t0\t5\t.\t+\t.\tName=y\n")
+    p.write_text("##gff-version 3\nchr1\ts\tgene\t1\t20\t.\t+\t.\tName=ok\nchr1\ts\tgene\tten\t5\t.\t+\t.\tName=x\nchr1\ts\tgene\t0\t5\t.\t+\t.\tName=y\n")
     mixed = core.Track(str(p))
     assert [i[3] for i in mixed.query("chr1", 0, 100)[0]] == ["ok"]
-    assert mixed.notes == ["2 lines were skipped as not valid GFF/GTF (first: line 3, end before start)."]
+    assert mixed.notes == ["2 lines were skipped as not valid GFF/GTF (first: line 3, start is not a number)."]
+    # --- an end before the start: the feature crosses the origin. One item on a circle (its end past the length), found from
+    # either side of the origin; left out and counted on a linear sequence ---
+    p.write_text("c\ts\tregion\t950\t50\t.\t.\t.\tName=wraps;color=%23B91515\nc\ts\tregion\t100\t200\t.\t.\t.\tName=in\n")
+    ring = core.Track(str(p))
+    assert ring.sequences() == [("c", 2)] and ring.keep(["region"], "c", 1000) == 0
+    assert [i[:2] for i in ring.query("c", 990, 1000)[0]] == [(949, 1050)] and ring.query("c", 1000, 1010)[0][0][3] == "wraps"
+    line = core.Track(str(p))
+    assert line.keep(["region"], "c") == 1 and [i[3] for i in line.query("c", 0, 2000)[0]] == ["in"]
+    # --- colours, in every way a file writes one; one that cannot be read is None (drawn in the track's colour) ---
+    import track_import
+    for raw, want in [("#257215", "#257215"), ("#2a1", "#22aa11"), ("B91515", "#b91515"), ("0xB91515", "#b91515"), ("185,21,21", "#b91515"),
+                      ("185 21 21", "#b91515"), ("rgb(185, 21, 21)", "#b91515"), ("darkgreen", "#006400"), ("2", "#ff0000"),
+                      ("17", "#ffbfbf"), ("18", None), ("300,0,0", None), ("green-ish", None)]:
+        assert track_import.read_color(raw) == want, raw
+    assert track_import.colors_of(ring) == ({"#B91515": "#b91515"}, "")
     bed = tmp_path / "mixed.bed"
     bed.write_text("chr1\t5\t3\nchr1\t1\t9\tgood\n")
     assert core.Track(str(bed)).notes == ["1 line was skipped as not valid BED (first: line 1, end before start)."]

@@ -68,6 +68,8 @@ must release the GIL (`py.allow_threads`) for a Python thread to help; pure-Pyth
   (their APIs were never verified: the research tool refused the pages); S-index (no code found).
 - Verification PCR and FLP/Cre excision for recombineering were declined on purpose: not planned.
 - Window state: restore dock state and table column widths, not only the window geometry.
+- Tracks: group GFF3 features by `Parent` (exons under their mRNA, under their gene) and draw a gene with its parts, as genome browsers do;
+  today each line is an item of its own. Other common attributes (`Alias`, `Dbxref`) could join colour and note in the import window.
 
 ## 3b. Planned in the old roadmap (the old PLAN.md roadmap, phases 5 to 7, deleted), not built
 

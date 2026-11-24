@@ -27,7 +27,8 @@ from genes import GENE, redundant_genes
 from perf import timed
 from uikit import SYNC_LIMIT, Latest
 from units import is_tu
-from primer_db import binding_mismatches, data_dir, db, notifier
+import tool_settings
+from primer_db import BINDING, PCR, binding, db, notifier
 
 PRIMER_KIND = "primer_bind"
 # `source` spans the whole record (.dna files hide it too). `primer_bind` features stored in
@@ -283,37 +284,22 @@ class _Relay(QObject):
 _relay = _Relay()
 
 
-def _hidden_file():
-    return data_dir() / "hidden_primers.json"
-
-
 def feature_key(f):
     """What names a feature in `Editor.hidden_features` (its index changes when features are added or removed)."""
     return (f.kind, f.label, f.location)
 
 
-def hidden_primers_of(path):
-    """Names of the primers hidden in the file at `path` (Hide in This File): kept in the data folder, by file path."""
-    try:
-        return set(json.loads(_hidden_file().read_text(encoding="utf-8")).get(str(Path(path).resolve()), []))
-    except (OSError, ValueError, AttributeError):
-        return set()
+def site_key(site):
+    """What names a primer site among the sites of its primer, whatever else binds: its strand and its 3′ end."""
+    return site.strand, site.end if site.strand > 0 else site.start
 
 
-def remember_hidden_primers(path, names):
-    try:
-        table = json.loads(_hidden_file().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        table = {}
-    key = str(Path(path).resolve())
-    if names:
-        table[key] = sorted(names)
-    else:
-        table.pop(key, None)
-    try:
-        _hidden_file().write_text(json.dumps(table, indent=1), encoding="utf-8")
-    except OSError:
-        pass   # not remembered for next time; still hidden now
+def site_rank(site, n):
+    """Sort key of a site, the best first: fewest mismatches in the last 5 bases at the 3′ end (they decide whether the polymerase
+    starts), then fewest mismatches, then the longest annealed part. `n`: the length of the sequence (a site may cross the origin)."""
+    end3 = (site.end - 1) % n if site.strand > 0 else site.start
+    near = sum(((end3 - p) if site.strand > 0 else (p - end3)) % n < 5 for p in site.mismatch_at)
+    return near, site.mismatches, site.start - site.end
 
 
 def _connect_weakly(signal, method):
@@ -391,7 +377,10 @@ class Editor(QObject):
         self.untranslated = set()    # (location, label) of CDSs whose translation is off
         self.primer_sites, self.site_by_key, self.primer_lanes = [], {}, {}
         # Primers of the database not drawn on this file (still in the database, still listed greyed in the Primers view).
-        self.hidden_primers = hidden_primers_of(path)
+        self.hidden_primers = set()   # (for this session only; an .odp project keeps them)
+        # Sites shown or hidden by hand: {primer name: {"sequence": upper-case, "sites": {site_key: shown}}}, under the binding
+        # rule (seed, exact 3′, mismatches) `site_rule` they were made with; another rule finds other sites, so it starts afresh.
+        self.site_rule, self.site_choices = None, {}
         self.current_primer = None   # key of the selected primer site
         self.tracks = []             # loaded annotation tracks (SimpleNamespace name, track, seqid)
         self.alignments = []         # loaded BAM files (SimpleNamespace name, bam, seqid, length, ...)
@@ -403,6 +392,7 @@ class Editor(QObject):
         # Weak links: a global signal must not keep a closed window's editor alive (each one would go on re-matching the primers).
         _connect_weakly(_relay.elsewhere_ready, self._take_elsewhere)
         _connect_weakly(notifier.changed, self.match_primers)
+        _connect_weakly(tool_settings.notifier.changed, self._settings_changed)
         _connect_weakly(inventory.notifier.changed, self._inventory_changed)
         self._refresh()
 
@@ -534,11 +524,12 @@ class Editor(QObject):
         """Recompute where the database primers bind. Small sequences: now. Large ones:
         in a background thread (the old sites stay drawn meanwhile)."""
         primers = self.primer_list()
-        seq, circular, mm = self.doc.sequence(), self.doc.circular, binding_mismatches()   # copies: the document may be edited meanwhile
-        self._primer_job.run(lambda: find_primers(seq, circular, [p for _, p in primers], mm), lambda hits: self._set_sites(primers, hits),
-                             self.length <= SYNC_LIMIT)
+        seq, circular, rule = self.doc.sequence(), self.doc.circular, binding()   # copies: the document may be edited meanwhile
+        seed, exact, mm = rule
+        self._primer_job.run(lambda: find_primers(seq, circular, [p for _, p in primers], mm, seed, exact),
+                             lambda hits: self._set_sites(primers, hits, rule), self.length <= SYNC_LIMIT)
 
-    def _set_sites(self, primers, hits):
+    def _set_sites(self, primers, hits, rule):
         n = self.length
         sites = []
         in_db = self._db_primer_keys()
@@ -557,7 +548,14 @@ class Editor(QObject):
                 site.extent = primer_extent(site, site.tail, n if self.circular else None)
                 site.mismatch_at = self._mismatch_positions(site) if mm else []
                 sites.append(site)
+        best = {}
+        for site in sites:
+            site.rank = site_rank(site, n)
+            best[site.label] = min(best.get(site.label, site.rank), site.rank)
+        for site in sites:
+            site.best = site.rank == best[site.label]
         self.primer_sites = sites
+        self._keep_site_choices(list(rule), primers)
         self._say_cut_primers()
         self.match_elsewhere()   # (no-op unless the file has several records, and the primers are the same as last time)
         self.site_by_key = {s.key: s for s in sites}
@@ -612,8 +610,8 @@ class Editor(QObject):
         if not self.multi_genbank:
             self.elsewhere, self.away_totals, self.away_capped = [], {}, set()
             return
-        primers, mm = self.primer_list(), binding_mismatches()
-        key = (str(self.path), tuple(primers), mm, tuple(self.fasta_records))
+        primers, (seed, exact, mm) = self.primer_list(), binding()
+        key = (str(self.path), tuple(primers), seed, exact, mm, tuple(self.fasta_records))
         if key == self._elsewhere_key:
             return
         self._elsewhere_key = key
@@ -627,7 +625,7 @@ class Editor(QObject):
                     if name == current:
                         continue
                     doc = multigb.read_record(path, name)
-                    hits = find_primers(doc.sequence(), doc.circular, [p for _, p in primers], mm)
+                    hits = find_primers(doc.sequence(), doc.circular, [p for _, p in primers], mm, seed, exact)
                     for (label, seq), per_primer in zip(primers, hits):
                         totals[label] = totals.get(label, 0) + len(per_primer)
                         if len(per_primer) > MAX_SITES:
@@ -651,14 +649,93 @@ class Editor(QObject):
     def _pack_primers(self):
         """Own lanes per strand for the drawn sites: forward primers above the bases, reverse below."""
         self.primer_lanes = {}
+        best_only = tool_settings.value(BINDING, "best_only")
         for strand in (1, -1):
             group = [SimpleNamespace(index=s.key, spans=s.extent) for s in self.primer_sites
-                     if s.strand == strand and s.label not in self.hidden_primers]
+                     if s.strand == strand and self.site_drawn(s, best_only)]
             self.primer_lanes.update(pack_lanes(group)[0])
 
     def set_primer_hidden(self, name, hidden):
         """Hide in This File / Show in This File: the primer stays in the database; only this file stops drawing it."""
         self.set_primers_hidden([name], hidden)
+
+    def _settings_changed(self, tool):
+        """Settings > Primers: another binding rule finds other sites (matched again); the rest (Best site only, the PCR
+        conditions, the 3′ check, the genome) only changes what is drawn or checked."""
+        if tool == BINDING and list(binding()) != self.site_rule:
+            self.match_primers()
+        elif tool in (BINDING, PCR):
+            self._pack_primers()
+            self.primers_changed.emit()
+            self.display_changed.emit()
+
+    @staticmethod
+    def _site_default(site, best_only):
+        """Shown unless chosen otherwise: every site, or with Best site only the best ones."""
+        return site.best or not best_only
+
+    def site_shown(self, site, best_only=None):
+        """Is this site ticked? As chosen by hand, else its default. `best_only`: the setting, when the caller already read it."""
+        choice = self.site_choices.get(site.label, {}).get("sites", {}).get(site_key(site))
+        if choice is not None:
+            return choice
+        return self._site_default(site, tool_settings.value(BINDING, "best_only") if best_only is None else best_only)
+
+    def site_drawn(self, site, best_only=None):
+        return site.label not in self.hidden_primers and self.site_shown(site, best_only)
+
+    def set_sites_shown(self, sites, shown):
+        """Show or hide these sites (right-click > Hide This Site, the Primers view's checkboxes); the primer stays. A choice that
+        is what the site would be anyway is not kept."""
+        best_only = tool_settings.value(BINDING, "best_only")
+        for site in sites:
+            entry = self.site_choices.setdefault(site.label, {"sequence": site.sequence.upper(), "sites": {}})
+            if shown == self._site_default(site, best_only):
+                entry["sites"].pop(site_key(site), None)
+            else:
+                entry["sites"][site_key(site)] = shown
+            if not entry["sites"]:
+                del self.site_choices[site.label]
+        if not shown and self.current_primer in self.site_by_key and not self.site_drawn(self.site_by_key[self.current_primer]):
+            self.current_primer = None
+        self._pack_primers()
+        self.primers_changed.emit()
+        self.display_changed.emit()
+
+    def saved_site_choices(self):
+        """The site choices as a project keeps them (JSON)."""
+        return {"rule": self.site_rule, "primers": {name: {"sequence": e["sequence"], "sites": [[*k, v] for k, v in e["sites"].items()]}
+                                                    for name, e in self.site_choices.items()}}
+
+    def load_site_choices(self, saved):
+        """Take the choices of a project; dropped when they were made under another binding rule."""
+        try:
+            choices = {name: {"sequence": str(e["sequence"]).upper(), "sites": {(int(a), int(b)): bool(v) for a, b, v in e["sites"]}}
+                       for name, e in (saved.get("primers") or {}).items()}
+        except (TypeError, ValueError, KeyError, AttributeError):   # a hand-edited file
+            choices = {}
+        rule = list(binding())
+        if saved.get("rule") == rule and choices:
+            self.site_rule, self.site_choices = rule, choices
+            if self.primer_sites:
+                self._pack_primers()
+                self.primers_changed.emit()
+
+    def _keep_site_choices(self, rule, primers):
+        """After a new match: under another rule nothing is kept; a primer whose sequence changed loses its choices; a site that no
+        longer binds (the sequence was edited) loses its own."""
+        if rule != self.site_rule:
+            self.site_rule, self.site_choices = rule, {}
+        sequences = {name: seq.upper() for name, seq in primers}
+        keys = {}
+        for site in self.primer_sites:
+            keys.setdefault(site.label, set()).add(site_key(site))
+        for name in list(self.site_choices):
+            entry = self.site_choices[name]
+            kept = {k: v for k, v in entry["sites"].items() if k in keys.get(name, ())}
+            entry["sites"] = kept
+            if sequences.get(name) != entry["sequence"] or not kept:
+                del self.site_choices[name]
 
     def set_primers_hidden(self, names, hidden):
         """set_primer_hidden for several primers at once (one redraw)."""
@@ -667,8 +744,6 @@ class Editor(QObject):
         self.hidden_primers = before | names if hidden else before - names
         if self.hidden_primers == before:
             return
-        if not self.untitled:
-            remember_hidden_primers(self.path, self.hidden_primers)
         if hidden and self.current_primer and self.site_by_key.get(self.current_primer) is not None \
                 and self.site_by_key[self.current_primer].label in names:
             self.current_primer = None
@@ -840,7 +915,8 @@ class Editor(QObject):
         """Primer sites to draw: never those hidden in this file, and only from the sources switched on in the display
         filter: "From this sequence" for the primers in this file (also when the database has them too), "From the database"
         for the ones that are only there."""
-        return [s for s in self.primer_sites if s.label not in self.hidden_primers
+        best_only = tool_settings.value(BINDING, "best_only")   # (read once: the views ask for this list on every paint)
+        return [s for s in self.primer_sites if self.site_drawn(s, best_only)
                 and (self.show_file_primers if s.from_file else self.show_db_primers)]
 
     def visible(self, f):
@@ -1378,8 +1454,6 @@ class Editor(QObject):
         self.doc.save_genbank(path, self.file_primer_features())
         self.untitled = False
         self.path = Path(path)
-        if self.hidden_primers:   # the new file hides the same primers
-            remember_hidden_primers(self.path, self.hidden_primers)
         self.changed.emit()
 
     def gc_percent(self):

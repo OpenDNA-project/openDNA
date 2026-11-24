@@ -4,7 +4,7 @@
 
 ## `test_bam_reads_pileup_coverage_and_variants_match_a_model`
 
-**Result:** ✅ passed in 0.12 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the read alignment track could show reads at wrong places, miscount depth, ignore duplicate/QC filters or call wrong SNPs and indels from a user's BAM file.
 
@@ -30,29 +30,31 @@ Writes BAM files with the standard library (hand-designed reads, 300 random read
 
 ## `test_tracks_gff_bed_parsing_query_density_and_search`
 
-**Result:** ✅ passed in 0.19 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.11 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
-**Why it matters:** Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, or miss features when zooming and searching.
+**Why it matters:** Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, drop features across the origin or a whole type, lose the file's colours, or miss features when zooming and searching.
 
-Parses GFF3/GTF/BED files written in the test and checks names, coordinates, strands, error handling; compares query and density against a brute-force overlap on 400 random BED features; checks text search. It also checks that a bad line among good ones is skipped and counted in Track.notes (the first one named), while a file with no valid line is still an error.
+Parses GFF3/GTF/BED files written in the test and checks names, coordinates, strands, error handling; compares query and density against a brute-force overlap on 400 random BED features; checks text search. It also checks that a bad line among good ones is skipped and counted in Track.notes (the first one named), while a file with no valid line is still an error. Every type is counted (a whole-sequence region flagged) before the kept ones are chosen; a feature across the origin is one item on a circle and left out (counted) on a linear sequence; the colour of a line is read in every way files write it.
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | GFF3 with escaped Name, GTF-style attributes, region line, ##FASTA | names 'big,gene', 'a;b=c', '100% é', 'araC', 'bad%ZZ', 'gtfname', 'tRNA', 'onebase' in start order; 1-based 10..100 -> (9,100,+1); '.' strand 0; region skipped |
+| 1 | GFF3 with escaped Name, GTF-style attributes, region line, color=red, ##FASTA; keep the types that do not cover the whole sequence | types include (region,1,whole) and (gene,4,not whole); colours [('red',1)], field counts (1,0); keep drops 0; names 'big,gene', 'a;b=c', '100% é', 'araC', 'bad%ZZ', 'gtfname', 'tRNA', 'onebase' in start order; 1-based 10..100 -> (9,100,+1); '.' strand 0; no region item |
 | 2 | name attribute preference: Name, gene_name, gene, locus_tag, gene_id, ID, transcript_id | highest present key wins |
-| 3 | end<start, start 0, non-number, too few columns, plain text, missing file | OSError |
-| 4 | BED with 3..12 columns, tab and space separated | 0-based coordinates as written; name from column 4; strand from column 6; same with spaces |
-| 5 | BED with track/browser/comment/blank lines and zero-length feature | 3 items; zero-length 10..10 found in 5..15 and 0..11, not in 10..20; bad lines raise OSError |
-| 6 | 400 random BED features, 5 windows | query equals brute-force overlap, in start order; limit 399 -> more=True, 400 -> False; unknown sequence ([], False) |
-| 7 | GFF with empty Name= | falls back to gene, then ID |
-| 8 | density 100 / 7 / 40 bins | equals per-bin overlap count; 100 tidy features in 100 bins -> [1]*100; empty cases zeros/[] |
-| 9 | search 'lac', 'LAC', 'LaC', 'écoli', 'ecoli', limit 3 | 12 matches case-insensitive; unicode case folding; no accent folding; limit respected; row tuple ('chr1',0,10,0,'LacZ','bed') |
-| 10 | a GFF with one good line and two bad ones (end before start, start 0); a BED with one bad and one good line; a clean BED | the good line is loaded; notes == ['2 lines were skipped as not valid GFF/GTF (first: line 3, end before start).'], the BED's '1 line was skipped as not valid BED (first: line 1, end before start).', and [] for the clean one |
-| 11 | t.search('lac', 3, 'chr3') and t.search('lac', 100, 'chr1') / 'nope' on a track of three sequences | three items of chr3 in start order; LacZ and lacY; [] (the limit counts only the sequence asked for) |
+| 3 | start 0, non-number, too few columns, plain text, missing file | OSError |
+| 4 | c: region 950..50 (Name=wraps, color=%23B91515) and region 100..200; keep region on a circle of 1000; and on a linear sequence | sequences [(c,2)]; circle: 0 dropped, query 990..1000 -> (949,1050), query 1000..1010 -> 'wraps'; linear: 1 dropped, only 'in' |
+| 5 | read_color of #257215, #2a1, B91515, 0xB91515, 185,21,21, '185 21 21', rgb(185, 21, 21), darkgreen, 2, 17, 18, 300,0,0, green-ish | #257215, #22aa11, #b91515 (x5), #006400, #ff0000, #ffbfbf, None, None, None; colors_of the wrapping track -> {'#B91515': '#b91515'}, no warning |
+| 6 | BED with 3..12 columns, tab and space separated | 0-based coordinates as written; name from column 4; strand from column 6; same with spaces |
+| 7 | BED with track/browser/comment/blank lines and zero-length feature | 3 items; zero-length 10..10 found in 5..15 and 0..11, not in 10..20; bad lines raise OSError |
+| 8 | 400 random BED features, 5 windows | query equals brute-force overlap, in start order; limit 399 -> more=True, 400 -> False; unknown sequence ([], False) |
+| 9 | GFF with empty Name= | falls back to gene, then ID |
+| 10 | density 100 / 7 / 40 bins | equals per-bin overlap count; 100 tidy features in 100 bins -> [1]*100; empty cases zeros/[] |
+| 11 | search 'lac', 'LAC', 'LaC', 'écoli', 'ecoli', limit 3 | 12 matches case-insensitive; unicode case folding; no accent folding; limit respected; row tuple ('chr1',0,10,0,'LacZ','bed') |
+| 12 | a GFF with one good line and two bad ones (end before start, start 0); a BED with one bad and one good line; a clean BED | the good line is loaded; notes == ['2 lines were skipped as not valid GFF/GTF (first: line 3, start is not a number).'], the BED's '1 line was skipped as not valid BED (first: line 1, end before start).', and [] for the clean one |
+| 13 | t.search('lac', 3, 'chr3') and t.search('lac', 100, 'chr1') / 'nope' on a track of three sequences | three items of chr3 in start order; LacZ and lacY; [] (the limit counts only the sequence asked for) |
 
 ## `test_feature_locations_round_trip`
 
-**Result:** ✅ passed in 0.05 s · [line 603](../../tests/test_core_formats.py#L603) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 621](../../tests/test_core_formats.py#L621) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a GenBank file could silently change or drop complex feature locations (joins, complement, fuzzy ends, between-base sites, remote references).
 
@@ -70,7 +72,7 @@ Adds each of 20 GenBank location forms to a document and checks the written text
 
 ## `test_genome_fasta_fetch_and_search_match_slicing_and_brute_force`
 
-**Result:** ✅ passed in 0.04 s · [line 682](../../tests/test_core_formats.py#L682) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 700](../../tests/test_core_formats.py#L700) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a reference genome opened from a FASTA file could return wrong bases at line breaks or ends, and motif/sequence search on it could miss hits or report wrong strands.
 
@@ -97,7 +99,7 @@ Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python
 
 ## `test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.06 s · [line 763](../../tests/test_core_formats.py#L763) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 781](../../tests/test_core_formats.py#L781) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A break, a gap or a deletion near an end of the reference, or through the origin of a plasmid, could be hidden or mistaken for something else.
 

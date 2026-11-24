@@ -37,13 +37,15 @@ def mismatches(editor, track, seqid, length=None, path=""):
                        "another version of it, so they may not line up.")
         return out
     past, more = track.query(seqid, editor.length, 1 << 62, CHECKED)
+    if editor.circular:   # an item across the origin ends past the length (it starts inside the sequence)
+        past = [i for i in past if i[0] >= editor.length or i[1] > 2 * editor.length]
     if past:
         far = max(e for _, e, *_ in past)
         out.append(f"{len(past):,}{'+' if more else ''} item(s) lie beyond the end of this sequence ({editor.length:,} bp; "
                    f"the track reaches {far:,}).")
     items, _ = track.query(seqid, 0, editor.length, CHECKED)
     wrong, checked, example = 0, 0, None
-    for start, end, _, label, kind in items:
+    for start, end, _, label, kind, *_ in items:
         if kind != "variant" or end > editor.length:
             continue
         ref = label.split(" ")[-1].split(">")[0].upper()

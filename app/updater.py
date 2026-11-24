@@ -36,14 +36,14 @@ from hmac import compare_digest
 from pathlib import Path
 from urllib.parse import urlparse
 
-from PySide6.QtCore import QObject, QSettings, Qt, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QVBoxLayout,
 )
 
 import project
 import tool_settings
-from primer_db import data_dir
+from primer_db import data_dir, window_state
 
 def release_asset(tag, system=None):
     """The file this system installs, in the release of `tag` (what release.yml publishes); its checksum is a line of CHECKSUMS.
@@ -492,7 +492,7 @@ def cleanup_old_in_background():
 # ---- what is remembered --------------------------------------------------------------------------------------------------------------
 
 def _state():
-    return QSettings(str(data_dir() / "updates.ini"), QSettings.IniFormat)
+    return window_state("updates")
 
 
 def check_enabled():

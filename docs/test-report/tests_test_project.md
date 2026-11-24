@@ -4,7 +4,7 @@
 
 ## `test_release_metadata_and_exe_recipe_are_consistent`
 
-**Result:** ✅ passed in 1.09 s · [line 23](../../tests/test_project.py#L23) · **Area:** Release packaging · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.91 s · [line 23](../../tests/test_project.py#L23) · **Area:** Release packaging · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a release could ship with mismatched version numbers (breaking the updater) or a Windows exe missing data files the app needs (parts library, tool settings, 3D viewer), which only shows up for users of the frozen build; or a missing or malformed changelog would reach the start page and the release description.
 
@@ -53,17 +53,18 @@ Checks copy_old_data copies the old-name data folder to the new location when th
 
 ## `test_welcome_slots_hold_four_and_expire`
 
-**Result:** ✅ passed in 0.00 s · [line 123](../../tests/test_project.py#L123) · **Area:** Welcome page · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 123](../../tests/test_project.py#L123) · **Area:** Welcome page · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
-**Why it matters:** Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date.
+**Why it matters:** Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date; or the page could open at every start (or never) instead of once a day.
 
-Checks sponsors.load returns four filled slots with an https link, a button, a 'sends' text and existing pictures, empties slots after their 'until' date, and keeps the old behaviour (padded to three, never expiring, SPONSORED heading) for a file without those keys.
+Checks sponsors.load returns four filled slots with an https link, a button, a 'sends' text and existing pictures, empties slots after their 'until' date, and keeps the old behaviour (padded to three, never expiring, SPONSORED heading) for a file without those keys; then that the page is due at startup once a day by default and at every start when the user asks.
 
 | # | Input | Expected output |
 |---|---|---|
 | 1 | load on 2026-12-31 (the last day) | 4 slots, each with name, https url without spaces, button, sends, and image files that exist |
 | 2 | load on 2027-01-01 | [{}, {}, {}, {}] |
 | 3 | A file with one slot {name: A} and no heading | ([{name: A}, {}, {}], '', 'SPONSORED') |
+| 4 | due() with no saved state; then last_shown = today; then every_start = True | True (every_start False); False; True |
 
 **Review notes:**
 

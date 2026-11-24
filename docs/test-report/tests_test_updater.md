@@ -73,7 +73,7 @@ Checks the HTTPS GitHub host allow-list (direct and on redirects), the real fetc
 
 ## `test_install_swaps_relaunches_and_cleans_up`
 
-**Result:** ✅ passed in 0.04 s · [line 337](../../tests/test_updater.py#L337) · **Area:** Updater: install and cleanup · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 337](../../tests/test_updater.py#L337) · **Area:** Updater: install and cleanup · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it a successful update could fail to replace the installed program (installer not started, .app or AppImage not swapped), fail to restart it, start it with a broken PyInstaller environment, or leave downloads and .old files behind (or delete the user's own files).
 
@@ -115,7 +115,7 @@ Checks that install refuses when run from source or from a portable copy (not se
 
 ## `test_automatic_check_obeys_the_switches_runs_once_a_day_and_remembers_a_skip`
 
-**Result:** ✅ passed in 0.16 s · [line 548](../../tests/test_updater.py#L548) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.18 s · [line 548](../../tests/test_updater.py#L548) · **Area:** Updater: automatic check schedule · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the app could check for updates when the user turned it off, check on every start, stop checking after the clock goes back, or forget a version the user chose to skip.
 

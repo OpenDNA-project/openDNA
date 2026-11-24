@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.71 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.66 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -31,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.94 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.30 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -52,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 18.57 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 18.12 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -100,7 +100,7 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.08 s · [line 375](../../tests/test_documents.py#L375) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 375](../../tests/test_documents.py#L375) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
@@ -128,7 +128,7 @@ Checks the names of annotation steps, that primer database add/rename/edit/delet
 
 ## `test_copy_reverse_complement_keeps_annotations_flipped`
 
-**Result:** ✅ passed in 0.01 s · [line 509](../../tests/test_documents.py#L509) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 509](../../tests/test_documents.py#L509) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin.
 
@@ -155,11 +155,11 @@ Copies a selection as reverse complement and pastes it into another document, ch
 
 ## `test_text_exports_and_the_project_file`
 
-**Result:** ✅ passed in 0.04 s · [line 572](../../tests/test_documents.py#L572) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 572](../../tests/test_documents.py#L572) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.
 
-Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file.
+Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, and the primer sites shown or hidden by hand.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -170,7 +170,7 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 | 5 | Built TT+ATGAAACCCGGGTAA+TT+RC(gene)+TT with CDS 3..17 and complement(20..34) | proteins ['MKPG','MKPG']; table has '3\t17\tCDS', '34\t20\tCDS' and a 'note rev' line |
 | 6 | translate('ATGAAATAA'); fasta_text('x', 75 A) | 'MK*'; lines of 70 and 5 |
 | 7 | write_submission | .fsa starts with '>seq_id'; .tbl exists |
-| 8 | save_project with a GFF track, enzymes on, misc_feature hidden, DNA locked | zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left |
+| 8 | save_project with a GFF track, enzymes on, misc_feature hidden, DNA locked | zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers' |
 | 9 | open_project | same sequence and feature count; metadata equals what was written |
 | 10 | project_file for a track whose absolute path is gone, project moved | resolves to moved/extra.gff3 |
 | 11 | open_project on 'not a zip' bytes | OSError matching 'not an Open DNA Project' |
@@ -187,7 +187,7 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 
 ## `test_display_switches_and_kind_counts`
 
-**Result:** ✅ passed in 0.01 s · [line 671](../../tests/test_documents.py#L671) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 672](../../tests/test_documents.py#L672) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 
@@ -207,7 +207,7 @@ Builds a 1200 bp GenBank with six gene/CDS pairs plus two misc_features, and che
 
 ## `test_label_text_is_black_or_white_by_contrast_and_always_readable`
 
-**Result:** ✅ passed in 0.05 s · [line 695](../../tests/test_documents.py#L695) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 696](../../tests/test_documents.py#L696) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Feature names drawn on a light or mid-tone colour could be hard or impossible to read.
 
@@ -226,7 +226,7 @@ text_color_on picks black or white by WCAG contrast ratio, so the letters on any
 
 ## `test_table_sort_key_puts_numbers_in_order_before_words`
 
-**Result:** ✅ passed in 0.00 s · [line 711](../../tests/test_documents.py#L711) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 712](../../tests/test_documents.py#L712) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A click on a table header could put 1,200 before 95, or scatter a column of locations, sizes and dates.
 

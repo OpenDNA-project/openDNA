@@ -8,7 +8,7 @@ import threading
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSettings, Signal
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressBar,
     QPushButton, QVBoxLayout,
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 import ncbi
 import online
 import validate
-from primer_db import data_dir, notifier
+from primer_db import data_dir
 from structure_dialog import StructureDialog
 from data_table import DataTable
 from uikit import fit_columns, no_auto_default, plural
@@ -48,7 +48,6 @@ class NcbiDialog(QDialog):
     def __init__(self, window):
         super().__init__(window)
         self.window, self.records, self.token, self.opened, self.pending = window, [], None, None, None
-        self.settings = QSettings(str(data_dir() / "ncbi.ini"), QSettings.IniFormat)
         self.setWindowTitle("Import from NCBI")
         self.resize(900, 520)
         self.database = QComboBox()
@@ -65,7 +64,7 @@ class NcbiDialog(QDialog):
         fit_columns(self.table, stretch=1)   # the title takes the room; a long one is elided, whole in its tooltip
         self.table.itemSelectionChanged.connect(self._selected)
         self.table.cellDoubleClicked.connect(lambda *_: self.open())
-        self.key = QLineEdit(self.settings.value("api_key", ""), placeholderText="optional: 10 requests a second instead of 3")
+        self.key = QLineEdit(ncbi.saved_key(), placeholderText="optional: 10 requests a second instead of 3")
         self.key.setEchoMode(QLineEdit.Password)
         self.key.setMaxLength(100)
         self.query.setMaxLength(500)
@@ -98,8 +97,7 @@ class NcbiDialog(QDialog):
     def _run(self, work, what):
         """Run `work()` in a thread; `_done` gets its result (or the error text) back."""
         self.key.setText(self.key.text().strip())      # a pasted key often carries a space or line break
-        self.settings.setValue("api_key", self.key.text())
-        self.settings.remove("email")   # an address typed in an older version: no longer asked for, not kept
+        ncbi.save_key(self.key.text())
         self.token = token = object()
         self.find.setEnabled(False)
         self.open_button.setEnabled(False)
@@ -236,7 +234,6 @@ class GenomeDialog(QDialog):
     def __init__(self, window):
         super().__init__(window)
         self.window, self.assemblies, self.token, self.opened = window, [], None, None
-        self.settings = QSettings(str(data_dir() / "ncbi.ini"), QSettings.IniFormat)
         self.setWindowTitle("Background Genome from NCBI")
         self.resize(980, 520)
         self.query = QLineEdit(placeholderText="An organism (Escherichia coli, Saccharomyces cerevisiae, 562) or an assembly accession "
@@ -417,19 +414,14 @@ class GenomeDialog(QDialog):
 
     def _set_reference(self, assembly, fasta, gff, cached):
         """The off-target checks read the downloaded FASTA itself: every sequence of it (all chromosomes) is searched."""
-        from primer_db import settings
+        import reference_picker
         from reference import Reference
         try:
             ref = Reference(str(fasta))   # the .fai index was built by the download step
         except (OSError, ValueError) as e:
             QMessageBox.warning(self, "Background Genome", f"{assembly.accession}: {e}")
             return
-        s = settings()
-        s.setValue("primers/genome", str(fasta))
-        s.setValue("primers/genome_check", "true")
-        import reference_picker
-        reference_picker.remember(fasta)
-        notifier.changed.emit()   # every window: the toolbar's reference box, and the primers re-checked
+        reference_picker.use(fasta)   # every window: the toolbar's reference box, and the primers re-checked
         if getattr(self.window, "editor", None) is not None:
             self.window.primer_options_changed()
         self._selected()

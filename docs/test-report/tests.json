@@ -1132,8 +1132,8 @@
   {
    "id": "core/src/primers.rs::tests::finds_sites_on_both_strands_with_tails_and_mismatches",
    "area": "Primer binding",
-   "role": "Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding.",
-   "purpose": "A primer with a 5' tail binds only over its annealing part; reverse primers are found; seed mismatches count only when allowed; a 3'-terminal mismatch never binds.",
+   "role": "Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding. Or the exact 3' bases setting could be ignored.",
+   "purpose": "A primer with a 5' tail binds only over its annealing part; reverse primers are found; seed mismatches count only when allowed; a 3'-terminal mismatch never binds. The number of exact 3' bases is a parameter: a mismatch 5 bases from the 3' end binds with 3 exact bases, not with 5.",
    "cases": [
     {
      "input": "same 46-bp template; 'GAATTC' + t[10..34]",
@@ -1150,6 +1150,10 @@
     {
      "input": "last base -> 'A', max 2",
      "expected": "no site"
+    },
+    {
+     "input": "tailed primer with base 25 (5th from the 3' end) C->A, max 1; exact 3' = 3 / 5",
+     "expected": "one site with 1 mismatch / no site"
     }
    ],
    "oracle": "hand-computed",
@@ -1408,11 +1412,11 @@
    "id": "core/src/tracks.rs::tests::gff_bed_and_queries",
    "area": "Annotation tracks (GFF/GTF/BED/VCF)",
    "role": "Loaded GFF/GTF/BED/VCF annotation tracks could show features off by one base, lose escaped names, or miss features in a region.",
-   "purpose": "GFF3/GTF, BED and VCF files load into an index: region lines skipped, ##FASTA ends parsing, URL-decoding, 1-based to 0-based, overlap queries via max_end, limit, density, name search, and bad lines rejected.",
+   "purpose": "GFF3/GTF, BED and VCF files load into an index: every type counted (a whole-sequence region flagged), the kept types indexed, ##FASTA ends parsing, URL-decoding, 1-based to 0-based, overlap queries via max_end, limit, density, name search, and bad lines rejected.",
    "cases": [
     {
-     "input": "GFF3: region chr1 1-1000 (skipped), genes lacZ 10-100 +, 'big%2Cgene' 50-900 -, CDS araC 200-300, GTF-style chr2 tiny 5-6, then ##FASTA",
-     "expected": "sequences [(chr1,3),(chr2,1)]"
+     "input": "GFF3: region chr1 1-1000, genes lacZ 10-100 +, 'big%2Cgene' 50-900 -, CDS araC 200-300, GTF-style chr2 tiny 5-6, then ##FASTA; keep gene and CDS",
+     "expected": "before: sequences [(chr1,4),(chr2,1)], types [(CDS,1,not whole),(gene,3,not whole),(region,1,whole)]; keep -> 0 dropped, [(chr1,3),(chr2,1)]"
     },
     {
      "input": "query chr1 150..160; 0..1000",
@@ -2041,20 +2045,28 @@
   {
    "id": "tests/test_core_formats.py::test_tracks_gff_bed_parsing_query_density_and_search",
    "area": "Annotation tracks (GFF3/GTF/BED)",
-   "role": "Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, or miss features when zooming and searching.",
-   "purpose": "Parses GFF3/GTF/BED files written in the test and checks names, coordinates, strands, error handling; compares query and density against a brute-force overlap on 400 random BED features; checks text search. It also checks that a bad line among good ones is skipped and counted in Track.notes (the first one named), while a file with no valid line is still an error.",
+   "role": "Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, drop features across the origin or a whole type, lose the file's colours, or miss features when zooming and searching.",
+   "purpose": "Parses GFF3/GTF/BED files written in the test and checks names, coordinates, strands, error handling; compares query and density against a brute-force overlap on 400 random BED features; checks text search. It also checks that a bad line among good ones is skipped and counted in Track.notes (the first one named), while a file with no valid line is still an error. Every type is counted (a whole-sequence region flagged) before the kept ones are chosen; a feature across the origin is one item on a circle and left out (counted) on a linear sequence; the colour of a line is read in every way files write it.",
    "cases": [
     {
-     "input": "GFF3 with escaped Name, GTF-style attributes, region line, ##FASTA",
-     "expected": "names 'big,gene', 'a;b=c', '100% é', 'araC', 'bad%ZZ', 'gtfname', 'tRNA', 'onebase' in start order; 1-based 10..100 -> (9,100,+1); '.' strand 0; region skipped"
+     "input": "GFF3 with escaped Name, GTF-style attributes, region line, color=red, ##FASTA; keep the types that do not cover the whole sequence",
+     "expected": "types include (region,1,whole) and (gene,4,not whole); colours [('red',1)], field counts (1,0); keep drops 0; names 'big,gene', 'a;b=c', '100% é', 'araC', 'bad%ZZ', 'gtfname', 'tRNA', 'onebase' in start order; 1-based 10..100 -> (9,100,+1); '.' strand 0; no region item"
     },
     {
      "input": "name attribute preference: Name, gene_name, gene, locus_tag, gene_id, ID, transcript_id",
      "expected": "highest present key wins"
     },
     {
-     "input": "end<start, start 0, non-number, too few columns, plain text, missing file",
+     "input": "start 0, non-number, too few columns, plain text, missing file",
      "expected": "OSError"
+    },
+    {
+     "input": "c: region 950..50 (Name=wraps, color=%23B91515) and region 100..200; keep region on a circle of 1000; and on a linear sequence",
+     "expected": "sequences [(c,2)]; circle: 0 dropped, query 990..1000 -> (949,1050), query 1000..1010 -> 'wraps'; linear: 1 dropped, only 'in'"
+    },
+    {
+     "input": "read_color of #257215, #2a1, B91515, 0xB91515, 185,21,21, '185 21 21', rgb(185, 21, 21), darkgreen, 2, 17, 18, 300,0,0, green-ish",
+     "expected": "#257215, #22aa11, #b91515 (x5), #006400, #ff0000, #ffbfbf, None, None, None; colors_of the wrapping track -> {'#B91515': '#b91515'}, no warning"
     },
     {
      "input": "BED with 3..12 columns, tab and space separated",
@@ -2082,7 +2094,7 @@
     },
     {
      "input": "a GFF with one good line and two bad ones (end before start, start 0); a BED with one bad and one good line; a clean BED",
-     "expected": "the good line is loaded; notes == ['2 lines were skipped as not valid GFF/GTF (first: line 3, end before start).'], the BED's '1 line was skipped as not valid BED (first: line 1, end before start).', and [] for the clean one"
+     "expected": "the good line is loaded; notes == ['2 lines were skipped as not valid GFF/GTF (first: line 3, start is not a number).'], the BED's '1 line was skipped as not valid BED (first: line 1, end before start).', and [] for the clean one"
     },
     {
      "input": "t.search('lac', 3, 'chr3') and t.search('lac', 100, 'chr1') / 'nope' on a track of three sequences",
@@ -2402,8 +2414,8 @@
   {
    "id": "tests/test_primer_binding.py::test_editor_primer_sites_pcr_product_specificity_and_save",
    "area": "Primer sites in the editor, PCR product, specificity",
-   "role": "Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites.",
-   "purpose": "Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack.",
+   "role": "Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule.",
+   "purpose": "Uses Editor objects with primers to check mismatch positions in template coordinates, PCR product ranges and sequences, the non-specific priming checks against the sequence and a genome, and that primer sites are written to the saved file without touching the document or undo stack. It also ranks a primer's sites (mismatches near the 3' end first), draws only the best with Best site only, and shows or hides single sites by hand: kept for the session (as a project saves them), dropped with a site that no longer binds, all dropped under another binding rule.",
    "cases": [
     {
      "input": "mismatch_indices('ACGTNR','ACCTGA')",
@@ -2412,6 +2424,18 @@
     {
      "input": "30 bp core at 100 with mismatch at k in 3/5/12/20/25 and tails of 0/6/12 bases, fwd and rev",
      "expected": "mismatch_at [100+k], 1 mismatch, start 100/end 130, tail length reported"
+    },
+    {
+     "input": "24-base primer at 100, copies at 300 (mismatch 4 bases from the 3' end) and 450 (mismatches 3 and 6, far from it)",
+     "expected": "sites 100, 300, 450; rank order 100, 450, 300; only 100 is best; all drawn with Best site only off"
+    },
+    {
+     "input": "Best site only on; then tick 450; then (off) hide 100",
+     "expected": "[100]; [100, 450]; [300, 450], primer not hidden; saved rule [15,3,2], sites {(1,124,False),(1,474,True)}"
+    },
+    {
+     "input": "delete bases 450..474 and match again; then 1 mismatch allowed",
+     "expected": "only (1,124,False) kept; then no choice left"
     },
     {
      "input": "30 bases over origin with mismatches at 4 and 20",
@@ -3795,7 +3819,7 @@
    "cases": [
     {
      "input": "primer_db.settings() and the CHECKS tool settings",
-     "expected": "INI format file at data_dir()/primers.ini; PP.settings is primer_db.settings; declared defaults equal DEFAULT_LIMITS exactly"
+     "expected": "INI format file at data_dir()/settings.ini (tool_settings.store()); declared defaults equal DEFAULT_LIMITS exactly"
     },
     {
      "input": "band(v, 52, 65, 7) for 51.9, 52, 65, 65.1, 72, 72.1, 45, 44.9",
@@ -4695,7 +4719,7 @@
    "id": "tests/test_documents.py::test_text_exports_and_the_project_file",
    "area": "Exports and project file",
    "role": "Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.",
-   "purpose": "Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file.",
+   "purpose": "Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, and the primer sites shown or hidden by hand.",
    "cases": [
     {
      "input": "gff3_text(demo_vector)",
@@ -4727,7 +4751,7 @@
     },
     {
      "input": "save_project with a GFF track, enzymes on, misc_feature hidden, DNA locked",
-     "expected": "zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left"
+     "expected": "zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'"
     },
     {
      "input": "open_project",
@@ -4906,8 +4930,8 @@
   {
    "id": "tests/test_project.py::test_welcome_slots_hold_four_and_expire",
    "area": "Welcome page",
-   "role": "Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date.",
-   "purpose": "Checks sponsors.load returns four filled slots with an https link, a button, a 'sends' text and existing pictures, empties slots after their 'until' date, and keeps the old behaviour (padded to three, never expiring, SPONSORED heading) for a file without those keys.",
+   "role": "Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date; or the page could open at every start (or never) instead of once a day.",
+   "purpose": "Checks sponsors.load returns four filled slots with an https link, a button, a 'sends' text and existing pictures, empties slots after their 'until' date, and keeps the old behaviour (padded to three, never expiring, SPONSORED heading) for a file without those keys; then that the page is due at startup once a day by default and at every start when the user asks.",
    "cases": [
     {
      "input": "load on 2026-12-31 (the last day)",
@@ -4920,6 +4944,10 @@
     {
      "input": "A file with one slot {name: A} and no heading",
      "expected": "([{name: A}, {}, {}], '', 'SPONSORED')"
+    },
+    {
+     "input": "due() with no saved state; then last_shown = today; then every_start = True",
+     "expected": "True (every_start False); False; True"
     }
    ],
    "oracle": "hand-computed",
@@ -7714,10 +7742,10 @@
    "verdict": "sound"
   },
   {
-   "id": "tests/test_agent_cli.py::test_tool_settings_override_restores_the_outer_value_and_is_never_saved",
-   "area": "Command line for agents",
-   "role": "A value given on the command line could stay in force after its command, or a nested override could lose the one around it.",
-   "purpose": "Two nested overrides of one setting: the inner value is read inside, the outer one is back after it, and once both are left the saved value is read again.",
+   "id": "tests/test_agent_cli.py::test_tool_settings_override_limits_and_checks",
+   "area": "Settings",
+   "role": "A value given on the command line could stay in force after its command; a hand-edited settings file could put a setting beyond its limits or contradict another (more exact 3' bases than bases compared); or a missing genome file could be accepted.",
+   "purpose": "Nested overrides; values beyond their limits read within them; the Primer binding check brings settings that limit each other in range and says so, and refuses a missing genome file.",
    "cases": [
     {
      "input": "override 41, inside it override 42",
@@ -7726,12 +7754,21 @@
     {
      "input": "both blocks left",
      "expected": "no override left; the saved value is read (not 41)"
+    },
+    {
+     "input": "settings.ini: seed 99, exact 3' 40, mismatches 7",
+     "expected": "binding() == (30, 30, 0)"
+    },
+    {
+     "input": "check {seed 15, exact 20, mismatches 5}; check of consistent values; genome 'no_such_genome.fa' switched on",
+     "expected": "exact 15, mismatches 0, note 'exact 3′ bases lowered to 15'; ''; UserError 'no file'"
     }
    ],
    "oracle": "hand-computed",
-   "strength": "adequate",
+   "strength": "strong",
    "issues": [
-    "Single-threaded only: the overrides are process-wide (the command line runs one command at a time)."
+    "Single-threaded only: the overrides are process-wide (the command line runs one command at a time).",
+    "Writes the test data folder's settings.ini and removes the two tools' keys afterwards."
    ]
   },
   {
@@ -9004,6 +9041,39 @@
     "find_motifs (the enzyme pass) gets the same table; many_motifs_in_one_pass_match_find_motif_one_by_one compares it with find_motif over a sequence holding N, R, y and U."
    ],
    "verdict": "sound"
+  },
+  {
+   "id": "core/src/tracks.rs::tests::partial_regions_colours_notes_and_features_across_the_origin",
+   "area": "Annotation tracks (GFF/GTF/BED/VCF)",
+   "role": "A GFF3 file of partial region lines could be read as empty again, a feature across the origin could be refused or split in two, or a colour or note in the file could be lost.",
+   "purpose": "A region that does not cover its sequence is a type worth showing; a line whose end comes before its start is one item on a circle (its end past the length, found from both sides of the origin) and is left out and counted on a linear sequence; GFF colour/colour and Note/product and the BED itemRgb column are kept as written.",
+   "cases": [
+    {
+     "input": "##sequence-region c 1 1000; region 100-500 color=#257215; region 950-50 colour=185,21,21 Note=across%20the%20origin; gene 600-700 product=lacZ",
+     "expected": "types [(gene,1,not whole),(region,2,not whole)]; field counts (2 colours, 2 notes); colours [('#257215',1),('185,21,21',1)]; 3 items on c"
+    },
+    {
+     "input": "keep region+gene on a circle of 1000; query 990..1000, 1000..1010, 600..601",
+     "expected": "0 dropped; item 949..1050 note 'across the origin'; 1 item; note 'lacZ'"
+    },
+    {
+     "input": "keep region only on a linear sequence",
+     "expected": "1 dropped; 1 item left"
+    },
+    {
+     "input": "BED itemRgb '255,0,0' and '0'",
+     "expected": "colours [('255,0,0',1)] ('0' is no colour)"
+    },
+    {
+     "input": "one gene 1..5000, no ##sequence-region",
+     "expected": "types [(gene,1,not whole)]: only a type naming a sequence, or a stated length, makes a line 'whole'"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "Fixed file names in the shared temp dir, never removed (as the other track test)."
+   ]
   }
  ],
  "removed": [

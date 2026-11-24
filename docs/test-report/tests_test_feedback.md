@@ -56,7 +56,7 @@ Builds bug and feature issue URLs and decodes their query: template, title prefi
 
 ## `test_log_file_and_error_hooks`
 
-**Result:** ✅ passed in 0.12 s · [line 197](../../tests/test_feedback.py#L197) · **Area:** Error reports: log file and crash dialog · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.11 s · [line 197](../../tests/test_feedback.py#L197) · **Area:** Error reports: log file and crash dialog · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it unhandled errors could go unlogged or unreported, the same error could pop a dialog repeatedly, the log could grow without bound or contain private data, or the error dialog itself could crash the app.
 

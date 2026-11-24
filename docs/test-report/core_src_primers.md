@@ -4,7 +4,7 @@
 
 ## `tm_and_tm_range_of_plain_and_degenerate_primers`
 
-**Result:** ✅ passed · [line 408](../../core/src/primers.rs#L408) · **Area:** Primer Tm · **Checked against:** property/invariant · **Strength:** 🔴 weak
+**Result:** ✅ passed · [line 410](../../core/src/primers.rs#L410) · **Area:** Primer Tm · **Checked against:** property/invariant · **Strength:** 🔴 weak
 
 **Why it matters:** Without it, the Rust Tm and the Tm range shown for degenerate primers could be implausible or not bracket the oligos they stand for.
 
@@ -38,7 +38,7 @@ Nearest-neighbour Tm is in a plausible range, rejects non-ACGT and too-short inp
 
 ## `a_degenerate_primer_binds_every_site_it_matches_on_either_strand`
 
-**Result:** ✅ passed · [line 461](../../core/src/primers.rs#L461) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 463](../../core/src/primers.rs#L463) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a degenerate primer could miss sites it matches, or bind sites it does not, on either strand.
 
@@ -62,7 +62,7 @@ A 20-nt primer with R, N and Y binds three template variants each with zero mism
 
 ## `annealing_extends_across_a_lone_mismatch`
 
-**Result:** ✅ passed · [line 499](../../core/src/primers.rs#L499) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 501](../../core/src/primers.rs#L501) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A primer's displayed binding site could stop at a lone mismatch (showing too much tail) or run on past two mismatches, on either strand.
 
@@ -77,11 +77,11 @@ Binding-site extension past the 15-nt 3' seed crosses a lone mismatch when enoug
 
 ## `finds_sites_on_both_strands_with_tails_and_mismatches`
 
-**Result:** ✅ passed · [line 529](../../core/src/primers.rs#L529) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 531](../../core/src/primers.rs#L531) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-**Why it matters:** Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding.
+**Why it matters:** Primers with 5' tails, reverse primers, or primers with mismatches could be shown binding wrongly, including a 3'-mismatched primer shown as binding. Or the exact 3' bases setting could be ignored.
 
-A primer with a 5' tail binds only over its annealing part; reverse primers are found; seed mismatches count only when allowed; a 3'-terminal mismatch never binds.
+A primer with a 5' tail binds only over its annealing part; reverse primers are found; seed mismatches count only when allowed; a 3'-terminal mismatch never binds. The number of exact 3' bases is a parameter: a mismatch 5 bases from the 3' end binds with 3 exact bases, not with 5.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -89,10 +89,11 @@ A primer with a 5' tail binds only over its annealing part; reverse primers are 
 | 2 | revcomp(t[14..34]) | [Site{14, 20, reverse, 0}] |
 | 3 | tailed primer with base 20 T->A; max 0 / max 1 | no site / first site mismatches 1 |
 | 4 | last base -> 'A', max 2 | no site |
+| 5 | tailed primer with base 25 (5th from the 3' end) C->A, max 1; exact 3' = 3 / 5 | one site with 1 mismatch / no site |
 
 ## `site_across_the_origin`
 
-**Result:** ✅ passed · [line 553](../../core/src/primers.rs#L553) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 560](../../core/src/primers.rs#L560) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A primer binding across the origin of a plasmid could be missed.
 

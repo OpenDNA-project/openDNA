@@ -592,15 +592,36 @@ def test_variants_command_finds_what_the_simulated_reads_were_given(tmp_path, ca
     assert "Cannot read" in run(capsys, "variants", DEMO, DEMO)[2] and "responsibility" in answer(capsys, "variants", DEMO, READS, "--min-depth", "0")["warnings"][0]
 
 
-def test_tool_settings_override_restores_the_outer_value_and_is_never_saved():
+def test_tool_settings_override_limits_and_checks():
+    """A run's value is never saved and the outer one comes back; a saved value beyond its limits is read within them; settings
+    that limit each other are brought back in range on read (and on OK, saying what changed), a missing genome file is refused."""
     import checkup
+    import primer_db
     import tool_settings
+    from primer_db import BINDING, PCR
     key = (checkup.TOOL, "min_promoter")
     with tool_settings.override({key: 41}):
         with tool_settings.override({key: 42}):
             assert tool_settings.value(*key) == 42
         assert tool_settings.value(*key) == 41
     assert key not in tool_settings._overrides and tool_settings.value(*key) != 41
+    saved = tool_settings.store()
+    try:
+        # --- beyond the limits (a hand-edited file), and settings that contradict each other ---
+        for k, v in (("seed", 99), ("exact_3p", 40), ("mismatches", 7)):
+            saved.setValue(f"{BINDING}/{k}", v)
+        tool_settings._cache.clear()
+        assert primer_db.binding() == (30, 30, 0), "seed at its maximum; exact 3' bases at most the seed; no room left for a mismatch"
+        values = {"seed": 15, "exact_3p": 20, "mismatches": 5, "genome_check": True, "genome": ""}
+        note = tool_settings.CHECKS[BINDING](values)
+        assert (values["exact_3p"], values["mismatches"]) == (15, 0) and "exact 3′ bases lowered to 15" in note
+        assert tool_settings.CHECKS[BINDING]({"seed": 15, "exact_3p": 3, "mismatches": 2, "genome_check": False, "genome": ""}) == ""
+        with pytest.raises(UserError, match="no file"):
+            tool_settings.CHECKS[BINDING]({**values, "genome": "no_such_genome.fa"})
+    finally:
+        for tool in (PCR, BINDING):
+            saved.remove(tool)
+        tool_settings._cache.clear()
 
 
 def test_checkup_command_gives_the_verdicts_of_the_checkup_window(tmp_path, capsys):

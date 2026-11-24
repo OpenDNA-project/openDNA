@@ -4,7 +4,7 @@
 
 ## `test_pipelines_build_valid_bash`
 
-**Result:** ✅ passed in 0.33 s · [line 25](../../tests/test_terminal.py#L25) · **Area:** Terminal and pipelines · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.25 s · [line 25](../../tests/test_terminal.py#L25) · **Area:** Terminal and pipelines · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** A pipeline could type broken or wrong bash into the Terminal (an unfilled option, an unquoted path with a space, a tool it does not check), so a run fails or maps with the wrong settings.
 
@@ -25,7 +25,7 @@ Every preset of every pipeline in tools.toml builds a command with no placeholde
 
 ## `test_open_paths_and_summary`
 
-**Result:** ✅ passed in 0.03 s · [line 61](../../tests/test_terminal.py#L61) · **Area:** Terminal and pipelines · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 61](../../tests/test_terminal.py#L61) · **Area:** Terminal and pipelines · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A result could open in the wrong place (an alignment as a document, a BAM in the browser), a WSL path could not be turned back into a Windows one, or the QC summary could misreport reads kept or % mapped.
 
