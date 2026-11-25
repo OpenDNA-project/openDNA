@@ -4,7 +4,7 @@
 
 ## `test_ncbi_client_search_cache_rate_limit_and_errors`
 
-**Result:** ✅ passed in 6.05 s · [line 153](../../tests/test_online.py#L153) · **Area:** NCBI download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 6.06 s · [line 153](../../tests/test_online.py#L153) · **Area:** NCBI download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it fetching sequences from NCBI could break, send wrong parameters, ignore NCBI's request rate limit (getting the user blocked), cache error pages as sequence files or fail on a temporary 429.
 

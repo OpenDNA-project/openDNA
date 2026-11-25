@@ -62,6 +62,7 @@ import reference_picker
 import theme
 import track_check
 import track_import
+import track_panel
 from track_check import match_contig   # (tests/test_multi_record.py reads it from here)
 from sequence_view import SequenceView
 from terminal import Terminal
@@ -876,9 +877,11 @@ class MainWindow(QMainWindow):
         if carry:
             # (each with the types and fields chosen when it was imported)
             skipped = [Path(e.path).name for e in carry
-                       if self.load_track(e.path, quiet=True, types=getattr(e, "types", None), fields=getattr(e, "fields", None)) is None]
+                       if self.load_track(e.path, quiet=True, types=getattr(e, "types", None), fields=getattr(e, "fields", None),
+                                          name=e.name) is None]
             if skipped:
                 self.statusBar().showMessage(f"No data for {record} in: {', '.join(skipped)}", 8000)
+            self.editor.track_layout.load_json(old.track_layout.to_json(), self.editor.row_keys())   # their order, groups and look too
         if meta is not None:
             self._apply_project(meta, path)
         return True
@@ -925,7 +928,8 @@ class MainWindow(QMainWindow):
                 missing.append(entry["path"])
             else:
                 self.load_track(found, entry.get("seqid"), types=entry.get("types", track_import.ALL),
-                                fields=entry.get("fields", track_import.ALL))
+                                fields=entry.get("fields", track_import.ALL), name=entry.get("name"))
+        ed.track_layout.load_json(meta.get("track_layout"), ed.row_keys())   # the tracks' order, groups and look
         self.set_dna_locked(bool(meta.get("dna_locked")))
         said = [m for m in (genetic_code.adopt(meta.get("genetic_code")), codon_usage.adopt(meta.get("codon_usage"))) if m]
         if said:
@@ -1735,32 +1739,63 @@ class MainWindow(QMainWindow):
         self.timings.raise_()
 
     def load_tracks(self, filters=TRACK_FILTER):
-        """Import → tracks / reads: one or several files at once (Shift/Ctrl-click in the dialog)."""
+        """Import → tracks / reads: one or several files at once (Shift/Ctrl-click in the dialog). Several files form a group named
+        after their folder, and what goes wrong with them is said in one message at the end, not a message per file."""
         paths, _ = QFileDialog.getOpenFileNames(self, "Load tracks", "", filters)
-        return [entry for entry in map(self.load_track, paths) if entry is not None]
+        many = len(paths) > 1
+        group, said = (Path(paths[0]).parent.name or "Tracks", []) if many else (None, None)
+        # Many files: the Alignment views are drawn once at the end, not after each file (200 tracks redrawn 200 times took most
+        # of a minute); the rest of the window still paints under the questions a file may ask.
+        views = []
+        if many:
+            self.set_genome_visible(True)
+            views = self.workspace.views(GenomeView)
+        for v in views:
+            v.setUpdatesEnabled(False)
+        try:
+            loaded = [entry for entry in (self.load_track(p, group=group, said=said) for p in paths) if entry is not None]
+        finally:
+            for v in views:
+                v.setUpdatesEnabled(True)
+        if said:
+            shown = said[:30] + ([f"… and {len(said) - 30} more."] if len(said) > 30 else [])
+            QMessageBox.warning(self, "Load tracks", f"{plural(len(loaded), 'track')} of {len(paths)} loaded.\n\n" + "\n\n".join(shown))
+        return loaded
 
-    def load_track(self, path, seqid=None, quiet=False, types=None, fields=None):
+    def load_track(self, path, seqid=None, quiet=False, types=None, fields=None, group=None, said=None, name=None):
         """Add a GFF3/GTF/BED/VCF file as a track of the genome view (and to Find), or a
         BAM file as coverage + reads. `quiet`: no questions: None when the track has nothing for this sequence.
         `types`, `fields`: the feature types and extra fields to keep (a project's; track_import.ALL: everything); None: asked
-        for a GFF/GTF file (see _track_choice)."""
+        for a GFF/GTF file (see _track_choice). `group`: the group of the Alignment view it goes in. `said`: a list that collects
+        the warnings (one message for many files: load_tracks) instead of a message each. `name`: the track's name (a project's,
+        so its rows keep their place and look), else the file's."""
         ed = self.editor
+        file_name = Path(path).name
+
+        def warn(title, text):
+            if said is not None:
+                said.append(f"{file_name}: {text}")
+            elif quiet:
+                ed.error.emit(f"{file_name}: {text}")
+            else:
+                QMessageBox.warning(self, title, f"{path}\n\n{text}")
+
         bam = str(path).lower().endswith(".bam")
         try:
-            track = run_busy(self, f"Reading {Path(path).name}…", lambda: (Bam if bam else Track)(str(path)))
+            track = run_busy(self, f"Reading {file_name}…", lambda: (Bam if bam else Track)(str(path)))
         except OSError as e:
-            QMessageBox.critical(self, "Cannot Read Track", f"{path}\n\n{e}")
+            if said is not None:
+                said.append(f"{file_name}: not read ({e})")
+            else:
+                QMessageBox.critical(self, "Cannot Read Track", f"{path}\n\n{e}")
             return None
         lengths = dict(track.sequences())
         seqs = list(lengths)
         if not seqs:
-            QMessageBox.warning(self, "Empty track", f"No annotations in {path}.")
+            warn("Empty track", "no annotations in it.")
             return None
         if notes := getattr(track, "notes", None):   # (a BAM has none)
-            if quiet:
-                ed.error.emit(f"{Path(path).name}: " + " ".join(notes))
-            else:
-                QMessageBox.warning(self, "Part of the track was not read", f"{path}\n\n" + "\n".join(notes))
+            warn("Part of the track was not read", " ".join(notes))
         # Which sequence of the track is this document? Given (a project), same name ("chr1" = "1"), or the only one, or ask.
         seqid = seqid if seqid in seqs else match_contig(seqs, ed.doc.name, ed.fasta_record)
         if seqid is None and len(seqs) == 1 and not quiet:
@@ -1769,51 +1804,45 @@ class MainWindow(QMainWindow):
             return None
         if seqid is None:
             seqid, ok = QInputDialog.getItem(self, "Track sequence",
-                                             f"Which sequence of {Path(path).name} is {ed.doc.name}?", seqs, 0, False)
+                                             f"Which sequence of {file_name} is {ed.doc.name}?", seqs, 0, False)
             if not ok:
                 return None
         if not bam:
-            chosen = self._track_choice(track, path, seqid, quiet, types, fields)
+            chosen = self._track_choice(track, path, seqid, quiet, types, fields, warn)
             if chosen is None:
                 return None
             types, fields, again = chosen
             if again:   # the sequence was made circular: read again (its warnings were said), so the features across the origin come back
-                return self.load_track(path, seqid, True, types, fields)
+                return self.load_track(path, seqid, True, types, fields, group, said, name)
             if not any(s == seqid for s, _ in track.sequences()):
                 if not quiet:
-                    QMessageBox.warning(self, "Empty track", f"{Path(path).name}: no feature of the chosen types on {seqid}.")
+                    warn("Empty track", f"no feature of the chosen types on {seqid}.")
                 return None
         # Does it belong to this sequence? A warning only: the track is loaded anyway (a renamed or edited sequence is common).
         problems = track_check.mismatches(ed, None if bam else track, seqid, lengths[seqid] if bam else None, path)
-        if problems and quiet:
-            ed.error.emit(f"{Path(path).name} may not match this sequence: " + " ".join(problems))
-        elif problems:
-            QMessageBox.warning(self, "Track may not match this sequence",
-                                "\n\n".join(problems) + "\n\nIt is loaded anyway; check that it is the right file.")
+        if problems:
+            warn("Track may not match this sequence", "may not match this sequence: " + " ".join(problems) +
+                 " It is loaded anyway; check that it is the right file.")
         if bam:
-            entry = SimpleNamespace(name=Path(path).name, path=str(path), bam=track, seqid=seqid, length=lengths[seqid],
+            entry = SimpleNamespace(name=name or file_name, kind="bam", path=str(path), bam=track, seqid=seqid, length=lengths[seqid],
                                     cache=None, depth_pending=False, error=None, variants=None)
-            ed.alignments.append(entry)
         else:
             colors, unread = track_import.colors_of(track) if "color" in fields else ({}, "")
-            if unread and quiet:
-                ed.error.emit(f"{Path(path).name}: {unread}")
-            elif unread:
-                QMessageBox.warning(self, "Track colours", f"{Path(path).name}: {unread}")
+            if unread:
+                warn("Track colours", unread)
             # wraps: items end past the length (they cross the origin of this circle), so drawing also looks one turn on
-            entry = SimpleNamespace(name=Path(path).name, path=str(path), track=track, seqid=seqid, types=types, fields=fields,
+            entry = SimpleNamespace(name=name or file_name, kind="track", path=str(path), track=track, seqid=seqid, types=types, fields=fields,
                                     colors={raw: QColor(c) for raw, c in colors.items() if c}, show_notes="note" in fields,
                                     wraps=ed.circular and bool(track.query(seqid, ed.length, 1 << 62, 1)[0]))
-            ed.tracks.append(entry)
-            ed._search_text = None
         self.set_genome_visible(True)
-        ed.display_changed.emit()
+        ed.add_track(entry, group)
         return entry
 
-    def _track_choice(self, track, path, seqid, quiet, types, fields):
+    def _track_choice(self, track, path, seqid, quiet, types, fields, warn):
         """Which feature types and extra fields of an annotation track to keep: the dialog for a GFF/GTF file (every type with its
         number of lines; none for a BED or VCF file, a project that says, or `quiet`), and what to do with features across the
-        origin when this sequence is linear. Keeps them in `track`; (types, fields, read again) or None when cancelled."""
+        origin when this sequence is linear (`quiet`: left out, said through `warn`). Keeps them in `track`; (types, fields, read
+        again) or None when cancelled."""
         ed = self.editor
         found, extra = track.types(), track_import.detected_fields(track)
         gff = not {kind for kind, _, _ in found} <= {"bed", "variant"}   # (the core names BED and VCF items so)
@@ -1833,7 +1862,7 @@ class MainWindow(QMainWindow):
             text = (f"{plural(dropped, 'feature')} of {Path(path).name} cross the origin (the end comes before the start), and this "
                     "sequence is linear: it is probably a circular sequence annotated as linear.")
             if quiet:
-                ed.error.emit(text + " Those features were left out.")
+                warn("Features across the origin", text + " Those features were left out.")
             elif ask(self, "Features across the origin", text, [("circular", "Make Circular and Re-import"), ("as_is", "Import As Is")],
                      "circular", "Import As Is leaves them out.") == "circular" and self.set_circular(True):
                 return types, fields, True
@@ -1863,17 +1892,8 @@ class MainWindow(QMainWindow):
         """File > Remove Tracks: every annotation / variant track and read alignment loaded on this sequence (the files are not
         touched; it cannot be undone, so it asks first)."""
         ed = self.editor
-        n_tracks, n_reads = len(ed.tracks), len(ed.alignments)
-        if not n_tracks and not n_reads:
-            return
-        what = " and ".join(t for t in (plural(n_tracks, "track") if n_tracks else "", plural(n_reads, "read alignment")
-                                        if n_reads else "") if t)
-        if QMessageBox.question(self, "Remove Tracks", f"Remove {what} from this window? The files themselves are not changed.",
-                                QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel) != QMessageBox.Yes:
-            return
-        ed.tracks.clear()
-        ed.alignments.clear()
-        ed.display_changed.emit()
+        if ed.tracks or ed.alignments:
+            track_panel.confirm_remove(self, ed, ed.tracks + ed.alignments)
 
     def go_to_hit(self, record, start, end):
         """Genome-wide search result: open its sequence if needed, then select it."""

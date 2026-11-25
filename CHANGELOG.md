@@ -6,10 +6,15 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 ## Unreleased
 
 **Features**
+- Added: the Alignment view's Tracks panel shows, hides, reorders, groups and restyles many tracks at once (filter, multi-select, drag and drop, colour ranges, Group by Name); a project keeps the tracks' order, groups and look.
 
 **Bugfixes**
+- Two track files with the same name (from two folders) load as two tracks instead of sharing one display.
+- Loading many track files at once no longer redraws the view after each file: 200 files load in under a second instead of most of a minute.
 
 **UI/UX**
+- Alignment view: hidden tracks take no room, a new one-line Dense display, collapsible group lines, and a Fit button that squeezes the tracks into the pane.
+- Loading many track files at once gives one message for all their warnings instead of one per file.
 
 ## 0.8.8 (2026-11-24)
 

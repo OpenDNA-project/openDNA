@@ -4746,8 +4746,8 @@
   {
    "id": "tests/test_documents.py::test_text_exports_and_the_project_file",
    "area": "Exports and project file",
-   "role": "Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.",
-   "purpose": "Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, and the primer sites shown or hidden by hand.",
+   "role": "Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, the Alignment view's track layout, display settings or the DNA lock.",
+   "purpose": "Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, the primer sites shown or hidden by hand, and the Alignment view's track layout (the track in its group, only the styles changed from the defaults).",
    "cases": [
     {
      "input": "gff3_text(demo_vector)",
@@ -4778,8 +4778,8 @@
      "expected": ".fsa starts with '>seq_id'; .tbl exists"
     },
     {
-     "input": "save_project with a GFF track, enzymes on, misc_feature hidden, DNA locked",
-     "expected": "zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'"
+     "input": "save_project with a GFF track (added in group 'Hub', dense), GC % hidden, enzymes on, misc_feature hidden, DNA locked",
+     "expected": "zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'; track_layout = {nodes: [Sequence group with the 5 built-in rows, Hub group with extra.gff3], styles: {extra.gff3: {mode: dense}, GC %: {shown: false}}}"
     },
     {
      "input": "open_project",
@@ -4805,6 +4805,80 @@
    "evidence": "Proven gap (mutation run with scratchpad/audit_docs/mutplug.py (pytest -p mutplug, MUT=<name>), repo files untouched, D1_gff_bed_off_by_one): gff3_text writes 0-based starts (str(s) instead of str(s+1)) and bed_text writes 1-based starts. Test PASSES.",
    "fixed": [
     "13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: GFF3 and BED coordinates are never checked (only header, line count and one strand column), so off-by-one starts, swapped start/end or a wrong seqid pass; a GFF3 with 0-based starts is malformed. | Project round trip compares sequence and feature COUNT only: lost or altered qualifiers/locations, and primer sites written via file_primer_features(), are not checked."
+   ]
+  },
+  {
+   "id": "tests/test_documents.py::test_track_layout_moves_groups_reloads_and_bulk_helpers",
+   "area": "Alignment view tracks",
+   "role": "Without it, the Tracks panel could lose or double tracks when they are dragged between groups, a change could reach the views without a redraw, a project could close without offering to save a layout changed by hand, a project could reopen with tracks scrambled or styles broken, Group by Name, the light-to-dark colours or Fit could give wrong values, and two loaded files of the same name (or one named like a built-in row) could share one row, with nothing to show it.",
+   "purpose": "Drives the track layout model the Tracks panel edits (no widget): adding rows to groups, moving them in display order, folding a group, a drag-and-drop tree that leaves a row out, restyling (a new display mode drops a height set by hand), removing a group's last row, renaming and ungrouping, checking that each change is announced once and whether it was made by hand; saving and loading it for the rows the file has now; Group by Name, the colour range and Fit; and the Editor's table of rows (unique names, a BAM's three rows, removal, a track's default colour kept when another goes), and which files a layout change marks as modified.",
+   "cases": [
+    {
+     "input": "new Layout(on_change counts)",
+     "expected": "keys = the 5 built-in rows; one group 'Sequence'"
+    },
+    {
+     "input": "add(a, b) to group Hub; add(c, a) at the top level",
+     "expected": "keys = built-ins, a, b, c (a not added twice); 2 changes announced, not made by hand"
+    },
+    {
+     "input": "move([c, a], 'Hub')",
+     "expected": "Hub = [b, a, c] (display order), c no longer at the top level"
+    },
+    {
+     "input": "collapse(Hub); set_tree([(Hub, [c]), (None, [b]), (Sequence, built-ins)])",
+     "expected": "keys = c, b, built-ins, a (a, not in the tree, kept at the end); Hub still collapsed"
+    },
+    {
+     "input": "restyle(b, height 40, label B); restyle(b, hidden); restyle(b, mode dense)",
+     "expected": "height 40 and label B kept through hiding; dense drops the height to None; the 6 changes since are made by hand"
+    },
+    {
+     "input": "remove([c])",
+     "expected": "group Hub (now empty) gone; c's style gone"
+    },
+    {
+     "input": "rename_group(Sequence, 'Built-in'); rename_group('Built-in', ''); ungroup('Built-in')",
+     "expected": "True; False; no group left, keys = b, built-ins, a"
+    },
+    {
+     "input": "a moved to group G; restyle_each(a: condensed, #00ff00); to_json()",
+     "expected": "styles = {b: {shown false, mode dense, label B}, a: {mode condensed, color #00ff00}} (defaults left out)"
+    },
+    {
+     "input": "the saved layout with a's height 'tall' and a node with no group name, loaded for rows built-ins + a + d",
+     "expected": "keys = built-ins, a, d; G = [a]; a's height None (not read), mode condensed; b dropped; the bad node skipped"
+    },
+    {
+     "input": "name_groups([HDTM_GluP0A, HDTM_GluP0B, RNAseq_Glu_Plus, solo, A6S_1_Pos, A6S_1_Neg, A6S_2_Pos], 1); same, 2 parts",
+     "expected": "HDTM x2, A6S x3 (RNAseq alone and solo with one part not grouped); only A6S_1 x2"
+    },
+    {
+     "input": "the 7 names in group Hub; group_by_name(all, 1)",
+     "expected": "groups Sequence, Hub [RNAseq_Glu_Plus, solo], HDTM [the 2 HDTM], A6S [the 3 A6S]"
+    },
+    {
+     "input": "gradient('#3949ab', 3); gradient('#3949AB', 1)",
+     "expected": "['#babfe2', '#6e76a4', '#222c67'] (light = c + (255 - c) x 0.65, dark = c x 0.6); ['#3949ab']"
+    },
+    {
+     "input": "fit_heights({a: (10, 33), b: (10, 15), c: (10, 40)}, 100, gap 6); the same a, b in 20 px",
+     "expected": "{a: 27, b: 15, c: 27} ((100 - 18) // 3 = 27, b capped at its natural 15); {a: 10, b: 10}"
+    },
+    {
+     "input": "Editor: add tracks a.bed, a.bed, Features (group G) and BAM r.bam; remove a.bed (2) and r.bam",
+     "expected": "names a.bed, a.bed (2), Features (2); rows after the built-ins: those 3 then r.bam, r.bam variants, r.bam reads (kind reads, track_of names r.bam); after removal a.bed, Features (2), group G = both; colour indexes 0 and 2 kept"
+    },
+    {
+     "input": "an Editor on w.odp, then on w.gb: add track x.bed, then hide it",
+     "expected": "adding leaves both unmodified; hiding marks w.odp modified, w.gb not"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "The panel and the view (drag and drop in the tree, the menus, the group header lines, Fit on a real pane) are not tested: no widget tests exist; they were checked by running the app offscreen on the Meso_v7 hub data (also with 195 tracks loaded).",
+    "Several operations in one test; a failure names the first broken step only."
    ]
   },
   {

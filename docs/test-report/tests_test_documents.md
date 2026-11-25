@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.67 s · [line 62](../../tests/test_documents.py#L62) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.57 s · [line 63](../../tests/test_documents.py#L63) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -31,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.41 s · [line 179](../../tests/test_documents.py#L179) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.19 s · [line 180](../../tests/test_documents.py#L180) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -52,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 19.18 s · [line 241](../../tests/test_documents.py#L241) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 17.76 s · [line 242](../../tests/test_documents.py#L242) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -71,7 +71,7 @@ Runs app/selftest.run_random_edits for 500 random edits per run, 3 seeds, linear
 
 ## `test_edited_base_ranges_follow_edits_undo_redo_and_saves`
 
-**Result:** ✅ passed in 0.01 s · [line 251](../../tests/test_documents.py#L251) · **Area:** Edited-base highlighting · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 252](../../tests/test_documents.py#L252) · **Area:** Edited-base highlighting · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the highlight showing which bases changed since the last save could point at the wrong bases after further edits, undo or rotation, misleading the user about what they changed.
 
@@ -100,7 +100,7 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.05 s · [line 375](../../tests/test_documents.py#L375) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 376](../../tests/test_documents.py#L376) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
@@ -128,7 +128,7 @@ Checks the names of annotation steps, that primer database add/rename/edit/delet
 
 ## `test_copy_reverse_complement_keeps_annotations_flipped`
 
-**Result:** ✅ passed in 0.01 s · [line 509](../../tests/test_documents.py#L509) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 510](../../tests/test_documents.py#L510) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin.
 
@@ -155,11 +155,11 @@ Copies a selection as reverse complement and pastes it into another document, ch
 
 ## `test_text_exports_and_the_project_file`
 
-**Result:** ✅ passed in 0.04 s · [line 572](../../tests/test_documents.py#L572) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 573](../../tests/test_documents.py#L573) · **Area:** Exports and project file · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
-**Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, display settings or the DNA lock.
+**Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, the Alignment view's track layout, display settings or the DNA lock.
 
-Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, and the primer sites shown or hidden by hand.
+Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, the primer sites shown or hidden by hand, and the Alignment view's track layout (the track in its group, only the styles changed from the defaults).
 
 | # | Input | Expected output |
 |---|---|---|
@@ -170,7 +170,7 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 | 5 | Built TT+ATGAAACCCGGGTAA+TT+RC(gene)+TT with CDS 3..17 and complement(20..34) | proteins ['MKPG','MKPG']; table has '3\t17\tCDS', '34\t20\tCDS' and a 'note rev' line |
 | 6 | translate('ATGAAATAA'); fasta_text('x', 75 A) | 'MK*'; lines of 70 and 5 |
 | 7 | write_submission | .fsa starts with '>seq_id'; .tbl exists |
-| 8 | save_project with a GFF track, enzymes on, misc_feature hidden, DNA locked | zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers' |
+| 8 | save_project with a GFF track (added in group 'Hub', dense), GC % hidden, enzymes on, misc_feature hidden, DNA locked | zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'; track_layout = {nodes: [Sequence group with the 5 built-in rows, Hub group with extra.gff3], styles: {extra.gff3: {mode: dense}, GC %: {shown: false}}} |
 | 9 | open_project | same sequence and feature count; metadata equals what was written |
 | 10 | project_file for a track whose absolute path is gone, project moved | resolves to moved/extra.gff3 |
 | 11 | open_project on 'not a zip' bytes | OSError matching 'not an Open DNA Project' |
@@ -185,9 +185,40 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 
 - 13 Nov 2026: gap closed. The proposed checks were added, pass on the current code and fail under the mutation that slipped through before. Was: GFF3 and BED coordinates are never checked (only header, line count and one strand column), so off-by-one starts, swapped start/end or a wrong seqid pass; a GFF3 with 0-based starts is malformed. \| Project round trip compares sequence and feature COUNT only: lost or altered qualifiers/locations, and primer sites written via file_primer_features(), are not checked.
 
+## `test_track_layout_moves_groups_reloads_and_bulk_helpers`
+
+**Result:** ✅ passed in 0.00 s · [line 659](../../tests/test_documents.py#L659) · **Area:** Alignment view tracks · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** Without it, the Tracks panel could lose or double tracks when they are dragged between groups, a change could reach the views without a redraw, a project could close without offering to save a layout changed by hand, a project could reopen with tracks scrambled or styles broken, Group by Name, the light-to-dark colours or Fit could give wrong values, and two loaded files of the same name (or one named like a built-in row) could share one row, with nothing to show it.
+
+Drives the track layout model the Tracks panel edits (no widget): adding rows to groups, moving them in display order, folding a group, a drag-and-drop tree that leaves a row out, restyling (a new display mode drops a height set by hand), removing a group's last row, renaming and ungrouping, checking that each change is announced once and whether it was made by hand; saving and loading it for the rows the file has now; Group by Name, the colour range and Fit; and the Editor's table of rows (unique names, a BAM's three rows, removal, a track's default colour kept when another goes), and which files a layout change marks as modified.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | new Layout(on_change counts) | keys = the 5 built-in rows; one group 'Sequence' |
+| 2 | add(a, b) to group Hub; add(c, a) at the top level | keys = built-ins, a, b, c (a not added twice); 2 changes announced, not made by hand |
+| 3 | move([c, a], 'Hub') | Hub = [b, a, c] (display order), c no longer at the top level |
+| 4 | collapse(Hub); set_tree([(Hub, [c]), (None, [b]), (Sequence, built-ins)]) | keys = c, b, built-ins, a (a, not in the tree, kept at the end); Hub still collapsed |
+| 5 | restyle(b, height 40, label B); restyle(b, hidden); restyle(b, mode dense) | height 40 and label B kept through hiding; dense drops the height to None; the 6 changes since are made by hand |
+| 6 | remove([c]) | group Hub (now empty) gone; c's style gone |
+| 7 | rename_group(Sequence, 'Built-in'); rename_group('Built-in', ''); ungroup('Built-in') | True; False; no group left, keys = b, built-ins, a |
+| 8 | a moved to group G; restyle_each(a: condensed, #00ff00); to_json() | styles = {b: {shown false, mode dense, label B}, a: {mode condensed, color #00ff00}} (defaults left out) |
+| 9 | the saved layout with a's height 'tall' and a node with no group name, loaded for rows built-ins + a + d | keys = built-ins, a, d; G = [a]; a's height None (not read), mode condensed; b dropped; the bad node skipped |
+| 10 | name_groups([HDTM_GluP0A, HDTM_GluP0B, RNAseq_Glu_Plus, solo, A6S_1_Pos, A6S_1_Neg, A6S_2_Pos], 1); same, 2 parts | HDTM x2, A6S x3 (RNAseq alone and solo with one part not grouped); only A6S_1 x2 |
+| 11 | the 7 names in group Hub; group_by_name(all, 1) | groups Sequence, Hub [RNAseq_Glu_Plus, solo], HDTM [the 2 HDTM], A6S [the 3 A6S] |
+| 12 | gradient('#3949ab', 3); gradient('#3949AB', 1) | ['#babfe2', '#6e76a4', '#222c67'] (light = c + (255 - c) x 0.65, dark = c x 0.6); ['#3949ab'] |
+| 13 | fit_heights({a: (10, 33), b: (10, 15), c: (10, 40)}, 100, gap 6); the same a, b in 20 px | {a: 27, b: 15, c: 27} ((100 - 18) // 3 = 27, b capped at its natural 15); {a: 10, b: 10} |
+| 14 | Editor: add tracks a.bed, a.bed, Features (group G) and BAM r.bam; remove a.bed (2) and r.bam | names a.bed, a.bed (2), Features (2); rows after the built-ins: those 3 then r.bam, r.bam variants, r.bam reads (kind reads, track_of names r.bam); after removal a.bed, Features (2), group G = both; colour indexes 0 and 2 kept |
+| 15 | an Editor on w.odp, then on w.gb: add track x.bed, then hide it | adding leaves both unmodified; hiding marks w.odp modified, w.gb not |
+
+**Review notes:**
+
+- The panel and the view (drag and drop in the tree, the menus, the group header lines, Fit on a real pane) are not tested: no widget tests exist; they were checked by running the app offscreen on the Meso_v7 hub data (also with 195 tracks loaded).
+- Several operations in one test; a failure names the first broken step only.
+
 ## `test_display_switches_and_kind_counts`
 
-**Result:** ✅ passed in 0.01 s · [line 672](../../tests/test_documents.py#L672) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 757](../../tests/test_documents.py#L757) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 
@@ -207,7 +238,7 @@ Builds a 1200 bp GenBank with six gene/CDS pairs plus two misc_features, and che
 
 ## `test_label_text_is_black_or_white_by_contrast_and_always_readable`
 
-**Result:** ✅ passed in 0.05 s · [line 696](../../tests/test_documents.py#L696) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 781](../../tests/test_documents.py#L781) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Feature names drawn on a light or mid-tone colour could be hard or impossible to read.
 
@@ -226,7 +257,7 @@ text_color_on picks black or white by WCAG contrast ratio, so the letters on any
 
 ## `test_table_sort_key_puts_numbers_in_order_before_words`
 
-**Result:** ✅ passed in 0.00 s · [line 712](../../tests/test_documents.py#L712) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 797](../../tests/test_documents.py#L797) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A click on a table header could put 1,200 before 95, or scatter a column of locations, sizes and dates.
 

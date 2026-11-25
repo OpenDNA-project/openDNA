@@ -11,7 +11,7 @@ Open DNA Project file.
 Open DNA Project file (.odp): a zip holding `sequence.gb` (the document, as Save writes it)
 and `project.json`, what a GenBank file cannot hold and the program otherwise keeps only in
 memory: the loaded tracks and BAM files (their paths, absolute and relative to the project,
-since BAM files can be gigabytes), the DNA lock, the display options and the state of the panes' views (the layout's `state` entries:
+since BAM files can be gigabytes) and how the Alignment view shows them (order, groups, colours: track_layout), the DNA lock, the display options and the state of the panes' views (the layout's `state` entries:
 the Digest's ticked enzymes, the Sequence view's letter size and spacing). Primers are already in the GenBank part.
 """
 import json
@@ -155,10 +155,12 @@ def project_meta(editor, project_path, layout=None):
         "genetic_code": genetic_code.project_entry(),   # the code and the codon table in use travel with the project
         "codon_usage": codon_usage.project_entry(),
         **ed.display_choices(),   # the features, primers and sites hidden by hand (with the binding rule the sites were chosen under)
-        "tracks": [{"path": t.path, "relative": _relative(t.path, project_path), "seqid": t.seqid, "types": t.types, "fields": t.fields}
-                   for t in ed.tracks if getattr(t, "path", None)],
-        "alignments": [{"path": a.path, "relative": _relative(a.path, project_path), "seqid": a.seqid}
+        # (each track's name: its rows in track_layout are named after it, "x.bed (2)" for a second file of the same name)
+        "tracks": [{"path": t.path, "relative": _relative(t.path, project_path), "seqid": t.seqid, "types": t.types, "fields": t.fields,
+                    "name": t.name} for t in ed.tracks if getattr(t, "path", None)],
+        "alignments": [{"path": a.path, "relative": _relative(a.path, project_path), "seqid": a.seqid, "name": a.name}
                        for a in ed.alignments if getattr(a, "path", None)],
+        "track_layout": ed.track_layout.to_json(),   # the Alignment view's order, groups and look of the tracks
         "display": {"enzymes": ed.show_enzymes, "enzyme_filter": ed.enzyme_filter._asdict(),
                     "translation": ed.show_translation, "complement": ed.show_complement, "cds_only": ed.cds_only,
                     "hidden_kinds": sorted(ed.hidden_kinds), "primers": ed.show_primers, "file_primers": ed.show_file_primers,

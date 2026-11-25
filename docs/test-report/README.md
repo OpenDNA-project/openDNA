@@ -13,11 +13,11 @@ them well. **[AUDIT.md](AUDIT.md) lists every test on one page with why it matte
 - **Input / Expected output**: the concrete cases, in the order the test runs them. Many tests are *topical*: one test function holds several sections, each a row.
 - **Review notes**: what the reviewer found could be stronger. **Fixed by the audit**: what was changed.
 
-## Totals (240 tests: 159 Python, 81 Rust)
+## Totals (241 tests: 160 Python, 81 Rust)
 
-Last run: ✅ 240 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
+Last run: ✅ 241 passed · ❌ 0 failed · ⏭️ 0 skipped · · 0 not run
 
-Review: 🟡 adequate: 89 · 🟢 strong: 147 · 🔴 weak: 4
+Review: 🟡 adequate: 90 · 🟢 strong: 147 · 🔴 weak: 4
 
 ## Test files
 
@@ -30,7 +30,7 @@ Review: 🟡 adequate: 89 · 🟢 strong: 147 · 🔴 weak: 4
 | [`tests/test_core_alignment.py`](tests_test_core_alignment.md) | 4 | 4 | 0 | 0 | 0 | 🟡 adequate 2 · 🟢 strong 2 |
 | [`tests/test_core_formats.py`](tests_test_core_formats.md) | 5 | 5 | 0 | 0 | 0 | 🟢 strong 5 |
 | [`tests/test_core_sequence.py`](tests_test_core_sequence.md) | 6 | 6 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 5 |
-| [`tests/test_documents.py`](tests_test_documents.md) | 10 | 10 | 0 | 0 | 0 | 🟡 adequate 4 · 🟢 strong 6 |
+| [`tests/test_documents.py`](tests_test_documents.md) | 11 | 11 | 0 | 0 | 0 | 🟡 adequate 5 · 🟢 strong 6 |
 | [`tests/test_enzymes_and_guides.py`](tests_test_enzymes_and_guides.md) | 5 | 5 | 0 | 0 | 0 | 🟢 strong 5 |
 | [`tests/test_feedback.py`](tests_test_feedback.md) | 3 | 3 | 0 | 0 | 0 | 🟡 adequate 1 · 🟢 strong 2 |
 | [`tests/test_file_assoc.py`](tests_test_file_assoc.md) | 3 | 3 | 0 | 0 | 0 | 🟢 strong 3 |

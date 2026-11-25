@@ -35,7 +35,8 @@ HELP = {
         "Wheel zooms at the pointer; drag pans; double-click zooms in.",
         "Shift+drag selects bases; click the overview bar to jump.",
         "Click a feature, primer or read to select it; right-click a track for its display.",
-        "Click a track name to hide or show the track.",
+        "Tracks (header): show, hide, reorder, group and restyle many tracks at once; Fit squeezes them into the pane.",
+        "Click a track name to hide the track; click a group's line to collapse it.",
         "Type a position, range (12,000-15,000) or name in the locus box and press Enter.",
     ],
     "Features": [

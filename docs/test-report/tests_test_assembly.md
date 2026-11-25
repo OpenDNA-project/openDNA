@@ -29,7 +29,7 @@ Checks that a fragment behaves as a PCR product (tails, core, flipping swaps the
 
 ## `test_golden_gate_products_and_overhang_checks`
 
-**Result:** ✅ passed in 0.02 s · [line 166](../../tests/test_assembly.py#L166) · **Area:** Golden Gate assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 166](../../tests/test_assembly.py#L166) · **Area:** Golden Gate assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a Golden Gate design could produce a circle with the wrong overhangs, accept overhangs that cross-ligate or repeat, or fail to warn about leftover enzyme sites, so the cloning would not work at the bench.
 
@@ -79,7 +79,7 @@ Checks that Sidewinder's toeholds are taken from the product itself (scarless), 
 
 ## `test_products_keep_every_orf_on_its_own_bases`
 
-**Result:** ✅ passed in 0.05 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an assembled product could annotate a CDS a few bases off, so the user reads a shifted frame and the wrong protein without any error being shown.
 

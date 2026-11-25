@@ -46,8 +46,13 @@ only: FASTA keeps no features). The new records are written into the file at onc
 byte, and Undo does not remove the new ones); the sequence that was open keeps its unsaved edits until you save it. An open `.dna`
 file, project or unsaved sequence is first saved as GenBank, and the records are added to that file. The alignment view (Ctrl+Shift+G, or a new tab with the Alignment view; off until you ask for it, on any sequence) shows
 tracks loaded with File → Load Track: GFF3/GTF/BED annotations, VCF variants and BAM alignments
-(coverage + reads; the `.bai` is made if missing; several files at once). Click a track's name to hide
-it, right-click it for expanded/condensed/hidden and a log scale, drag the line under it to resize; the
+(coverage + reads; the `.bai` is made if missing; several files at once, which go in a group named after their folder). The
+Tracks button opens the Tracks panel: every track in its groups, with a box to show or hide it, a filter, and Ctrl/Shift-click to
+select many; its buttons and right-click menu change all the selected tracks at once (expanded, condensed or dense display, height,
+colour or a light-to-dark range of colours, log scale, group, name, remove), drag tracks to reorder them or onto a group to move
+them, and Group by Name groups tracks whose names start alike. A group is a header line in the view: click it to collapse its
+tracks. Click a track's name to hide it (the panel shows it again), right-click it for the same menu, drag the line under it to
+resize; Fit makes the shown tracks share the pane's height. A project (.odp) keeps the order, groups and look of the tracks. The
 Legend button in the genome view's header opens a window explaining every colour and mark. A GFF3/GTF file first lists its
 feature types with their number of lines: untick the ones you do not want (a type whose lines only cover the whole sequence, such
 as a `region` line naming the chromosome, starts unticked). The same window offers the extra fields the file has: each line's
