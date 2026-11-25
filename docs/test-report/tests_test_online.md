@@ -29,7 +29,7 @@ With a fake E-utilities endpoint, checks search results and request parameters, 
 
 ## `test_structure_sources_cache_and_auto_order`
 
-**Result:** ✅ passed in 0.12 s · [line 208](../../tests/test_online.py#L208) · **Area:** 3D structure: sources and cache · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.11 s · [line 208](../../tests/test_online.py#L208) · **Area:** 3D structure: sources and cache · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it the protein 3D view could pick the wrong source, accept invalid input, ignore its cache, hide why every source failed, or break the user's own local folding command.
 

@@ -4747,7 +4747,7 @@
    "id": "tests/test_documents.py::test_text_exports_and_the_project_file",
    "area": "Exports and project file",
    "role": "Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, the Alignment view's track layout, display settings or the DNA lock.",
-   "purpose": "Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, the primer sites shown or hidden by hand, and the Alignment view's track layout (the track in its group, only the styles changed from the defaults).",
+   "purpose": "Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, the primer sites shown or hidden by hand, the signal tracks, and the Alignment view's track layout (the track in its group, only the styles changed from the defaults).",
    "cases": [
     {
      "input": "gff3_text(demo_vector)",
@@ -4778,8 +4778,8 @@
      "expected": ".fsa starts with '>seq_id'; .tbl exists"
     },
     {
-     "input": "save_project with a GFF track (added in group 'Hub', dense), GC % hidden, enzymes on, misc_feature hidden, DNA locked",
-     "expected": "zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'; track_layout = {nodes: [Sequence group with the 5 built-in rows, Hub group with extra.gff3], styles: {extra.gff3: {mode: dense}, GC %: {shown: false}}}"
+     "input": "save_project with a GFF track (added in group 'Hub', dense), GC % hidden, a signal track s.bw, enzymes on, misc_feature hidden, DNA locked",
+     "expected": "zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'; signals = [s.bw with its path, relative path, seqid and name]; track_layout = {nodes: [Sequence group with the 5 built-in rows, Hub group with extra.gff3, s.bw], styles: {extra.gff3: {mode: dense}, GC %: {shown: false}}}"
     },
     {
      "input": "open_project",
@@ -4811,7 +4811,7 @@
    "id": "tests/test_documents.py::test_track_layout_moves_groups_reloads_and_bulk_helpers",
    "area": "Alignment view tracks",
    "role": "Without it, the Tracks panel could lose or double tracks when they are dragged between groups, a change could reach the views without a redraw, a project could close without offering to save a layout changed by hand, a project could reopen with tracks scrambled or styles broken, Group by Name, the light-to-dark colours or Fit could give wrong values, and two loaded files of the same name (or one named like a built-in row) could share one row, with nothing to show it.",
-   "purpose": "Drives the track layout model the Tracks panel edits (no widget): adding rows to groups, moving them in display order, folding a group, a drag-and-drop tree that leaves a row out, restyling (a new display mode drops a height set by hand), removing a group's last row, renaming and ungrouping, checking that each change is announced once and whether it was made by hand; saving and loading it for the rows the file has now; Group by Name, the colour range and Fit; and the Editor's table of rows (unique names, a BAM's three rows, removal, a track's default colour kept when another goes), and which files a layout change marks as modified.",
+   "purpose": "Drives the track layout model the Tracks panel edits (no widget): adding rows to groups, moving them in display order, folding a group, a drag-and-drop tree that leaves a row out, restyling (a new display mode drops a height set by hand), removing a group's last row, renaming and ungrouping, checking that each change is announced once and whether it was made by hand; saving and loading it for the rows the file has now; Group by Name, the colour range and Fit; and the Editor's table of rows (unique names, a BAM's three rows, removal, a track's default colour kept when another goes), and which files a layout change marks as modified. Signal tracks: their own list, overlaid in one row and separated, and their saved settings read back (values it cannot read left at their defaults).",
    "cases": [
     {
      "input": "new Layout(on_change counts)",
@@ -4872,6 +4872,14 @@
     {
      "input": "an Editor on w.odp, then on w.gb: add track x.bed, then hide it",
      "expected": "adding leaves both unmodified; hiding marks w.odp modified, w.gb not"
+    },
+    {
+     "input": "signals p.bw, m.bw, x.bw added; overlay all three; separate m.bw; separate p.bw",
+     "expected": "in ed.signals, kind signal, 5 loaded in all; overlay None, p.bw, p.bw; m.bw alone again, x.bw still in p.bw; then none overlaid"
+    },
+    {
+     "input": "load_json styles s: heatmap, max, fixed -2..5.5, overlay t; t: render dots, range own, low True",
+     "expected": "s read as given; t keeps bars, auto, 0.0 (not valid values)"
     }
    ],
    "oracle": "hand-computed",
@@ -9225,6 +9233,126 @@
    "strength": "strong",
    "issues": [
     "Fixed file names in the shared temp dir, never removed (as the other track test)."
+   ]
+  },
+  {
+   "id": "core/src/signals.rs::tests::bedgraph_and_wig_bins_by_hand",
+   "area": "Alignment view tracks",
+   "role": "Without it, a bedGraph or wig signal track could show wrong values in the Alignment view (shifted by one base, averaged over the wrong bases, or wrong when zoomed out) with nothing to show it.",
+   "purpose": "Reads a bedGraph and a wig written in the test and checks the bins the view draws: the mean over the bases that have a value and the highest value, NaN where there is none, through the raw intervals and through the zoom levels built for wide views; lines that are not valid are counted in the notes, a file with none valid is an error.",
+   "cases": [
+    {
+     "input": "bedGraph c: [0,100)=1, [100,200)=3, [500,600)=2, plus a line 'c x 1 1' and a track line",
+     "expected": "sequences [(c, 600)]; notes: 1 line skipped (line 5, start, end or value is not a number)"
+    },
+    {
+     "input": "bins(c, 0, 600, 6)",
+     "expected": "(1,1), (3,3), NaN x3, (2,2)"
+    },
+    {
+     "input": "bins(c, 50, 150, 1); bins(c, 150, 550, 1)",
+     "expected": "(2, 3) (50 bases at 1, 50 at 3); (2.5, 3) (50 at 3, 50 at 2)"
+    },
+    {
+     "input": "bins(c, 0, 600, 1) (through the 64 bp zoom blocks); bins(other, 0, 10, 2)",
+     "expected": "(2, 3) = (100 + 300 + 200) / 300 bases; NaN"
+    },
+    {
+     "input": "wig: fixedStep start=1 step=10 span=5 values 4, 8; variableStep span=10 at 101 value 6",
+     "expected": "bins(c, 0, 20, 4) = (4,4), NaN, (8,8), NaN; bins(c, 100, 110, 1) = (6, 6)"
+    },
+    {
+     "input": "a file with only 'c 1'; is_bigwig on the bedGraph",
+     "expected": "error; false"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": []
+  },
+  {
+   "id": "core/src/signals.rs::tests::bigwig_and_bigbed_of_the_demo_hub",
+   "area": "Alignment view tracks",
+   "role": "Without it, a bigWig signal or a bigBed annotation track (what UCSC track hubs hold) could be read wrong, or not at all, with nothing to show it.",
+   "purpose": "Reads the demo hub's plus.bw (written by pybigtools: 10 over [0,2000), 30 over [2000,4000), 20 to 5,936) through the bigtools library and checks bins by hand; reads its sites.bb as an annotation track (the BED lines its entries stand for).",
+   "cases": [
+    {
+     "input": "Signal(plus.bw)",
+     "expected": "is a bigWig, no notes, sequences [(pBAD30_eilR, 5936)]"
+    },
+    {
+     "input": "bins(1000, 3000, 2); bins(0, 5936, 1); bins(1990, 2010, 2); bins(other, 0, 10, 1)",
+     "expected": "(10,10), (30,30); (20, 30) = (2000x10 + 2000x30 + 1936x20) / 5936; (10,10), (30,30); NaN"
+    },
+    {
+     "input": "Track(sites.bb).query(0, 5936)",
+     "expected": "(100, 400, +, site_a, 255,0,0), (2500, 2600, -, site_b, 0,0,255), (5000, 5100, +, site_c, 0,128,0)"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "The demo bigWig is too small to have zoom levels: the zoom path of a bigWig is checked against the bedGraph of the real Meso_v7 hub only by hand, not here."
+   ]
+  },
+  {
+   "id": "tests/test_core_formats.py::test_signal_files_bigwig_bedgraph_and_wig_read_the_same_values",
+   "area": "Alignment view tracks",
+   "role": "Without it, the same signal could show different values in a bigWig and in a bedGraph or wig, or a file could be read as the wrong kind of track, with nothing to show it.",
+   "purpose": "Reads the demo hub's plus.bw through the bigtools library and a bedGraph and a wig of the same values through openDNA's own parser, and checks they give the same bins at several zooms; checks how the window tells a file's kind (track_kind) by name and, for a bigWig, by its contents.",
+   "cases": [
+    {
+     "input": "plus.bw, the same values as bedGraph, and as wig (fixedStep for 2 x 2000 bases, then variableStep)",
+     "expected": "bigwig flags True, False, False; sequences [(pBAD30_eilR, 5936)] each"
+    },
+    {
+     "input": "bins over (0,5936,1), (0,5936,7), (0,5936,1000), (1990,2010,4), (3999,4001,2)",
+     "expected": "identical lists from the three files"
+    },
+    {
+     "input": "bins(0, 5936, 1) of the bigWig",
+     "expected": "[(20.0, 30.0)]"
+    },
+    {
+     "input": "track_kind of plus.bw, .bedGraph, .wig, the bigWig renamed plus.dat, sites.bb, x.bed, x.BAM",
+     "expected": "signal, signal, signal, signal, track, track, bam"
+    },
+    {
+     "input": "a wig whose variableStep has no chrom=",
+     "expected": "OSError 'not valid bedGraph or wig'"
+    }
+   ],
+   "oracle": "independent implementation",
+   "strength": "strong",
+   "issues": []
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_hub_command_lists_and_copies_like_the_import",
+   "area": "Agent command line",
+   "role": "Without it, `hub list` / `hub get` could disagree with Import > Track Hub, or a hub's groups, labels, colours and hidden tracks could be read wrong (or a track silently dropped), with nothing to show it.",
+   "purpose": "Lists and copies the demo hub and compares with track_hub (the module the window calls); then a hub built in the test with two genomes, an included trackDb file, a composite with a view and a subtrack switched off, a colour given by the composite, a super track not shown, a bam track and a track hidden by its own visibility; then the same hub on a server (track_hub.open_url replaced: no network).",
+   "cases": [
+    {
+     "input": "hub list demo/hub",
+     "expected": "plus (Coverage, shown, #c82828), minus (Coverage, hidden, #2828c8), sites (Demo hub, shown, no colour); the same as track_hub.hub_tracks"
+    },
+    {
+     "input": "hub get demo/hub --out copy; again into copy; get with no --out",
+     "expected": "plus.bw, minus.bw, sites.bb with the same bytes; 'not empty'; 'needs --out'"
+    },
+    {
+     "input": "the two-genome hub without --genome; with --genome g1",
+     "expected": "'several genomes'; a1 (Comp, shown, #010203), a2 (hidden: parent off), s1 (Super, hidden: super track not shown), reads (bam, not read, said in warnings), quiet (hidden)"
+    },
+    {
+     "input": "hub get https://example.org/h/hub.txt --genome g1 (open_url serves the files)",
+     "expected": "a1.bw, a2.bw, s1.bb, q.bw with their bytes; ../a2.bw from g1/ asked at the hub's folder; r.bam not copied; settings say it sends requests to its server"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "The window's dialog and its copy with a progress bar (hub_dialog, main.import_hub) are not tested: no widget tests; checked by running the app offscreen on the demo hub."
    ]
   }
  ],

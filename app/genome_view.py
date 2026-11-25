@@ -24,7 +24,7 @@ import re
 from html import escape
 
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QThreadPool, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetricsF, QPainter, QPalette, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QFont, QFontMetricsF, QImage, QPainter, QPalette, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QScrollArea, QSizePolicy, QSplitter, QVBoxLayout, QWidget,
 )
@@ -65,7 +65,7 @@ HITS_HEAD = 14               # px above the Local Align rows: the track's name (
 INDENT = 10                  # px the names of a group's tracks are set in from its header
 # kind -> (lanes, lane px expanded, lane px condensed, lanes condensed); 0 lanes = a bar plot
 # of that height. Condensed reads: twice the rows in less room (IGV's "squished"). Dense: one lane of the condensed size.
-KINDS = {"gc": (0, 30, 16, 0), "features": (4, 13, 6, 4), "primers": (2, 9, 5, 2), "track": (3, 11, 5, 3),
+KINDS = {"gc": (0, 30, 16, 0), "features": (4, 13, 6, 4), "primers": (2, 9, 5, 2), "track": (3, 11, 5, 3), "signal": (0, 30, 16, 0),
          "coverage": (0, 30, 16, 0), "reads": (READ_LANES, 7, 3, 2 * READ_LANES), "hits": (1, 14, 8, 1),
          "variants": (2, 12, 5, 2)}
 DENSE_BAR, DENSE_LANE = 10, 9   # px of a bar track (GC, coverage) and of the one line of other tracks in dense mode
@@ -73,7 +73,8 @@ TEXT_KINDS = ("features", "track", "variants", "hits")   # lanes that write name
 FONT_PX = 15.0      # the font height (px) the sizes above are made for; a larger font scales the lanes that hold text
 MAX_SHARE = 0.6     # the alignment view asks for at most this share of the screen's height (its tracks scroll beyond)
 SCALES = {"linear": lambda v: v, "log2": lambda v: math.log2(1 + v), "log10": lambda v: math.log10(1 + v)}   # (track_layout.SCALES)
-GC_COLOR, COVERAGE_COLOR = "#7986cb", "#9e9e9e"
+GC_COLOR, COVERAGE_COLOR, SIGNAL_COLOR = "#7986cb", "#9e9e9e", "#3949ab"
+DENSE_GAP = 1       # px under a dense row (a heatmap of 200 tracks in one screen), GAP under the others
 
 
 class _Relay(QObject):
@@ -82,6 +83,11 @@ class _Relay(QObject):
 
 
 _relay = _Relay()
+
+
+def short_number(v):
+    """A value as a range label says it: whole numbers with thousands separators from 100 up, 3 figures below."""
+    return f"{v:,.0f}" if abs(v) >= 100 else f"{v:.3g}"
 
 
 def nice_step(raw):
@@ -125,6 +131,10 @@ class GenomeCanvas(QWidget):
         self.group_rows = []  # (Group, top, height, rows drawn) of the group header lines, from the last layout
         self.indented = set() # rows drawn under a group header (their names are set in)
         self.rows, self.bottom = [], 0   # (name, top, height) of the rows and the bottom of the last one, from the last layout
+        self.gaps, self.overlays = {}, {}   # row -> px under it; signal row -> the signals drawn in it (from the last layout)
+        self.band = None        # the y range whose rows the cached image holds (see _paint_layers)
+        self.reading = False    # signal values are being read in a worker thread (see _read_signals)
+        self.ramps = {}         # colour -> the 32 colours of its heatmap, and a clear one
         self._scale, self._name_h = 1.0, 14   # from the font, at each layout (asked for per row: see scale, name_h)
         self.setMouseTracking(True)  # resize cursor over the lines between tracks
         # No keyboard focus: nothing here takes keys, and a click that took the focus left typed bases going nowhere (they
@@ -202,7 +212,7 @@ class GenomeCanvas(QWidget):
             return chosen
         if kind == "track":
             return TRACK_COLORS[entry.color_index % len(TRACK_COLORS)]
-        return GC_COLOR if kind == "gc" else COVERAGE_COLOR
+        return {"gc": GC_COLOR, "coverage": COVERAGE_COLOR}.get(kind, SIGNAL_COLOR)
 
     def lane_px(self, kind, mode):
         """px per lane of a kind of track in a mode (bar tracks: their whole height)."""
@@ -254,12 +264,18 @@ class GenomeCanvas(QWidget):
         self.ruler_base = 18 + max(12, math.ceil(fm.ascent()))   # labels on the ruler; ticks and its line under them
         self.header_h = self.ruler_base + 14
         rows, y = [("", 2, 12), ("", 18, self.header_h - 22)], self.header_h
-        self.kinds, self.group_rows, self.indented = {}, [], set()
+        self.kinds, self.group_rows, self.indented, self.gaps = {}, [], set(), {}
         kinds = self.row_kinds()
+        # Signals overlaid in another signal's row are drawn there, not in a row of their own (unless that row is gone).
+        self.overlays = {}
+        for k, st in layout.styles.items():
+            if st.overlay and k in kinds and st.overlay in kinds and kinds[st.overlay] == "signal":
+                self.overlays.setdefault(st.overlay, []).append(k)
+        inside = {k for members in self.overlays.values() for k in members}
         nodes = []   # (group or None, its rows drawn)
         for node in layout.nodes:
             group = node if isinstance(node, track_layout.Group) else None
-            drawn = [k for k in (group.keys if group else [node]) if k in kinds and layout.style(k).shown]
+            drawn = [k for k in (group.keys if group else [node]) if k in kinds and layout.style(k).shown and k not in inside]
             if drawn:
                 nodes.append((group, drawn))
         # The built-in tracks alone in their group: no header line, the view looks as it did. A collapsed group always has its line.
@@ -279,7 +295,8 @@ class GenomeCanvas(QWidget):
                     self.kinds[name] = kind
                     h = self.track_height(name, kind)
                 rows.append((name, y, h))
-                y += h + GAP
+                self.gaps[name] = DENSE_GAP if kind != "bases" and layout.style(name).mode == "dense" else GAP
+                y += h + self.gaps[name]
         # The names column: as wide as the longest name needs (at least LEFT, at most MAX_LEFT; a longer one is cut short)
         widest = max([fm.horizontalAdvance(self.track_label(name)) + (INDENT if name in self.indented else 0) for name, _, _ in rows if name]
                      + [fm.horizontalAdvance(self.group_text(g, n)) for g, _, _, n in self.group_rows], default=0)
@@ -314,14 +331,14 @@ class GenomeCanvas(QWidget):
         if self.in_header(y):
             return None
         for name, top, h in self.rows:
-            if name and top <= y < top + h + GAP:
+            if name and top <= y < top + h + self.gaps.get(name, GAP):
                 return name, top, h
         return None
 
     def edge_at(self, y):
         """Track whose bottom line is under y (drag it to resize), or None."""
         row = self.row_at(y)
-        if row and row[0] in self.kinds and abs(y - (row[1] + row[2] + GAP / 2)) <= 3:
+        if row and row[0] in self.kinds and abs(y - (row[1] + row[2] + self.gaps[row[0]] / 2)) <= max(1, min(3, self.gaps[row[0]])):
             return row
         return None
 
@@ -388,6 +405,9 @@ class GenomeCanvas(QWidget):
             p.end()
             self.pan_timer.start()
             return
+        view_h = self.panel.tracks_area.viewport().height()
+        if self.band is not None and not image_export.ACTIVE and (self.view_top() < self.band[0] or self.view_top() + view_h > self.band[1]):
+            self.dirty = True   # (scrolled, or the pane made taller, past the rows drawn: see _paint_layers)
         if self.dirty or key != old:
             self.layer = QPixmap(self.size() * dpr)
             self.layer.setDevicePixelRatio(dpr)
@@ -450,6 +470,11 @@ class GenomeCanvas(QWidget):
         fm = QFontMetricsF(self.font())
         self.hits = []
         rows, _ = self.layout_rows()
+        # Only the rows in sight, with a screen's height above and below (scrolling further draws again: see paintEvent); an image
+        # export draws them all.
+        view_h = self.panel.tracks_area.viewport().height()
+        self.band = (-1, 1 << 30) if image_export.ACTIVE else (self.view_top() - view_h, self.view_top() + 2 * view_h)
+        rows = [r for r in rows if not r[0] or (r[1] + r[2] >= self.band[0] and r[1] <= self.band[1])]
         tops = {name: (top, h) for name, top, h in rows if name}
         W = self.width_px()
         vs, ve = panel.vstart, panel.vend
@@ -555,6 +580,9 @@ class GenomeCanvas(QWidget):
                     p.drawText(r, Qt.AlignCenter, name)
         lap("annotation tracks")
 
+        self._signals(p, tops, dim)
+        lap("signal tracks")
+
         if row := tops.get("Query hits"):
             self._draw_hits(p, row, pal.color(QPalette.Base), dim, fm)
             lap("query hits")
@@ -592,7 +620,7 @@ class GenomeCanvas(QWidget):
             if not name:
                 continue
             p.setPen(line)
-            y = top + h + GAP / 2
+            y = top + h + self.gaps.get(name, GAP) / 2
             p.drawLine(QPointF(0, y), QPointF(self.width(), y))
             p.setPen(dim)
             x = 2 + (INDENT if name in self.indented else 0)
@@ -992,6 +1020,151 @@ class GenomeCanvas(QWidget):
                     p.drawText(r, Qt.AlignCenter, label)
                 self.hits.append((r, ("qhit", rank - 1, info)))
 
+    # ---- signal tracks ---------------------------------------------------------------------------------------------------
+    # The values of the signals in view are read in a worker thread (a bigWig is read from its file; 200 of them would hold the
+    # window): a row whose values are not there yet is drawn empty, and the view redraws when they come. Each signal keeps the
+    # values of the last view it was read for (`entry.cache`), so a repaint of the same view reads nothing.
+    def signal_view(self, n):
+        vs, ve = int(self.panel.vstart), int(math.ceil(self.panel.vend))
+        return (vs, ve, n)
+
+    def signal_values(self, key, view):
+        """The values of signal row `key` drawn per bin for `view` (vs, ve, bins): the mean or the highest, as its style says (NaN: no
+        value); None while they are read, or when the file cannot be read (`cache["error"]`)."""
+        cache = self.editor.track_of(key).cache
+        if cache.get("key") != view or cache.get("bins") is None:
+            return None
+        i = 1 if self.style(key).summary == "max" else 0
+        return [b[i] for b in cache["bins"]]
+
+    def _read_signals(self, entries, view):
+        """Read the values of `entries` for `view` in a worker thread (one job at a time), then redraw. An image export reads them
+        here and now (it draws once, at once)."""
+        def read():
+            for entry in entries:
+                try:
+                    entry.cache = {"key": view, "bins": entry.signal.bins(entry.seqid, view[0], view[1], view[2]), "error": None}
+                except OSError as e:
+                    entry.cache = {"key": view, "bins": None, "error": str(e)}
+
+        if image_export.ACTIVE:
+            read()
+        elif not self.reading:
+            self.reading = True
+
+            def work():   # (Rust releases Python's lock while it reads)
+                try:
+                    read()
+                finally:
+                    self.reading = False
+                    _relay.depth_ready.emit()   # (the canvases redraw, and read again if the view moved meanwhile)
+            QThreadPool.globalInstance().start(work)
+
+    def signal_text(self, key, x):
+        """The info line over a signal row: the position under x and, for each signal drawn in that row, the value drawn there."""
+        pos = int(self.pos(x))
+        parts = []
+        for k in [key] + self.overlays.get(key, []):
+            cache = self.editor.track_of(k).cache
+            if cache.get("bins"):
+                i = min(len(cache["bins"]) - 1, max(0, int((x - self.left) / self.width_px() * len(cache["bins"]))))
+                v = cache["bins"][i][1 if self.style(k).summary == "max" else 0]
+                parts.append(f"{self.editor.track_layout.label(k)}: {'no value' if v != v else short_number(v)}")
+        return f"{pos + 1:,}  " + "  ·  ".join(parts)
+
+    def _signals(self, p, tops, dim):
+        """Signal tracks in sight: bars, a line or a heatmap of their values in view, each on its range (its own values in view, its
+        group's, or fixed); the signals overlaid in a row drawn over it as lines in their colours."""
+        ed, layout = self.editor, self.editor.track_layout
+        shown = [s.name for s in ed.signals if s.name in tops]
+        if not shown:
+            return
+        W = self.width_px()
+        view = self.signal_view(max(1, int(min(W // 2, self.panel.vend - self.panel.vstart))))   # 2 px a bin, never under a base
+        keys = [k for name in shown for k in [name] + self.overlays.get(name, [])]
+        missing = [ed.track_of(k) for k in keys if ed.track_of(k).cache.get("key") != view]
+        if missing:
+            self._read_signals(missing, view)
+        values = {k: self.signal_values(k, view) for k in keys}
+
+        def extent(keys):
+            seen = [v for k in keys for v in (values.get(k) or []) if v == v]
+            return (min(0.0, min(seen)), max(seen)) if seen else (0.0, 1.0)
+
+        group_of = {k: g.name for g in layout.groups() for k in g.keys}
+        shared = {}   # group -> (low, high) of its signals on a shared range
+        for name in shown:
+            if self.style(name).range == "group":
+                lo, hi = extent([name] + self.overlays.get(name, []))
+                old = shared.get(group_of.get(name), (lo, hi))
+                shared[group_of.get(name)] = (min(lo, old[0]), max(hi, old[1]))
+        for name in shown:
+            top, h = tops[name]
+            st = self.style(name)
+            if values[name] is None:
+                if error := ed.track_of(name).cache.get("error"):
+                    p.setPen(dim)
+                    p.drawText(QRectF(self.left + 4, top, W, h), Qt.AlignLeft | Qt.AlignVCenter, f"Cannot read: {error}")
+                continue   # (else: being read; drawn when it comes)
+            members = self.overlays.get(name, [])
+            lo, hi = ((st.low, st.high) if st.range == "fixed" else shared[group_of.get(name)] if st.range == "group"
+                      else extent([name] + members))
+            if hi <= lo:
+                hi = lo + 1
+            f = SCALES[st.scale]
+            span = f(max(0.0, hi - lo)) or 1.0
+
+            def level(v):   # 0..1 up the row
+                return min(1.0, max(0.0, f(max(0.0, v - lo)) / span))
+
+            color = QColor(self.row_color(name))
+            if st.render == "heatmap":
+                self._heatmap(p, values[name], top, h, color, level)
+            elif st.render == "line":
+                self._line(p, values[name], top, h, color, level)
+            else:
+                self._signal_bars(p, values[name], top, h, color, level)
+            for k in members:   # overlaid signals: lines over it
+                if values[k] is not None:
+                    self._line(p, values[k], top, h, QColor(self.row_color(k)), level)
+            if h >= 12:   # its range, at the left (the scale too when it is not linear)
+                p.setPen(dim)
+                p.drawText(QRectF(self.left + 2, top, W, h), Qt.AlignLeft | Qt.AlignTop,
+                           f"{short_number(lo)}–{short_number(hi)}" + ("" if st.scale == "linear" else f" ({st.scale})"))
+
+    def _signal_bars(self, p, values, top, h, color, level):
+        W, n = self.width_px(), len(values)
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        for i, v in enumerate(values):
+            if v == v and (t := level(v)) > 0:
+                p.drawRect(QRectF(self.left + i * W / n, top + h * (1 - t), W / n + 0.5, h * t))
+
+    def _line(self, p, values, top, h, color, level):
+        W, n = self.width_px(), len(values)
+        p.setPen(QPen(color, 1.5))
+        run = []
+        for i, v in enumerate(values + [float("nan")]):   # (a gap in the values breaks the line)
+            if v == v:
+                run.append(QPointF(self.left + (i + 0.5) * W / n, top + h * (1 - level(v))))
+            elif run:
+                p.drawPolyline(QPolygonF(run)) if len(run) > 1 else p.drawPoint(run[0])
+                run = []
+
+    def _heatmap(self, p, values, top, h, color, level):
+        """One line of colour, light (low) to dark (high) in the track's colour (track_layout.gradient, as the panel's "Light to
+        Dark"), none where there is no value: one image of a pixel per bin, drawn stretched to the row."""
+        name = color.name()
+        if name not in self.ramps:
+            self.ramps[name] = [QColor(c).rgb() for c in track_layout.gradient(name, 32)] + [0]   # (the last: no value, clear)
+        image = QImage(len(values), 1, QImage.Format_Indexed8)
+        image.setColorTable(self.ramps[name])
+        image.fill(32)
+        for i, v in enumerate(values):
+            if v == v:
+                image.setPixel(i, 0, round(level(v) * 31))
+        p.drawImage(QRectF(self.left, top, self.width_px(), h), image)
+
     def _bars(self, p, counts, top, h, color, scale="linear"):
         f = SCALES[scale]
         peak = f(max(counts, default=0)) or 1
@@ -1085,6 +1258,8 @@ class GenomeCanvas(QWidget):
         if not self.drag:
             pt = event.position()
             x = pt.x()
+            if x >= self.left and (row := self.row_at(y)) and self.kinds.get(row[0]) == "signal":
+                self.panel.info.setText(self.signal_text(row[0], x))
             # a hand over what a click does something with: a feature, a primer, a read..., a track's name, the overview
             clickable = self.on_overview(x, y) or (not self.in_header(y) and (
                 self.group_at(y) is not None or
@@ -1222,6 +1397,10 @@ def legend_html():
         mark("✕", "#757575", "click a track name to hide it (the Tracks panel shows it again)"),
         mark("☰", "#757575", "right-click a track: expanded / condensed / dense, colour, group, scale"),
         mark("↕", "#757575", "drag the thin line under a track to resize it"),
+    ) + section(
+        "Signal tracks (bigWig, bedGraph, wig)",
+        swatch(SIGNAL_COLOR, "bars, a line or a heatmap (light: low, dark: high); the range is written at the left"),
+        mark("≈", "#757575", "right-click > Signal: draw as, mean or highest value per pixel, range, overlay several in one row"),
     )
 
 
@@ -1317,7 +1496,7 @@ class GenomeView(QWidget):
         self.tracks_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.tracks_area.setFocusPolicy(Qt.NoFocus)   # (a click on the canvas would give it the keyboard: see GenomeCanvas)
         self.tracks_area.setWidget(self.canvas)
-        self.tracks_area.verticalScrollBar().valueChanged.connect(self.canvas.update)   # the pinned ruler is drawn again
+        self.tracks_area.verticalScrollBar().valueChanged.connect(self.canvas.update)   # the pinned ruler (rows not drawn yet: see paintEvent)
         # The Tracks panel, at the left of the tracks; whether it is open and its width are remembered.
         self.tracks_panel = track_panel.TracksPanel(self)
         self.body = QSplitter(Qt.Horizontal, childrenCollapsible=False)

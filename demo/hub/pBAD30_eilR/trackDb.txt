@@ -1,0 +1,28 @@
+track demo_coverage
+compositeTrack on
+shortLabel Coverage
+longLabel Read coverage on each strand
+type bigWig
+visibility full
+
+    track plus
+    parent demo_coverage on
+    bigDataUrl plus.bw
+    shortLabel Coverage plus
+    type bigWig
+    color 200,40,40
+
+    track minus
+    parent demo_coverage off
+    bigDataUrl minus.bw
+    shortLabel Coverage minus
+    type bigWig
+    color 40,40,200
+
+track sites
+bigDataUrl sites.bb
+shortLabel Sites
+longLabel Three sites
+type bigBed 9
+itemRgb on
+visibility pack

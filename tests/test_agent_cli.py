@@ -1,6 +1,7 @@
 """The command line for agents (app/cli.py and the recipes in app/agent/): what an agent reads from a plasmid must be what the
 GenBank file says, a mistake must be one `ERROR:` line, and the example in every recipe must still run."""
 import csv
+import io
 import json
 import os
 import random
@@ -842,6 +843,61 @@ def test_ncbi_command_searches_and_fetches_through_the_import_dialogs_functions(
     for argv, words in ((("search", "pUC19", "--limit", "0"), "--limit must be at least 1"), (("get", "L09137", "--out", out), "already exists")):
         assert words in run(capsys, "ncbi", *argv)[2]
     assert len(seen) == asked    # (a mistake that can be seen here never reaches the network)
+
+
+def test_hub_command_lists_and_copies_like_the_import(capsys, tmp_path, monkeypatch):
+    """`hub list` / `hub get` give what Import > Track Hub reads (track_hub, the module the window calls): the hub's groups, short
+    labels, colours and hidden tracks, through includes, views, super tracks and subtracks switched off; types openDNA does not
+    read are listed with why, never dropped; a remote hub's files come through track_hub.open_url (replaced here: no network)."""
+    import track_hub
+    demo = ROOT / "demo" / "hub"
+    res = answer(capsys, "hub", "list", demo)
+    direct = track_hub.hub_tracks(track_hub.open_hub(demo), "pBAD30_eilR")
+    assert [(t["name"], t["label"], t["group"], t["type"], t["hidden"], t["color"], t["read"]) for t in res["tracks"]] == \
+        [(t.name, t.label, t.group, t.kind, t.hidden, t.color, not t.why) for t in direct] == \
+        [("plus", "Coverage plus", "Coverage", "bigWig", False, "#c82828", True), ("minus", "Coverage minus", "Coverage", "bigWig", True, "#2828c8", True),
+         ("sites", "Sites", "Demo hub", "bigBed", False, None, True)]
+    got = answer(capsys, "hub", "get", demo, "--out", tmp_path / "copy")
+    assert [Path(f["file"]).name for f in got["files"]] == ["plus.bw", "minus.bw", "sites.bb"] and got["failed"] == []
+    assert all(Path(f["file"]).read_bytes() == (demo / "pBAD30_eilR" / Path(f["file"]).name).read_bytes() for f in got["files"])
+    assert "not empty" in run(capsys, "hub", "get", demo, "--out", tmp_path / "copy")[2]
+    assert "needs --out" in run(capsys, "hub", "get", demo)[2]
+    # a hub of two genomes; g1's trackDb includes another file; a super track not shown, a composite with a view and a subtrack off,
+    # a colour given by the composite, a bam track (not read), a track hidden by its own visibility
+    h = tmp_path / "hub"
+    (h / "g1").mkdir(parents=True)
+    (h / "hub.txt").write_text("hub two\nshortLabel Two genomes\ngenomesFile genomes.txt\n")
+    (h / "genomes.txt").write_text("genome g1\ntrackDb g1/trackDb.txt\n\ngenome g2\ntrackDb g1/trackDb.txt\n")
+    (h / "g1" / "trackDb.txt").write_text(
+        "track comp\ncompositeTrack on\nshortLabel Comp\ncolor 1,2,3\ntype bigWig\n\n"
+        "  track view_a\n  parent comp\n  view A\n\n"
+        "    track a1\n    parent view_a on\n    bigDataUrl a1.bw\n    shortLabel A one\n\n"
+        "    track a2\n    parent view_a off\n    bigDataUrl ../a2.bw\n    shortLabel A two\n\n"
+        "include more.txt\n")
+    (h / "g1" / "more.txt").write_text(
+        "track sup\nsuperTrack on\nshortLabel Super\n\ntrack s1\nparent sup\nbigDataUrl s1.bb\ntype bigBed 6\n\n"
+        "track reads\nbigDataUrl r.bam\ntype bam\nshortLabel Reads\n\ntrack quiet\nbigDataUrl q.bw\ntype bigWig\nvisibility hide\n")
+    for f in ("g1/a1.bw", "a2.bw", "g1/s1.bb", "g1/q.bw"):
+        (h / f).write_bytes(b"data of " + f.encode())
+    assert "several genomes" in run(capsys, "hub", "list", h)[2]
+    res = answer(capsys, "hub", "list", h, "--genome", "g1")
+    assert [(t["name"], t["label"], t["group"], t["type"], t["hidden"], t["color"], t["read"]) for t in res["tracks"]] == [
+        ("a1", "A one", "Comp", "bigWig", False, "#010203", True), ("a2", "A two", "Comp", "bigWig", True, "#010203", True),
+        ("s1", "s1", "Super", "bigBed", True, None, True), ("reads", "Reads", "Two genomes", "bam", False, None, False),
+        ("quiet", "quiet", "Two genomes", "bigWig", True, None, True)]
+    assert any("Reads" in w for w in res["warnings"]) and "openDNA reads bigWig and bigBed" in res["tracks"][3]["why"]
+    # the same hub on a server: every file comes through track_hub.open_url
+    asked = []
+
+    def open_url(url, timeout=60):
+        asked.append(url)
+        return io.BytesIO((h / url.removeprefix("https://example.org/h/")).read_bytes())
+    monkeypatch.setattr(track_hub, "open_url", open_url)
+    got = answer(capsys, "hub", "get", "https://example.org/h/hub.txt", "--genome", "g1", "--out", tmp_path / "web")
+    assert [(Path(f["file"]).name, Path(f["file"]).read_bytes()) for f in got["files"]] == [
+        ("a1.bw", b"data of g1/a1.bw"), ("a2.bw", b"data of a2.bw"), ("s1.bb", b"data of g1/s1.bb"), ("q.bw", b"data of g1/q.bw")]
+    assert "https://example.org/a2.bw" not in asked and "https://example.org/h/a2.bw" in asked   # (../ from g1/ is the hub's folder)
+    assert "to its server" in got["settings"]["hub"]["sends"]["value"] and not (tmp_path / "web" / "r.bam").exists()
 
 
 def fake_ncbi(monkeypatch):

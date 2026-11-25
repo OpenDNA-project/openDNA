@@ -5,7 +5,7 @@
 
 Commands: `skills list|show NAME` (the recipes in app/agent/), `inspect FILE`, `feature FILE NAME`, `region FILE START END`;
 batches with a table, `check` then `run`: `kld`, `pcr`, `recombineering`, `codon`, `gibson`; read-only analyses (app/cli_tools.py): `sites`, `guides`,
-`repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`, `synthesis`; files: `export`, `order`; network: `ncbi`; optional tools beside openDNA (pLannotate, the Terminal's): `wsltools`.
+`repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`, `synthesis`; files: `export`, `order`; network: `ncbi`, `hub` (a UCSC track hub); optional tools beside openDNA (pLannotate, the Terminal's): `wsltools`.
 Everything prints JSON (skills print Markdown). An error is one line `ERROR: ...` on stderr and exit code 1, never a traceback.
 Positions are 1-based and inclusive, as in the GenBank file and HGVS (`region f.gb 10 20` is bases 10 to 20).
 """

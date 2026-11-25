@@ -620,6 +620,7 @@ def test_text_exports_and_the_project_file(tmp_path):
     ed.add_track(SimpleNamespace(name=track.name, kind="track", path=str(track), seqid=ed.doc.name, types=["gene"], fields=[]), "Hub")   # as load_track does
     ed.track_layout.style(track.name).mode = "dense"
     ed.track_layout.style("GC %").shown = False
+    ed.add_track(SimpleNamespace(name="s.bw", kind="signal", path=str(tmp_path / "s.bw"), seqid=ed.doc.name))
     ed.set_display(enzymes=True, hidden_kinds={"misc_feature"})
     ed.dna_locked = True
     site = ed.doc.sequence()[100:120]
@@ -635,8 +636,9 @@ def test_text_exports_and_the_project_file(tmp_path):
     assert meta["tracks"][0]["types"] == ["gene"] and set(meta["primer_sites"]) == {"rule", "primers"}   # what was imported, sites hidden by hand
     assert meta["display"]["enzymes"] and meta["display"]["hidden_kinds"] == ["misc_feature"]
     # the Alignment view's layout: the track in its group, only the styles changed from the defaults
+    assert meta["signals"] == [{"path": str(tmp_path / "s.bw"), "relative": "s.bw", "seqid": ed.doc.name, "name": "s.bw"}]
     assert meta["track_layout"] == {"nodes": [{"group": "Sequence", "keys": list(track_layout.BUILTIN), "collapsed": False},
-                                              {"group": "Hub", "keys": ["extra.gff3"], "collapsed": False}],
+                                              {"group": "Hub", "keys": ["extra.gff3"], "collapsed": False}, "s.bw"],
                                     "styles": {"extra.gff3": {"mode": "dense"}, "GC %": {"shown": False}}}
     assert not list(tmp_path.glob("*.part")), "written through a temporary file"
     doc, back = exports.open_project(project)
@@ -723,6 +725,21 @@ def test_track_layout_moves_groups_reloads_and_bulk_helpers():
     ed.remove_tracks(["a.bed (2)", "r.bam"])
     assert ed.row_keys()[len(track_layout.BUILTIN):] == ["a.bed", "Features (2)"] and ed.track_layout.group("G").keys == ["a.bed", "Features (2)"]
     assert [t.color_index for t in ed.tracks] == [0, 2]
+    # signal tracks: in their own list; overlaid in the first one's row, and separated again (from any of them)
+    for name in ("p.bw", "m.bw", "x.bw"):
+        ed.add_track(SimpleNamespace(name=name, kind="signal", path=name))
+    assert [s.name for s in ed.signals] == ["p.bw", "m.bw", "x.bw"] and len(ed.loaded()) == 5 and ed.row_table["m.bw"][0] == "signal"
+    ed.track_layout.overlay(["p.bw", "m.bw", "x.bw"])
+    assert [ed.track_layout.style(k).overlay for k in ("p.bw", "m.bw", "x.bw")] == [None, "p.bw", "p.bw"]
+    ed.track_layout.separate(["m.bw"])
+    assert [ed.track_layout.style(k).overlay for k in ("m.bw", "x.bw")] == [None, "p.bw"]
+    ed.track_layout.separate(["p.bw"])   # (the row they are drawn in: all of them)
+    assert ed.track_layout.style("x.bw").overlay is None
+    sig = track_layout.Layout()
+    sig.load_json({"nodes": ["s"], "styles": {"s": {"render": "heatmap", "summary": "max", "range": "fixed", "low": -2, "high": 5.5,
+                                                    "overlay": "t"}, "t": {"render": "dots", "range": "own", "low": True}}}, ["s", "t"])
+    assert (sig.style("s").render, sig.style("s").summary, sig.style("s").range, sig.style("s").low, sig.style("s").high) == ("heatmap", "max", "fixed", -2, 5.5)
+    assert (sig.style("t").render, sig.style("t").range, sig.style("t").low) == ("bars", "auto", 0.0)   # (values it cannot read: defaults)
     # a project keeps the layout: a change by hand there is something to save; loading a track is not (a GenBank file: neither)
     for path, marked in (("w.odp", True), ("w.gb", False)):
         doc = Document.new_sequence("w", "ACGT" * 25, False)

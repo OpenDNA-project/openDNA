@@ -685,6 +685,44 @@ def cmd_ncbi(args):
     return answer(settings, record=records[found.index(record)], file=str(out), bytes=out.stat().st_size, from_cache=cached)
 
 
+def cmd_hub(args):
+    """A UCSC track hub (a URL, a hub.txt or a folder holding one): `list` its tracks (in the hub's groups, with labels, types and
+    whether the hub hides them at first), `get` copies the files of the tracks openDNA reads into a new folder. The same reading
+    and copying as Import > Track Hub; the window then loads them."""
+    import track_hub
+    out = None
+    if args.action == "get":
+        if not args.out:
+            raise UserError("`hub get` needs --out NEW_FOLDER.")
+        out = Path(args.out)
+        if out.exists() and any(out.iterdir()):
+            raise UserError(f"The output folder {out} already exists and is not empty: choose a new one with --out (nothing is overwritten).")
+    hub = track_hub.open_hub(args.source)
+    genome = args.genome or track_hub.pick_genome(hub, [])
+    if genome is None:
+        raise UserError(f"the hub has several genomes ({', '.join(hub.genomes)}): name one with --genome")
+    tracks = track_hub.hub_tracks(hub, genome)
+    remote = track_hub.is_url(hub.source)
+    settings = {"hub": {"source": {"value": hub.source}, "genome": {"value": genome, "source": "command line" if args.genome else "the hub's only genome"},
+                         "sends": {"value": "requests for the hub's own files, to its server" if remote else "nothing: a hub on this computer"}}}
+    unread = [t for t in tracks if t.why]
+    caps = [f"{len(unread)} track(s) of a type openDNA does not read, listed but not copied: {', '.join(t.label for t in unread[:10])}"
+            + (" …" if len(unread) > 10 else "")] if unread else []
+    listed = [{"name": t.name, "label": t.label, "group": t.group, "type": t.kind, "hidden": t.hidden, "color": t.color, "url": t.url,
+               "read": not t.why, **({"why": t.why} if t.why else {})} for t in tracks]
+    if args.action == "list":
+        return answer(settings, caps=caps, hub={"name": hub.name, "label": hub.label, "genomes": list(hub.genomes)}, tracks=listed)
+    try:
+        copied = track_hub.copy_tracks([t for t in tracks if not t.why], out)
+    except OSError as e:   # (the folder cannot be made)
+        raise UserError(f"cannot write in {out}: {e}") from None
+    failed = [{"name": t.name, "label": t.label, "error": why} for t, path, why in copied if path is None]
+    caps += [f"{f['label']}: not copied ({f['error']})" for f in failed]
+    files = [{"name": t.name, "label": t.label, "group": t.group, "hidden": t.hidden, "file": str(path), "bytes": path.stat().st_size}
+             for t, path, _ in copied if path is not None]
+    return answer(settings, caps=caps, folder=str(out), files=files, failed=failed)
+
+
 def cmd_wsltools(args):
     """The tools that run beside openDNA (inside WSL on Windows): pLannotate and the Terminal's. `install` is what the Windows installer's
     optional task runs; it installs WSL itself never (that needs an administrator and a restart: the user does it)."""
@@ -839,3 +877,9 @@ def register(sub, cli):
     s.add_argument("--out", help="get: the new file to write")
     s.add_argument("--allow-large", action="store_true", help="get: a record of more than 20 million bases")
     s.set_defaults(run=cmd_ncbi)
+    s = sub.add_parser("hub", help="a UCSC track hub: list its tracks (groups, labels, types, hidden at first), or copy their files into a new folder")
+    s.add_argument("action", choices=["list", "get"])
+    s.add_argument("source", help="the hub: a URL of its hub.txt, a hub.txt, or a folder holding one")
+    s.add_argument("--genome", help="which genome of the hub (needed when it has several)")
+    s.add_argument("--out", help="get: a new folder for the files")
+    s.set_defaults(run=cmd_hub)

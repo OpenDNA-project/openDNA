@@ -16,8 +16,11 @@ BUILTIN = {"GC %": "gc", "Bases": "bases", "Features": "features", "Primers": "p
 SEQUENCE = "Sequence"     # the group the built-in tracks start in
 MODES = ("expanded", "condensed", "dense")   # dense: one line (UCSC); hiding is `Style.shown`
 SCALES = ("linear", "log2", "log10")
-SCALED = ("coverage", "track")             # kinds with a scale choice
-COLORED = ("gc", "track", "coverage")      # kinds drawn in one colour that can be chosen (features, primers, reads have their own)
+SCALED = ("coverage", "track", "signal")   # kinds with a scale choice
+COLORED = ("gc", "track", "coverage", "signal")   # kinds drawn in one colour that can be chosen (features, primers, reads have their own)
+RENDERS = ("bars", "line", "heatmap")      # how a signal track is drawn
+SUMMARIES = ("mean", "max")                # what a signal shows where a pixel holds many bases: their mean, or the highest value
+RANGES = ("auto", "group", "fixed")        # a signal's range: its own values in view, its group's, or low..high
 FIXED = ("bases",)                         # kinds that are only shown or hidden (no display mode, height or colour)
 SPLIT = re.compile(r"[_\-. ]+")   # what separates the parts of a track's name ("Group by name")
 
@@ -30,6 +33,12 @@ class Style:
     scale: str = "linear"     # bar tracks: one of SCALES
     color: str = None         # "#rrggbb" chosen by hand (over the file's colours), None: the track's own
     label: str = None         # the name shown, None: the key
+    render: str = "bars"      # signal tracks: one of RENDERS
+    summary: str = "mean"     # signal tracks: one of SUMMARIES
+    range: str = "auto"       # signal tracks: one of RANGES
+    low: float = 0.0          # signal tracks: the fixed range
+    high: float = 1.0
+    overlay: str = None       # signal tracks: the key of the signal row it is drawn in (an overlay), None: a row of its own
 
 
 DEFAULT = asdict(Style())
@@ -108,6 +117,15 @@ class Layout:
         if (g := self.group(name)) is not None:
             g.collapsed = collapsed
             self.on_change(True)
+
+    def overlay(self, keys):
+        """Draw signal rows `keys` in one row: the first one's (the others keep their place, to come back to it)."""
+        self.restyle_each({k: {"overlay": keys[0]} for k in keys[1:]} | {keys[0]: {"overlay": None}})
+
+    def separate(self, keys):
+        """Rows `keys` and those drawn in them get rows of their own again."""
+        hosts = set(keys)
+        self.restyle_each({k: {"overlay": None} for k, st in self.styles.items() if k in hosts or st.overlay in hosts})
 
     def ungroup(self, name):
         """The group's rows go to the top level, where the group was."""
@@ -212,7 +230,10 @@ def _valid(name, value):
     return {"shown": lambda v: isinstance(v, bool), "mode": lambda v: v in MODES,
             "height": lambda v: v is None or (type(v) is int and v > 0), "scale": lambda v: v in SCALES,
             "color": lambda v: v is None or bool(re.fullmatch(r"#[0-9a-fA-F]{6}", str(v))),
-            "label": lambda v: v is None or isinstance(v, str)}[name](value)
+            "label": lambda v: v is None or isinstance(v, str), "render": lambda v: v in RENDERS,
+            "summary": lambda v: v in SUMMARIES, "range": lambda v: v in RANGES,
+            "low": lambda v: type(v) in (int, float), "high": lambda v: type(v) in (int, float),
+            "overlay": lambda v: v is None or isinstance(v, str)}[name](value)
 
 
 def name_groups(labels, parts=1):

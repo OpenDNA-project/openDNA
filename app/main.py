@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QDialog, QSizePolicy, QToolButton, QVBoxLayout, QWidget,
 )
 
-from opendna_core import Bam, Document, Fasta, Track
+from opendna_core import Bam, Document, Fasta, Signal, Track, is_bigwig
 
 from display_panel import DisplayPanel
 from history_panel import HistoryPanel, side_panel_width
@@ -61,6 +61,7 @@ import db_tabs
 import reference_picker
 import theme
 import track_check
+import track_hub
 import track_import
 import track_panel
 from track_check import match_contig   # (tests/test_multi_record.py reads it from here)
@@ -85,20 +86,30 @@ import autosave
 from autosave import autosave_path
 from add_record import AddRecordsDialog
 import multigb
-from uikit import ask, background_jobs, in_background, plural, run_busy
+from uikit import ask, background_jobs, in_background, plural, run_busy, run_cancellable
 
 tool_settings.register_page(genetic_code.TOOL, codon_dialog.UsageBox)   # the codon usage line of the Genetic code page
 
 FASTA_EXT = {".fa", ".fasta", ".fna", ".fas", ".ffn", ".frn", ".mfa"}
 OPEN_FILTER = ("Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas *.odp);;"
                "Open DNA Project (*.odp);;All files (*)")
-TRACK_FILTER = ("Tracks (*.gff *.gff3 *.gtf *.bed *.vcf *.vcf.gz *.bam);;Alignments (*.bam);;"
-                "Variants (*.vcf *.vcf.gz);;All files (*)")
-ANNOTATION_FILTER = "Annotation tracks (*.gff *.gff3 *.gtf *.bed);;All files (*)"
+TRACK_FILTER = ("Tracks (*.gff *.gff3 *.gtf *.bed *.bb *.bigbed *.bw *.bigwig *.bedgraph *.bg *.bdg *.wig *.vcf *.vcf.gz *.bam);;"
+                "Alignments (*.bam);;Variants (*.vcf *.vcf.gz);;All files (*)")
+ANNOTATION_FILTER = "Annotation tracks (*.gff *.gff3 *.gtf *.bed *.bb *.bigbed);;All files (*)"
+SIGNAL_FILTER = "Signal tracks (*.bw *.bigwig *.bedgraph *.bg *.bdg *.wig);;All files (*)"
+SIGNAL_EXT = (".bw", ".bigwig", ".bedgraph", ".bg", ".bdg", ".wig")
 VCF_FILTER = "Variants (*.vcf *.vcf.gz);;All files (*)"
 BAM_FILTER = "Aligned reads (*.bam);;All files (*)"
 AUTOSAVE_MS = 60_000
 TIP_MS = 300_000   # the status bar shows another tip every 5 minutes
+
+
+def track_kind(path):
+    """How a track file is read: "bam", "signal" (bigWig by its contents, bedGraph, wig) or "track" (GFF, GTF, BED, bigBed, VCF)."""
+    lower = str(path).lower()
+    if lower.endswith(".bam"):
+        return "bam"
+    return "signal" if lower.endswith(SIGNAL_EXT) or is_bigwig(str(path)) else "track"
 
 
 def is_fasta(path):
@@ -271,7 +282,7 @@ class MainWindow(QMainWindow):
         file.addAction(QAction("&New…", self, shortcut=QKeySequence.New, triggered=self.new_file))
         file.addAction(QAction("&Open…", self, shortcut=QKeySequence.Open, triggered=self.choose_file))
         file.aboutToShow.connect(lambda: self.remove_tracks_action.setEnabled(
-            self.editor is not None and bool(self.editor.tracks or self.editor.alignments)))   # greyed with nothing loaded
+            self.editor is not None and bool(self.editor.loaded())))   # greyed with nothing loaded
         self.recent_menu = file.addMenu("Open &Recent")   # the start page's list: pinned first, then newest; filled when opened
         self.recent_menu.aboutToShow.connect(self._fill_recent_menu)
         self._fill_recent_menu()
@@ -298,6 +309,8 @@ class MainWindow(QMainWindow):
         dna.addAction(QAction("&Background Genome from NCBI…", self, triggered=self.import_genome))
         features = imp.addMenu("&Features and Tracks")
         action(features, "&Annotation Track (GFF3, GTF, BED)…", None, lambda: self.load_tracks(ANNOTATION_FILTER))
+        action(features, "&Signal Track (bigWig, bedGraph, wig)…", None, lambda: self.load_tracks(SIGNAL_FILTER))
+        action(features, "Track &Hub (UCSC)…", None, self.import_hub)
         action(features, "&Variants (VCF)…", None, lambda: self.load_tracks(VCF_FILTER))
         features.addAction(QAction("Import &Features to Features Database…", self, triggered=self.import_parts))
         proteins = imp.addMenu("&Proteins")
@@ -847,7 +860,7 @@ class MainWindow(QMainWindow):
             self.autosave_file = recovery
         add_recent(path)
         # Another sequence of the FASTA file that is open: its tracks (GFF, BAM...) follow, each on the sequence of the same name.
-        carry = ([e for e in old.tracks + old.alignments if getattr(e, "path", None)]
+        carry = ([e for e in old.loaded() if getattr(e, "path", None)]
                  if old is not None and record and old.fasta_record and Path(old.path) == Path(path) else [])
         keep_tabs = same_file and meta is None
         letters = self.sequence_view.size if same_file else None
@@ -922,7 +935,7 @@ class MainWindow(QMainWindow):
                        file_primers=d.get("file_primers"), db_primers=d.get("db_primers"), units=d.get("units"),
                        complement=d.get("complement"))
         missing = []
-        for entry in meta.get("tracks", []) + meta.get("alignments", []):
+        for entry in meta.get("tracks", []) + meta.get("alignments", []) + meta.get("signals", []):
             found = exports.project_file(entry, path)
             if found is None:
                 missing.append(entry["path"])
@@ -1740,31 +1753,77 @@ class MainWindow(QMainWindow):
 
     def load_tracks(self, filters=TRACK_FILTER):
         """Import → tracks / reads: one or several files at once (Shift/Ctrl-click in the dialog). Several files form a group named
-        after their folder, and what goes wrong with them is said in one message at the end, not a message per file."""
+        after their folder."""
         paths, _ = QFileDialog.getOpenFileNames(self, "Load tracks", "", filters)
-        many = len(paths) > 1
-        group, said = (Path(paths[0]).parent.name or "Tracks", []) if many else (None, None)
-        # Many files: the Alignment views are drawn once at the end, not after each file (200 tracks redrawn 200 times took most
-        # of a minute); the rest of the window still paints under the questions a file may ask.
-        views = []
-        if many:
-            self.set_genome_visible(True)
-            views = self.workspace.views(GenomeView)
+        if len(paths) < 2:
+            return [entry for entry in map(self.load_track, paths) if entry is not None]
+        group = Path(paths[0]).parent.name or "Tracks"
+        return [e for e in self.load_many([(p, group, None) for p in paths], "Load tracks") if e is not None]
+
+    def load_many(self, files, title, said=None):
+        """Load [(path, group, name or None)]: the loaded track of each file, or None. The Alignment views are drawn once at the end,
+        not after each file (200 tracks redrawn 200 times took most of a minute; the rest of the window still paints under the
+        questions a file may ask), and what goes wrong is said in one message at the end (`said`: what to say there already)."""
+        said = [] if said is None else said
+        self.set_genome_visible(True)
+        views = self.workspace.views(GenomeView)
         for v in views:
             v.setUpdatesEnabled(False)
         try:
-            loaded = [entry for entry in (self.load_track(p, group=group, said=said) for p in paths) if entry is not None]
+            loaded = [self.load_track(path, group=group, said=said, name=name) for path, group, name in files]
         finally:
             for v in views:
                 v.setUpdatesEnabled(True)
         if said:
             shown = said[:30] + ([f"… and {len(said) - 30} more."] if len(said) > 30 else [])
-            QMessageBox.warning(self, "Load tracks", f"{plural(len(loaded), 'track')} of {len(paths)} loaded.\n\n" + "\n\n".join(shown))
+            count = sum(e is not None for e in loaded)
+            QMessageBox.warning(self, title, f"{plural(count, 'track')} of {len(files)} loaded.\n\n" + "\n\n".join(shown))
         return loaded
 
+    def import_hub(self):
+        """Import > Track Hub: pick a UCSC track hub and its tracks (hub_dialog), copy their files (a hub on the internet: into the
+        folder chosen; one on this computer: read where they are), and load them in the hub's groups, with its short labels and
+        colours, those it hides at first hidden."""
+        from hub_dialog import HubDialog
+        dialog = HubDialog(self, self.editor)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        tracks, folder = dialog.chosen(), dialog.target()
+        said = [f"{t.label}: {t.why}" for t in dialog.tracks if t.why]   # (listed in the dialog, not loaded: said again here)
+        if folder is None:
+            copied = [(t, Path(t.url), "") for t in tracks]
+        else:
+            copied = self._copy_hub(tracks, folder)
+        said += [f"{t.label}: not copied ({why})" for t, path, why in copied if path is None]
+        files = [(t, path) for t, path, _ in copied if path is not None]
+        names = track_hub.local_names([t for t, _ in files])
+        entries = self.load_many([(path, t.group, names[t.name]) for t, path in files], "Import a track hub", said)
+        # Their look as the hub gives it: its short label, shown or hidden, its colour (a bigBed with itemRgb keeps its items' own).
+        looks = {e.name: {"label": t.label, "shown": not t.hidden, **({"color": t.color} if t.color and not t.item_rgb else {})}
+                 for (t, _), e in zip(files, entries) if e is not None}
+        if looks:
+            self.editor.track_layout.restyle_each(looks)
+            for view in self.workspace.views(GenomeView):
+                view.tracks_button.setChecked(True)   # (the panel lists them: many start hidden)
+            hidden = sum(not look["shown"] for look in looks.values())
+            self.statusBar().showMessage(f"{plural(len(looks), 'track')} loaded from {dialog.hub.label}"
+                                         + (f"; {hidden} hidden, as the hub has them: tick them in the Tracks panel" if hidden else ""), 10000)
+
+    def _copy_hub(self, tracks, folder):
+        """Copy the hub's files into `folder` in a worker thread, with a progress dialog that can stop it: [(track, path or None,
+        what went wrong)] (track_hub.copy_tracks)."""
+        def work(state):
+            def progress(done, total, track):
+                state.update(done=done, text=f"{done} of {total}: {track.label}")
+                return not state["cancel"]
+            try:
+                return track_hub.copy_tracks(tracks, folder, progress)
+            except OSError as e:   # (the folder cannot be made)
+                return [(t, None, str(e)) for t in tracks]
+        return run_cancellable(self, "Import a track hub", work, len(tracks))
     def load_track(self, path, seqid=None, quiet=False, types=None, fields=None, group=None, said=None, name=None):
-        """Add a GFF3/GTF/BED/VCF file as a track of the genome view (and to Find), or a
-        BAM file as coverage + reads. `quiet`: no questions: None when the track has nothing for this sequence.
+        """Add a GFF3/GTF/BED/bigBed/VCF file as a track of the genome view (and to Find), a bigWig/bedGraph/wig file as a
+        signal track, or a BAM file as coverage + reads. `quiet`: no questions: None when the track has nothing for this sequence.
         `types`, `fields`: the feature types and extra fields to keep (a project's; track_import.ALL: everything); None: asked
         for a GFF/GTF file (see _track_choice). `group`: the group of the Alignment view it goes in. `said`: a list that collects
         the warnings (one message for many files: load_tracks) instead of a message each. `name`: the track's name (a project's,
@@ -1780,9 +1839,9 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.warning(self, title, f"{path}\n\n{text}")
 
-        bam = str(path).lower().endswith(".bam")
+        kind = track_kind(path)
         try:
-            track = run_busy(self, f"Reading {file_name}…", lambda: (Bam if bam else Track)(str(path)))
+            track = run_busy(self, f"Reading {file_name}…", lambda: {"bam": Bam, "signal": Signal}.get(kind, Track)(str(path)))
         except OSError as e:
             if said is not None:
                 said.append(f"{file_name}: not read ({e})")
@@ -1807,7 +1866,7 @@ class MainWindow(QMainWindow):
                                              f"Which sequence of {file_name} is {ed.doc.name}?", seqs, 0, False)
             if not ok:
                 return None
-        if not bam:
+        if kind == "track":
             chosen = self._track_choice(track, path, seqid, quiet, types, fields, warn)
             if chosen is None:
                 return None
@@ -1819,13 +1878,16 @@ class MainWindow(QMainWindow):
                     warn("Empty track", f"no feature of the chosen types on {seqid}.")
                 return None
         # Does it belong to this sequence? A warning only: the track is loaded anyway (a renamed or edited sequence is common).
-        problems = track_check.mismatches(ed, None if bam else track, seqid, lengths[seqid] if bam else None, path)
+        problems = track_check.mismatches(ed, track if kind == "track" else None, seqid, None if kind == "track" else lengths[seqid],
+                                          path, signal=track if kind == "signal" else None)
         if problems:
             warn("Track may not match this sequence", "may not match this sequence: " + " ".join(problems) +
                  " It is loaded anyway; check that it is the right file.")
-        if bam:
+        if kind == "bam":
             entry = SimpleNamespace(name=name or file_name, kind="bam", path=str(path), bam=track, seqid=seqid, length=lengths[seqid],
                                     cache=None, depth_pending=False, error=None, variants=None)
+        elif kind == "signal":
+            entry = SimpleNamespace(name=name or file_name, kind="signal", path=str(path), signal=track, seqid=seqid, cache={})
         else:
             colors, unread = track_import.colors_of(track) if "color" in fields else ({}, "")
             if unread:
@@ -1892,8 +1954,8 @@ class MainWindow(QMainWindow):
         """File > Remove Tracks: every annotation / variant track and read alignment loaded on this sequence (the files are not
         touched; it cannot be undone, so it asks first)."""
         ed = self.editor
-        if ed.tracks or ed.alignments:
-            track_panel.confirm_remove(self, ed, ed.tracks + ed.alignments)
+        if ed.loaded():
+            track_panel.confirm_remove(self, ed, ed.loaded())
 
     def go_to_hit(self, record, start, end):
         """Genome-wide search result: open its sequence if needed, then select it."""

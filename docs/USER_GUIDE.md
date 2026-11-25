@@ -45,8 +45,14 @@ after the ones it has: a one-record GenBank file becomes a multi-record GenBank 
 only: FASTA keeps no features). The new records are written into the file at once (the records already in it are copied byte for
 byte, and Undo does not remove the new ones); the sequence that was open keeps its unsaved edits until you save it. An open `.dna`
 file, project or unsaved sequence is first saved as GenBank, and the records are added to that file. The alignment view (Ctrl+Shift+G, or a new tab with the Alignment view; off until you ask for it, on any sequence) shows
-tracks loaded with File → Load Track: GFF3/GTF/BED annotations, VCF variants and BAM alignments
-(coverage + reads; the `.bai` is made if missing; several files at once, which go in a group named after their folder). The
+tracks loaded with File → Load Track: GFF3/GTF/BED/bigBed annotations, signal tracks (bigWig, bedGraph, wig), VCF variants and
+BAM alignments (coverage + reads; the `.bai` is made if missing; several files at once, which go in a group named after their
+folder). A signal track draws its values as bars, a line or a one-line heatmap (right-click > Signal), each pixel the mean or the
+highest value of its bases, on a range of its own values in view, shared with its group, or fixed; several signals can be
+overlaid in one row (for example the two strands of RNA-seq), and the value under the mouse shows in the header. Import >
+Features and Tracks > Track Hub reads a UCSC track hub (the address of its `hub.txt`, or a folder holding one): it lists the
+hub's tracks in its groups, copies the files of a hub on the internet beside the open file, and loads them with the hub's short
+labels and colours; the tracks the hub hides at first load hidden, ready to tick in the Tracks panel. The
 Tracks button opens the Tracks panel: every track in its groups, with a box to show or hide it, a filter, and Ctrl/Shift-click to
 select many; its buttons and right-click menu change all the selected tracks at once (expanded, condensed or dense display, height,
 colour or a light-to-dark range of colours, log scale, group, name, remove), drag tracks to reorder them or onto a group to move

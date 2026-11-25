@@ -44,7 +44,8 @@ NAME_KEYS = {"label", "gene", "locus_tag", "old_locus_tag", "product", "gene_syn
 MAX_SITES = 50               # per primer and sequence DRAWN and listed; more means it is not specific anyway (the primers panel and the status bar say so)
 TRACK_HITS = 20_000          # track items a search stops at (the search bar's counter says so)
 # A loaded track's kind -> its rows in the Alignment view: (suffix of the row's key after the track's name, row kind).
-ENTRY_ROWS = {"track": (("", "track"),), "bam": (("", "coverage"), (" variants", "variants"), (" reads", "reads"))}
+ENTRY_ROWS = {"track": (("", "track"),), "signal": (("", "signal"),),
+              "bam": (("", "coverage"), (" variants", "variants"), (" reads", "reads"))}
 # Standard colour of each annotation type: drawn when a feature has no colour of its own,
 # given to new features, and applied by Feature → Recolor Annotations by Type.
 KIND_COLORS = {
@@ -392,6 +393,7 @@ class Editor(QObject):
         self.current_primer = None   # key of the selected primer site
         self.tracks = []             # loaded annotation tracks (SimpleNamespace name, track, seqid)
         self.alignments = []         # loaded BAM files (SimpleNamespace name, bam, seqid, length, ...)
+        self.signals = []            # loaded signal tracks: bigWig, bedGraph, wig (SimpleNamespace name, signal, seqid, cache)
         # The Alignment view's rows: {key: (kind, loaded track or None)}, the built-in ones then each loaded track's (rows_of), and
         # their order, groups and look (saved in a project; a change made through it emits tracks_changed).
         self.row_table = {key: (kind, None) for key, kind in track_layout.BUILTIN.items()}
@@ -1491,6 +1493,10 @@ class Editor(QObject):
         """Every row this file can show: the built-in ones, then each loaded track's."""
         return list(self.row_table)
 
+    def loaded(self):
+        """Every loaded track: annotation tracks, BAM files, signal tracks."""
+        return self.tracks + self.alignments + self.signals
+
     def track_of(self, key):
         """The loaded track a row belongs to (None for a built-in row)."""
         return self.row_table.get(key, (None, None))[1]
@@ -1504,7 +1510,7 @@ class Editor(QObject):
             entry.name = f"{base} ({n})"
         if entry.kind == "track":
             entry.color_index = len(self.tracks)   # its default colour stays when other tracks are removed
-        (self.alignments if entry.kind == "bam" else self.tracks).append(entry)
+        {"bam": self.alignments, "signal": self.signals}.get(entry.kind, self.tracks).append(entry)
         rows = self.rows_of(entry)
         self.row_table.update((k, (kind, entry)) for k, kind in rows.items())
         self._search_text = None
@@ -1513,9 +1519,9 @@ class Editor(QObject):
     def remove_tracks(self, names):
         """Take loaded tracks out of this window, by name; their files are not touched."""
         names = set(names)
-        gone = [e for e in self.tracks + self.alignments if e.name in names]
-        self.tracks[:] = [e for e in self.tracks if e.name not in names]
-        self.alignments[:] = [e for e in self.alignments if e.name not in names]
+        gone = [e for e in self.loaded() if e.name in names]
+        for kept in (self.tracks, self.alignments, self.signals):
+            kept[:] = [e for e in kept if e.name not in names]
         rows = [k for e in gone for k in self.rows_of(e)]
         for k in rows:
             del self.row_table[k]

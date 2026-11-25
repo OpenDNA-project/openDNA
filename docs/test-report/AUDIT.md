@@ -8,9 +8,9 @@ Built by `scripts/test_report.py` on 2026-11-24 from `tests.json` and the last r
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 160 | 160 | 0 | 100 | 57 | 3 | 0 | 127 |
-| Rust | 81 | 81 | 0 | 47 | 33 | 1 | 0 | 56 |
-| **All** | 241 | 241 | 0 | 147 | 90 | 4 | 0 | 183 |
+| Python | 162 | 162 | 0 | 102 | 57 | 3 | 0 | 128 |
+| Rust | 83 | 83 | 0 | 49 | 33 | 1 | 0 | 57 |
+| **All** | 245 | 245 | 0 | 151 | 90 | 4 | 0 | 185 |
 
 ## Weak or unreviewed tests
 
@@ -19,7 +19,7 @@ Built by `scripts/test_report.py` on 2026-11-24 from `tests.json` and the last r
 - `tests/test_synthesis_vendors.py::test_the_idt_login_and_screening_requests_have_the_shape_the_open_client_uses` (weak): The shape being checked is the one the open-source SBOL-utilities client is reported to use, not one read from IDT's documentation (behind a login) or seen on the live service: the first real call by someone with an IDT API account is the real test.
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 241 tests)
+## Gaps and proposed tests (3 of 245 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -46,7 +46,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 ## Every test, by file
 
-### `tests/test_agent_cli.py` (37 tests)
+### `tests/test_agent_cli.py` (38 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -82,6 +82,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases` | A part could be reported as already annotated just because another feature overlaps it, hiding a real missing part. | hand-computed | adequate | not checked | Uses a stand-in editor, not a real one; Detect Features' window itself has no widget test. |
 | `test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds` | An agent could give primers whose overlaps do not join the fragments, or a product that is not what the Assembly panel makes. | independent implementation | adequate | sound | Only Gibson is covered: Golden Gate, Sidewinder and restriction/ligation have no command yet.<br>The product's origin is the window's (a few bases before fragment 1): the test compares it as a circle. |
 | `test_ncbi_command_searches_and_fetches_through_the_import_dialogs_functions` | An agent could send more than the user's words to NCBI, fetch a record other than the one named, or overwrite a file. | hand-computed | adequate | sound | The real service is never called by the tests: an NCBI change in its answers is not caught here. |
+| `test_hub_command_lists_and_copies_like_the_import` | Without it, `hub list` / `hub get` could disagree with Import > Track Hub, or a hub's groups, labels, colours and hidden tracks could be read wrong (or a track silently dropped), with nothing to show it. | hand-computed | strong | not checked | The window's dialog and its copy with a progress bar (hub_dialog, main.import_hub) are not tested: no widget tests; checked by running the app offscreen on the demo hub. |
 | `test_split_command_writes_one_file_per_record_and_file_hash_name_reads_one` | An agent could be unable to use one chromosome of a multi-record file, or split a file into files that lose bases or have clashing names. | round-trip/self-consistency | adequate | sound | Sequences are random and short; a real GenBank file with features is only covered by the demo recipes' examples. |
 | `test_merge_command_joins_files_and_records_and_keeps_what_the_format_keeps` | An agent could merge files into a multi-record file that loses a sequence, overwrites a file, or silently drops features or topology. | round-trip/self-consistency | adequate | sound | Sequences are random and short; a real GenBank file with features is only covered by the demo recipes' examples. |
 | `test_circular_tools_give_the_same_answers_on_a_plasmid_turned_round_the_origin` | A restriction site, guide, repeat or gene that straddles the origin of a plasmid could be missed or misplaced by a tool, while the same plasmid cut elsewhere is fine. | property/invariant | strong | sound | Variants have their own test (they need a BAM).<br>Random sequence: a stretch of 30 bases that repeats by chance next to the planted one would change a length (the check allows 30 to 32). |
@@ -132,11 +133,12 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_local_align_query_cleaning_and_junction_texts` | Without it, pasting a FASTA, GenBank ORIGIN or RNA query could be rejected or mangled, and the junction descriptions (insertion, deletion, inversion) in the Local Align report could be wrong. | hand-computed | adequate | sound | Junction texts are checked with startswith only, so the rest of each message (sizes, positions) is not verified.<br>Duplication wording is mentioned in the docstring but no duplication junction is tested. |
 | `test_folder_search_finds_a_query_in_its_file_record_place_and_strand` | Without it, Folder Search could fail to find a sequence in the user's files, report the wrong file, record, position or strand, or crash on an unreadable file. | hand-computed | adequate | sound | The cancellation check is weak: the query ACGTACGTACGT would almost certainly not be found in that folder anyway, so a search that ignores cancelled() would still pass.<br>'files >= 5' depends on the contents of demo/.<br>The tiny a.fa of the cancellation step is deleted before the PER_FILE step: a one-record FASTA is circular, and a 60 bp query longer than its 4 bp adds a note of its own. |
 
-### `tests/test_core_formats.py` (5 tests)
+### `tests/test_core_formats.py` (6 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
 | `test_bam_reads_pileup_coverage_and_variants_match_a_model` | Without it, the read alignment track could show reads at wrong places, miscount depth, ignore duplicate/QC filters or call wrong SNPs and indels from a user's BAM file. | in-test reference model | strong | sound | Very large test covering four functions (reads, pileup, coverage, variants); a failure early hides later sections. Could be split. |
+| `test_signal_files_bigwig_bedgraph_and_wig_read_the_same_values` | Without it, the same signal could show different values in a bigWig and in a bedGraph or wig, or a file could be read as the wrong kind of track, with nothing to show it. | independent implementation | strong | not checked |  |
 | `test_tracks_gff_bed_parsing_query_density_and_search` | Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, drop features across the origin or a whole type, lose the file's colours, or miss features when zooming and searching. | in-test reference model | strong | sound |  |
 | `test_feature_locations_round_trip` | Without it, opening and saving a GenBank file could silently change or drop complex feature locations (joins, complement, fuzzy ends, between-base sites, remote references). | round-trip/self-consistency | strong | sound |  |
 | `test_genome_fasta_fetch_and_search_match_slicing_and_brute_force` | Without it, a reference genome opened from a FASTA file could return wrong bases at line breaks or ends, and motif/sequence search on it could miss hits or report wrong strands. | in-test reference model | strong | sound | Overlaps a little with the FASTA genome part of test_primer_binding.py::test_binding_agrees_with_the_documented_rules_written_in_python and the file-scope part of test_search.py. |
@@ -514,6 +516,13 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `cuts_mirror_on_the_bottom_strand_wrap_on_a_circle_and_stop_at_linear_ends` | Enzyme cut positions (map, sequence, digests, cloning) could be wrong for Type IIS enzymes on the bottom strand, through the origin or at linear ends. | hand-computed | strong | not checked |  |
 | `stops_at_the_limit_and_handles_tiny_and_empty_inputs` | A search could run past its hit limit or crash on an empty or very short sequence or query. | hand-computed | adequate | sound | Limit test does not check that the first 3 hits (0, 2, 4) are the ones kept. |
 | `finds_a_protein_motif_in_all_six_frames` | Protein motif search could miss hits in some frames, report wrong DNA coordinates, or mishandle X wildcards and stops. | hand-computed | adequate | sound | Name says 'all six frames' but only the three forward frames are checked; the reverse-strand frame number is never asserted (line 309). |
+
+### `core/src/signals.rs` (2 tests)
+
+| Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
+|---|---|---|---|---|---|
+| `bedgraph_and_wig_bins_by_hand` | Without it, a bedGraph or wig signal track could show wrong values in the Alignment view (shifted by one base, averaged over the wrong bases, or wrong when zoomed out) with nothing to show it. | hand-computed | strong | not checked |  |
+| `bigwig_and_bigbed_of_the_demo_hub` | Without it, a bigWig signal or a bigBed annotation track (what UCSC track hubs hold) could be read wrong, or not at all, with nothing to show it. | hand-computed | strong | not checked | The demo bigWig is too small to have zoom levels: the zoom path of a bigWig is checked against the bedGraph of the real Meso_v7 hub only by hand, not here. |
 
 ### `core/src/tracks.rs` (2 tests)
 

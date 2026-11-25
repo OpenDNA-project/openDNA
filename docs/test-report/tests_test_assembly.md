@@ -29,7 +29,7 @@ Checks that a fragment behaves as a PCR product (tails, core, flipping swaps the
 
 ## `test_golden_gate_products_and_overhang_checks`
 
-**Result:** ✅ passed in 0.03 s · [line 166](../../tests/test_assembly.py#L166) · **Area:** Golden Gate assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 166](../../tests/test_assembly.py#L166) · **Area:** Golden Gate assembly · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a Golden Gate design could produce a circle with the wrong overhangs, accept overhangs that cross-ligate or repeat, or fail to warn about leftover enzyme sites, so the cloning would not work at the bench.
 

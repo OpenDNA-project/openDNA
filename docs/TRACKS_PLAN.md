@@ -9,27 +9,39 @@ from the previous one (`tracks-1-panel`, `tracks-2-signal`, ...). Tick a PR's bo
 ## Status
 
 - [x] PR 1: Tracks panel (branch `tracks-1-panel`)
-- [ ] PR 2: Signal tracks and track hub import
+- [x] PR 2: Signal tracks and track hub import
 - [ ] PR 3: Regions, recap and print
 - [ ] PR 4: Tracks into the genome
 - [ ] PR 5: Editing tracks and keeping them in sync
 
-Where it stands: PR 1 is open for review (through `/simplify` and `/code-review`). PR 2 is next, on branch
-`tracks-2-signal` made from `tracks-1-panel`.
+Where it stands: PR 1 is open for review (OpenDNA-project/openDNA#34). PR 2 (branch `tracks-2-signal`, made from
+`tracks-1-panel`) is open for review on top of PR 1. PR 3
+(regions, recap, print) is next, on branch `tracks-3-regions` made from `tracks-2-signal`.
 
 What PR 1 built, for the next PRs to build on:
 
-- `app/track_layout.py`: the layout model (no Qt). Every change goes through a `Layout` method, which calls `on_change`
-  (`Editor.tracks_changed`); kinds of rows that take a scale, a colour or nothing (`SCALED`, `COLORED`, `FIXED`) live here.
+- `app/track_layout.py`: the layout model (no Qt). Every change goes through a `Layout` method, which calls
+  `on_change(edited)` (`Editor._layout_changed`: `tracks_changed`, and a hand-made change marks an `.odp` modified); kinds of
+  rows that take a scale, a colour or nothing (`SCALED`, `COLORED`, `FIXED`) live here.
 - `Editor.row_table`: `{row key: (kind, loaded track or None)}`, the one place that knows a file's rows. A loaded track has
-  `kind` ("track" or "bam"; PR 2 adds signal kinds in `editor.ENTRY_ROWS`) and a name unique against every row
-  (`Editor.add_track`). Projects save each track's name so its rows keep their place and look.
+  `kind` ("track", "signal" or "bam": `editor.ENTRY_ROWS`) and a name unique against every row (`Editor.add_track`);
+  `Editor.loaded()` lists them all. Projects save each track's name so its rows keep their place and look.
 - `app/track_panel.py`: the panel and `fill_menu`, the one menu of actions on tracks (also the view's right-click).
-- `main.load_tracks` loads many files with the window's drawing paused (one redraw at the end).
+- `main.load_many` loads many files with the Alignment views' drawing paused (one redraw at the end), one message for all.
 
-Measured with 195 tracks (offscreen): layout 0.9 ms, panel rebuild 2 ms, a full redraw of the view about 75 ms. For PR 2:
-draw only the rows in sight (the view draws every row, also those scrolled away), and pack dense or heatmap rows tighter
-(each row keeps a 6 px gap under it: 200 dense rows need about 3,000 px).
+What PR 2 built:
+
+- `core/src/signals.rs` (`opendna_core.Signal`): bigWig through the `bigtools` crate (read only; its zoom levels when a bin
+  spans many bases), bedGraph and wig parsed here with zoom levels built the same way. `bins(seq, start, end, n)` gives
+  (mean, highest) per bin. bigBed files are read by `Track` (by their contents) as the BED lines their entries stand for.
+- Signal rows: `Style.render` (bars, line, heatmap), `summary` (mean, max), `range` (auto, group, fixed with `low`/`high`),
+  `overlay` (the row a signal is drawn in). The canvas reads each signal once per view (`entry.cache`), in a worker thread (`_read_signals`).
+- The canvas draws only the rows in sight, a screen above and below (`GenomeCanvas.band`, `scrolled`); dense rows have a 1 px gap.
+- `app/track_hub.py` (no Qt): hub.txt, genomes file, trackDb with includes, groups from containers (views skipped), hidden at
+  first (visibility hide, `parent X off`, a super track not shown), colours inherited; `copy_tracks`. `app/hub_dialog.py` and
+  `main.import_hub` in the window; the `hub` command and recipe for agents; `demo/hub` is a small hub on the demo plasmid.
+
+Measured on the Meso_v7 data (offscreen): a bigWig bins query 0.1-3 ms; 13 signals and a gene track redrawn in 15 ms.
 
 ## Test data
 
