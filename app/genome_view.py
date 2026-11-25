@@ -58,7 +58,7 @@ NAMES_SHARE = 0.7   # the names column is this share of what its names ask for: 
 NAMES_MIN = 72      # px: but "Features" and its pin fit on a line
 NAME_X = 5          # px from the left of the names column to a name: clear of the 3 px colour stripe
 NAME_FLAGS = Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap | Qt.TextWrapAnywhere   # a name wraps at spaces, else anywhere
-FROZEN_COLOR = "#1e88e5"   # the pin of a pinned track in the names column
+FROZEN_COLOR = icons.PIN_COLOR
 MIN_SPAN = 40     # bp: deepest zoom
 DENSE = 2500      # more items than this in view -> density plot
 BASE_COLORS = {"A": "#2e7d32", "C": "#1565c0", "G": "#ef6c00", "T": "#c62828"}
@@ -282,8 +282,8 @@ class GenomeCanvas(QWidget):
 
     @staticmethod
     def max_lanes(kind, mode):
-        _, _, _, condensed = KINDS[kind]
-        return 1 if mode == "dense" else condensed if mode == "condensed" else KINDS[kind][0]
+        lanes, _, _, condensed = KINDS[kind]
+        return 1 if mode == "dense" else condensed if mode == "condensed" else lanes
 
     def pack_row(self, name, boxes, h):
         """`pack` for a row: into the lanes its height gives when set by hand, else as many as its mode allows; the lanes used

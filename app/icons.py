@@ -2,9 +2,10 @@
 light theme and white on the dark one. A funnel for the display filter, an hourglass for the history, and one per category
 of the quick filters in the tab row."""
 import math
+from functools import lru_cache
 
 from PySide6.QtCore import QByteArray, QPointF, QRectF, Qt
-from PySide6.QtGui import QFont, QIcon, QPainter, QPainterPath, QPalette, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPalette, QPen, QPixmap, QPolygonF
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
 
@@ -324,6 +325,14 @@ def eye_pixmap(shown, color):
     return _pixmap(_outline(_SHAPES["eye" if shown else "eye-off"]), color)
 
 
+PIN_COLOR = "#1e88e5"   # the pin of a pinned track
+
+
+@lru_cache(maxsize=16)
+def _pin(rgba):
+    return _pixmap(_outline(_SHAPES["pin"]), QColor.fromRgba(rgba))
+
+
 def pin_pixmap(color):
-    """The pin of a pinned track, in `color` (QColor)."""
-    return _pixmap(_outline(_SHAPES["pin"]), color)
+    """The pin of a pinned track, in `color` (QColor); drawn once per colour."""
+    return _pin(color.rgba())

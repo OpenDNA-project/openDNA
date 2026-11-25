@@ -1500,7 +1500,8 @@ class Editor(QObject):
         """The track layout changed: the Alignment views follow. A change made by hand in a project (.oDNA, which keeps the layout;
         a GenBank file does not) is something new to save."""
         self.tracks_changed.emit()
-        if edited and str(self.path).lower().endswith((".odna", ".odp")):
+        from exports import is_project   # (here: exports imports this module)
+        if edited and is_project(self.path):
             self.doc.modified = True
             self.modified_changed.emit()
 

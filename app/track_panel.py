@@ -33,7 +33,7 @@ ROW, GROUP = "row", "group"
 KEY = Qt.UserRole   # (ROW, row key) or (GROUP, group name) of each item of the tree
 ROW_FLAGS = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled | Qt.ItemIsEditable
 GROUP_FLAGS = ROW_FLAGS | Qt.ItemIsDropEnabled
-FROZEN_COLOR = "#1e88e5"   # the pin of a frozen track (the view's names column draws the same)
+FROZEN_COLOR = icons.PIN_COLOR   # the pin of a pinned track (the names column draws the same)
 EYE = 16                   # px: the eye of a row (a click on it shows or hides the track), the swatch of its colour after it
 ICON = 34                  # px of the eye and the swatch
 

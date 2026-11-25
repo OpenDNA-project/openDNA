@@ -228,7 +228,10 @@ class Layout:
     # ---- project --------------------------------------------------------------------------------------------------------------
     def to_json(self):
         nodes = [{"group": n.name, "keys": list(n.keys), "collapsed": n.collapsed} if isinstance(n, Group) else n for n in self.nodes]
-        styles = {k: {f: v for f, v in asdict(s).items() if v != asdict(default_style(k))[f]} for k, s in self.styles.items()}
+        styles = {}
+        for k, s in self.styles.items():
+            base = asdict(default_style(k))
+            styles[k] = {f: v for f, v in asdict(s).items() if v != base[f]}
         return {"nodes": nodes, "styles": {k: s for k, s in styles.items() if s}, **({"regions": [asdict(r) for r in self.regions]} if self.regions else {})}
 
     def load_json(self, data, present, length=None):
