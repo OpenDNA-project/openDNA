@@ -53,15 +53,35 @@ def small_button(text, tip, act):
     return b
 
 
+def recolor_regions(view, regions):
+    """Ask for a colour and give it to the highlights `regions`."""
+    if regions:
+        c = QColorDialog.getColor(QColor(regions[0].color), view, "Colour of the highlights")
+        if c.isValid():
+            view.editor.track_layout.change_regions(regions, color=c.name())
+
+
+def highlight_actions(menu, view, regions):
+    """Remove, recolour and recap the highlights `regions`: the same entries in the view's right-click menu (the ones under the
+    pointer) and in the Regions tab's (the ones selected)."""
+    if not regions:
+        return
+    layout = view.editor.track_layout
+    one = regions[0] if len(regions) == 1 else None
+    menu.addAction(" ".join(f"Remove Highlight {one.name} ({one.start + 1:,}–{one.end:,})".split()) if one
+                   else f"Remove {len(regions)} Highlights", lambda: layout.remove_regions(regions))
+    menu.addAction("Colour…", lambda: recolor_regions(view, regions))
+    menu.addAction("Recap Highlight…" if one else f"Recap {len(regions)} Highlights…",
+                   lambda: show_recap(view, [(r.name, r.start, r.end) for r in regions]))
+
+
 def region_actions(menu, view, pos=None):
-    """The actions on the selection and on the highlighted regions; `pos`: where it was right-clicked (a highlight there can be
-    removed)."""
+    """The actions on the selection and on the highlighted regions; `pos`: where it was right-clicked (the highlights there can
+    be removed, recoloured or recapped)."""
     ed = view.editor
     spans = selection_spans(ed)
     menu.addSection("Selection" if spans else "Regions")
-    for r in [r for r in ed.track_layout.regions if pos is not None and r.start <= pos < r.end]:
-        menu.addAction(" ".join(f"Remove Highlight {r.name} ({r.start + 1:,}–{r.end:,})".split()),
-                       lambda r=r: ed.track_layout.remove_regions([r]))
+    highlight_actions(menu, view, [r for r in ed.track_layout.regions if pos is not None and r.start <= pos < r.end])
     menu.addAction("Highlight Selection…", lambda: highlight_selection(view)).setEnabled(bool(spans))
     menu.addAction("Recap Tracks Here…", lambda: show_recap(view, [("selection", s, e) for s, e in spans])).setEnabled(bool(spans))
     menu.addAction("Export This Region as Image…", lambda: export_region_image(view, *spans[0])).setEnabled(len(spans) == 1)
@@ -497,10 +517,7 @@ class RegionsTab(QWidget):
         show_recap(self.view, [(r.name, r.start, r.end) for r in regions])
 
     def _recolor(self):
-        if chosen := self._chosen():
-            c = QColorDialog.getColor(QColor(chosen[0].color), self, "Colour of the highlights")
-            if c.isValid():
-                self.editor.track_layout.change_regions(chosen, color=c.name())
+        recolor_regions(self.view, self._chosen())
 
     def _menu(self, pos):
         """Right-click on a highlight in the list: remove, recolour or recap it (with the others selected with it)."""
@@ -509,9 +526,7 @@ class RegionsTab(QWidget):
             item.setSelected(True)
         if chosen := self._chosen():
             menu = QMenu(self)
-            menu.addAction("Remove Highlight" if len(chosen) == 1 else f"Remove {len(chosen)} Highlights", self._delete)
-            menu.addAction("Colour…", self._recolor)
-            menu.addAction("Recap…", self._recap)
+            highlight_actions(menu, self.view, chosen)
             menu.exec(self.tree.viewport().mapToGlobal(pos))
             menu.deleteLater()
 

@@ -19,6 +19,7 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 - Loading many track files at once no longer redraws the view after each file: 200 files load in under a second instead of most of a minute, and their files are read side by side (120 BED files: 0.5 s instead of 2.6 s).
 
 **UI/UX**
+- Highlights: right-clicking one in the view offers the same Remove, Colour and Recap as the Regions tab, and several can be handled at once.
 - The start page's opening message has GitHub Sponsors and Ko-fi links to support the program.
 - Alignment view: hidden tracks take no room, a new one-line Dense display, collapsible group lines, and a Fit button that squeezes the tracks into the pane.
 - Alignment view: only the tracks in sight are drawn, and dense rows sit closer together, so hundreds of tracks scroll smoothly.
