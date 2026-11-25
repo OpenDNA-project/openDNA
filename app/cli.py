@@ -5,7 +5,7 @@
 
 Commands: `skills list|show NAME` (the recipes in app/agent/), `inspect FILE`, `feature FILE NAME`, `region FILE START END`;
 batches with a table, `check` then `run`: `kld`, `pcr`, `recombineering`, `codon`, `gibson`; read-only analyses (app/cli_tools.py): `sites`, `guides`,
-`repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`, `synthesis`; files: `export`, `order`; network: `ncbi`, `hub` (a UCSC track hub); optional tools beside openDNA (pLannotate, the Terminal's): `wsltools`.
+`repeats`, `search`, `align`, `msa`, `checkup`, `annotate`, `variants`, `synthesis`; files: `export`, `order`; network: `ncbi`, `hub` (a UCSC track hub); tracks: `recap`, `print`, `track-features`, `signal-regions`; optional tools beside openDNA (pLannotate, the Terminal's): `wsltools`.
 Everything prints JSON (skills print Markdown). An error is one line `ERROR: ...` on stderr and exit code 1, never a traceback.
 Positions are 1-based and inclusive, as in the GenBank file and HGVS (`region f.gb 10 20` is bases 10 to 20).
 """
@@ -15,7 +15,11 @@ import os
 import sys
 from pathlib import Path
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # some modules import Qt; nothing is ever shown
+# Some modules import Qt; nothing is ever shown. On Windows the "minimal" platform with the system's fonts: "offscreen" finds no
+# font there, and the text of an image drawn by `print` came out as boxes.
+os.environ.setdefault("QT_QPA_PLATFORM", "minimal:enable_fonts" if os.name == "nt" else "offscreen")
+if os.name == "nt" and os.environ["QT_QPA_PLATFORM"].startswith("offscreen"):   # (offscreen asked for, as the tests do: its fonts)
+    os.environ.setdefault("QT_QPA_FONTDIR", os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # the modules import each other by flat name
 
 import cli_tools

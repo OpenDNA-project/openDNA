@@ -10,13 +10,13 @@ from the previous one (`tracks-1-panel`, `tracks-2-signal`, ...). Tick a PR's bo
 
 - [x] PR 1: Tracks panel (branch `tracks-1-panel`)
 - [x] PR 2: Signal tracks and track hub import
-- [ ] PR 3: Regions, recap and print
-- [ ] PR 4: Tracks into the genome
+- [x] PR 3: Regions, recap and print (with PR 4, one PR: the owner asked for both at once)
+- [x] PR 4: Tracks into the genome
 - [ ] PR 5: Editing tracks and keeping them in sync
 
 Where it stands: PR 1 is open for review (OpenDNA-project/openDNA#34). PR 2 (branch `tracks-2-signal`, made from
-`tracks-1-panel`) is open for review on top of PR 1. PR 3
-(regions, recap, print) is next, on branch `tracks-3-regions` made from `tracks-2-signal`.
+`tracks-1-panel`) is open for review on top of PR 1. PRs 3 and 4 were done together, as one PR (branch `tracks-3-regions`,
+made from `tracks-2-signal`). PR 5 (editing and sync) is next, on a branch made from `tracks-3-regions`.
 
 What PR 1 built, for the next PRs to build on:
 
@@ -40,6 +40,26 @@ What PR 2 built:
 - `app/track_hub.py` (no Qt): hub.txt, genomes file, trackDb with includes, groups from containers (views skipped), hidden at
   first (visibility hide, `parent X off`, a super track not shown), colours inherited; `copy_tracks`. `app/hub_dialog.py` and
   `main.import_hub` in the window; the `hub` command and recipe for agents; `demo/hub` is a small hub on the demo plasmid.
+
+What PRs 3 and 4 built:
+
+- Regions: `track_layout.Region` and `Layout.regions` (add_regions, change_region, remove_regions; saved in the layout's JSON
+  only when there are some); `regions_bed` / `read_regions_bed`. Drawn by `GenomeCanvas._highlights`.
+- `app/track_files.py` (no widgets): reading a track file into a loaded track, shared by `main.load_track` (which adds the
+  questions) and the command line (`cli_tools.track_editor`: a headless Editor of a sequence or a project with its display,
+  tracks and layout, through `Editor.apply_project_display` and `exports.project_tracks`, shared with the window).
+- `app/track_recap.py`: `recap(editor, regions, per_base)` and `rows` / `tsv`, used by the recap dialog and `recap`.
+- `app/track_features.py`: items into features (`to_features`, a note "from track X", BED extra columns as notes, duplicates
+  skipped by `feature_keys`), `signal_regions`, `items_bed`, `next_item`.
+- `app/track_actions.py`: the dialogs and menu entries (selection, item, track, signal) and the panel's Regions tab.
+- `genome_view.write_region`: a hidden GenomeView over a region written through `image_export` (the `print` command and
+  Export This Region as Image).
+- Core: `Item.extra` (BED columns past itemRgb, a BED12's blocks left out) as the 8th element of a track item tuple;
+  `Signal.stats` (exact: never a zoom level) and `Signal.runs` (stretches at or over a threshold).
+- Commands `recap`, `print`, `track-features`, `signal-regions`, with recipes and tests. The command line sets a Windows font
+  folder and Segoe UI for offscreen drawing (else images had boxes for text).
+- Shortcuts: a selection or item across the origin becomes two regions (renamed or deleted one at a time); a BAM's
+  highest depth is the highest of 2,000 bins; item line numbers (PR 5 needs them) are not kept yet.
 
 Measured on the Meso_v7 data (offscreen): a bigWig bins query 0.1-3 ms; 13 signals and a gene track redrawn in 15 ms.
 

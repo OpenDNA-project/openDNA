@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.69 s · [line 63](../../tests/test_documents.py#L63) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.57 s · [line 63](../../tests/test_documents.py#L63) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -31,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.33 s · [line 180](../../tests/test_documents.py#L180) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.24 s · [line 180](../../tests/test_documents.py#L180) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -52,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 18.62 s · [line 242](../../tests/test_documents.py#L242) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 18.15 s · [line 242](../../tests/test_documents.py#L242) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -100,7 +100,7 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.04 s · [line 376](../../tests/test_documents.py#L376) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.13 s · [line 376](../../tests/test_documents.py#L376) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
@@ -128,7 +128,7 @@ Checks the names of annotation steps, that primer database add/rename/edit/delet
 
 ## `test_copy_reverse_complement_keeps_annotations_flipped`
 
-**Result:** ✅ passed in 0.00 s · [line 510](../../tests/test_documents.py#L510) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 510](../../tests/test_documents.py#L510) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin.
 
@@ -189,9 +189,9 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 
 **Result:** ✅ passed in 0.00 s · [line 661](../../tests/test_documents.py#L661) · **Area:** Alignment view tracks · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
-**Why it matters:** Without it, the Tracks panel could lose or double tracks when they are dragged between groups, a change could reach the views without a redraw, a project could close without offering to save a layout changed by hand, a project could reopen with tracks scrambled or styles broken, Group by Name, the light-to-dark colours or Fit could give wrong values, and two loaded files of the same name (or one named like a built-in row) could share one row, with nothing to show it.
+**Why it matters:** Without it, the Tracks panel could lose or double tracks when they are dragged between groups, a change could reach the views without a redraw, a project could close without offering to save a layout changed by hand, a project could reopen with tracks scrambled or styles broken, Group by Name, the light-to-dark colours or Fit could give wrong values, and two loaded files of the same name (or one named like a built-in row) could share one row, with nothing to show it, or highlighted regions could be lost from a project or read wrong from a BED file.
 
-Drives the track layout model the Tracks panel edits (no widget): adding rows to groups, moving them in display order, folding a group, a drag-and-drop tree that leaves a row out, restyling (a new display mode drops a height set by hand), removing a group's last row, renaming and ungrouping, checking that each change is announced once and whether it was made by hand; saving and loading it for the rows the file has now; Group by Name, the colour range and Fit; and the Editor's table of rows (unique names, a BAM's three rows, removal, a track's default colour kept when another goes), and which files a layout change marks as modified. Signal tracks: their own list, overlaid in one row and separated, and their saved settings read back (values it cannot read left at their defaults).
+Drives the track layout model the Tracks panel edits (no widget): adding rows to groups, moving them in display order, folding a group, a drag-and-drop tree that leaves a row out, restyling (a new display mode drops a height set by hand), removing a group's last row, renaming and ungrouping, checking that each change is announced once and whether it was made by hand; saving and loading it for the rows the file has now; Group by Name, the colour range and Fit; and the Editor's table of rows (unique names, a BAM's three rows, removal, a track's default colour kept when another goes), and which files a layout change marks as modified. Signal tracks: their own list, overlaid in one row and separated, and their saved settings read back (values it cannot read left at their defaults). Highlighted regions: kept in order of start, renamed, saved and read back (unreadable ones left out), written as BED and read back (name and colour kept, lines that are not regions of the sequence named), removed.
 
 | # | Input | Expected output |
 |---|---|---|
@@ -212,6 +212,11 @@ Drives the track layout model the Tracks panel edits (no widget): adding rows to
 | 15 | an Editor on w.odp, then on w.gb: add track x.bed, then hide it | adding leaves both unmodified; hiding marks w.odp modified, w.gb not |
 | 16 | signals p.bw, m.bw, x.bw added; overlay all three; separate m.bw; separate p.bw | in ed.signals, kind signal, 5 loaded in all; overlay None, p.bw, p.bw; m.bw alone again, x.bw still in p.bw; then none overlaid |
 | 17 | load_json styles s: heatmap, max, fixed -2..5.5, overlay t; t: render dots, range own, low True | s read as given; t keeps bars, auto, 0.0 (not valid values) |
+| 18 | add regions (50,60,'b',#26a69a) and (10,20,'a'); rename the first 'first' | [(10,20,first,#ffb300), (50,60,b,#26a69a)] |
+| 19 | load_json with two more saved regions: start 30 > end 20, start 'x' | the same two regions (the unreadable ones left out) |
+| 20 | regions_bed(sequence t) | t 10 20 first 0 . 10 20 255,179,0 / t 50 60 b 0 . 50 60 38,166,154 |
+| 21 | read_regions_bed of a track line, those lines, 't 5 8', 't 90 200' and 'not a line' on 100 bases | the two regions and (5,8); unread 'line 5: 90-200 is not within 0-100', 'line 6: not sequence, start, end' |
+| 22 | remove the first region | only 'b' left |
 
 **Review notes:**
 
@@ -220,7 +225,7 @@ Drives the track layout model the Tracks panel edits (no widget): adding rows to
 
 ## `test_display_switches_and_kind_counts`
 
-**Result:** ✅ passed in 0.01 s · [line 774](../../tests/test_documents.py#L774) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 789](../../tests/test_documents.py#L789) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 
@@ -240,7 +245,7 @@ Builds a 1200 bp GenBank with six gene/CDS pairs plus two misc_features, and che
 
 ## `test_label_text_is_black_or_white_by_contrast_and_always_readable`
 
-**Result:** ✅ passed in 0.05 s · [line 798](../../tests/test_documents.py#L798) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 813](../../tests/test_documents.py#L813) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Feature names drawn on a light or mid-tone colour could be hard or impossible to read.
 
@@ -259,7 +264,7 @@ text_color_on picks black or white by WCAG contrast ratio, so the letters on any
 
 ## `test_table_sort_key_puts_numbers_in_order_before_words`
 
-**Result:** ✅ passed in 0.00 s · [line 814](../../tests/test_documents.py#L814) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 829](../../tests/test_documents.py#L829) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A click on a table header could put 1,200 before 95, or scatter a column of locations, sizes and dates.
 

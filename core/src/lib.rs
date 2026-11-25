@@ -576,10 +576,12 @@ struct Track {
     inner: tracks::Track,
 }
 
-type TrackItem = (u64, u64, i8, String, String, Option<String>, Option<String>); // start, end, strand, name, kind, colour, note
+// start, end, strand, name, kind, colour, note, extra columns (tab-separated)
+type TrackItem = (u64, u64, i8, String, String, Option<String>, Option<String>, Option<String>);
 
 fn item_tuple(i: &tracks::Item) -> TrackItem {
-    (i.start, i.end, i.strand, i.name.clone(), i.kind.clone(), i.color.as_deref().map(str::to_string), i.note.as_deref().map(str::to_string))
+    let text = |s: &Option<Box<str>>| s.as_deref().map(str::to_string);
+    (i.start, i.end, i.strand, i.name.clone(), i.kind.clone(), text(&i.color), text(&i.note), text(&i.extra))
 }
 
 #[pymethods]
@@ -622,7 +624,8 @@ impl Track {
         self.inner.keep(&types, seq, circular_length)
     }
 
-    /// (items overlapping [start, end) as (start, end, strand, name, kind, colour or None, note or None), more_than_limit)
+    /// (items overlapping [start, end) as (start, end, strand, name, kind, colour or None, note or None, the BED columns past
+    /// itemRgb tab-separated or None), more_than_limit)
     #[pyo3(signature = (seq, start, end, limit=5000))]
     fn query(&self, py: Python<'_>, seq: &str, start: u64, end: u64, limit: usize) -> (Vec<TrackItem>, bool) {
         let inner = &self.inner;
@@ -685,6 +688,19 @@ impl Signal {
     fn bins(&self, py: Python<'_>, seq: &str, start: u64, end: u64, n: usize) -> PyResult<Vec<(f64, f64)>> {
         let inner = &self.inner;
         Ok(py.allow_threads(|| inner.bins(seq, start, end, n))?)
+    }
+
+    /// [start, end) of `seq` read from the values themselves (no zoom level): (bases with a value, their sum, lowest, highest);
+    /// NaN for the lowest and highest when no base has one.
+    fn stats(&self, py: Python<'_>, seq: &str, start: u64, end: u64) -> PyResult<(f64, f64, f64, f64)> {
+        let inner = &self.inner;
+        Ok(py.allow_threads(|| inner.stats(seq, start, end))?)
+    }
+
+    /// [(start, end)]: the stretches of [start, end) of `seq` where the value is at least `threshold` (touching ones merged).
+    fn runs(&self, py: Python<'_>, seq: &str, start: u64, end: u64, threshold: f64) -> PyResult<Vec<(u64, u64)>> {
+        let inner = &self.inner;
+        Ok(py.allow_threads(|| inner.runs(seq, start, end, threshold))?)
     }
 }
 

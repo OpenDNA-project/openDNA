@@ -17,11 +17,15 @@ panel (track_panel, opened from the header) edits: many tracks at once, by drag 
 expanded, condensed (thin lanes, no labels), dense (one line) or hidden (it then takes no room; click its name to hide it,
 the panel shows it again), resized by dragging the thin line under it (taller = more lanes of reads), given a colour, and
 bar tracks (coverage, dense annotations) drawn on a log scale. A group is a header line; a click collapses it.
+
+Highlighted regions (`track_layout.regions`) are bands across every track. Right-click the ruler or a selection for the actions
+on regions (highlight, recap, export as image), an item of a track to add it as a feature (track_actions).
 """
 import bisect
 import math
 import re
 from html import escape
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QFontMetricsF, QImage, QPainter, QPalette, QPen, QPixmap, QPolygonF
@@ -32,6 +36,7 @@ from PySide6.QtWidgets import (
 import image_export
 import theme
 import tool_settings
+import track_actions
 import track_layout
 import track_panel
 from track_layout import COLORED, SCALED
@@ -150,6 +155,7 @@ class GenomeCanvas(QWidget):
         scan_relay.variants_ready.connect(self.invalidate)
         tool_settings.notifier.changed.connect(self._settings_changed)
         self.read_kinds = {}
+        self.plain = False      # no cursor, selection or search hits drawn (an image of a region: write_region)
 
     def theme_changed(self):
         """Light / dark switch (theme.refresh_views): the cached tracks and the reads' colours are made again."""
@@ -348,6 +354,7 @@ class GenomeCanvas(QWidget):
         keys = self.panel.tracks_panel.selected_keys()
         menu = QMenu(self)
         track_panel.fill_menu(menu, self.panel, keys if name in keys else [name])
+        track_actions.region_actions(menu, self.panel)
         if kind == "variants":
             a = self.editor.track_of(name)
             # changes the reads spell out (not the breaks and no-read stretches, which are flagged but not changes)
@@ -438,6 +445,8 @@ class GenomeCanvas(QWidget):
         p.restore()
 
     def _paint_overlay(self, p):
+        if self.plain:
+            return
         ed, panel = self.editor, self.panel
         hl = QColor(theme.selection_color())
         vs, ve = panel.vstart, panel.vend
@@ -570,11 +579,12 @@ class GenomeCanvas(QWidget):
             shifted = t.track.query(t.seqid, a + ed.length, b + ed.length, DENSE)[0] if t.wraps and ed.circular else []
             boxes = [(self.x(item[0] - turn), self.x(item[1] - turn), item)
                      for found, turn in ((items, 0), (shifted, ed.length)) for item in found]
-            for lane, x0, x1, (s, e, strand, name, _, raw, note) in pack(boxes, self.lanes(t.name, h)):
+            for lane, x0, x1, item in pack(boxes, self.lanes(t.name, h)):
+                s, e, strand, name, _, raw, note, _ = item
                 r = QRectF(max(left, x0), top + lane * lh, max(1.5, min(left + W, x1) - max(left, x0)), lh - 2)
                 own = color if chosen else t.colors.get(raw, color)   # the file's colour, when it was imported and read
                 p.fillRect(r, own)
-                self.hits.append((r, ("range", s, e, note if t.show_notes else None)))
+                self.hits.append((r, ("range", s, e, note if t.show_notes else None, t, item)))
                 if lh >= 11 * self.scale() and r.width() > fm.horizontalAdvance(name) + 6:
                     p.setPen(text_color_on(own))
                     p.drawText(r, Qt.AlignCenter, name)
@@ -610,6 +620,9 @@ class GenomeCanvas(QWidget):
                 p.drawText(QRectF(left, cov[0], W - 4, name_h), Qt.AlignRight,
                            "more reads than shown: drag the line under the reads down")
             lap("BAM reads")
+
+        self._highlights(p, fm)
+        lap("highlights")
 
         # Track names (click one to hide it) and a thin line under each track; a group's tracks are set in under its header.
         p.fillRect(QRectF(0, 0, left - 4, self.height()), pal.color(QPalette.Base))
@@ -649,6 +662,21 @@ class GenomeCanvas(QWidget):
         p.setFont(self.font())
         lap("track names")
         lap.done()
+
+    def _highlights(self, p, fm):
+        """The highlighted regions in view: a light band of each one's colour across the tracks, its name at the top."""
+        vs, ve = self.panel.vstart, self.panel.vend
+        top = self.header_h
+        for r in self.editor.track_layout.regions:
+            if r.end <= vs or r.start >= ve:
+                continue
+            x0, x1 = self.x(max(r.start, vs)), self.x(min(r.end, ve))
+            band = QColor(r.color)
+            band.setAlpha(55)
+            p.fillRect(QRectF(x0, top, max(2.0, x1 - x0), self.bottom - top), band)
+            if r.name and x1 - x0 > fm.horizontalAdvance(r.name) + 4:
+                p.setPen(QColor(r.color).darker(160))
+                p.drawText(QRectF(x0 + 2, top, x1 - x0 - 2, self.name_h()), Qt.AlignLeft | Qt.AlignVCenter, r.name)
 
     def _paint_header(self, p):
         """The overview (the whole sequence, the window in view) and the ruler, at the top."""
@@ -1216,15 +1244,25 @@ class GenomeCanvas(QWidget):
             return
         if event.button() == Qt.RightButton:
             pt = event.position()
-            hit = next((a for r, a in reversed(self.hits) if a[0] in ("feature", "primer", "variant")
+            hit = next((a for r, a in reversed(self.hits) if a[0] in ("feature", "primer", "variant", "range")
                         and r.adjusted(-1, -2, 1, 2).contains(pt)), None) if not header else None
             if hit and hit[0] == "variant":
                 self.variant_menu(hit[1], hit[2], event.globalPosition().toPoint())
+            elif hit and hit[0] == "range":   # an item of an annotation track: its actions, then its track's
+                menu = QMenu(self)
+                track_actions.item_actions(menu, self.panel, hit[4], hit[5])
+                track_panel.fill_menu(menu, self.panel, [hit[4].name])
+                track_actions.region_actions(menu, self.panel)
+                track_panel.show_menu(menu, event.globalPosition().toPoint())
             elif hit:  # a feature or a primer: its menu; elsewhere in a track: the track's menu
                 from feature_table import feature_menu, primer_menu  # here: feature_table imports the tools
                 (primer_menu if hit[0] == "primer" else feature_menu)(self, self.editor, hit[1], event.globalPosition().toPoint())
             elif row and row[0] in self.kinds:
                 self.track_menu(row[0], event.globalPosition().toPoint())
+            elif header:   # the ruler: the selection and the highlighted regions
+                menu = QMenu(self)
+                track_actions.region_actions(menu, self.panel)
+                track_panel.show_menu(menu, event.globalPosition().toPoint())
             return
         if event.button() != Qt.LeftButton:
             return
@@ -1401,7 +1439,35 @@ def legend_html():
         "Signal tracks (bigWig, bedGraph, wig)",
         swatch(SIGNAL_COLOR, "bars, a line or a heatmap (light: low, dark: high); the range is written at the left"),
         mark("≈", "#757575", "right-click > Signal: draw as, mean or highest value per pixel, range, overlay several in one row"),
+    ) + section(
+        "Regions",
+        swatch("#ffe082", "highlighted region (right-click a selection or the ruler: highlight, recap the tracks, export as image)"),
+        mark("☰", "#757575", "right-click an item of a track: add it as a feature; a track: copy its items to features, next item"),
     )
+
+
+def write_region(editor, start, end, path, width=1600):
+    """The Alignment view of `editor` over bases start..end (0-based, end excluded) as an image file (SVG, or PNG / TIFF by the
+    extension), `width` px wide and as tall as its tracks: drawn by a view of its own, never shown, so it holds what the file's
+    track layout shows (tracks shown, order, looks, highlights) whatever the window's views show. OSError when it cannot be written."""
+    fmt = {"svg": "svg", "png": "png", "tif": "tiff", "tiff": "tiff"}.get(Path(path).suffix.lower().lstrip("."))
+    if fmt is None:
+        raise OSError(f"{Path(path).name}: the file name must end in .svg, .png or .tif")
+    view = GenomeView(editor)
+    try:
+        view.setAttribute(Qt.WA_DontShowOnScreen)
+        view.tracks_panel.setVisible(False)
+        view.canvas.plain = True
+        view.resize(width, 600)
+        view.show()
+        view.set_view(start, end)
+        _, bottom = view.canvas.layout_rows()
+        view.resize(width, view.header.sizeHint().height() + bottom + 12)
+        view.layout().activate()
+        image_export.write(view, path, fmt, light=True)
+    finally:
+        view.close()
+        view.deleteLater()
 
 
 class InfoLabel(QLabel):

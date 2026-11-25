@@ -58,7 +58,17 @@ select many; its buttons and right-click menu change all the selected tracks at 
 colour or a light-to-dark range of colours, log scale, group, name, remove), drag tracks to reorder them or onto a group to move
 them, and Group by Name groups tracks whose names start alike. A group is a header line in the view: click it to collapse its
 tracks. Click a track's name to hide it (the panel shows it again), right-click it for the same menu, drag the line under it to
-resize; Fit makes the shown tracks share the pane's height. A project (.odp) keeps the order, groups and look of the tracks. The
+resize; Fit makes the shown tracks share the pane's height. Select bases (Shift+drag) and right-click the selection or the ruler
+for Highlight Selection (a named, coloured band across every track), Recap Tracks Here (a table of every track over the selection:
+the items there with the share they cover and their file's extra columns, each signal's mean, lowest, highest and sum read from
+its values, the read depth, the sequence's own features and GC %; a row per group with the mean of its tracks; sortable, copied or
+saved as CSV, with the value at every base for regions up to 1,000 bp) and Export This Region as Image (SVG or PNG, the tracks as
+shown). The panel's Regions tab lists the highlights: double-click to go there, F2 to rename, recolour, delete, recap them all,
+import or export them as BED. Right-click an item of a track to add it as a feature; right-click a track for Next / Previous Item,
+Export Items as BED and Copy to Features (its items in the whole sequence, the view, the selection or the highlights, as one type,
+each with a note "from track ..." and the file's extra columns as notes; an item already there as a feature is skipped; one undo
+step); right-click a signal for Regions Above Threshold (the stretches at or over a value, joined across small gaps, as highlights
+or features). A project (.odp) keeps the order, groups and look of the tracks, and the highlights. The
 Legend button in the genome view's header opens a window explaining every colour and mark. A GFF3/GTF file first lists its
 feature types with their number of lines: untick the ones you do not want (a type whose lines only cover the whole sequence, such
 as a `region` line naming the chromosome, starts unticked). The same window offers the extra fields the file has: each line's

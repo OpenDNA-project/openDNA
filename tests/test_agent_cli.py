@@ -438,7 +438,8 @@ def test_every_command_has_a_recipe_example_and_a_test_that_compares_it_with_the
     mine = [n for n in globals() if n.startswith("test_")]
     for name in commands:
         assert re.search(rf"^{name} ", examples, re.M), f"{name}: no recipe has a runnable example for it"
-        assert any(n.startswith(f"test_{name}_") for n in mine), f"{name}: no test_{name}_... compares it with the module the window calls"
+        test = name.replace("-", "_")
+        assert any(n.startswith(f"test_{test}_") for n in mine), f"{name}: no test_{test}_... compares it with the module the window calls"
 
 
 def test_align_command_finds_pieces_and_structural_changes_like_local_align(tmp_path, capsys):
@@ -898,6 +899,107 @@ def test_hub_command_lists_and_copies_like_the_import(capsys, tmp_path, monkeypa
         ("a1.bw", b"data of g1/a1.bw"), ("a2.bw", b"data of a2.bw"), ("s1.bb", b"data of g1/s1.bb"), ("q.bw", b"data of g1/q.bw")]
     assert "https://example.org/a2.bw" not in asked and "https://example.org/h/a2.bw" in asked   # (../ from g1/ is the hub's folder)
     assert "to its server" in got["settings"]["hub"]["sends"]["value"] and not (tmp_path / "web" / "r.bam").exists()
+
+
+HUB = ROOT / "demo" / "hub" / "pBAD30_eilR"   # plus.bw: 10 over [0, 2000), 30 to 4000, 20 to 5,936; minus.bw; sites.bb: 3 items
+PLASMID = ROOT / "demo" / "pBAD30_eilR.gb"
+
+
+def test_recap_command_gives_the_numbers_of_the_window_recap(capsys, tmp_path):
+    """`recap` answers what Recap Tracks Here shows (track_recap, from the same loaded tracks): per track the items there with the
+    share they cover, a signal's exact mean / min / max / sum (by hand), base by base with --per-base; --tsv is the window's table
+    with a group's mean row; a project's highlighted regions are recapped when no place is given."""
+    import exports
+    import track_layout
+    import track_recap
+    tracks = ["--track", HUB / "plus.bw", "--track", HUB / "minus.bw", "--track", HUB / "sites.bb"]
+    res = answer(capsys, "recap", PLASMID, "1001..2600", *tracks)
+    ed, _ = cli_tools.track_editor(str(PLASMID), [HUB / "plus.bw", HUB / "minus.bw", HUB / "sites.bb"])
+    assert res["regions"] == json.loads(json.dumps(track_recap.recap(ed, [("1001..2600", 1000, 2600)])))
+    (region,) = res["regions"]
+    plus, minus, sites = region["tracks"]
+    # 1000 bases at 10 and 600 at 30: sum 28,000, mean 17.5; site_b (2500..2600, minus strand) covers 100 / 1600 of the region
+    assert (plus["bases_with_value"], plus["mean"], plus["min"], plus["max"], plus["sum"]) == (1600, 17.5, 10.0, 30.0, 28000.0)
+    assert (minus["mean"], minus["sum"]) == (5.0, 8000.0)
+    assert sites["items"] == [{"name": "site_b", "type": "bed", "start": 2501, "end": 2600, "strand": "-", "covers": 0.0625}]
+    assert {f["label"] for f in region["features"]} == {f.label for f in ed.features if any(s < 2600 and e > 1000 for s, e in f.spans)}
+    per = answer(capsys, "recap", PLASMID, "1995..2004", "--track", HUB / "plus.bw", "--per-base")
+    assert per["regions"][0]["tracks"][0]["values"] == [10.0] * 6 + [30.0] * 4
+    # on the circle (5,936 bp), an item from 5,801 across the origin to 300 covers 300 of the first 500 bases
+    (tmp_path / "w.bed").write_text("pBAD30_eilR\t5800\t6236\twrap\t0\t+\n")
+    wrap = answer(capsys, "recap", PLASMID, "1..500", "--track", tmp_path / "w.bed")["regions"][0]["tracks"][0]["items"]
+    assert [(i["name"], i["start"], i["end"], i["covers"]) for i in wrap] == [("wrap", 5801, 6236, 0.6)]
+    # a project: the two coverages in a group, a highlight; recapped with no place given, as a table
+    ed.track_layout.move(["plus.bw", "minus.bw"], "Coverage")
+    ed.track_layout.add_regions([track_layout.Region(1000, 2600, "here")])
+    exports.save_project(ed, tmp_path / "p.odp")
+    code, out, _ = run(capsys, "recap", tmp_path / "p.odp", "--tsv")
+    lines = [line.split("\t") for line in out.strip().splitlines()]
+    assert code == 0 and lines[0] == list(track_recap.COLUMNS)
+    assert [(r[0], r[3], r[6], r[7], r[10]) for r in lines[2:]] == [
+        ("here", "sites.bb", "1", "", ""), ("here", "plus.bw", "1600", "17.5", "28000.0"), ("here", "minus.bw", "1600", "5.0", "8000.0"),
+        ("here", "Coverage (mean of 2)", "1600.0", "11.25", "18000.0")]
+    assert "no region" in run(capsys, "recap", PLASMID, *tracks)[2]
+
+
+def test_print_command_draws_the_project_as_the_window_export(capsys, tmp_path):
+    """`print` writes what Export This Region as Image writes (genome_view.write_region, a view of its own over the region): the
+    project's tracks with their names as shown, its highlights, at the width asked; never over a file."""
+    import exports
+    import track_layout
+    from PySide6.QtGui import QImage
+    cli.parser()   # (registers the commands: cli_tools reads cli's helpers)
+    ed, _ = cli_tools.track_editor(str(PLASMID), [HUB / "plus.bw", HUB / "sites.bb"])
+    ed.track_layout.restyle(["plus.bw"], label="Coverage plus")
+    ed.track_layout.add_regions([track_layout.Region(1500, 2500, "Highlighted here")])
+    exports.save_project(ed, tmp_path / "p.odp")
+    res = answer(capsys, "print", tmp_path / "p.odp", "1001..4000", tmp_path / "r.svg")
+    svg = (tmp_path / "r.svg").read_text(encoding="utf-8")
+    assert (res["tracks_shown"], res["regions"], res["start"], res["end"]) == (2, 1, 1001, 4000)
+    assert "Coverage plus" in svg and "Highlighted here" in svg and "sites.bb" in svg
+    answer(capsys, "print", PLASMID, "1001..4000", tmp_path / "r.png", "--track", HUB / "plus.bw", "--width", "900")
+    assert QImage(str(tmp_path / "r.png")).width() == 900
+    assert "already exists" in run(capsys, "print", tmp_path / "p.odp", "1..100", tmp_path / "r.svg")[2]
+    assert "must end in" in run(capsys, "print", tmp_path / "p.odp", "1..100", tmp_path / "r.jpg")[2]
+
+
+def test_track_features_command_adds_what_copy_to_features_adds(capsys, tmp_path):
+    """`track-features` adds a track's items as Copy to Features does (track_features): the name in the qualifier chosen, a note
+    "from track X", each BED column past itemRgb as a note; an item already a feature (type, place, strand) is skipped, so a
+    second run adds nothing; a track named *_CDS gives CDS features."""
+    import track_features
+    bed = tmp_path / "Sites_CDS.bed"
+    bed.write_text("pBAD30_eilR\t100\t400\tsite_a\t0\t+\t100\t400\t255,0,0\theight=81\tRSPM=12\n"
+                   "pBAD30_eilR\t2500\t2600\tsite_b\t0\t-\n")
+    res = answer(capsys, "track-features", PLASMID, bed, "--out", tmp_path / "a.gb", "--name-in", "gene")
+    assert (res["added"], res["skipped"], res["settings"]["track-features"]["type"]["value"]) == (2, 0, "CDS")
+    doc = Document(str(tmp_path / "a.gb"))
+    added = [f for f in doc.features() if ("note", "from track Sites_CDS.bed") in f.qualifiers]
+    assert [(f.kind, f.location, f.qualifiers) for f in added] == [
+        ("CDS", "101..400", [("gene", "site_a"), ("note", "from track Sites_CDS.bed"), ("note", "height=81"), ("note", "RSPM=12")]),
+        ("CDS", "complement(2501..2600)", [("gene", "site_b"), ("note", "from track Sites_CDS.bed")])]
+    assert track_features.default_type("RefSeq_2022_CDS.bed") == "CDS" and track_features.default_type("sites.bb") == "misc_feature"
+    again = answer(capsys, "track-features", tmp_path / "a.gb", bed, "--out", tmp_path / "b.gb")
+    assert (again["added"], again["skipped"]) == (0, 2)
+    part = answer(capsys, "track-features", PLASMID, HUB / "sites.bb", "1..1000", "--out", tmp_path / "c.gb")
+    assert part["added"] == 1 and "not an annotation track" in run(capsys, "track-features", PLASMID, HUB / "plus.bw", "--out", tmp_path / "d.gb")[2]
+
+
+def test_signal_regions_command_finds_the_stretches_of_regions_above_threshold(capsys, tmp_path):
+    """`signal-regions` gives the stretches Regions Above Threshold finds (track_features.signal_regions): at least the threshold,
+    those closer than --gap joined, those shorter than --min-length left out, each with its mean and highest (by hand); --out as BED."""
+    res = answer(capsys, "signal-regions", HUB / "plus.bw", "--threshold", "20", "--out", tmp_path / "r.bed")
+    # 2000 bases at 30 then 1936 at 20: mean (60,000 + 38,720) / 3936
+    assert res["regions"] == [{"start": 2001, "end": 5936, "length": 3936, "mean": float(f"{98720 / 3936:.6g}"), "max": 30.0}]
+    assert (tmp_path / "r.bed").read_text() == f"pBAD30_eilR\t2000\t5936\tplus_1\t{98720 / 3936:.6g}\t.\n"
+    bg = tmp_path / "s.bedGraph"   # 5 over [0,10), 1 over [10,15), 5 over [15,20), 9 over [100,103)
+    bg.write_text("c\t0\t10\t5\nc\t10\t15\t1\nc\t15\t20\t5\nc\t100\t103\t9\n")
+    spans = lambda r: [(x["start"], x["end"]) for x in r["regions"]]
+    assert spans(answer(capsys, "signal-regions", bg, "--threshold", "5")) == [(1, 10), (16, 20), (101, 103)]
+    joined = answer(capsys, "signal-regions", bg, "--threshold", "5", "--gap", "5", "--min-length", "4")
+    assert spans(joined) == [(1, 20)] and joined["regions"][0]["mean"] == 4.0   # (the joined bases count: (10 x 5 + 5 x 1 + 5 x 5) / 20)
+    assert spans(answer(capsys, "signal-regions", bg, "--threshold", "5", "--region", "12..103")) == [(16, 20), (101, 103)]
+    assert "START..END" in run(capsys, "signal-regions", bg, "--threshold", "5", "--region", "0..5")[2]
 
 
 def fake_ncbi(monkeypatch):

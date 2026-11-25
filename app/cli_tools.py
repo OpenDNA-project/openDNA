@@ -723,6 +723,164 @@ def cmd_hub(args):
     return answer(settings, caps=caps, folder=str(out), files=files, failed=failed)
 
 
+# ---- tracks: recap, print, track-features, signal-regions (the Alignment view's actions on regions and tracks) -----------------
+
+def track_editor(source, tracks=()):
+    """An Editor with no window for `source` (a sequence file, or an Open DNA Project with its display, tracks, their order,
+    groups, look and highlighted regions, read as the window reads them), with the track files `tracks` added at the end:
+    (editor, [warnings]). What `print` and `recap` draw and count is what the window shows."""
+    import exports
+    import track_files
+    import track_import
+    from editor import Editor
+    warnings, meta = [], None
+    if str(source).lower().endswith(exports.PROJECT_EXT):
+        try:
+            doc, meta = exports.open_project(source)
+        except OSError as e:
+            raise UserError(f"{source}: {e}") from None
+    else:
+        doc = C.load(source)
+    ed = Editor(doc, source)
+    if meta is not None:
+        ed.apply_project_display(meta)
+        for saved, found in exports.project_tracks(meta, source):
+            if found is None:
+                warnings.append(f"{saved['path']}: a track of the project, not found (moved or deleted)")
+            else:
+                warnings += track_files.load(ed, found, saved.get("name"), saved.get("seqid"), saved.get("types", track_import.ALL),
+                                             saved.get("fields", track_import.ALL))[1]
+        ed.track_layout.load_json(meta.get("track_layout"), ed.row_keys(), ed.length)
+    for path in tracks or ():
+        if not Path(path).is_file():
+            raise UserError(f"Track file not found: {path}")
+        warnings += track_files.load(ed, path)[1]
+    return ed, warnings
+
+
+def spans_of(editor, text):
+    """[(start, end)] (0-based, end excluded) of START..END or a feature's name (cli.target_range): two parts through the origin."""
+    from editor import split_at_origin
+    first, last = C.target_range(editor.doc, text)
+    return split_at_origin(first - 1, last, editor.length)
+
+
+def named(regions):
+    """[(name, start, end)] of highlights (track_layout.Region), an unnamed one named by its place."""
+    return [(r.name or f"{r.start + 1}..{r.end}", r.start, r.end) for r in regions]
+
+
+def cmd_recap(args):
+    """Every loaded track over regions (track_recap: what Recap Tracks Here shows): the place given, the regions of a BED file,
+    else the project's highlighted regions."""
+    import track_layout
+    import track_recap
+    ed, warnings = track_editor(args.source, args.track)
+    if not (args.where or args.regions):
+        regions = named(ed.track_layout.regions)
+    else:
+        regions = [(args.where, s, e) for s, e in spans_of(ed, args.where)] if args.where else []
+    if args.regions:
+        try:
+            found, unread = track_layout.read_regions_bed(Path(args.regions).read_text(encoding="utf-8", errors="replace"), ed.length)
+        except OSError as e:
+            raise UserError(f"cannot read {args.regions}: {e}") from None
+        regions += named(found)
+        warnings += [f"{args.regions}: {u}" for u in unread]
+    if not regions:
+        raise UserError("no region: give START..END (or a feature's name), --regions FILE.bed, or a project with highlighted regions.")
+    if not ed.loaded():
+        warnings.append("no track loaded: add --track FILE, or give a project that has tracks")
+    long = [n for n, s, e in regions if e - s > track_recap.PER_BASE]
+    if args.per_base and long:
+        warnings.append(f"--per-base: values base by base only for regions up to {track_recap.PER_BASE:,} bp; not for {', '.join(long[:5])}")
+    recaps = track_recap.recap(ed, regions, args.per_base)
+    if args.tsv:
+        for w in warnings:
+            print(f"WARNING: {w}", file=sys.stderr)
+        args.text = True
+        return track_recap.tsv(track_recap.rows(recaps)).rstrip("\n")
+    return answer({"recap": {"source": {"value": str(args.source)}, "per_base": {"value": bool(args.per_base)}}}, caps=warnings, regions=recaps)
+
+
+def cmd_print(args):
+    """The Alignment view over START..END as an image file (genome_view.write_region: what Export This Region as Image writes)."""
+    from genome_view import write_region
+    ed, warnings = track_editor(args.source, args.track)
+    spans = spans_of(ed, args.where)
+    if len(spans) > 1:
+        raise UserError(f"{args.where} runs through the origin: print the two parts one at a time.")
+    if not 200 <= args.width <= 20_000:
+        raise UserError("--width is in pixels, from 200 to 20,000.")
+    out = new_path(args.out)
+    try:
+        write_region(ed, *spans[0], out, args.width)
+    except OSError as e:
+        raise UserError(str(e)) from None
+    shown = [k for k in ed.track_layout.keys() if ed.track_of(k) is not None and ed.track_layout.style(k).shown]
+    return answer({"print": {"width": {"value": args.width}}}, caps=warnings, file=str(out), bytes=out.stat().st_size,
+                  start=spans[0][0] + 1, end=spans[0][1], tracks_shown=len(shown), regions=len(ed.track_layout.regions))
+
+
+def cmd_track_features(args):
+    """A track's items as features of the sequence, written to a new GenBank file (track_features: what Copy to Features adds)."""
+    import track_features
+    ed, warnings = track_editor(args.genome, [args.track_file])
+    entry = next(iter(ed.loaded()), None)
+    if entry is None or entry.kind != "track":
+        raise UserError(f"{args.track_file} is not an annotation track of this sequence (GFF, GTF, BED, bigBed, VCF): " + "; ".join(warnings))
+    label = Path(args.track_file).name
+    kind = args.type or track_features.default_type(label)
+    if args.name_in not in track_features.NAME_FIELDS:
+        raise UserError(f"--name-in is one of {', '.join(track_features.NAME_FIELDS)}.")
+    spans = spans_of(ed, args.where) if args.where else [(0, ed.length)]
+    out = new_path(args.out)
+    feats, skipped = track_features.to_features(track_features.items_in(entry, spans), label, kind, args.name_in,
+                                                track_features.feature_keys(ed.features), ed.length)
+    if feats:
+        ed.doc.add_features(feats)
+    ed.doc.write_genbank(str(out), None)
+    return answer({"track-features": {"type": {"value": kind, "source": "command line" if args.type else "from the track's name"},
+                                      "name_in": {"value": args.name_in}}},
+                  caps=warnings + ([f"{skipped} item(s) already features of the sequence (same type, place and strand): not added again"] if skipped else []),
+                  file=str(out), added=len(feats), skipped=skipped, features=len(ed.doc.features()))
+
+
+def cmd_signal_regions(args):
+    """The stretches where a signal (bigWig, bedGraph, wig) is at least a threshold, as JSON and optionally BED (track_features:
+    what Regions Above Threshold finds)."""
+    import track_features
+    import track_files
+    if not Path(args.signal).is_file():
+        raise UserError(f"File not found: {args.signal}")
+    if track_files.track_kind(args.signal) != "signal":
+        raise UserError(f"{args.signal} is not a signal track: give a bigWig, bedGraph or wig file.")
+    try:
+        signal = track_files.read(args.signal, "signal")
+    except OSError as e:
+        raise UserError(f"cannot read {args.signal}: {e}") from None
+    lengths = dict(signal.sequences())
+    seq = args.seq or (next(iter(lengths)) if len(lengths) == 1 else None)
+    if seq not in lengths:
+        raise UserError(f"name the sequence with --seq: one of {', '.join(list(lengths)[:10])}.")
+    start, end = 0, lengths[seq]
+    if args.where:
+        m = re.fullmatch(r"(\d+)\.\.(\d+)", args.where)
+        if not m or not 1 <= int(m.group(1)) <= int(m.group(2)) <= lengths[seq]:
+            raise UserError(f"{args.where!r}: give START..END with 1 <= START <= END <= {lengths[seq]:,}.")
+        start, end = int(m.group(1)) - 1, int(m.group(2))
+    if args.min_length < 1 or args.gap < 0:
+        raise UserError("--min-length is at least 1 and --gap at least 0 (bp).")
+    out = new_path(args.out) if args.out else None
+    found = track_features.signal_regions(signal, seq, start, end, args.threshold, args.min_length, args.gap)
+    if out:
+        out.write_text(track_features.regions_bed(found, seq, Path(args.signal).stem), encoding="utf-8")
+    return answer({"signal-regions": {"threshold": {"value": args.threshold}, "min_length": {"value": args.min_length}, "gap": {"value": args.gap}}},
+                  caps=signal.notes, sequence=seq, regions=[{"start": s + 1, "end": e, "length": e - s, "mean": float(f"{mean:.6g}"),
+                                                             "max": float(f"{top:.6g}")} for s, e, mean, top in found],
+                  **({"file": str(out)} if out else {}))
+
+
 def cmd_wsltools(args):
     """The tools that run beside openDNA (inside WSL on Windows): pLannotate and the Terminal's. `install` is what the Windows installer's
     optional task runs; it installs WSL itself never (that needs an administrator and a restart: the user does it)."""
@@ -883,3 +1041,36 @@ def register(sub, cli):
     s.add_argument("--genome", help="which genome of the hub (needed when it has several)")
     s.add_argument("--out", help="get: a new folder for the files")
     s.set_defaults(run=cmd_hub)
+    tracks_help = "a track file to add (annotation, signal or BAM); several --track for several"
+    s = sub.add_parser("recap", help="what every track holds over a region (items, signal mean / min / max / sum, depth), as Recap Tracks Here")
+    s.add_argument("source", help="a sequence file, or an Open DNA Project (.odp) with its tracks and highlighted regions")
+    s.add_argument("where", nargs="?", help="START..END (1-based) or a feature's name; none: --regions, else the project's highlighted regions")
+    s.add_argument("--track", action="append", help=tracks_help)
+    s.add_argument("--regions", help="a BED file of regions to recap, each on its own")
+    s.add_argument("--per-base", dest="per_base", action="store_true", help="signals: the value at every base too (regions up to 1,000 bp)")
+    s.add_argument("--tsv", action="store_true", help="one tab-separated row per region and track (and per group: the mean of its tracks) instead of JSON")
+    s.set_defaults(run=cmd_recap)
+    s = sub.add_parser("print", help="the Alignment view over START..END as an SVG or PNG file, as the project shows its tracks")
+    s.add_argument("source", help="an Open DNA Project (.odp: its tracks, order, looks, highlights) or a sequence file with --track")
+    s.add_argument("where", help="START..END (1-based) or a feature's name")
+    s.add_argument("out", help="the new image file: .svg (vector), .png or .tif")
+    s.add_argument("--track", action="append", help=tracks_help)
+    s.add_argument("--width", type=int, default=1600, help="the image's width in pixels (default 1600)")
+    s.set_defaults(run=cmd_print)
+    s = sub.add_parser("track-features", help="a track's items as features of the sequence, in a new GenBank file (as Copy to Features)")
+    s.add_argument("genome", help="the sequence (GenBank)")
+    s.add_argument("track_file", metavar="track", help="the annotation track (GFF, GTF, BED, bigBed, VCF)")
+    s.add_argument("where", nargs="?", help="only the items overlapping START..END (1-based) or a feature (default: the whole sequence)")
+    s.add_argument("--out", required=True, help="the new GenBank file")
+    s.add_argument("--type", help="the features' type (default: CDS for a track named *_CDS, else misc_feature)")
+    s.add_argument("--name-in", dest="name_in", default="label", help="the qualifier the item's name goes in (label, gene, locus_tag, product, note)")
+    s.set_defaults(run=cmd_track_features)
+    s = sub.add_parser("signal-regions", help="the stretches where a signal track (bigWig, bedGraph, wig) is at least a threshold, optionally as BED")
+    s.add_argument("signal")
+    s.add_argument("--threshold", type=float, required=True, help="the lowest value of a stretch")
+    s.add_argument("--min-length", dest="min_length", type=int, default=1, help="leave out stretches shorter than this (bp, default 1)")
+    s.add_argument("--gap", type=int, default=0, help="join stretches this close or closer (bp, default 0)")
+    s.add_argument("--seq", help="the sequence of the file (needed when it has several)")
+    s.add_argument("--region", dest="where", help="only START..END (1-based)")
+    s.add_argument("--out", help="a new BED file of the stretches")
+    s.set_defaults(run=cmd_signal_regions)

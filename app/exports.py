@@ -205,6 +205,11 @@ def open_project(path):
         return Document(str(gb)), meta
 
 
+def project_tracks(meta, project_path):
+    """[(saved entry, where its file is now or None)] of every track, alignment and signal a project lists."""
+    return [(e, project_file(e, project_path)) for e in meta.get("tracks", []) + meta.get("alignments", []) + meta.get("signals", [])]
+
+
 def project_file(entry, project_path):
     """Where a track listed in a project is now: its absolute path, else beside the project (moved together)."""
     if Path(entry["path"]).exists():

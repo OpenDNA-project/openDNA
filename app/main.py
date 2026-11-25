@@ -8,17 +8,16 @@ import re
 import sys
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 from PySide6 import __version__ as pyside_version
 from PySide6.QtCore import QEvent, Qt, QTimer, qVersion
-from PySide6.QtGui import QAction, QActionGroup, QColor, QGuiApplication, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialogButtonBox, QDockWidget, QFileDialog, QFormLayout, QFrame, QHBoxLayout, QInputDialog, QLabel,
     QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QDialog, QSizePolicy, QToolButton, QVBoxLayout, QWidget,
 )
 
-from opendna_core import Bam, Document, Fasta, Signal, Track, is_bigwig
+from opendna_core import Document, Fasta
 
 from display_panel import DisplayPanel
 from history_panel import HistoryPanel, side_panel_width
@@ -39,7 +38,6 @@ from codon_tools import CompareDialog, RecodeDialog
 from tools import DigestDialog, OrfDialog
 import updater
 import exports
-from enzymes import EnzymeFilter
 import icons
 from checkup import TOOL as CHECKUP
 import image_export
@@ -61,6 +59,7 @@ import db_tabs
 import reference_picker
 import theme
 import track_check
+import track_files
 import track_hub
 import track_import
 import track_panel
@@ -97,19 +96,10 @@ TRACK_FILTER = ("Tracks (*.gff *.gff3 *.gtf *.bed *.bb *.bigbed *.bw *.bigwig *.
                 "Alignments (*.bam);;Variants (*.vcf *.vcf.gz);;All files (*)")
 ANNOTATION_FILTER = "Annotation tracks (*.gff *.gff3 *.gtf *.bed *.bb *.bigbed);;All files (*)"
 SIGNAL_FILTER = "Signal tracks (*.bw *.bigwig *.bedgraph *.bg *.bdg *.wig);;All files (*)"
-SIGNAL_EXT = (".bw", ".bigwig", ".bedgraph", ".bg", ".bdg", ".wig")
 VCF_FILTER = "Variants (*.vcf *.vcf.gz);;All files (*)"
 BAM_FILTER = "Aligned reads (*.bam);;All files (*)"
 AUTOSAVE_MS = 60_000
 TIP_MS = 300_000   # the status bar shows another tip every 5 minutes
-
-
-def track_kind(path):
-    """How a track file is read: "bam", "signal" (bigWig by its contents, bedGraph, wig) or "track" (GFF, GTF, BED, bigBed, VCF)."""
-    lower = str(path).lower()
-    if lower.endswith(".bam"):
-        return "bam"
-    return "signal" if lower.endswith(SIGNAL_EXT) or is_bigwig(str(path)) else "track"
 
 
 def is_fasta(path):
@@ -894,7 +884,9 @@ class MainWindow(QMainWindow):
                                           name=e.name) is None]
             if skipped:
                 self.statusBar().showMessage(f"No data for {record} in: {', '.join(skipped)}", 8000)
-            self.editor.track_layout.load_json(old.track_layout.to_json(), self.editor.row_keys())   # their order, groups and look too
+            carried = old.track_layout.to_json()
+            carried.pop("regions", None)   # (positions on the other record)
+            self.editor.track_layout.load_json(carried, self.editor.row_keys())   # their order, groups and look too
         if meta is not None:
             self._apply_project(meta, path)
         return True
@@ -926,23 +918,15 @@ class MainWindow(QMainWindow):
     def _apply_project(self, meta, path):
         """What an Open DNA Project holds besides the GenBank part: display, tracks and BAM files, the DNA lock."""
         ed = self.editor
-        d = meta.get("display", {})
-        ed.untranslated = {tuple(x) for x in d.get("untranslated", [])}
-        meta.setdefault("hidden_features", d.get("hidden_features", []))   # (a project of 0.8.7 or older keeps them in "display")
-        ed.apply_display_choices(meta)   # (before set_display, which lays them out)
-        ed.set_display(enzymes=d.get("enzymes"), enzyme_filter=EnzymeFilter.from_dict(d.get("enzyme_filter")), translation=d.get("translation"), cds_only=d.get("cds_only"),
-                       hidden_kinds=d.get("hidden_kinds"), primers=d.get("primers"), cds_translation=d.get("cds_translation"),
-                       file_primers=d.get("file_primers"), db_primers=d.get("db_primers"), units=d.get("units"),
-                       complement=d.get("complement"))
+        ed.apply_project_display(meta)
         missing = []
-        for entry in meta.get("tracks", []) + meta.get("alignments", []) + meta.get("signals", []):
-            found = exports.project_file(entry, path)
+        for entry, found in exports.project_tracks(meta, path):
             if found is None:
                 missing.append(entry["path"])
             else:
                 self.load_track(found, entry.get("seqid"), types=entry.get("types", track_import.ALL),
                                 fields=entry.get("fields", track_import.ALL), name=entry.get("name"))
-        ed.track_layout.load_json(meta.get("track_layout"), ed.row_keys())   # the tracks' order, groups and look
+        ed.track_layout.load_json(meta.get("track_layout"), ed.row_keys(), ed.length)   # the tracks' order, groups, look and highlights
         self.set_dna_locked(bool(meta.get("dna_locked")))
         said = [m for m in (genetic_code.adopt(meta.get("genetic_code")), codon_usage.adopt(meta.get("codon_usage"))) if m]
         if said:
@@ -1839,9 +1823,9 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.warning(self, title, f"{path}\n\n{text}")
 
-        kind = track_kind(path)
+        kind = track_files.track_kind(path)
         try:
-            track = run_busy(self, f"Reading {file_name}…", lambda: {"bam": Bam, "signal": Signal}.get(kind, Track)(str(path)))
+            track = run_busy(self, f"Reading {file_name}…", lambda: track_files.read(path, kind))
         except OSError as e:
             if said is not None:
                 said.append(f"{file_name}: not read ({e})")
@@ -1883,19 +1867,9 @@ class MainWindow(QMainWindow):
         if problems:
             warn("Track may not match this sequence", "may not match this sequence: " + " ".join(problems) +
                  " It is loaded anyway; check that it is the right file.")
-        if kind == "bam":
-            entry = SimpleNamespace(name=name or file_name, kind="bam", path=str(path), bam=track, seqid=seqid, length=lengths[seqid],
-                                    cache=None, depth_pending=False, error=None, variants=None)
-        elif kind == "signal":
-            entry = SimpleNamespace(name=name or file_name, kind="signal", path=str(path), signal=track, seqid=seqid, cache={})
-        else:
-            colors, unread = track_import.colors_of(track) if "color" in fields else ({}, "")
-            if unread:
-                warn("Track colours", unread)
-            # wraps: items end past the length (they cross the origin of this circle), so drawing also looks one turn on
-            entry = SimpleNamespace(name=name or file_name, kind="track", path=str(path), track=track, seqid=seqid, types=types, fields=fields,
-                                    colors={raw: QColor(c) for raw, c in colors.items() if c}, show_notes="note" in fields,
-                                    wraps=ed.circular and bool(track.query(seqid, ed.length, 1 << 62, 1)[0]))
+        entry, unread = track_files.make_entry(ed, kind, track, path, seqid, name, types, fields or ())
+        if unread:
+            warn("Track colours", unread)
         self.set_genome_visible(True)
         ed.add_track(entry, group)
         return entry
@@ -1906,19 +1880,13 @@ class MainWindow(QMainWindow):
         origin when this sequence is linear (`quiet`: left out, said through `warn`). Keeps them in `track`; (types, fields, read
         again) or None when cancelled."""
         ed = self.editor
-        found, extra = track.types(), track_import.detected_fields(track)
-        gff = not {kind for kind, _, _ in found} <= {"bed", "variant"}   # (the core names BED and VCF items so)
-        if types is None and gff and not quiet:
-            dialog = track_import.TrackImportDialog(self, Path(path).name, found, extra)
+        found = track.types()
+        if types is None and track_files.is_gff(found) and not quiet:
+            dialog = track_import.TrackImportDialog(self, Path(path).name, found, track_import.detected_fields(track))
             if dialog.exec() != QDialog.Accepted:
                 return None
             types, fields = dialog.choice()
-        if types == track_import.ALL or not gff:
-            types = [kind for kind, _, _ in found]
-        elif types is None:   # quiet: the types the dialog ticks
-            types = [kind for kind, _, whole in found if not whole]
-        if fields in (None, track_import.ALL):
-            fields = list(extra)
+        types, fields = track_files.choose(track, types, fields)   # (quiet: the types the dialog ticks)
         dropped = track.keep(types, seqid, ed.length if ed.circular else None)
         if dropped:
             text = (f"{plural(dropped, 'feature')} of {Path(path).name} cross the origin (the end comes before the start), and this "

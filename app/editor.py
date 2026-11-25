@@ -181,6 +181,11 @@ def site_location(start, end, strand, length):
     return f"complement({loc})" if strand < 0 else loc
 
 
+def split_at_origin(start, end, length):
+    """[(start, end)] of bases start..end on a sequence of `length` bases: two parts when `end` passes the origin (a circle)."""
+    return [(start, length), (0, end - length)] if end > length else [(start, end)]
+
+
 def primer_extent(f, tail, length=None):
     """Spans of a primer including its 5' tail (which hangs off the template). `length`: of a circular sequence,
     whose tail goes on past the origin to the other end (a linear one is cut at its start)."""
@@ -772,6 +777,17 @@ class Editor(QObject):
         return {"hidden_features": sorted(list(k) for k in hidden), "hidden_primers": sorted(self.hidden_primers),
                 "primer_sites": self.saved_site_choices()}
 
+    def apply_project_display(self, meta):
+        """What a project says of the display (the window's and the command line's: the same features hidden, the same look)."""
+        d = meta.get("display", {})
+        self.untranslated = {tuple(x) for x in d.get("untranslated", [])}
+        meta.setdefault("hidden_features", d.get("hidden_features", []))   # (a project of 0.8.7 or older keeps them in "display")
+        self.apply_display_choices(meta)   # (before set_display, which lays them out)
+        self.set_display(enzymes=d.get("enzymes"), enzyme_filter=EnzymeFilter.from_dict(d.get("enzyme_filter")), translation=d.get("translation"),
+                         cds_only=d.get("cds_only"), hidden_kinds=d.get("hidden_kinds"), primers=d.get("primers"),
+                         cds_translation=d.get("cds_translation"), file_primers=d.get("file_primers"), db_primers=d.get("db_primers"),
+                         units=d.get("units"), complement=d.get("complement"))
+
     def apply_display_choices(self, saved):
         """Take the features, primers and sites hidden that a project or the file kept (display_choices); not a change to save."""
         if "hidden_features" in saved:   # (laid out by the caller: _refresh, or the project's set_display)
@@ -1151,8 +1167,7 @@ class Editor(QObject):
 
     def selected_spans(self):
         """The selection as [(start, end)] on the sequence: two parts if it passes the origin."""
-        n = self.length
-        return [(self.start, n), (0, self.end - n)] if self.end > n else [(self.start, self.end)]
+        return split_at_origin(self.start, self.end, self.length)
 
     def set_cursor(self, pos):
         self.select(pos, pos)

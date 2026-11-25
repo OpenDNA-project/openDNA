@@ -9,16 +9,20 @@ the file redraws on `Editor.tracks_changed`.
 - Drag tracks to reorder them, or onto a group to move them into it; groups are dragged too (never into another group).
 - The filter keeps the tracks whose name has the text (and whole groups whose name has it); Select All picks those shown.
 - F2 renames the selected track or group (the name shown: the file is never renamed).
+
+A second tab lists the highlighted regions (track_actions.RegionsTab).
 """
 from collections import Counter
 
 from PySide6.QtCore import QItemSelection, QItemSelectionModel, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView, QColorDialog, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
-    QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton, QSpinBox, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
+    QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton, QSpinBox, QTabWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+    QWidget,
 )
 
+import track_actions
 import track_layout
 from track_layout import FIXED, MODES, RENDERS, SCALED, Group
 from uikit import plural
@@ -86,6 +90,7 @@ def fill_menu(menu, view, keys, group=None):
                 a = scale.addAction(key.capitalize(), lambda s=key: layout.restyle(scaled, scale=s))
                 a.setCheckable(True)
                 a.setChecked(scales == {key})
+    track_actions.track_actions(menu, view, keys)
     signals = [k for k in keys if kinds[k] == "signal"]
     if signals:
         _signal_menu(menu.addMenu("Signal"), view, signals)
@@ -303,14 +308,21 @@ class TracksPanel(QWidget):
         self.tree.customContextMenuRequested.connect(lambda pos: self._menu_at(self.tree.viewport().mapToGlobal(pos), pos))
         self.tree.itemExpanded.connect(lambda it: self.folded.discard(it.text(0)))
         self.tree.itemCollapsed.connect(lambda it: self.folded.add(it.text(0)))
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 0, 4)
+        tracks = QWidget()
+        layout = QVBoxLayout(tracks)
+        layout.setContentsMargins(0, 4, 0, 0)
         layout.addLayout(top)
         layout.addWidget(self.count)
         layout.addLayout(bar)
         layout.addWidget(self.tree, 1)
+        self.tabs = QTabWidget(documentMode=True)
+        self.tabs.addTab(tracks, "Tracks")
+        self.regions = track_actions.RegionsTab(view)
+        self.tabs.addTab(self.regions, "Regions")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(4, 4, 0, 4)
+        outer.addWidget(self.tabs)
         self.folded = set()      # groups folded in this tree (only here: folding a group in the view is Group.collapsed)
-        self.icons = {}          # colour -> swatch icon
         self.shape = None        # the order and groups the tree was built for (a style change updates the rows in place)
         self.dirty = True        # the tree is built when shown (a hidden panel does no work)
         # Many changes in a row (a group's box ticks all its tracks, one change each) are shown once.
@@ -386,7 +398,7 @@ class TracksPanel(QWidget):
                      if st.overlay else st.render if kind == "signal" and st.render == "heatmap" else st.mode)
         item.setCheckState(0, Qt.Checked if st.shown else Qt.Unchecked)
         color = self.view.canvas.row_color(key)
-        item.setIcon(0, self._swatch(color) if color else QIcon())
+        item.setIcon(0, track_actions.swatch(color) if color else QIcon())
         item.setToolTip(0, key if item.text(0) != key else "")
 
     def _set_groups(self):
@@ -402,13 +414,6 @@ class TracksPanel(QWidget):
         if old in self.folded:
             self.folded.discard(old)
             self.folded.add(new)
-
-    def _swatch(self, color):
-        if color not in self.icons:
-            pix = QPixmap(10, 10)
-            pix.fill(QColor(color))
-            self.icons[color] = QIcon(pix)
-        return self.icons[color]
 
     def _row_items(self):
         for i in range(self.tree.topLevelItemCount()):

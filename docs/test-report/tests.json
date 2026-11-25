@@ -4810,8 +4810,8 @@
   {
    "id": "tests/test_documents.py::test_track_layout_moves_groups_reloads_and_bulk_helpers",
    "area": "Alignment view tracks",
-   "role": "Without it, the Tracks panel could lose or double tracks when they are dragged between groups, a change could reach the views without a redraw, a project could close without offering to save a layout changed by hand, a project could reopen with tracks scrambled or styles broken, Group by Name, the light-to-dark colours or Fit could give wrong values, and two loaded files of the same name (or one named like a built-in row) could share one row, with nothing to show it.",
-   "purpose": "Drives the track layout model the Tracks panel edits (no widget): adding rows to groups, moving them in display order, folding a group, a drag-and-drop tree that leaves a row out, restyling (a new display mode drops a height set by hand), removing a group's last row, renaming and ungrouping, checking that each change is announced once and whether it was made by hand; saving and loading it for the rows the file has now; Group by Name, the colour range and Fit; and the Editor's table of rows (unique names, a BAM's three rows, removal, a track's default colour kept when another goes), and which files a layout change marks as modified. Signal tracks: their own list, overlaid in one row and separated, and their saved settings read back (values it cannot read left at their defaults).",
+   "role": "Without it, the Tracks panel could lose or double tracks when they are dragged between groups, a change could reach the views without a redraw, a project could close without offering to save a layout changed by hand, a project could reopen with tracks scrambled or styles broken, Group by Name, the light-to-dark colours or Fit could give wrong values, and two loaded files of the same name (or one named like a built-in row) could share one row, with nothing to show it, or highlighted regions could be lost from a project or read wrong from a BED file.",
+   "purpose": "Drives the track layout model the Tracks panel edits (no widget): adding rows to groups, moving them in display order, folding a group, a drag-and-drop tree that leaves a row out, restyling (a new display mode drops a height set by hand), removing a group's last row, renaming and ungrouping, checking that each change is announced once and whether it was made by hand; saving and loading it for the rows the file has now; Group by Name, the colour range and Fit; and the Editor's table of rows (unique names, a BAM's three rows, removal, a track's default colour kept when another goes), and which files a layout change marks as modified. Signal tracks: their own list, overlaid in one row and separated, and their saved settings read back (values it cannot read left at their defaults). Highlighted regions: kept in order of start, renamed, saved and read back (unreadable ones left out), written as BED and read back (name and colour kept, lines that are not regions of the sequence named), removed.",
    "cases": [
     {
      "input": "new Layout(on_change counts)",
@@ -4880,6 +4880,26 @@
     {
      "input": "load_json styles s: heatmap, max, fixed -2..5.5, overlay t; t: render dots, range own, low True",
      "expected": "s read as given; t keeps bars, auto, 0.0 (not valid values)"
+    },
+    {
+     "input": "add regions (50,60,'b',#26a69a) and (10,20,'a'); rename the first 'first'",
+     "expected": "[(10,20,first,#ffb300), (50,60,b,#26a69a)]"
+    },
+    {
+     "input": "load_json with two more saved regions: start 30 > end 20, start 'x'",
+     "expected": "the same two regions (the unreadable ones left out)"
+    },
+    {
+     "input": "regions_bed(sequence t)",
+     "expected": "t 10 20 first 0 . 10 20 255,179,0 / t 50 60 b 0 . 50 60 38,166,154"
+    },
+    {
+     "input": "read_regions_bed of a track line, those lines, 't 5 8', 't 90 200' and 'not a line' on 100 bases",
+     "expected": "the two regions and (5,8); unread 'line 5: 90-200 is not within 0-100', 'line 6: not sequence, start, end'"
+    },
+    {
+     "input": "remove the first region",
+     "expected": "only 'b' left"
     }
    ],
    "oracle": "hand-computed",
@@ -9205,8 +9225,8 @@
   {
    "id": "core/src/tracks.rs::tests::partial_regions_colours_notes_and_features_across_the_origin",
    "area": "Annotation tracks (GFF/GTF/BED/VCF)",
-   "role": "A GFF3 file of partial region lines could be read as empty again, a feature across the origin could be refused or split in two, or a colour or note in the file could be lost.",
-   "purpose": "A region that does not cover its sequence is a type worth showing; a line whose end comes before its start is one item on a circle (its end past the length, found from both sides of the origin) and is left out and counted on a linear sequence; GFF colour/colour and Note/product and the BED itemRgb column are kept as written.",
+   "role": "A GFF3 file of partial region lines could be read as empty again, a feature across the origin could be refused or split in two, or a colour or note in the file could be lost, or the extra columns of a BED file (TSS heights, TU lengths...) could be lost before they reach a recap or a feature's notes.",
+   "purpose": "A region that does not cover its sequence is a type worth showing; a line whose end comes before its start is one item on a circle (its end past the length, found from both sides of the origin) and is left out and counted on a linear sequence; GFF colour/colour and Note/product and the BED itemRgb column are kept as written. The BED columns past itemRgb are kept on each item (a BED12's three block columns left out).",
    "cases": [
     {
      "input": "##sequence-region c 1 1000; region 100-500 color=#257215; region 950-50 colour=185,21,21 Note=across%20the%20origin; gene 600-700 product=lacZ",
@@ -9227,6 +9247,10 @@
     {
      "input": "one gene 1..5000, no ##sequence-region",
      "expected": "types [(gene,1,not whole)]: only a type naming a sequence, or a stated length, makes a line 'whole'"
+    },
+    {
+     "input": "BED9 + height=81, RSPM=12; BED12 (blocks 2, '3,4,', '0,6,') + TU=1; BED4",
+     "expected": "extra 'height=81\\tRSPM=12'; 'TU=1'; none"
     }
    ],
    "oracle": "hand-computed",
@@ -9239,7 +9263,7 @@
    "id": "core/src/signals.rs::tests::bedgraph_and_wig_bins_by_hand",
    "area": "Alignment view tracks",
    "role": "Without it, a bedGraph or wig signal track could show wrong values in the Alignment view (shifted by one base, averaged over the wrong bases, or wrong when zoomed out) with nothing to show it.",
-   "purpose": "Reads a bedGraph and a wig written in the test and checks the bins the view draws: the mean over the bases that have a value and the highest value, NaN where there is none, through the raw intervals and through the zoom levels built for wide views; lines that are not valid are counted in the notes, a file with none valid is an error.",
+   "purpose": "Reads a bedGraph and a wig written in the test and checks the bins the view draws: the mean over the bases that have a value and the highest value, NaN where there is none, through the raw intervals and through the zoom levels built for wide views; lines that are not valid are counted in the notes, a file with none valid is an error. stats (exact, never a zoom level) and runs (stretches at or over a threshold, touching ones merged) by hand.",
    "cases": [
     {
      "input": "bedGraph c: [0,100)=1, [100,200)=3, [500,600)=2, plus a line 'c x 1 1' and a track line",
@@ -9264,6 +9288,14 @@
     {
      "input": "a file with only 'c 1'; is_bigwig on the bedGraph",
      "expected": "error; false"
+    },
+    {
+     "input": "stats(c, 50, 550); stats(c, 250, 400)",
+     "expected": "(200 bases, sum 450, lowest 1, highest 3); (0 bases, NaN lowest)"
+    },
+    {
+     "input": "runs(c, 0, 600, 2); runs(c, 50, 600, 1)",
+     "expected": "[(100,200), (500,600)]; [(50,200), (500,600)] ([0,100) and [100,200) touch: one stretch)"
     }
    ],
    "oracle": "hand-computed",
@@ -9274,7 +9306,7 @@
    "id": "core/src/signals.rs::tests::bigwig_and_bigbed_of_the_demo_hub",
    "area": "Alignment view tracks",
    "role": "Without it, a bigWig signal or a bigBed annotation track (what UCSC track hubs hold) could be read wrong, or not at all, with nothing to show it.",
-   "purpose": "Reads the demo hub's plus.bw (written by pybigtools: 10 over [0,2000), 30 over [2000,4000), 20 to 5,936) through the bigtools library and checks bins by hand; reads its sites.bb as an annotation track (the BED lines its entries stand for).",
+   "purpose": "Reads the demo hub's plus.bw (written by pybigtools: 10 over [0,2000), 30 over [2000,4000), 20 to 5,936) through the bigtools library and checks bins by hand; reads its sites.bb as an annotation track (the BED lines its entries stand for). stats and runs of the bigWig by hand.",
    "cases": [
     {
      "input": "Signal(plus.bw)",
@@ -9287,6 +9319,10 @@
     {
      "input": "Track(sites.bb).query(0, 5936)",
      "expected": "(100, 400, +, site_a, 255,0,0), (2500, 2600, -, site_b, 0,0,255), (5000, 5100, +, site_c, 0,128,0)"
+    },
+    {
+     "input": "stats(1000, 4500); runs(0, 5936, 20)",
+     "expected": "(3500, 80,000, 10, 30); [(2000, 5936)]"
     }
    ],
    "oracle": "hand-computed",
@@ -9299,7 +9335,7 @@
    "id": "tests/test_core_formats.py::test_signal_files_bigwig_bedgraph_and_wig_read_the_same_values",
    "area": "Alignment view tracks",
    "role": "Without it, the same signal could show different values in a bigWig and in a bedGraph or wig, or a file could be read as the wrong kind of track, with nothing to show it.",
-   "purpose": "Reads the demo hub's plus.bw through the bigtools library and a bedGraph and a wig of the same values through openDNA's own parser, and checks they give the same bins at several zooms; checks how the window tells a file's kind (track_kind) by name and, for a bigWig, by its contents.",
+   "purpose": "Reads the demo hub's plus.bw through the bigtools library and a bedGraph and a wig of the same values through openDNA's own parser, and checks they give the same bins at several zooms; checks how the window tells a file's kind (track_kind) by name and, for a bigWig, by its contents. The exact sums the recap gives (stats) and the stretches over a threshold (runs) agree between the three files.",
    "cases": [
     {
      "input": "plus.bw, the same values as bedGraph, and as wig (fixedStep for 2 x 2000 bases, then variableStep)",
@@ -9320,6 +9356,14 @@
     {
      "input": "a wig whose variableStep has no chrom=",
      "expected": "OSError 'not valid bedGraph or wig'"
+    },
+    {
+     "input": "stats(1000, 4500) of each file",
+     "expected": "(3500 bases, sum 80,000, lowest 10, highest 30) each"
+    },
+    {
+     "input": "runs(0, 5936, threshold 20); runs(100, 3000, threshold 25)",
+     "expected": "[(2000, 5936)] each; [(2000, 3000)] each"
     }
    ],
    "oracle": "independent implementation",
@@ -9354,6 +9398,118 @@
    "issues": [
     "The window's dialog and its copy with a progress bar (hub_dialog, main.import_hub) are not tested: no widget tests; checked by running the app offscreen on the demo hub."
    ]
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_recap_command_gives_the_numbers_of_the_window_recap",
+   "area": "Agent command line",
+   "role": "Without it, `recap` could disagree with the window's Recap Tracks Here, or a recap could give a signal's mean, sum or items wrong, mix up a group's mean row, or miss a project's highlighted regions, with nothing to show it.",
+   "purpose": "Recaps the demo plasmid with the demo hub's two bigWigs and bigBed and compares the JSON with track_recap.recap on the same tracks loaded the same way (cli_tools.track_editor); checks the numbers by hand, the per-base values across a step, and a project saved with a group and a highlight recapped with no place given, as a table.",
+   "cases": [
+    {
+     "input": "recap pBAD30_eilR.gb 1001..2600 --track plus.bw minus.bw sites.bb",
+     "expected": "= track_recap.recap; plus: 1600 bases, mean 17.5, min 10, max 30, sum 28,000; minus mean 5, sum 8,000; sites: site_b 2501-2600 '-' covers 0.0625; the sequence's features overlapping"
+    },
+    {
+     "input": "recap 1995..2004 --track plus.bw --per-base",
+     "expected": "values [10 x 6, 30 x 4]"
+    },
+    {
+     "input": "recap 1..500 --track w.bed (one item 5800..6236 on the 5,936 bp circle)",
+     "expected": "item wrap 5801-6236 covers 0.6 (300 of 500 bases, past the origin)"
+    },
+    {
+     "input": "a project with plus and minus in group Coverage and a highlight 'here' 1001..2600; recap p.odp --tsv",
+     "expected": "header = COLUMNS; rows sites.bb (1 item), plus.bw (1600, 17.5, 28000), minus.bw (1600, 5.0, 8000), 'Coverage (mean of 2)' (1600, 11.25, 18000)"
+    },
+    {
+     "input": "recap with tracks but no place, no --regions, not a project",
+     "expected": "error 'no region'"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": [
+    "A BAM file's depth and variants in a recap are not checked here (no small BAM in the demo); the window's dialog around the same rows is checked by running the app only."
+   ]
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_print_command_draws_the_project_as_the_window_export",
+   "area": "Agent command line",
+   "role": "Without it, `print` could draw a project without its tracks' names as shown or its highlights, at the wrong width, or write over a file, with nothing to show it.",
+   "purpose": "Saves a project of the demo plasmid with a renamed signal track and a highlight, prints a region to SVG and checks the text drawn; prints a sequence with --track to PNG at a chosen width; refuses an existing file and an unknown extension.",
+   "cases": [
+    {
+     "input": "print p.odp 1001..4000 r.svg (plus.bw shown as 'Coverage plus', sites.bb, highlight 'Highlighted here')",
+     "expected": "tracks_shown 2, regions 1, start 1001, end 4000; the SVG holds 'Coverage plus', 'Highlighted here', 'sites.bb'"
+    },
+    {
+     "input": "print pBAD30_eilR.gb 1001..4000 r.png --track plus.bw --width 900",
+     "expected": "a PNG 900 px wide"
+    },
+    {
+     "input": "print again to r.svg; print to r.jpg",
+     "expected": "'already exists'; 'must end in'"
+    }
+   ],
+   "oracle": "smoke",
+   "strength": "adequate",
+   "issues": [
+    "Checks the text and size of the image, not the drawing itself (the bars, heatmaps and bands are checked by looking at images from the app)."
+   ]
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_track_features_command_adds_what_copy_to_features_adds",
+   "area": "Agent command line",
+   "role": "Without it, copying a track's items into the sequence could lose an item's name, its 'from track' note or its file's extra columns, add the same item twice, or give the wrong type, with nothing to show it.",
+   "purpose": "Copies a BED file of two items (one with extra columns, one on the minus strand) into the demo plasmid with track_features (what Copy to Features adds), reads the written GenBank file back, runs it again on the result, and copies only a part of the demo bigBed.",
+   "cases": [
+    {
+     "input": "track-features pBAD30_eilR.gb Sites_CDS.bed --name-in gene",
+     "expected": "added 2, skipped 0, type CDS (from the name); CDS 101..400 gene=site_a, notes 'from track Sites_CDS.bed', 'height=81', 'RSPM=12'; CDS complement(2501..2600) gene=site_b"
+    },
+    {
+     "input": "default_type('RefSeq_2022_CDS.bed'), default_type('sites.bb')",
+     "expected": "CDS, misc_feature"
+    },
+    {
+     "input": "the same on the written file",
+     "expected": "added 0, skipped 2"
+    },
+    {
+     "input": "sites.bb over 1..1000; a bigWig as the track",
+     "expected": "added 1; 'not an annotation track'"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": []
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_signal_regions_command_finds_the_stretches_of_regions_above_threshold",
+   "area": "Agent command line",
+   "role": "Without it, Regions Above Threshold and `signal-regions` could miss, split or merge stretches wrongly, give a wrong mean, or write a wrong BED file, with nothing to show it.",
+   "purpose": "Finds the stretches of the demo bigWig over 20 (with its BED file), then of a bedGraph written in the test with joining, a least length and a region, all by hand.",
+   "cases": [
+    {
+     "input": "signal-regions plus.bw --threshold 20 --out r.bed",
+     "expected": "one stretch 2001-5936 (3936 bp), mean 98,720 / 3936, max 30; BED 'pBAD30_eilR 2000 5936 plus_1 <mean> .'"
+    },
+    {
+     "input": "bedGraph 5 over [0,10), 1 over [10,15), 5 over [15,20), 9 over [100,103); threshold 5",
+     "expected": "1-10, 16-20, 101-103"
+    },
+    {
+     "input": "threshold 5, gap 5, min length 4",
+     "expected": "1-20 only, mean 4 ((10 x 5 + 5 x 1 + 5 x 5) / 20)"
+    },
+    {
+     "input": "--region 12..103; --region 0..5",
+     "expected": "16-20, 101-103; error 'START..END'"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "strong",
+   "issues": []
   }
  ],
  "removed": [
