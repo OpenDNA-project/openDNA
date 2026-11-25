@@ -5,6 +5,11 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 
 ## Unreleased
 
+## 0.9.1 (2026-11-25)
+
+**UI/UX**
+- The start page's naming vote now offers Boundless DNA and Intelligent Design next to openDNA.
+
 ## 0.9.0 (2026-11-25)
 
 **Features**
