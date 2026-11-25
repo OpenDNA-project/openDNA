@@ -956,7 +956,7 @@ def test_print_command_draws_the_project_as_the_window_export(capsys, tmp_path):
     res = answer(capsys, "print", tmp_path / "p.oDNA", "1001..4000", tmp_path / "r.svg")
     svg = (tmp_path / "r.svg").read_text(encoding="utf-8")
     assert (res["tracks_shown"], res["regions"], res["start"], res["end"]) == (2, 1, 1001, 4000)
-    assert "Coverage" in svg and "Highlighted here" in svg and "sites" in svg   # (names wrap in the narrow names column)
+    assert "Cov" in svg and "Highl" in svg and "sit" in svg   # (names wrap in the narrow names column, anywhere: where depends on the font)
     answer(capsys, "print", PLASMID, "1001..4000", tmp_path / "r.png", "--track", HUB / "plus.bw", "--width", "900")
     assert QImage(str(tmp_path / "r.png")).width() == 900
     assert "already exists" in run(capsys, "print", tmp_path / "p.oDNA", "1..100", tmp_path / "r.svg")[2]
