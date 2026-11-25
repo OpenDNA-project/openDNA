@@ -4,7 +4,7 @@
 
 ## `test_release_metadata_and_exe_recipe_are_consistent`
 
-**Result:** ✅ passed in 1.02 s · [line 23](../../tests/test_project.py#L23) · **Area:** Release packaging · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 1.08 s · [line 23](../../tests/test_project.py#L23) · **Area:** Release packaging · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a release could ship with mismatched version numbers (breaking the updater) or a Windows exe missing data files the app needs (parts library, tool settings, 3D viewer), which only shows up for users of the frozen build; or a missing or malformed changelog would reach the start page and the release description.
 
@@ -53,7 +53,7 @@ Checks copy_old_data copies the old-name data folder to the new location when th
 
 ## `test_welcome_slots_hold_four_and_expire`
 
-**Result:** ✅ passed in 0.04 s · [line 123](../../tests/test_project.py#L123) · **Area:** Welcome page · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 123](../../tests/test_project.py#L123) · **Area:** Welcome page · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the naming vote on the welcome page could ship with a broken link, a missing picture or a fifth slot silently dropped, or stay up after its end date; or the page could open at every start (or never) instead of once a day.
 

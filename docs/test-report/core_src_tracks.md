@@ -4,7 +4,7 @@
 
 ## `gff_bed_and_queries`
 
-**Result:** ✅ passed · [line 351](../../core/src/tracks.rs#L351) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 391](../../core/src/tracks.rs#L391) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Loaded GFF/GTF/BED/VCF annotation tracks could show features off by one base, lose escaped names, or miss features in a region.
 
@@ -30,7 +30,7 @@ GFF3/GTF, BED and VCF files load into an index: every type counted (a whole-sequ
 
 ## `partial_regions_colours_notes_and_features_across_the_origin`
 
-**Result:** ✅ passed · [line 402](../../core/src/tracks.rs#L402) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 442](../../core/src/tracks.rs#L442) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A GFF3 file of partial region lines could be read as empty again, a feature across the origin could be refused or split in two, or a colour or note in the file could be lost.
 

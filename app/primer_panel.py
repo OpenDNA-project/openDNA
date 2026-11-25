@@ -9,11 +9,11 @@ from html import escape
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QEventLoop, QObject, QPointF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QPointF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPalette, QPolygonF
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFrame,
-    QApplication, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QProgressDialog, QPushButton,
+    QApplication, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
     QStyle, QStyledItemDelegate, QStyleOptionViewItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -26,7 +26,7 @@ from value_filter import SortItem
 from tool_settings import Param, SettingsDialog
 from reference import Reference, as_reference
 from sequence_view import TEMP_COLOR
-from uikit import dispose_progress, fit_columns, plural, show_after
+from uikit import fit_columns, plural, run_cancellable
 from primer_db import (ORDER_FORMATS, PLATE_SIZE, PURIFICATIONS, SCALES, export_order, conditions, tm_rule, MAX_NAME, MAX_NOTE, MAX_PRIMER, add_primer, add_primers, name_taken, BINDING, binding, db,  # noqa: F401 (re-exported)
                        primer_problem, update_primer)
 import theme
@@ -272,27 +272,14 @@ def warm_genome(parent, editor, sequences):
     todo = [q for q in sequences if len(q) >= 8 and genome_query(editor, q) is not None and genome_cached(editor, q) is None]
     if not todo:
         return
-    state = {"text": "Searching the background genome…", "cancel": False}
-
-    def work():
+    def work(state):
         for i, q in enumerate(todo, 1):
             if state["cancel"]:
                 return
             prefix = f"Primer {i} of {len(todo)}: " if len(todo) > 1 else ""
             genome_search(editor, q, lambda done, total, name, n, count, p=prefix: state.update(
                 text=f"{p}searching {name} ({n} of {count}), {100 * done // max(total, 1)} %"), lambda: state["cancel"])
-    thread = threading.Thread(target=work, daemon=True)
-    thread.start()
-    dialog = QProgressDialog(state["text"], "Cancel", 0, 0, parent)
-    dialog.setWindowTitle("Background Genome")
-    dialog.setWindowModality(Qt.WindowModal)
-    show_after(dialog, 400)
-    dialog.canceled.connect(lambda: state.update(cancel=True))
-    while thread.is_alive():
-        QApplication.processEvents(QEventLoop.AllEvents, 30)
-        dialog.setLabelText(state["text"])
-        thread.join(0.02)
-    dispose_progress(dialog)   # (close() left its show timer running: it could come back over the next dialog)
+    run_cancellable(parent, "Background Genome", work)
 
 
 class _GenomeSignals(QObject):

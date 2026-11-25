@@ -160,6 +160,8 @@ def project_meta(editor, project_path, layout=None):
                     "name": t.name} for t in ed.tracks if getattr(t, "path", None)],
         "alignments": [{"path": a.path, "relative": _relative(a.path, project_path), "seqid": a.seqid, "name": a.name}
                        for a in ed.alignments if getattr(a, "path", None)],
+        "signals": [{"path": s.path, "relative": _relative(s.path, project_path), "seqid": s.seqid, "name": s.name}
+                    for s in ed.signals if getattr(s, "path", None)],
         "track_layout": ed.track_layout.to_json(),   # the Alignment view's order, groups and look of the tracks
         "display": {"enzymes": ed.show_enzymes, "enzyme_filter": ed.enzyme_filter._asdict(),
                     "translation": ed.show_translation, "complement": ed.show_complement, "cds_only": ed.cds_only,

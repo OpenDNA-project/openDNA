@@ -45,6 +45,9 @@ impl Track {
     /// counted in `notes` (the first one is named); a file with no valid line at all is an error.
     pub fn open(path: &Path) -> io::Result<Self> {
         let lower = path.to_string_lossy().to_lowercase();
+        if is_bigbed(path) {   // (by its contents, whatever its name): its entries are BED lines
+            return Self::read(path, "bigBed", true, false, bigbed_lines(path)?.into_iter().map(Ok));
+        }
         let bed = lower.ends_with(".bed");
         let vcf = lower.ends_with(".vcf") || lower.ends_with(".vcf.gz");
         // `Box<dyn BufRead>` = "any line reader": plain file, or bgzip-compressed VCF
@@ -55,11 +58,16 @@ impl Track {
             Box::new(BufReader::new(File::open(path)?))
         };
         let format = if bed { "BED" } else if vcf { "VCF" } else { "GFF/GTF" };
+        Self::read(path, format, bed, vcf, reader.lines())
+    }
+
+    /// The items of `lines` (named `format` in the notes; `bed`, `vcf`: how to read them, else GFF/GTF).
+    fn read(path: &Path, format: &str, bed: bool, vcf: bool, lines: impl Iterator<Item = io::Result<String>>) -> io::Result<Self> {
         let mut items: HashMap<String, Vec<Item>> = HashMap::new();
         let mut wrapping: HashMap<String, Vec<Item>> = HashMap::new();
         let mut lengths = HashMap::new();
         let (mut skipped, mut first_bad) = (0usize, None);
-        for (n, line) in reader.lines().enumerate() {
+        for (n, line) in lines.enumerate() {
             let line = line?;
             if line.starts_with("##FASTA") {
                 break; // GFF3 may end with the sequences themselves
@@ -85,14 +93,7 @@ impl Track {
                 }
             }
         }
-        let mut notes = Vec::new();
-        if let Some((line, why)) = first_bad {
-            if items.is_empty() && wrapping.is_empty() {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, format!("{}: line {line} is not valid {format} ({why})", path.display())));
-            }
-            let count = if skipped == 1 { "1 line was".to_string() } else { format!("{skipped} lines were") };
-            notes.push(format!("{count} skipped as not valid {format} (first: line {line}, {why})."));
-        }
+        let notes = skipped_notes(path, format, skipped, first_bad, items.is_empty() && wrapping.is_empty())?;
         let mut track = Track::from_items(items);
         track.notes = notes;
         track.wrapping = wrapping;
@@ -251,6 +252,45 @@ impl Track {
 
 /// A track line's result: Ok(Some) an item, Ok(None) a line skipped on purpose, Err why the line is not valid.
 type Parsed = Result<Option<(String, Item)>, &'static str>;
+
+const BIGBED_MAGIC: u32 = 0x8789_F2EB;
+
+/// A file's first 4 bytes as a little-endian number (what tells a bigWig or a bigBed whatever its name), None when shorter.
+pub fn magic(path: &Path) -> Option<u32> {
+    let mut bytes = [0u8; 4];
+    File::open(path).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut bytes)).ok().map(|_| u32::from_le_bytes(bytes))
+}
+
+pub fn is_bigbed(path: &Path) -> bool {
+    magic(path) == Some(BIGBED_MAGIC)
+}
+
+/// The notes of a text file read line by line: "N lines were skipped as not valid FORMAT (first: line L, why).", or an error
+/// when no line at all was valid (`nothing`).
+pub fn skipped_notes(path: &Path, format: &str, skipped: usize, first_bad: Option<(usize, &str)>, nothing: bool) -> io::Result<Vec<String>> {
+    let Some((line, why)) = first_bad else { return Ok(Vec::new()) };
+    if nothing {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("{}: line {line} is not valid {format} ({why})", path.display())));
+    }
+    let count = if skipped == 1 { "1 line was".to_string() } else { format!("{skipped} lines were") };
+    Ok(vec![format!("{count} skipped as not valid {format} (first: line {line}, {why}).")])
+}
+
+/// Every entry of a bigBed file as the BED line it stands for ("sequence start end" and the rest of its columns).
+fn bigbed_lines(path: &Path) -> io::Result<Vec<String>> {
+    let bad = |e: &dyn std::fmt::Display| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {e}", path.display()));
+    let mut reader = bigtools::BigBedRead::open_file(path).map_err(|e| bad(&e))?;
+    let chroms: Vec<(String, u32)> = reader.chroms().iter().map(|c| (c.name.clone(), c.length)).collect();
+    let mut lines = Vec::new();
+    for (name, length) in chroms {
+        for entry in reader.get_interval(&name, 0, length).map_err(|e| bad(&e))? {
+            let entry = entry.map_err(|e| bad(&e))?;
+            lines.push(if entry.rest.is_empty() { format!("{name}\t{}\t{}", entry.start, entry.end) }
+                       else { format!("{name}\t{}\t{}\t{}", entry.start, entry.end, entry.rest) });
+        }
+    }
+    Ok(lines)
+}
 
 fn number(s: &str, what: &'static str) -> Result<u64, &'static str> {
     s.parse().map_err(|_| what)

@@ -277,6 +277,38 @@ def show_after(dialog, ms):
     dialog.setValue(dialog.minimum())
 
 
+def run_cancellable(parent, title, work, steps=0):
+    """Run `work(state)` in a thread with a progress dialog that has a Cancel button (shown after 400 ms), keeping the window
+    responsive. `work` reads `state["cancel"]` to stop early and may set `state["text"]` and `state["done"]` (out of `steps`; 0
+    steps: a busy bar). Returns what `work` returned, or re-raises its error."""
+    state = {"text": title + "…", "cancel": False, "done": 0}
+    result = {}
+
+    def target():
+        try:
+            result["value"] = work(state)
+        except BaseException as e:   # handed back to the GUI thread below
+            result["error"] = e
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    dialog = QProgressDialog(state["text"], "Cancel", 0, steps, parent)
+    dialog.setWindowTitle(title)
+    dialog.setWindowModality(Qt.WindowModal)
+    show_after(dialog, 400)
+    dialog.canceled.connect(lambda: state.update(cancel=True))
+    while thread.is_alive():
+        QApplication.processEvents(QEventLoop.AllEvents, 30)
+        dialog.setLabelText(state["text"])
+        if steps:
+            dialog.setValue(state["done"])
+        thread.join(0.02)
+    dispose_progress(dialog)   # (close() left its show timer running: it could come back over the next dialog)
+    if "error" in result:
+        raise result["error"]
+    return result.get("value")
+
+
 BUSY_DELAY_MS = 1500   # run_busy's dialog shows only for work longer than this: a shorter one (opening a chromosome) would just flash
 
 

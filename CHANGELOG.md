@@ -7,6 +7,7 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 
 **Features**
 - Added: the Alignment view's Tracks panel shows, hides, reorders, groups and restyles many tracks at once (filter, multi-select, drag and drop, colour ranges, Group by Name); a project keeps the tracks' order, groups and look.
+- Added: signal tracks (bigWig, bedGraph, wig) drawn as bars, a line or a heatmap, on their own range, their group's or a fixed one, several in one row, the value under the mouse; bigBed annotation tracks; Import > Track Hub reads a UCSC track hub and loads its tracks in the hub's groups, labels and colours.
 
 **Bugfixes**
 - Two track files with the same name (from two folders) load as two tracks instead of sharing one display.
@@ -14,6 +15,7 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 
 **UI/UX**
 - Alignment view: hidden tracks take no room, a new one-line Dense display, collapsible group lines, and a Fit button that squeezes the tracks into the pane.
+- Alignment view: only the tracks in sight are drawn, and dense rows sit closer together, so hundreds of tracks scroll smoothly.
 - Loading many track files at once gives one message for all their warnings instead of one per file.
 
 ## 0.8.8 (2026-11-24)

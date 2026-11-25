@@ -4,7 +4,7 @@
 
 ## `test_the_forest_gives_scikit_learns_answer_for_every_sequence_of_the_paper`
 
-**Result:** ✅ passed in 0.73 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.07 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** A mistake in reading the exported forest would make every synthesis verdict wrong without any error.
 
@@ -97,7 +97,7 @@ Whitespace and case are accepted; the first other base is named; an empty text i
 
 ## `test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the_paper`
 
-**Result:** ✅ passed in 2.96 s · [line 112](../../tests/test_synthesis_salis.py#L112) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 3.14 s · [line 112](../../tests/test_synthesis_salis.py#L112) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The folding, window and repeat parts together must reproduce the published model on real sequences.
 

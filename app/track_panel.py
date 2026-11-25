@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 import track_layout
-from track_layout import FIXED, MODES, SCALED, Group
+from track_layout import FIXED, MODES, RENDERS, SCALED, Group
 from uikit import plural
 
 ROW, GROUP = "row", "group"
@@ -86,6 +86,9 @@ def fill_menu(menu, view, keys, group=None):
                 a = scale.addAction(key.capitalize(), lambda s=key: layout.restyle(scaled, scale=s))
                 a.setCheckable(True)
                 a.setChecked(scales == {key})
+    signals = [k for k in keys if kinds[k] == "signal"]
+    if signals:
+        _signal_menu(menu.addMenu("Signal"), view, signals)
     if paint := colored(view, keys):
         color = menu.addMenu("Colour")
         color.addAction("Choose…", lambda: _choose_color(view, paint))
@@ -113,6 +116,43 @@ def fill_menu(menu, view, keys, group=None):
         menu.addSeparator()
         menu.addAction("Remove from This Window…" if len(entries) == 1 else f"Remove {len(entries)} Tracks from This Window…",
                        lambda: confirm_remove(view, ed, entries))
+
+
+def _signal_menu(menu, view, keys):
+    """How signal tracks `keys` are drawn: bars, a line or a heatmap; mean or highest value per pixel; their range; overlaid."""
+    layout = view.editor.track_layout
+    styles = [layout.style(k) for k in keys]
+
+    def choice(title, field, options):
+        sub = menu.addMenu(title)
+        now = {getattr(st, field) for st in styles}
+        for value, label in options:
+            a = sub.addAction(label, lambda v=value: layout.restyle(keys, **{field: v}))
+            a.setCheckable(True)
+            a.setChecked(now == {value})
+        return sub
+
+    choice("Draw As", "render", [(r, r.capitalize()) for r in RENDERS])
+    choice("Value per Pixel", "summary", [("mean", "Mean"), ("max", "Highest")])
+    ranges = choice("Range", "range", [("auto", "Automatic (Values in View)"), ("group", "Shared with Its Group")])
+    fixed = ranges.addAction("Fixed…", lambda: _fixed_range(view, keys))
+    fixed.setCheckable(True)
+    fixed.setChecked({st.range for st in styles} == {"fixed"})
+    menu.addSeparator()
+    if len(keys) > 1:
+        menu.addAction(f"Overlay in One Row ({len(keys)})", lambda: layout.overlay(keys))
+    together = {k for k, st in layout.styles.items() if st.overlay in keys or (st.overlay and k in keys)}
+    menu.addAction("Separate the Overlaid Tracks", lambda: layout.separate(keys)).setEnabled(bool(together))
+
+
+def _fixed_range(view, keys):
+    st = view.editor.track_layout.style(keys[0])
+    low, ok = QInputDialog.getDouble(view, "Fixed range", "Lowest value (bottom of the row):", st.low, -1e12, 1e12, 3)
+    if not ok:
+        return
+    high, ok = QInputDialog.getDouble(view, "Fixed range", "Highest value (top of the row):", max(st.high, low + 1), low, 1e12, 3)
+    if ok and high > low:
+        view.editor.track_layout.restyle(keys, range="fixed", low=low, high=high)
 
 
 def _height(view, keys):
@@ -248,6 +288,7 @@ class TracksPanel(QWidget):
         layout_ = self.editor.track_layout
         for text, act, tip in (("Show", lambda keys: layout_.restyle(keys, shown=True), "Show the selected tracks"),
                                ("Hide", lambda keys: layout_.restyle(keys, shown=False), "Hide the selected tracks"),
+                               ("Heatmap", self._heatmap, "The selected signal tracks as one-line heatmaps"),
                                ("Colour…", self._color, "One colour for the selected tracks (More: light to dark)")):
             b = QPushButton(text, toolTip=tip)
             b.clicked.connect(lambda _=False, act=act: self._on_selection(act))
@@ -340,7 +381,9 @@ class TracksPanel(QWidget):
         """A row's look in the tree: its name, box, display mode and colour swatch."""
         st = self.editor.track_layout.style(key)
         item.setText(0, self.editor.track_layout.label(key))
-        item.setText(1, "hidden" if not st.shown else "" if self.editor.row_table[key][0] in FIXED else st.mode)
+        kind = self.editor.row_table[key][0]
+        item.setText(1, "hidden" if not st.shown else "" if kind in FIXED else f"in {self.editor.track_layout.label(st.overlay)}"
+                     if st.overlay else st.render if kind == "signal" and st.render == "heatmap" else st.mode)
         item.setCheckState(0, Qt.Checked if st.shown else Qt.Unchecked)
         color = self.view.canvas.row_color(key)
         item.setIcon(0, self._swatch(color) if color else QIcon())
@@ -399,6 +442,12 @@ class TracksPanel(QWidget):
             act(keys)
         else:
             self.view.info.setText("Select tracks in the list first (Ctrl- and Shift-click pick several)")
+
+    def _heatmap(self, keys):
+        if signals := [k for k in keys if self.editor.row_table[k][0] == "signal"]:
+            self.editor.track_layout.restyle(signals, render="heatmap", mode="dense")   # (one line each: many in one screen)
+        else:
+            self.view.info.setText("Heatmap is for signal tracks (bigWig, bedGraph, wig)")
 
     def _color(self, keys):
         if paint := colored(self.view, keys):

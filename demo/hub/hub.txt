@@ -1,0 +1,4 @@
+hub demo_hub
+shortLabel Demo hub
+longLabel A small track hub on pBAD30_eilR: strand coverage and three sites
+genomesFile genomes.txt
