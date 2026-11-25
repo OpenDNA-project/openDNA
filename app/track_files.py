@@ -37,7 +37,7 @@ def read_many(paths, workers=8):
     def one(path):
         try:
             return read(path, track_kind(path))
-        except OSError as e:
+        except Exception as e:   # (OSError: load_track reports it for this file alone; anything else is raised there too)
             return e
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(paths)))) as pool:
         return dict(zip(paths, pool.map(one, paths)))

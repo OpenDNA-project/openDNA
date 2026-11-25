@@ -5,6 +5,8 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 
 ## Unreleased
 
+## 0.9.0 (2026-11-25)
+
 **Features**
 - Added: the Alignment view's Tracks panel shows, hides, reorders, groups and restyles many tracks at once (filter, multi-select, drag and drop, colour ranges, Group by Name); a project keeps the tracks' order, groups and look, and is now saved as `.oDNA` (File > Save as Project; the old `.odp` files still open).
 - Added: signal tracks (bigWig, bedGraph, wig) drawn as bars, a line or a heatmap, on their own range, their group's or a fixed one, several in one row, the value under the mouse; bigBed annotation tracks; Import > Track Hub reads a UCSC track hub and loads its tracks in the hub's groups, labels and colours.

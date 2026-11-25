@@ -1842,7 +1842,7 @@ class MainWindow(QMainWindow):
         kind = track_files.track_kind(path)
         try:
             track = (read or {}).pop(path, None)
-            if isinstance(track, OSError):
+            if isinstance(track, Exception):
                 raise track
             if track is None:
                 track = run_busy(self, f"Reading {file_name}…", lambda: track_files.read(path, kind))
