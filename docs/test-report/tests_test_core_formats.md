@@ -4,7 +4,7 @@
 
 ## `test_bam_reads_pileup_coverage_and_variants_match_a_model`
 
-**Result:** ✅ passed in 0.06 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the read alignment track could show reads at wrong places, miscount depth, ignore duplicate/QC filters or call wrong SNPs and indels from a user's BAM file.
 
@@ -49,7 +49,7 @@ Reads the demo hub's plus.bw through the bigtools library and a bedGraph and a w
 
 ## `test_tracks_gff_bed_parsing_query_density_and_search`
 
-**Result:** ✅ passed in 0.06 s · [line 463](../../tests/test_core_formats.py#L463) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 463](../../tests/test_core_formats.py#L463) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, drop features across the origin or a whole type, lose the file's colours, or miss features when zooming and searching.
 
@@ -91,7 +91,7 @@ Adds each of 20 GenBank location forms to a document and checks the written text
 
 ## `test_genome_fasta_fetch_and_search_match_slicing_and_brute_force`
 
-**Result:** ✅ passed in 0.01 s · [line 736](../../tests/test_core_formats.py#L736) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 736](../../tests/test_core_formats.py#L736) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a reference genome opened from a FASTA file could return wrong bases at line breaks or ends, and motif/sequence search on it could miss hits or report wrong strands.
 

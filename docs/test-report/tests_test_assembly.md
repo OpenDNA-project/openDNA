@@ -79,7 +79,7 @@ Checks that Sidewinder's toeholds are taken from the product itself (scarless), 
 
 ## `test_products_keep_every_orf_on_its_own_bases`
 
-**Result:** ✅ passed in 0.05 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 406](../../tests/test_assembly.py#L406) · **Area:** Feature geometry in assembly products · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, an assembled product could annotate a CDS a few bases off, so the user reads a shifted frame and the wrong protein without any error being shown.
 
@@ -126,7 +126,7 @@ Checks that features inside an overlap are annotated once and at the right place
 
 ## `test_restriction_ligation_products`
 
-**Result:** ✅ passed in 0.00 s · [line 587](../../tests/test_assembly.py#L587) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 587](../../tests/test_assembly.py#L587) · **Area:** Restriction / ligation cloning · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the predicted ligation product could be the wrong arc of the vector or have the insert at the wrong place, so the user would clone a construct different from the one shown.
 
@@ -167,7 +167,7 @@ Checks the end-compatibility rule base by base (same sticky bases, same overhang
 
 ## `test_assembly_reports_bad_input_instead_of_failing`
 
-**Result:** ✅ passed in 0.07 s · [line 711](../../tests/test_assembly.py#L711) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.08 s · [line 711](../../tests/test_assembly.py#L711) · **Area:** Assembly input validation · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, a zero-length or very short fragment could crash the assembly panel with a traceback instead of showing the user a red check saying what is wrong.
 

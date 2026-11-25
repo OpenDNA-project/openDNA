@@ -9452,7 +9452,7 @@
    "cases": [
     {
      "input": "print p.oDNA 1001..4000 r.svg (plus.bw shown as 'Coverage plus', sites.bb, highlight 'Highlighted here')",
-     "expected": "tracks_shown 2, regions 1, start 1001, end 4000; the SVG holds 'Coverage' (the name wraps in the narrow names column), 'Highlighted here', 'sites'"
+     "expected": "tracks_shown 2, regions 1, start 1001, end 4000; the SVG holds 'Cov', 'Highl', 'sit' (the names wrap anywhere in the narrow names column, where depends on the font)"
     },
     {
      "input": "print pBAD30_eilR.gb 1001..4000 r.png --track plus.bw --width 900",
