@@ -28,6 +28,7 @@ from perf import timed
 from uikit import SYNC_LIMIT, Latest
 from units import is_tu
 import tool_settings
+import track_layout
 from primer_db import BINDING, PCR, binding, db, notifier, tm_rule, unique_name
 
 PRIMER_KIND = "primer_bind"
@@ -42,6 +43,9 @@ CLIP_MIME = "application/x-opendna-clip"  # copied bases + features, JSON
 NAME_KEYS = {"label", "gene", "locus_tag", "old_locus_tag", "product", "gene_synonym", "protein_id", "note"}
 MAX_SITES = 50               # per primer and sequence DRAWN and listed; more means it is not specific anyway (the primers panel and the status bar say so)
 TRACK_HITS = 20_000          # track items a search stops at (the search bar's counter says so)
+# A loaded track's kind -> its rows in the Alignment view: (suffix of the row's key after the track's name, row kind).
+ENTRY_ROWS = {"track": (("", "track"),), "signal": (("", "signal"),),
+              "bam": (("", "coverage"), (" variants", "variants"), (" reads", "reads"))}
 # Standard colour of each annotation type: drawn when a feature has no colour of its own,
 # given to new features, and applied by Feature → Recolor Annotations by Type.
 KIND_COLORS = {
@@ -175,6 +179,11 @@ def site_location(start, end, strand, length):
     """GenBank location text for a binding site (end may pass the origin)."""
     loc = f"{start + 1}..{end}" if end <= length else f"join({start + 1}..{length},1..{end - length})"
     return f"complement({loc})" if strand < 0 else loc
+
+
+def split_at_origin(start, end, length):
+    """[(start, end)] of bases start..end on a sequence of `length` bases: two parts when `end` passes the origin (a circle)."""
+    return [(start, length), (0, end - length)] if end > length else [(start, end)]
 
 
 def primer_extent(f, tail, length=None):
@@ -321,6 +330,7 @@ class Editor(QObject):
     changed = Signal()            # sequence or features changed (also after save: title/modified)
     selection_changed = Signal()
     display_changed = Signal()    # a View option was toggled (enzymes, translation)
+    tracks_changed = Signal()     # the Alignment view's tracks were reordered, grouped or restyled (track_layout): only those views redraw
     search_changed = Signal()     # the places the search bar found (highlighted in the views) changed
     reveal = Signal(int)          # ask views to scroll this position into view
     navigate = Signal(int)        # a view was used to go to this position: the others bring it to their middle
@@ -380,7 +390,7 @@ class Editor(QObject):
         self.untranslated = set()    # (location, label) of CDSs whose translation is off
         self.primer_sites, self.site_by_key, self.primer_lanes = [], {}, {}
         # Primers of the database not drawn on this file (still in the database, still listed greyed in the Primers view).
-        self.hidden_primers = set()   # (for this session only; an .odp project keeps them)
+        self.hidden_primers = set()   # (for this session only; an .oDNA project keeps them)
         # Sites shown or hidden by hand: {primer name: {"sequence": upper-case, "sites": {site_key: shown}}}, under the binding
         # rule (seed, exact 3′, mismatches) `site_rule` they were made with; another rule finds other sites, so it starts afresh.
         self.site_rule, self.site_choices = None, {}
@@ -388,6 +398,11 @@ class Editor(QObject):
         self.current_primer = None   # key of the selected primer site
         self.tracks = []             # loaded annotation tracks (SimpleNamespace name, track, seqid)
         self.alignments = []         # loaded BAM files (SimpleNamespace name, bam, seqid, length, ...)
+        self.signals = []            # loaded signal tracks: bigWig, bedGraph, wig (SimpleNamespace name, signal, seqid, cache)
+        # The Alignment view's rows: {key: (kind, loaded track or None)}, the built-in ones then each loaded track's (rows_of), and
+        # their order, groups and look (saved in a project; a change made through it emits tracks_changed).
+        self.row_table = {key: (kind, None) for key, kind in track_layout.BUILTIN.items()}
+        self.track_layout = track_layout.Layout(self._layout_changed)
         self.query_hits = []         # Local Align hits (SimpleNamespace), drawn by the genome view, one row each
         self.current_query_hit = -1  # index in query_hits of the picked one
         self.dna_locked = False      # lock button of the toolbar: bases cannot change (features etc. still can)
@@ -761,6 +776,17 @@ class Editor(QObject):
         hidden = self.hidden_features & {feature_key(f) for f in self.features}
         return {"hidden_features": sorted(list(k) for k in hidden), "hidden_primers": sorted(self.hidden_primers),
                 "primer_sites": self.saved_site_choices()}
+
+    def apply_project_display(self, meta):
+        """What a project says of the display (the window's and the command line's: the same features hidden, the same look)."""
+        d = meta.get("display", {})
+        self.untranslated = {tuple(x) for x in d.get("untranslated", [])}
+        meta.setdefault("hidden_features", d.get("hidden_features", []))   # (a project of 0.8.7 or older keeps them in "display")
+        self.apply_display_choices(meta)   # (before set_display, which lays them out)
+        self.set_display(enzymes=d.get("enzymes"), enzyme_filter=EnzymeFilter.from_dict(d.get("enzyme_filter")), translation=d.get("translation"),
+                         cds_only=d.get("cds_only"), hidden_kinds=d.get("hidden_kinds"), primers=d.get("primers"),
+                         cds_translation=d.get("cds_translation"), file_primers=d.get("file_primers"), db_primers=d.get("db_primers"),
+                         units=d.get("units"), complement=d.get("complement"))
 
     def apply_display_choices(self, saved):
         """Take the features, primers and sites hidden that a project or the file kept (display_choices); not a change to save."""
@@ -1141,8 +1167,7 @@ class Editor(QObject):
 
     def selected_spans(self):
         """The selection as [(start, end)] on the sequence: two parts if it passes the origin."""
-        n = self.length
-        return [(self.start, n), (0, self.end - n)] if self.end > n else [(self.start, self.end)]
+        return split_at_origin(self.start, self.end, self.length)
 
     def set_cursor(self, pos):
         self.select(pos, pos)
@@ -1463,6 +1488,61 @@ class Editor(QObject):
         self.doc.reverse_complement()
         self._changed()
         self.select(self.length - end, self.length - start)  # same bases, now flipped
+
+    # ---- loaded tracks: the Alignment view's rows (track_layout) --------------------------------------------------------------
+    @staticmethod
+    def rows_of(entry):
+        """{row key: kind} of a loaded track: one row for an annotation track (entry kind "track"), three for a BAM file (entry
+        kind "bam": coverage, variants, reads)."""
+        return {entry.name + suffix: kind for suffix, kind in ENTRY_ROWS[entry.kind]}
+
+    def _layout_changed(self, edited=True):
+        """The track layout changed: the Alignment views follow. A change made by hand in a project (.oDNA, which keeps the layout;
+        a GenBank file does not) is something new to save."""
+        self.tracks_changed.emit()
+        from exports import is_project   # (here: exports imports this module)
+        if edited and is_project(self.path):
+            self.doc.modified = True
+            self.modified_changed.emit()
+
+    def row_keys(self):
+        """Every row this file can show: the built-in ones, then each loaded track's."""
+        return list(self.row_table)
+
+    def loaded(self):
+        """Every loaded track: annotation tracks, BAM files, signal tracks."""
+        return self.tracks + self.alignments + self.signals
+
+    def track_of(self, key):
+        """The loaded track a row belongs to (None for a built-in row)."""
+        return self.row_table.get(key, (None, None))[1]
+
+    def add_track(self, entry, group=None):
+        """A loaded track (main.load_track): listed, its rows added to the layout (at the end of `group` when given). A name
+        some row already has (a second file of the same name, a file named "Features") becomes "name (2)", "name (3)"..."""
+        base, n = entry.name, 1
+        while any(k in self.row_table for k in self.rows_of(entry)):
+            n += 1
+            entry.name = f"{base} ({n})"
+        if entry.kind == "track":
+            entry.color_index = len(self.tracks)   # its default colour stays when other tracks are removed
+        {"bam": self.alignments, "signal": self.signals}.get(entry.kind, self.tracks).append(entry)
+        rows = self.rows_of(entry)
+        self.row_table.update((k, (kind, entry)) for k, kind in rows.items())
+        self._search_text = None
+        self.track_layout.add(list(rows), group)
+
+    def remove_tracks(self, names):
+        """Take loaded tracks out of this window, by name; their files are not touched."""
+        names = set(names)
+        gone = [e for e in self.loaded() if e.name in names]
+        for kept in (self.tracks, self.alignments, self.signals):
+            kept[:] = [e for e in kept if e.name not in names]
+        rows = [k for e in gone for k in self.rows_of(e)]
+        for k in rows:
+            del self.row_table[k]
+        self._search_text = None
+        self.track_layout.remove(rows)
 
     def find(self, query, after):
         """Next match after position `after` (wrapping to the top): (start, end, feature

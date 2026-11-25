@@ -424,6 +424,42 @@ def track_of_many(tmp_path_factory):
     return core.Track(str(path)), rows
 
 
+def test_signal_files_bigwig_bedgraph_and_wig_read_the_same_values(tmp_path):
+    """A signal track reads the same values from a bigWig (through the bigtools library, the demo hub's plus.bw: 10 over [0,2000),
+    30 over [2000,4000), 20 to 5,936) as from a bedGraph and a wig of the same values (read by openDNA's own parser): bin means and
+    highest values agree at every zoom, and a file is told apart by its contents and name (track_kind)."""
+    import track_files
+    bw = ROOT / "demo" / "hub" / "pBAD30_eilR" / "plus.bw"
+    (tmp_path / "same.bedGraph").write_text("track type=bedGraph\npBAD30_eilR\t0\t2000\t10\npBAD30_eilR\t2000\t4000\t30\npBAD30_eilR\t4000\t5936\t20\n")
+    # wig: fixedStep (1-based) over the first 4,000 bases in 2 steps of 2,000, then variableStep for the rest
+    (tmp_path / "same.wig").write_text("fixedStep chrom=pBAD30_eilR start=1 step=2000 span=2000\n10\n30\nvariableStep chrom=pBAD30_eilR span=1936\n4001 20\n")
+    signals = [core.Signal(str(p)) for p in (bw, tmp_path / "same.bedGraph", tmp_path / "same.wig")]
+    assert [s.bigwig for s in signals] == [True, False, False] and all(s.sequences() == [("pBAD30_eilR", 5936)] for s in signals)
+    for start, end, n in ((0, 5936, 1), (0, 5936, 7), (0, 5936, 1000), (1990, 2010, 4), (3999, 4001, 2)):
+        got = [s.bins("pBAD30_eilR", start, end, n) for s in signals]
+        assert got[0] == got[1] == got[2], (start, end, n)
+    assert signals[0].bins("pBAD30_eilR", 0, 5936, 1) == [(20.0, 30.0)]   # (2000 x 10 + 2000 x 30 + 1936 x 20) / 5936
+    # exact sums (the recap) and the stretches over a threshold (Regions Above Threshold) agree between the three files too:
+    # [1000, 4500) holds 1000 bases at 10, 2000 at 30, 500 at 20 -> 80,000
+    assert [s.stats("pBAD30_eilR", 1000, 4500) for s in signals] == [(3500.0, 80000.0, 10.0, 30.0)] * 3
+    assert [s.runs("pBAD30_eilR", 0, 5936, 20) for s in signals] == [[(2000, 5936)]] * 3
+    assert [s.runs("pBAD30_eilR", 100, 3000, 25) for s in signals] == [[(2000, 3000)]] * 3
+    # what the window reads each file as: by name, and a bigWig by its contents whatever its name
+    renamed = tmp_path / "plus.dat"
+    renamed.write_bytes(bw.read_bytes())
+    assert [track_files.track_kind(p) for p in (bw, tmp_path / "same.bedGraph", tmp_path / "same.wig", renamed, ROOT / "demo" / "hub" / "pBAD30_eilR" / "sites.bb",
+                                         "x.bed", "x.BAM")] == ["signal", "signal", "signal", "signal", "track", "track", "bam"]
+    with pytest.raises(OSError, match="not valid bedGraph or wig"):
+        (tmp_path / "bad.wig").write_text("variableStep span=3\n")
+        core.Signal(str(tmp_path / "bad.wig"))
+    # several files read side by side: each as read alone does, in the order given; a file that cannot be read gives its error
+    files = [bw, tmp_path / "same.bedGraph", tmp_path / "missing.bed", ROOT / "demo" / "hub" / "pBAD30_eilR" / "sites.bb"]
+    many = track_files.read_many(files)
+    assert list(many) == files and [type(v).__name__ for v in many.values()] == ["Signal", "Signal", "FileNotFoundError", "Track"]
+    assert isinstance(many[files[2]], OSError)
+    assert many[bw].sequences() == [("pBAD30_eilR", 5936)]
+
+
 def test_tracks_gff_bed_parsing_query_density_and_search(track_of_many, tmp_path):
     """GFF3 / GTF / BED tracks: escaped attributes, names, coordinates, 3 to 12 BED columns, headers, malformed lines refused;
     every type counted (a whole-sequence region flagged) and only the kept ones queried; a feature across the origin is one item

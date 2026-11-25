@@ -1,0 +1,2 @@
+genome pBAD30_eilR
+trackDb pBAD30_eilR/trackDb.txt

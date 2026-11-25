@@ -5,11 +5,31 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 
 ## Unreleased
 
+## 0.9.0 (2026-11-25)
+
 **Features**
+- Added: the Alignment view's Tracks panel shows, hides, reorders, groups and restyles many tracks at once (filter, multi-select, drag and drop, colour ranges, Group by Name); a project keeps the tracks' order, groups and look, and is now saved as `.oDNA` (File > Save as Project; the old `.odp` files still open).
+- Added: signal tracks (bigWig, bedGraph, wig) drawn as bars, a line or a heatmap, on their own range, their group's or a fixed one, several in one row, the value under the mouse; bigBed annotation tracks; Import > Track Hub reads a UCSC track hub and loads its tracks in the hub's groups, labels and colours.
+- Added: highlighted regions across the Alignment view's tracks (Regions tab, BED import and export), a recap table of every track over a selection or the highlights (CSV), a region exported as an image, and track items copied into the sequence as features (Copy to Features, Regions Above Threshold of a signal, next / previous item); commands `recap`, `print`, `track-features` and `signal-regions`.
 
 **Bugfixes**
+- Two track files with the same name (from two folders) load as two tracks instead of sharing one display.
+- Alignment view: a click in the Tracks panel outside a row no longer drags a selection over the tracks below it, and the names of pinned tracks no longer sit under the colour stripe.
+- Alignment view: dragging the tracks sideways no longer drags the names column and the overview along with them.
+- Loading many track files at once no longer redraws the view after each file: 200 files load in under a second instead of most of a minute, and their files are read side by side (120 BED files: 0.5 s instead of 2.6 s).
 
 **UI/UX**
+- Highlights: right-clicking one in the view offers the same Remove, Colour and Recap as the Regions tab, and several can be handled at once.
+- The start page's opening message has GitHub Sponsors and Ko-fi links to support the program.
+- Alignment view: hidden tracks take no room, a new one-line Dense display, collapsible group lines, and a Fit button that squeezes the tracks into the pane.
+- Alignment view: only the tracks in sight are drawn, and dense rows sit closer together, so hundreds of tracks scroll smoothly.
+- Loading many track files at once gives one message for all their warnings instead of one per file.
+- Alignment view: the Tracks panel opens by default and the names of the selected tracks are highlighted; clicking a name no longer hides the track.
+- Alignment view: the sequence and the features stay pinned in view when the tracks scroll, and any track can be pinned or unpinned (right-click); the bases come first and the GC % is hidden until shown.
+- Windows file association also covers `.oDNA` projects; whoever accepted the other file types is asked once whether to add it.
+- Alignment view: a narrower names column with wrapped names and the file type, a bar between the names and the tracks, and thin vertical guides (Guides button) at 100 bp to 100 kb or more.
+- Alignment view: taller lanes for BED and other annotation tracks, rows as tall as the items in view need (Expanded shows every item at once), the bases drawn at every zoom (a line when far out), right-click a highlight to remove it, smaller panel buttons, a track menu regrouped (Display, Scale, Signal, Colour, Items, Group), both ends of a fixed range in one dialog, a click on a track in the panel scrolls to it, an icon toolbar and a status bar (range, pointer, selection), eye toggles and file-type tags in the panel, colour stripes on track names, a line under the pointer showing its position and signal value, a draggable overview, the wheel scrolls the tracks and Ctrl+wheel zooms.
+- Alignment view: right-click the ruler or a selection for the region actions, an item of a track to add it as a feature or highlight it; the Tracks panel has a Regions tab.
 
 ## 0.8.8 (2026-11-24)
 

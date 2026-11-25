@@ -261,6 +261,11 @@ def status(exts=None, registry=None, launch=None):
     return result
 
 
+def missing_types(registry=None, launch=None):
+    """The extensions not offered to Windows yet, as one text ("odna,..."): what a question about new file types is remembered by."""
+    return ",".join(e[1:] for e, s in status(None, registry, launch).items() if s == NONE)
+
+
 def is_registered_for_current_exe(registry=None, launch=None):
     """True when every extension the program opens is registered for this very exe path."""
     return all(s == THIS for s in status(None, registry, launch).values())
@@ -376,6 +381,8 @@ def should_ask(settings=None, registry=None, launch=None, windows=None, frozen=N
         not Windows, or not the frozen exe        -> None   (nothing to register, nothing to ask)
         "Don't ask again" was chosen              -> None
         already registered for this exe           -> None
+        some file type is not registered, the others are, the user said Yes before
+            not yet asked for these types          -> "new"         (a file type added since: asked once for the types missing)
         some extension registered for another path
             user said Yes before, not yet asked for this path   -> "stale"       (any other case: None)
         nothing registered
@@ -397,6 +404,8 @@ def should_ask(settings=None, registry=None, launch=None, windows=None, frozen=N
     if OTHER in states:
         stale_for = str(settings.value("stale_asked_for", ""))
         return "stale" if _flag(settings, "accepted") and _norm(stale_for) != _norm(command_for(launch)) else None
+    if THIS in states:   # some types registered, some not: types added since the user said Yes
+        return "new" if _flag(settings, "accepted") and str(settings.value("new_asked_for", "")) != missing_types(registry, launch) else None
     return None if _flag(settings, "asked") else "first"
 
 
@@ -466,9 +475,13 @@ def ask_at_startup(parent=None, settings=None, registry=None, launch=None, windo
             pass   # shortcut: a refusal is silent here; Help > File Associations shows the error when the user retries
         settings.sync()
         return None
-    text = (f"Open .gb, .dna and FASTA files with {NAME} by default?\n\n"
-            f"This adds {NAME} to the \"Open with\" list of these file types (current user only, no administrator rights). "
-            "Windows will then ask you to confirm in its Settings. You can change your mind in Help > File Associations.")
+    new = kind == "new"
+    missing = missing_types(registry, launch)
+    what = (f"{', '.join('.' + e for e in missing.split(','))} files ({', '.join(sorted({FILE_TYPES['.' + e] for e in missing.split(',')}))})"
+            if new else ".gb, .dna and FASTA files and .oDNA projects")
+    text = (f"{NAME} can now also open {what}. Add them to its file types?\n\n" if new else f"Open {what} with {NAME} by default?\n\n") + \
+        (f"This adds {NAME} to the \"Open with\" list of these file types (current user only, no administrator rights). "
+         "Windows will then ask you to confirm in its Settings. You can change your mind in Help > File Associations.")
     box = QMessageBox(QMessageBox.Question, "File associations", text, QMessageBox.NoButton, parent)
     box.yes_button = box.addButton("Yes", QMessageBox.YesRole)
     box.later_button = box.addButton("Not now", QMessageBox.RejectRole)
@@ -482,6 +495,8 @@ def ask_at_startup(parent=None, settings=None, registry=None, launch=None, windo
         elif button is box.never_button:
             settings.setValue("dont_ask", "true")
         settings.setValue("asked", "true")
+        if new:
+            settings.setValue("new_asked_for", missing)   # (a Not now is an answer: asked once for these types)
         settings.sync()
         if box in _open_boxes:
             _open_boxes.remove(box)

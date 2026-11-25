@@ -58,9 +58,10 @@ Walks the should_ask / ask_at_startup decision table with the fake registry and 
 | 4 | dont_ask=true (also with accepted=true and a stale registration) | None |
 | 5 | asked=true | None |
 | 6 | Registered for another path: never accepted / accepted / stale_asked_for = this path / launched from a third path | None / 'stale' / None / 'stale' |
-| 7 | asked=true written to an ini file and reloaded | None (the boolean survives the reload) |
-| 8 | accepted=true, registered for another path, ask_at_startup | None, and the registration now points to this exe (silent repair) |
-| 9 | asked=true but an OpenGenEdit registration present | should_ask 'stale'; ask_at_startup repairs silently and removes the legacy keys; then None |
+| 7 | Only .gb and .fa registered (an older version): never accepted / accepted / new_asked_for = the missing types / everything registered | no question / 'new' (the .odna type is missing) / no question again / no question |
+| 8 | asked=true written to an ini file and reloaded | None (the boolean survives the reload) |
+| 9 | accepted=true, registered for another path, ask_at_startup | None, and the registration now points to this exe (silent repair) |
+| 10 | asked=true but an OpenGenEdit registration present | should_ask 'stale'; ask_at_startup repairs silently and removes the legacy keys; then None |
 
 **Does not fully prove its claim:**
 

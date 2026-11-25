@@ -8,10 +8,10 @@ Open DNA Project file.
   (.tbl), the input of NCBI's table2asn (https://www.ncbi.nlm.nih.gov/genbank/feature_table/);
 - the proteins of the CDS features (standard genetic code) as FASTA.
 
-Open DNA Project file (.odp): a zip holding `sequence.gb` (the document, as Save writes it)
+Open DNA Project file (.oDNA): a zip holding `sequence.gb` (the document, as Save writes it)
 and `project.json`, what a GenBank file cannot hold and the program otherwise keeps only in
 memory: the loaded tracks and BAM files (their paths, absolute and relative to the project,
-since BAM files can be gigabytes), the DNA lock, the display options and the state of the panes' views (the layout's `state` entries:
+since BAM files can be gigabytes) and how the Alignment view shows them (order, groups, colours: track_layout), the DNA lock, the display options and the state of the panes' views (the layout's `state` entries:
 the Digest's ticked enzymes, the Sequence view's letter size and spacing). Primers are already in the GenBank part.
 """
 import json
@@ -29,7 +29,13 @@ import codon_usage
 import genetic_code
 from sequence_view import cds_codons
 
-PROJECT_EXT = ".odp"
+PROJECT_EXT = ".oDNA"
+PROJECT_EXTS = (".odna", ".odp")   # what a project is called (lower case): ".odp" is what earlier versions wrote, still opened
+
+
+def is_project(path):
+    """Is `path` an Open DNA Project (by its extension, whatever the case)?"""
+    return str(path).lower().endswith(PROJECT_EXTS)
 PROJECT_VERSION = 1
 
 
@@ -155,10 +161,14 @@ def project_meta(editor, project_path, layout=None):
         "genetic_code": genetic_code.project_entry(),   # the code and the codon table in use travel with the project
         "codon_usage": codon_usage.project_entry(),
         **ed.display_choices(),   # the features, primers and sites hidden by hand (with the binding rule the sites were chosen under)
-        "tracks": [{"path": t.path, "relative": _relative(t.path, project_path), "seqid": t.seqid, "types": t.types, "fields": t.fields}
-                   for t in ed.tracks if getattr(t, "path", None)],
-        "alignments": [{"path": a.path, "relative": _relative(a.path, project_path), "seqid": a.seqid}
+        # (each track's name: its rows in track_layout are named after it, "x.bed (2)" for a second file of the same name)
+        "tracks": [{"path": t.path, "relative": _relative(t.path, project_path), "seqid": t.seqid, "types": t.types, "fields": t.fields,
+                    "name": t.name} for t in ed.tracks if getattr(t, "path", None)],
+        "alignments": [{"path": a.path, "relative": _relative(a.path, project_path), "seqid": a.seqid, "name": a.name}
                        for a in ed.alignments if getattr(a, "path", None)],
+        "signals": [{"path": s.path, "relative": _relative(s.path, project_path), "seqid": s.seqid, "name": s.name}
+                    for s in ed.signals if getattr(s, "path", None)],
+        "track_layout": ed.track_layout.to_json(),   # the Alignment view's order, groups and look of the tracks
         "display": {"enzymes": ed.show_enzymes, "enzyme_filter": ed.enzyme_filter._asdict(),
                     "translation": ed.show_translation, "complement": ed.show_complement, "cds_only": ed.cds_only,
                     "hidden_kinds": sorted(ed.hidden_kinds), "primers": ed.show_primers, "file_primers": ed.show_file_primers,
@@ -168,7 +178,7 @@ def project_meta(editor, project_path, layout=None):
 
 
 def save_project(editor, path, layout=None):
-    """Write the document and its in-memory extras as an Open DNA Project (.odp). `layout`: the window's tabs."""
+    """Write the document and its in-memory extras as an Open DNA Project (.oDNA). `layout`: the window's tabs."""
     path = Path(path)
     with tempfile.TemporaryDirectory() as tmp:
         gb = Path(tmp) / "sequence.gb"
@@ -199,6 +209,11 @@ def open_project(path):
     with tempfile.TemporaryDirectory() as tmp:
         gb, meta = read_project(path, tmp)
         return Document(str(gb)), meta
+
+
+def project_tracks(meta, project_path):
+    """[(saved entry, where its file is now or None)] of every track, alignment and signal a project lists."""
+    return [(e, project_file(e, project_path)) for e in meta.get("tracks", []) + meta.get("alignments", []) + meta.get("signals", [])]
 
 
 def project_file(entry, project_path):

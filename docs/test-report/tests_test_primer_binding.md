@@ -73,7 +73,7 @@ Checks site lists for repeated, tandem and palindromic sites, sites across the o
 
 ## `test_binding_matches_the_primer_sites_stored_in_the_real_dna_file`
 
-**Result:** ✅ passed in 0.00 s · [line 580](../../tests/test_primer_binding.py#L580) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 580](../../tests/test_primer_binding.py#L580) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer sites the app computes could disagree with those SnapGene stored in a real lab file, which is the most direct check that users see the same sites as in their other tool.
 
@@ -92,7 +92,7 @@ Opens the sample .dna file with 15 primers and their stored primer_bind features
 
 ## `test_editor_primer_sites_pcr_product_specificity_and_save`
 
-**Result:** ✅ passed in 0.06 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.07 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule; or a site below the minimum Tm could still be drawn, or hiding a primer could crash the sequence view, or the primers and sites hidden in a file could be lost when it is saved and opened again, or the file be unreadable by other programs, or two primers could share a name (in the database, a file, or both).
 

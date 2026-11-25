@@ -16,6 +16,7 @@ pub mod locations;
 pub mod primers;
 pub mod salis;
 pub mod search;
+pub mod signals;
 pub mod dna_file;
 pub mod tracks;
 
@@ -575,10 +576,12 @@ struct Track {
     inner: tracks::Track,
 }
 
-type TrackItem = (u64, u64, i8, String, String, Option<String>, Option<String>); // start, end, strand, name, kind, colour, note
+// start, end, strand, name, kind, colour, note, extra columns (tab-separated)
+type TrackItem = (u64, u64, i8, String, String, Option<String>, Option<String>, Option<String>);
 
 fn item_tuple(i: &tracks::Item) -> TrackItem {
-    (i.start, i.end, i.strand, i.name.clone(), i.kind.clone(), i.color.as_deref().map(str::to_string), i.note.as_deref().map(str::to_string))
+    let text = |s: &Option<Box<str>>| s.as_deref().map(str::to_string);
+    (i.start, i.end, i.strand, i.name.clone(), i.kind.clone(), text(&i.color), text(&i.note), text(&i.extra))
 }
 
 #[pymethods]
@@ -621,7 +624,8 @@ impl Track {
         self.inner.keep(&types, seq, circular_length)
     }
 
-    /// (items overlapping [start, end) as (start, end, strand, name, kind, colour or None, note or None), more_than_limit)
+    /// (items overlapping [start, end) as (start, end, strand, name, kind, colour or None, note or None, the BED columns past
+    /// itemRgb tab-separated or None), more_than_limit)
     #[pyo3(signature = (seq, start, end, limit=5000))]
     fn query(&self, py: Python<'_>, seq: &str, start: u64, end: u64, limit: usize) -> (Vec<TrackItem>, bool) {
         let inner = &self.inner;
@@ -648,6 +652,62 @@ impl Track {
                 .collect()
         })
     }
+}
+
+/// Python class `opendna_core.Signal(path)`: a value along the sequence from a bigWig, bedGraph or wig file (see signals.rs).
+#[pyclass]
+struct Signal {
+    inner: signals::Signal,
+}
+
+#[pymethods]
+impl Signal {
+    #[new]
+    fn new(py: Python<'_>, path: PathBuf) -> PyResult<Self> {
+        Ok(Signal { inner: py.allow_threads(|| signals::Signal::open(&path))? })
+    }
+
+    /// [(sequence name, length)]: a bigWig states it, a text file reaches as far as its last value.
+    fn sequences(&self) -> Vec<(String, u64)> {
+        self.inner.sequences().to_vec()
+    }
+
+    /// What the file held that was not read (lines that are not valid, counted, the first one named), as sentences; [] when all was read.
+    #[getter]
+    fn notes(&self) -> Vec<String> {
+        self.inner.notes.clone()
+    }
+
+    /// Read from a bigWig (it states its sequences' lengths), else from a bedGraph or wig file.
+    #[getter]
+    fn bigwig(&self) -> bool {
+        self.inner.is_bigwig()
+    }
+
+    /// `n` bins over [start, end) of `seq`: [(mean over the bases with a value, highest value)], NaN where there is none.
+    fn bins(&self, py: Python<'_>, seq: &str, start: u64, end: u64, n: usize) -> PyResult<Vec<(f64, f64)>> {
+        let inner = &self.inner;
+        Ok(py.allow_threads(|| inner.bins(seq, start, end, n))?)
+    }
+
+    /// [start, end) of `seq` read from the values themselves (no zoom level): (bases with a value, their sum, lowest, highest);
+    /// NaN for the lowest and highest when no base has one.
+    fn stats(&self, py: Python<'_>, seq: &str, start: u64, end: u64) -> PyResult<(f64, f64, f64, f64)> {
+        let inner = &self.inner;
+        Ok(py.allow_threads(|| inner.stats(seq, start, end))?)
+    }
+
+    /// [(start, end)]: the stretches of [start, end) of `seq` where the value is at least `threshold` (touching ones merged).
+    fn runs(&self, py: Python<'_>, seq: &str, start: u64, end: u64, threshold: f64) -> PyResult<Vec<(u64, u64)>> {
+        let inner = &self.inner;
+        Ok(py.allow_threads(|| inner.runs(seq, start, end, threshold))?)
+    }
+}
+
+/// Is the file at `path` a bigWig (by its contents, whatever its name)?
+#[pyfunction]
+fn is_bigwig(path: PathBuf) -> bool {
+    signals::is_bigwig(&path)
 }
 
 /// Python class `opendna_core.Bam(path)`: a sorted BAM file with its .bai/.csi index
@@ -1037,6 +1097,7 @@ fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(genetic_codes, m)?)?;
     m.add_function(wrap_pyfunction!(register_genetic_code, m)?)?;
     m.add_function(wrap_pyfunction!(translate, m)?)?;
+    m.add_function(wrap_pyfunction!(is_bigwig, m)?)?;
     m.add_function(wrap_pyfunction!(dimer, m)?)?;
     m.add_function(wrap_pyfunction!(hairpin, m)?)?;
     m.add_function(wrap_pyfunction!(salis_repeats, m)?)?;
@@ -1045,6 +1106,7 @@ fn opendna_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Document>()?;
     m.add_class::<Feature>()?;
     m.add_class::<Track>()?;
+    m.add_class::<Signal>()?;
     m.add_class::<Bam>()?;
     Ok(())
 }

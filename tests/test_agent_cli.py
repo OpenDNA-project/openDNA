@@ -1,6 +1,7 @@
 """The command line for agents (app/cli.py and the recipes in app/agent/): what an agent reads from a plasmid must be what the
 GenBank file says, a mistake must be one `ERROR:` line, and the example in every recipe must still run."""
 import csv
+import io
 import json
 import os
 import random
@@ -437,7 +438,8 @@ def test_every_command_has_a_recipe_example_and_a_test_that_compares_it_with_the
     mine = [n for n in globals() if n.startswith("test_")]
     for name in commands:
         assert re.search(rf"^{name} ", examples, re.M), f"{name}: no recipe has a runnable example for it"
-        assert any(n.startswith(f"test_{name}_") for n in mine), f"{name}: no test_{name}_... compares it with the module the window calls"
+        test = name.replace("-", "_")
+        assert any(n.startswith(f"test_{test}_") for n in mine), f"{name}: no test_{test}_... compares it with the module the window calls"
 
 
 def test_align_command_finds_pieces_and_structural_changes_like_local_align(tmp_path, capsys):
@@ -842,6 +844,162 @@ def test_ncbi_command_searches_and_fetches_through_the_import_dialogs_functions(
     for argv, words in ((("search", "pUC19", "--limit", "0"), "--limit must be at least 1"), (("get", "L09137", "--out", out), "already exists")):
         assert words in run(capsys, "ncbi", *argv)[2]
     assert len(seen) == asked    # (a mistake that can be seen here never reaches the network)
+
+
+def test_hub_command_lists_and_copies_like_the_import(capsys, tmp_path, monkeypatch):
+    """`hub list` / `hub get` give what Import > Track Hub reads (track_hub, the module the window calls): the hub's groups, short
+    labels, colours and hidden tracks, through includes, views, super tracks and subtracks switched off; types openDNA does not
+    read are listed with why, never dropped; a remote hub's files come through track_hub.open_url (replaced here: no network)."""
+    import track_hub
+    demo = ROOT / "demo" / "hub"
+    res = answer(capsys, "hub", "list", demo)
+    direct = track_hub.hub_tracks(track_hub.open_hub(demo), "pBAD30_eilR")
+    assert [(t["name"], t["label"], t["group"], t["type"], t["hidden"], t["color"], t["read"]) for t in res["tracks"]] == \
+        [(t.name, t.label, t.group, t.kind, t.hidden, t.color, not t.why) for t in direct] == \
+        [("plus", "Coverage plus", "Coverage", "bigWig", False, "#c82828", True), ("minus", "Coverage minus", "Coverage", "bigWig", True, "#2828c8", True),
+         ("sites", "Sites", "Demo hub", "bigBed", False, None, True)]
+    got = answer(capsys, "hub", "get", demo, "--out", tmp_path / "copy")
+    assert [Path(f["file"]).name for f in got["files"]] == ["plus.bw", "minus.bw", "sites.bb"] and got["failed"] == []
+    assert all(Path(f["file"]).read_bytes() == (demo / "pBAD30_eilR" / Path(f["file"]).name).read_bytes() for f in got["files"])
+    assert "not empty" in run(capsys, "hub", "get", demo, "--out", tmp_path / "copy")[2]
+    assert "needs --out" in run(capsys, "hub", "get", demo)[2]
+    # a hub of two genomes; g1's trackDb includes another file; a super track not shown, a composite with a view and a subtrack off,
+    # a colour given by the composite, a bam track (not read), a track hidden by its own visibility
+    h = tmp_path / "hub"
+    (h / "g1").mkdir(parents=True)
+    (h / "hub.txt").write_text("hub two\nshortLabel Two genomes\ngenomesFile genomes.txt\n")
+    (h / "genomes.txt").write_text("genome g1\ntrackDb g1/trackDb.txt\n\ngenome g2\ntrackDb g1/trackDb.txt\n")
+    (h / "g1" / "trackDb.txt").write_text(
+        "track comp\ncompositeTrack on\nshortLabel Comp\ncolor 1,2,3\ntype bigWig\n\n"
+        "  track view_a\n  parent comp\n  view A\n\n"
+        "    track a1\n    parent view_a on\n    bigDataUrl a1.bw\n    shortLabel A one\n\n"
+        "    track a2\n    parent view_a off\n    bigDataUrl ../a2.bw\n    shortLabel A two\n\n"
+        "include more.txt\n")
+    (h / "g1" / "more.txt").write_text(
+        "track sup\nsuperTrack on\nshortLabel Super\n\ntrack s1\nparent sup\nbigDataUrl s1.bb\ntype bigBed 6\n\n"
+        "track reads\nbigDataUrl r.bam\ntype bam\nshortLabel Reads\n\ntrack quiet\nbigDataUrl q.bw\ntype bigWig\nvisibility hide\n")
+    for f in ("g1/a1.bw", "a2.bw", "g1/s1.bb", "g1/q.bw"):
+        (h / f).write_bytes(b"data of " + f.encode())
+    assert "several genomes" in run(capsys, "hub", "list", h)[2]
+    res = answer(capsys, "hub", "list", h, "--genome", "g1")
+    assert [(t["name"], t["label"], t["group"], t["type"], t["hidden"], t["color"], t["read"]) for t in res["tracks"]] == [
+        ("a1", "A one", "Comp", "bigWig", False, "#010203", True), ("a2", "A two", "Comp", "bigWig", True, "#010203", True),
+        ("s1", "s1", "Super", "bigBed", True, None, True), ("reads", "Reads", "Two genomes", "bam", False, None, False),
+        ("quiet", "quiet", "Two genomes", "bigWig", True, None, True)]
+    assert any("Reads" in w for w in res["warnings"]) and "openDNA reads bigWig and bigBed" in res["tracks"][3]["why"]
+    # the same hub on a server: every file comes through track_hub.open_url
+    asked = []
+
+    def open_url(url, timeout=60):
+        asked.append(url)
+        return io.BytesIO((h / url.removeprefix("https://example.org/h/")).read_bytes())
+    monkeypatch.setattr(track_hub, "open_url", open_url)
+    got = answer(capsys, "hub", "get", "https://example.org/h/hub.txt", "--genome", "g1", "--out", tmp_path / "web")
+    assert [(Path(f["file"]).name, Path(f["file"]).read_bytes()) for f in got["files"]] == [
+        ("a1.bw", b"data of g1/a1.bw"), ("a2.bw", b"data of a2.bw"), ("s1.bb", b"data of g1/s1.bb"), ("q.bw", b"data of g1/q.bw")]
+    assert "https://example.org/a2.bw" not in asked and "https://example.org/h/a2.bw" in asked   # (../ from g1/ is the hub's folder)
+    assert "to its server" in got["settings"]["hub"]["sends"]["value"] and not (tmp_path / "web" / "r.bam").exists()
+
+
+HUB = ROOT / "demo" / "hub" / "pBAD30_eilR"   # plus.bw: 10 over [0, 2000), 30 to 4000, 20 to 5,936; minus.bw; sites.bb: 3 items
+PLASMID = ROOT / "demo" / "pBAD30_eilR.gb"
+
+
+def test_recap_command_gives_the_numbers_of_the_window_recap(capsys, tmp_path):
+    """`recap` answers what Recap Tracks Here shows (track_recap, from the same loaded tracks): per track the items there with the
+    share they cover, a signal's exact mean / min / max / sum (by hand), base by base with --per-base; --tsv is the window's table
+    with a group's mean row; a project's highlighted regions are recapped when no place is given."""
+    import exports
+    import track_layout
+    import track_recap
+    tracks = ["--track", HUB / "plus.bw", "--track", HUB / "minus.bw", "--track", HUB / "sites.bb"]
+    res = answer(capsys, "recap", PLASMID, "1001..2600", *tracks)
+    ed, _ = cli_tools.track_editor(str(PLASMID), [HUB / "plus.bw", HUB / "minus.bw", HUB / "sites.bb"])
+    assert res["regions"] == json.loads(json.dumps(track_recap.recap(ed, [("1001..2600", 1000, 2600)])))
+    (region,) = res["regions"]
+    plus, minus, sites = region["tracks"]
+    # 1000 bases at 10 and 600 at 30: sum 28,000, mean 17.5; site_b (2500..2600, minus strand) covers 100 / 1600 of the region
+    assert (plus["bases_with_value"], plus["mean"], plus["min"], plus["max"], plus["sum"]) == (1600, 17.5, 10.0, 30.0, 28000.0)
+    assert (minus["mean"], minus["sum"]) == (5.0, 8000.0)
+    assert sites["items"] == [{"name": "site_b", "type": "bed", "start": 2501, "end": 2600, "strand": "-", "covers": 0.0625}]
+    assert {f["label"] for f in region["features"]} == {f.label for f in ed.features if any(s < 2600 and e > 1000 for s, e in f.spans)}
+    per = answer(capsys, "recap", PLASMID, "1995..2004", "--track", HUB / "plus.bw", "--per-base")
+    assert per["regions"][0]["tracks"][0]["values"] == [10.0] * 6 + [30.0] * 4
+    # on the circle (5,936 bp), an item from 5,801 across the origin to 300 covers 300 of the first 500 bases
+    (tmp_path / "w.bed").write_text("pBAD30_eilR\t5800\t6236\twrap\t0\t+\n")
+    wrap = answer(capsys, "recap", PLASMID, "1..500", "--track", tmp_path / "w.bed")["regions"][0]["tracks"][0]["items"]
+    assert [(i["name"], i["start"], i["end"], i["covers"]) for i in wrap] == [("wrap", 5801, 6236, 0.6)]
+    # a project: the two coverages in a group, a highlight; recapped with no place given, as a table
+    ed.track_layout.move(["plus.bw", "minus.bw"], "Coverage")
+    ed.track_layout.add_regions([track_layout.Region(1000, 2600, "here")])
+    exports.save_project(ed, tmp_path / "p.oDNA")
+    code, out, _ = run(capsys, "recap", tmp_path / "p.oDNA", "--tsv")
+    lines = [line.split("\t") for line in out.strip().splitlines()]
+    assert code == 0 and lines[0] == list(track_recap.COLUMNS)
+    assert [(r[0], r[3], r[6], r[7], r[10]) for r in lines[2:]] == [
+        ("here", "sites.bb", "1", "", ""), ("here", "plus.bw", "1600", "17.5", "28000.0"), ("here", "minus.bw", "1600", "5.0", "8000.0"),
+        ("here", "Coverage (mean of 2)", "1600.0", "11.25", "18000.0")]
+    assert "no region" in run(capsys, "recap", PLASMID, *tracks)[2]
+
+
+def test_print_command_draws_the_project_as_the_window_export(capsys, tmp_path):
+    """`print` writes what Export This Region as Image writes (genome_view.write_region, a view of its own over the region): the
+    project's tracks with their names as shown, its highlights, at the width asked; never over a file."""
+    import exports
+    import track_layout
+    from PySide6.QtGui import QImage
+    cli.parser()   # (registers the commands: cli_tools reads cli's helpers)
+    ed, _ = cli_tools.track_editor(str(PLASMID), [HUB / "plus.bw", HUB / "sites.bb"])
+    ed.track_layout.restyle(["plus.bw"], label="Coverage plus")
+    ed.track_layout.add_regions([track_layout.Region(1500, 2500, "Highlighted here")])
+    exports.save_project(ed, tmp_path / "p.oDNA")
+    res = answer(capsys, "print", tmp_path / "p.oDNA", "1001..4000", tmp_path / "r.svg")
+    svg = (tmp_path / "r.svg").read_text(encoding="utf-8")
+    assert (res["tracks_shown"], res["regions"], res["start"], res["end"]) == (2, 1, 1001, 4000)
+    assert "Cov" in svg and "Highl" in svg and "sit" in svg   # (names wrap in the narrow names column, anywhere: where depends on the font)
+    answer(capsys, "print", PLASMID, "1001..4000", tmp_path / "r.png", "--track", HUB / "plus.bw", "--width", "900")
+    assert QImage(str(tmp_path / "r.png")).width() == 900
+    assert "already exists" in run(capsys, "print", tmp_path / "p.oDNA", "1..100", tmp_path / "r.svg")[2]
+    assert "must end in" in run(capsys, "print", tmp_path / "p.oDNA", "1..100", tmp_path / "r.jpg")[2]
+
+
+def test_track_features_command_adds_what_copy_to_features_adds(capsys, tmp_path):
+    """`track-features` adds a track's items as Copy to Features does (track_features): the name in the qualifier chosen, a note
+    "from track X", each BED column past itemRgb as a note; an item already a feature (type, place, strand) is skipped, so a
+    second run adds nothing; a track named *_CDS gives CDS features."""
+    import track_features
+    bed = tmp_path / "Sites_CDS.bed"
+    bed.write_text("pBAD30_eilR\t100\t400\tsite_a\t0\t+\t100\t400\t255,0,0\theight=81\tRSPM=12\n"
+                   "pBAD30_eilR\t2500\t2600\tsite_b\t0\t-\n")
+    res = answer(capsys, "track-features", PLASMID, bed, "--out", tmp_path / "a.gb", "--name-in", "gene")
+    assert (res["added"], res["skipped"], res["settings"]["track-features"]["type"]["value"]) == (2, 0, "CDS")
+    doc = Document(str(tmp_path / "a.gb"))
+    added = [f for f in doc.features() if ("note", "from track Sites_CDS.bed") in f.qualifiers]
+    assert [(f.kind, f.location, f.qualifiers) for f in added] == [
+        ("CDS", "101..400", [("gene", "site_a"), ("note", "from track Sites_CDS.bed"), ("note", "height=81"), ("note", "RSPM=12")]),
+        ("CDS", "complement(2501..2600)", [("gene", "site_b"), ("note", "from track Sites_CDS.bed")])]
+    assert track_features.default_type("RefSeq_2022_CDS.bed") == "CDS" and track_features.default_type("sites.bb") == "misc_feature"
+    again = answer(capsys, "track-features", tmp_path / "a.gb", bed, "--out", tmp_path / "b.gb")
+    assert (again["added"], again["skipped"]) == (0, 2)
+    part = answer(capsys, "track-features", PLASMID, HUB / "sites.bb", "1..1000", "--out", tmp_path / "c.gb")
+    assert part["added"] == 1 and "not an annotation track" in run(capsys, "track-features", PLASMID, HUB / "plus.bw", "--out", tmp_path / "d.gb")[2]
+
+
+def test_signal_regions_command_finds_the_stretches_of_regions_above_threshold(capsys, tmp_path):
+    """`signal-regions` gives the stretches Regions Above Threshold finds (track_features.signal_regions): at least the threshold,
+    those closer than --gap joined, those shorter than --min-length left out, each with its mean and highest (by hand); --out as BED."""
+    res = answer(capsys, "signal-regions", HUB / "plus.bw", "--threshold", "20", "--out", tmp_path / "r.bed")
+    # 2000 bases at 30 then 1936 at 20: mean (60,000 + 38,720) / 3936
+    assert res["regions"] == [{"start": 2001, "end": 5936, "length": 3936, "mean": float(f"{98720 / 3936:.6g}"), "max": 30.0}]
+    assert (tmp_path / "r.bed").read_text() == f"pBAD30_eilR\t2000\t5936\tplus_1\t{98720 / 3936:.6g}\t.\n"
+    bg = tmp_path / "s.bedGraph"   # 5 over [0,10), 1 over [10,15), 5 over [15,20), 9 over [100,103)
+    bg.write_text("c\t0\t10\t5\nc\t10\t15\t1\nc\t15\t20\t5\nc\t100\t103\t9\n")
+    spans = lambda r: [(x["start"], x["end"]) for x in r["regions"]]
+    assert spans(answer(capsys, "signal-regions", bg, "--threshold", "5")) == [(1, 10), (16, 20), (101, 103)]
+    joined = answer(capsys, "signal-regions", bg, "--threshold", "5", "--gap", "5", "--min-length", "4")
+    assert spans(joined) == [(1, 20)] and joined["regions"][0]["mean"] == 4.0   # (the joined bases count: (10 x 5 + 5 x 1 + 5 x 5) / 20)
+    assert spans(answer(capsys, "signal-regions", bg, "--threshold", "5", "--region", "12..103")) == [(16, 20), (101, 103)]
+    assert "START..END" in run(capsys, "signal-regions", bg, "--threshold", "5", "--region", "0..5")[2]
 
 
 def fake_ncbi(monkeypatch):

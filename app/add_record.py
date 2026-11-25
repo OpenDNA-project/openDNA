@@ -58,7 +58,7 @@ def source_records(path):
         out = [SimpleNamespace(name=n, length=int(l), load=lambda n=n: multigb.read_record(path, n))
                for n, l, _ in multigb.records(path)]
     else:
-        doc = exports.open_project(path)[0] if path.suffix.lower() == exports.PROJECT_EXT else Document(str(path))
+        doc = exports.open_project(path)[0] if exports.is_project(path) else Document(str(path))
         out = [SimpleNamespace(name=doc.name or path.stem, length=doc.length, load=lambda: doc)]
     if not out:
         raise OSError("no sequence in this file")

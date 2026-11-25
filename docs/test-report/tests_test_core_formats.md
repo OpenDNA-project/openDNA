@@ -4,7 +4,7 @@
 
 ## `test_bam_reads_pileup_coverage_and_variants_match_a_model`
 
-**Result:** ✅ passed in 0.08 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 261](../../tests/test_core_formats.py#L261) · **Area:** BAM reads, pileup, coverage, variants · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the read alignment track could show reads at wrong places, miscount depth, ignore duplicate/QC filters or call wrong SNPs and indels from a user's BAM file.
 
@@ -28,9 +28,28 @@ Writes BAM files with the standard library (hand-designed reads, 300 random read
 
 - Very large test covering four functions (reads, pileup, coverage, variants); a failure early hides later sections. Could be split.
 
+## `test_signal_files_bigwig_bedgraph_and_wig_read_the_same_values`
+
+**Result:** ✅ passed in 0.01 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Alignment view tracks · **Checked against:** independent implementation · **Strength:** 🟢 strong
+
+**Why it matters:** Without it, the same signal could show different values in a bigWig and in a bedGraph or wig, or a file could be read as the wrong kind of track, with nothing to show it.
+
+Reads the demo hub's plus.bw through the bigtools library and a bedGraph and a wig of the same values through openDNA's own parser, and checks they give the same bins at several zooms; checks how the window tells a file's kind (track_kind) by name and, for a bigWig, by its contents. The exact sums the recap gives (stats) and the stretches over a threshold (runs) agree between the three files.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | plus.bw, the same values as bedGraph, and as wig (fixedStep for 2 x 2000 bases, then variableStep) | bigwig flags True, False, False; sequences [(pBAD30_eilR, 5936)] each |
+| 2 | bins over (0,5936,1), (0,5936,7), (0,5936,1000), (1990,2010,4), (3999,4001,2) | identical lists from the three files |
+| 3 | bins(0, 5936, 1) of the bigWig | [(20.0, 30.0)] |
+| 4 | track_kind of plus.bw, .bedGraph, .wig, the bigWig renamed plus.dat, sites.bb, x.bed, x.BAM | signal, signal, signal, signal, track, track, bam |
+| 5 | a wig whose variableStep has no chrom= | OSError 'not valid bedGraph or wig' |
+| 6 | read_many([plus.bw, same.bedGraph, a missing file, sites.bb]) | same order; Signal, Signal, the FileNotFoundError it gave (an OSError), Track; plus.bw's sequences read back |
+| 7 | stats(1000, 4500) of each file | (3500 bases, sum 80,000, lowest 10, highest 30) each |
+| 8 | runs(0, 5936, threshold 20); runs(100, 3000, threshold 25) | [(2000, 5936)] each; [(2000, 3000)] each |
+
 ## `test_tracks_gff_bed_parsing_query_density_and_search`
 
-**Result:** ✅ passed in 0.11 s · [line 427](../../tests/test_core_formats.py#L427) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 463](../../tests/test_core_formats.py#L463) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, drop features across the origin or a whole type, lose the file's colours, or miss features when zooming and searching.
 
@@ -54,7 +73,7 @@ Parses GFF3/GTF/BED files written in the test and checks names, coordinates, str
 
 ## `test_feature_locations_round_trip`
 
-**Result:** ✅ passed in 0.02 s · [line 621](../../tests/test_core_formats.py#L621) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.01 s · [line 657](../../tests/test_core_formats.py#L657) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a GenBank file could silently change or drop complex feature locations (joins, complement, fuzzy ends, between-base sites, remote references).
 
@@ -72,7 +91,7 @@ Adds each of 20 GenBank location forms to a document and checks the written text
 
 ## `test_genome_fasta_fetch_and_search_match_slicing_and_brute_force`
 
-**Result:** ✅ passed in 0.02 s · [line 700](../../tests/test_core_formats.py#L700) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 736](../../tests/test_core_formats.py#L736) · **Area:** Indexed genome FASTA · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a reference genome opened from a FASTA file could return wrong bases at line breaks or ends, and motif/sequence search on it could miss hits or report wrong strands.
 
@@ -99,7 +118,7 @@ Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python
 
 ## `test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.04 s · [line 781](../../tests/test_core_formats.py#L781) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 817](../../tests/test_core_formats.py#L817) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A break, a gap or a deletion near an end of the reference, or through the origin of a plasmid, could be hidden or mistaken for something else.
 

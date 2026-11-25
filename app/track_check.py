@@ -23,14 +23,22 @@ def match_contig(seqs, *names):
     return close[0] if len(close) == 1 else None
 
 
-def mismatches(editor, track, seqid, length=None, path=""):
+def mismatches(editor, track, seqid, length=None, path="", signal=None):
     """Plain sentences, empty when the track fits. `track`: a opendna_core Track (None for a BAM, then `length` is the length of
-    its reference `seqid`)."""
+    its reference `seqid`). `signal`: a opendna_core Signal (then `track` is None): a bigWig states its sequence's length, a
+    bedGraph or wig only reaches as far as its last value."""
     out = []
     here = editor.fasta_record or editor.doc.name
     name = Path(path).name or "The file"
     if not names_match(seqid, here) and not names_match(seqid, editor.doc.name):
         out.append(f"{name} is for the sequence '{seqid}', and this one is '{here}'.")
+    if signal is not None:
+        stated = signal.bigwig
+        if (length != editor.length) if stated else (length > editor.length):
+            out.append(f"Its sequence '{seqid}' is {length:,} bp; this sequence is {editor.length:,} bp: the values were measured on "
+                       "another version of it, so they may not line up." if stated else
+                       f"Its values reach {length:,} bp, past the end of this sequence ({editor.length:,} bp).")
+        return out
     if track is None:
         if length is not None and length != editor.length:
             out.append(f"Its reference '{seqid}' is {length:,} bp; this sequence is {editor.length:,} bp: the reads were mapped to "

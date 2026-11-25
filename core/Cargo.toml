@@ -3,7 +3,7 @@
 
 [package]
 name = "opendna_core"
-version = "0.8.8"
+version = "0.9.0"
 edition = "2021"   # Rust language "edition" (syntax version), like choosing a Python 3.x baseline
 
 [lib]
@@ -20,6 +20,8 @@ noodles = { version = "0.118.0", features = ["bam", "sam", "core", "bgzf", "csi"
 # Python >= 3.10 (one build per OS instead of one per OS *and* Python version).
 pyo3 = { version = "0.23", features = ["abi3-py310"] }
 quick-xml = "0.42.0"
+# bigWig and bigBed files (signal tracks, track hubs); reading only for now (no network, no writer).
+bigtools = { version = "0.5.8", default-features = false, features = ["read"] }
 
 [features]
 # Only switched on when maturin builds the Python extension (see pyproject.toml);

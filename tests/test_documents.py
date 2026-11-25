@@ -24,6 +24,7 @@ import exports
 import fileio
 import primer_db
 import selftest
+import track_layout
 from editor import MAX_SITES, Editor, reverse_complement
 from file_history import FileHistory
 from history_panel import group
@@ -571,7 +572,7 @@ def test_copy_reverse_complement_keeps_annotations_flipped():
 
 def test_text_exports_and_the_project_file(tmp_path):
     """The text exports of a document (GFF3, BED, NCBI feature table with minus-strand parts as start > stop, proteins of a CDS
-    on each strand, FASTA wrapped at 70, the submission pair); an Open DNA Project (.odp) round-trips the sequence, the features,
+    on each strand, FASTA wrapped at 70, the submission pair); an Open DNA Project (.oDNA) round-trips the sequence, the features,
     the tracks (also by their path beside the project), the display settings and the DNA lock."""
     ed = Editor(Document(str(DEMO)), DEMO)
     # --- GFF3, BED, feature table, proteins
@@ -616,13 +617,19 @@ def test_text_exports_and_the_project_file(tmp_path):
     # --- the project file
     track = tmp_path / "extra.gff3"
     track.write_text(f"{ed.doc.name}\tx\tgene\t10\t50\t.\t+\t.\tName=g1\n")
-    ed.tracks.append(SimpleNamespace(name=track.name, path=str(track), seqid=ed.doc.name, types=["gene"], fields=[]))   # as the window's load_track does
+    ed.add_track(SimpleNamespace(name=track.name, kind="track", path=str(track), seqid=ed.doc.name, types=["gene"], fields=[]), "Hub")   # as load_track does
+    ed.track_layout.style(track.name).mode = "dense"
+    ed.track_layout.style("GC %").shown = True   # (hidden unless chosen)
+    ed.track_layout.style("Bases").frozen = False   # (frozen unless chosen)
+    ed.add_track(SimpleNamespace(name="s.bw", kind="signal", path=str(tmp_path / "s.bw"), seqid=ed.doc.name))
     ed.set_display(enzymes=True, hidden_kinds={"misc_feature"})
     ed.dna_locked = True
     site = ed.doc.sequence()[100:120]
     assert ed.doc.sequence().upper().count(site.upper()) == 1 and reverse_complement(site).upper() not in ed.doc.sequence().upper()
     assert ed.import_primers([("pX", site)]) == 1     # a primer of this file: written as a primer_bind feature
-    project = tmp_path / "work.odp"
+    project = tmp_path / "work.oDNA"
+    assert exports.PROJECT_EXT == ".oDNA" and all(exports.is_project(n) for n in ("a.oDNA", "B.ODNA", "old.odp"))   # (.odp: older versions)
+    assert not exports.is_project("a.gb")
     exports.save_project(ed, project)
     with zipfile.ZipFile(project) as z:
         assert set(z.namelist()) == {"sequence.gb", "project.json"}
@@ -631,6 +638,11 @@ def test_text_exports_and_the_project_file(tmp_path):
     assert meta["tracks"][0]["relative"] == "extra.gff3" and meta["tracks"][0]["path"] == str(track)
     assert meta["tracks"][0]["types"] == ["gene"] and set(meta["primer_sites"]) == {"rule", "primers"}   # what was imported, sites hidden by hand
     assert meta["display"]["enzymes"] and meta["display"]["hidden_kinds"] == ["misc_feature"]
+    # the Alignment view's layout: the track in its group, only the styles changed from the defaults
+    assert meta["signals"] == [{"path": str(tmp_path / "s.bw"), "relative": "s.bw", "seqid": ed.doc.name, "name": "s.bw"}]
+    assert meta["track_layout"] == {"nodes": [{"group": "Sequence", "keys": list(track_layout.BUILTIN), "collapsed": False},
+                                              {"group": "Hub", "keys": ["extra.gff3"], "collapsed": False}, "s.bw"],
+                                    "styles": {"extra.gff3": {"mode": "dense"}, "GC %": {"shown": True}, "Bases": {"frozen": False}}}
     assert not list(tmp_path.glob("*.part")), "written through a temporary file"
     doc, back = exports.open_project(project)
     assert doc.sequence() == ed.doc.sequence() and back == meta
@@ -642,11 +654,129 @@ def test_text_exports_and_the_project_file(tmp_path):
     moved.mkdir()
     (moved / "extra.gff3").write_text(track.read_text())
     entry = dict(meta["tracks"][0], path=str(tmp_path / "gone.gff3"))
-    assert exports.project_file(entry, moved / "work.odp") == str(moved / "extra.gff3"), "found beside the moved project"
-    bad = tmp_path / "bad.odp"
+    assert exports.project_file(entry, moved / "work.oDNA") == str(moved / "extra.gff3"), "found beside the moved project"
+    bad = tmp_path / "bad.oDNA"
     bad.write_bytes(b"not a zip")
     with pytest.raises(OSError, match="not an Open DNA Project"):
         exports.open_project(bad)
+
+
+def test_track_layout_moves_groups_reloads_and_bulk_helpers():
+    """The Alignment view's track layout (track_layout), which the Tracks panel edits: rows move between groups without being
+    lost or doubled, every change is announced once, a saved layout comes back for the rows the file has now, the helpers
+    behind Group by Name, the colour range and Fit give the values worked out by hand, and the Editor keeps loaded tracks'
+    rows apart (a second file of the same name, a file named like a built-in row)."""
+    changes = []   # each change announced: True when made by hand (a project has something new to save)
+    L = track_layout.Layout(changes.append)
+    assert L.keys() == list(track_layout.BUILTIN) and [g.name for g in L.groups()] == ["Sequence"] and L.keys()[0] == "Bases"
+    # before anything is chosen: the bases and the features frozen, the GC % hidden, the rest shown and free to scroll
+    assert [(k, L.style(k).shown, L.style(k).frozen) for k in L.keys()] == [
+        ("Bases", True, True), ("Features", True, True), ("Primers", True, False), ("Query hits", True, False), ("GC %", False, False)]
+    L.add(["a.bed", "b.bed"], "Hub")
+    L.add(["c.bed", "a.bed"])   # a.bed is already there: not added twice
+    assert L.keys() == [*track_layout.BUILTIN, "a.bed", "b.bed", "c.bed"] and changes == [False, False]
+    L.move(["c.bed", "a.bed"], "Hub")   # in display order, to the end of the group
+    assert L.group("Hub").keys == ["b.bed", "a.bed", "c.bed"] and "c.bed" not in L.nodes
+    L.collapse("Hub", True)
+    # a drag and drop: the tree's order; a row the tree does not hold (a.bed) is kept at the end, never lost; collapsed kept
+    L.set_tree([("Hub", ["c.bed"]), (None, ["b.bed"]), ("Sequence", list(track_layout.BUILTIN))])
+    assert L.keys() == ["c.bed", "b.bed", *track_layout.BUILTIN, "a.bed"] and L.group("Hub").collapsed
+    # a height set by hand goes with a new display mode (each mode has its own), not with another change
+    L.restyle(["b.bed"], height=40, label="B")
+    L.restyle(["b.bed"], shown=False)
+    assert L.style("b.bed").height == 40 and L.label("b.bed") == "B" and L.label("a.bed") == "a.bed"
+    L.restyle(["b.bed"], mode="dense")
+    assert L.style("b.bed").height is None and changes == [False, False] + [True] * 6
+    L.remove(["c.bed"])   # the group it leaves empty goes with it
+    assert L.group("Hub") is None and "c.bed" not in L.styles
+    assert L.rename_group("Sequence", "Built-in") and not L.rename_group("Built-in", "")
+    L.ungroup("Built-in")
+    assert L.groups() == [] and L.keys() == ["b.bed", *track_layout.BUILTIN, "a.bed"]
+    # saved and loaded for the rows the file has now: b.bed gone, d.bed new (at the end), a value that cannot be read ignored
+    L.move(["a.bed"], "G")
+    L.restyle_each({"a.bed": {"mode": "condensed", "color": "#00ff00"}})
+    saved = L.to_json()
+    assert saved["styles"] == {"b.bed": {"shown": False, "mode": "dense", "label": "B"},
+                               "a.bed": {"mode": "condensed", "color": "#00ff00"}}
+    saved["styles"]["a.bed"]["height"] = "tall"
+    saved["nodes"].append({"keys": ["x"]})   # (a node that is neither a row nor a group: skipped)
+    back = track_layout.Layout()
+    back.load_json(saved, [*track_layout.BUILTIN, "a.bed", "d.bed"])
+    assert back.keys() == [*track_layout.BUILTIN, "a.bed", "d.bed"] and back.group("G").keys == ["a.bed"]
+    assert back.style("a.bed").height is None and back.style("a.bed").mode == "condensed" and "b.bed" not in back.styles
+    # freezing is saved too, against each row's own default (the features stay frozen, the GC % hidden, unless changed)
+    back.restyle(["Primers"], frozen=True)
+    back.restyle(["Bases"], frozen=False)
+    again = track_layout.Layout()
+    again.load_json(back.to_json(), back.keys())
+    assert [(again.style(k).frozen, again.style(k).shown) for k in ("Primers", "Bases", "Features", "GC %")] == [
+        (True, True), (False, True), (True, True), (False, False)]
+    # Group by Name: the first parts of the names; a group of one is not made
+    names = ["HDTM_GluP0A", "HDTM_GluP0B", "RNAseq_Glu_Plus", "solo", "A6S_1_Pos", "A6S_1_Neg", "A6S_2_Pos"]
+    assert track_layout.name_groups(names, 1) == {"HDTM_GluP0A": "HDTM", "HDTM_GluP0B": "HDTM", "A6S_1_Pos": "A6S",
+                                                  "A6S_1_Neg": "A6S", "A6S_2_Pos": "A6S"}
+    assert track_layout.name_groups(names, 2) == {"A6S_1_Pos": "A6S_1", "A6S_1_Neg": "A6S_1"}
+    named = track_layout.Layout()
+    named.add(names, "Hub")
+    named.group_by_name(names, 1)   # the emptied group goes; what is not grouped stays where it was
+    assert [(g.name, g.keys) for g in named.groups()] == [("Sequence", list(track_layout.BUILTIN)), ("Hub", ["RNAseq_Glu_Plus", "solo"]),
+                                                          ("HDTM", names[:2]), ("A6S", names[4:])]
+    # light to dark from #3949ab (57, 73, 171): light = c + (255 - c) * 0.65, dark = c * 0.6, the middle halfway
+    assert track_layout.gradient("#3949ab", 3) == ["#babfe2", "#6e76a4", "#222c67"]
+    assert track_layout.gradient("#3949AB", 1) == ["#3949ab"]
+    # Fit: (100 - 3 * 6) // 3 = 27 px each, never over a row's natural height nor under its least
+    assert track_layout.fit_heights({"a": (10, 33), "b": (10, 15), "c": (10, 40)}, 100, 6) == {"a": 27, "b": 15, "c": 27}
+    assert track_layout.fit_heights({"a": (10, 33), "b": (10, 15)}, 20, 6) == {"a": 10, "b": 10}
+    # the Editor's rows: unique names against every row, a BAM's three rows, a track's colour kept when another goes
+    ed = Editor(Document.new_sequence("t", "ACGT" * 25, False), "t.gb")
+    for name in ("a.bed", "a.bed", "Features"):
+        ed.add_track(SimpleNamespace(name=name, kind="track", path=name), "G")
+    ed.add_track(SimpleNamespace(name="r.bam", kind="bam", path="r.bam"))
+    assert [t.name for t in ed.tracks] == ["a.bed", "a.bed (2)", "Features (2)"]
+    assert ed.row_keys()[len(track_layout.BUILTIN):] == ["a.bed", "a.bed (2)", "Features (2)", "r.bam", "r.bam variants", "r.bam reads"]
+    assert ed.row_table["r.bam reads"][0] == "reads" and ed.track_of("r.bam variants").name == "r.bam"
+    ed.remove_tracks(["a.bed (2)", "r.bam"])
+    assert ed.row_keys()[len(track_layout.BUILTIN):] == ["a.bed", "Features (2)"] and ed.track_layout.group("G").keys == ["a.bed", "Features (2)"]
+    assert [t.color_index for t in ed.tracks] == [0, 2]
+    # signal tracks: in their own list; overlaid in the first one's row, and separated again (from any of them)
+    for name in ("p.bw", "m.bw", "x.bw"):
+        ed.add_track(SimpleNamespace(name=name, kind="signal", path=name))
+    assert [s.name for s in ed.signals] == ["p.bw", "m.bw", "x.bw"] and len(ed.loaded()) == 5 and ed.row_table["m.bw"][0] == "signal"
+    ed.track_layout.overlay(["p.bw", "m.bw", "x.bw"])
+    assert [ed.track_layout.style(k).overlay for k in ("p.bw", "m.bw", "x.bw")] == [None, "p.bw", "p.bw"]
+    ed.track_layout.separate(["m.bw"])
+    assert [ed.track_layout.style(k).overlay for k in ("m.bw", "x.bw")] == [None, "p.bw"]
+    ed.track_layout.separate(["p.bw"])   # (the row they are drawn in: all of them)
+    # highlighted regions: kept in order of start, saved and read back with the layout; BED out and in (name and colour kept), the
+    # lines that are not regions of this sequence named
+    L = ed.track_layout
+    L.add_regions([track_layout.Region(50, 60, "b", "#26a69a"), track_layout.Region(10, 20, "a")])
+    L.change_regions(L.regions[:1], name="first")
+    assert [(r.start, r.end, r.name, r.color) for r in L.regions] == [(10, 20, "first", "#ffb300"), (50, 60, "b", "#26a69a")]
+    again = track_layout.Layout()
+    again.load_json(L.to_json() | {"regions": L.to_json()["regions"] + [{"start": 30, "end": 20}, {"start": "x"}]}, ed.row_keys())
+    assert again.regions == L.regions   # (the two that cannot be read are left out)
+    bed = track_layout.regions_bed(L.regions, "t")
+    assert bed == "t\t10\t20\tfirst\t0\t.\t10\t20\t255,179,0\nt\t50\t60\tb\t0\t.\t50\t60\t38,166,154\n"
+    read, unread = track_layout.read_regions_bed("track name=x\n" + bed + "t 5 8\nt\t90\t200\nnot a line\n", 100)
+    assert read == L.regions + [track_layout.Region(5, 8)] and unread == ["line 5: 90-200 is not within 0-100", "line 6: not sequence, start, end"]
+    L.remove_regions(L.regions[:1])
+    assert [r.name for r in L.regions] == ["b"]
+    assert ed.track_layout.style("x.bw").overlay is None
+    sig = track_layout.Layout()
+    sig.load_json({"nodes": ["s"], "styles": {"s": {"render": "heatmap", "summary": "max", "range": "fixed", "low": -2, "high": 5.5,
+                                                    "overlay": "t"}, "t": {"render": "dots", "range": "own", "low": True}}}, ["s", "t"])
+    assert (sig.style("s").render, sig.style("s").summary, sig.style("s").range, sig.style("s").low, sig.style("s").high) == ("heatmap", "max", "fixed", -2, 5.5)
+    assert (sig.style("t").render, sig.style("t").range, sig.style("t").low) == ("bars", "auto", 0.0)   # (values it cannot read: defaults)
+    # a project keeps the layout: a change by hand there is something to save; loading a track is not (a GenBank file: neither)
+    for path, marked in (("w.oDNA", True), ("w.gb", False)):
+        doc = Document.new_sequence("w", "ACGT" * 25, False)
+        doc.modified = False
+        proj = Editor(doc, path)
+        proj.add_track(SimpleNamespace(name="x.bed", kind="track", path="x.bed"))
+        assert not proj.doc.modified
+        proj.track_layout.restyle(["x.bed"], shown=False)
+        assert proj.doc.modified == marked, path
 
 
 # ---- display switches ---------------------------------------------------------------------------------------------------------

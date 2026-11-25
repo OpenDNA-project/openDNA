@@ -7,7 +7,7 @@ NAME = "openDNA"
 # The file name of the released program (openDNA.exe is renamed to this in the release, and the installer is EXE_NAME-setup.exe).
 # Only the downloaded file is renamed: NAME (the settings, the window titles, the data folder) stays.
 EXE_NAME = "oDNA_beta"
-VERSION = "0.8.8"
+VERSION = "0.9.0"
 AUTHOR = "Antoine Champie"
 CONTACT_EMAIL = ""   # a project-only address, to be filled in by the author before the first release (empty: not shown)
 REPO = "OpenDNA-project/openDNA"   # owner/name on GitHub
@@ -23,4 +23,5 @@ FILE_TYPES = {
     ".gb": "GenBank file", ".gbk": "GenBank file", ".gbff": "GenBank file", ".genbank": "GenBank file", ".ape": "GenBank file", ".embl": "EMBL file",
     ".dna": ".dna file",
     ".fa": "FASTA file", ".fasta": "FASTA file", ".fna": "FASTA file", ".fas": "FASTA file",
+    ".odna": "openDNA project",   # (not the .odp of older versions: that one is OpenDocument's)
 }

@@ -35,7 +35,11 @@ HELP = {
         "Wheel zooms at the pointer; drag pans; double-click zooms in.",
         "Shift+drag selects bases; click the overview bar to jump.",
         "Click a feature, primer or read to select it; right-click a track for its display.",
-        "Click a track name to hide or show the track.",
+        "Tracks (header): show, hide, reorder, group and restyle many tracks at once; Fit squeezes them into the pane.",
+        "Signal tracks (bigWig, bedGraph, wig): right-click > Signal for bars, a line or a heatmap, the range, overlays.",
+        "Click a track name to hide the track; click a group's line to collapse it.",
+        "Right-click a selection or the ruler: highlight it, recap every track there, export it as an image.",
+        "Right-click a track's item: add it as a feature; a track: Copy to Features, Next Item; a signal: Regions Above Threshold.",
         "Type a position, range (12,000-15,000) or name in the locus box and press Enter.",
     ],
     "Features": [

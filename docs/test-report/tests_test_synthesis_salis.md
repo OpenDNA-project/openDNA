@@ -4,7 +4,7 @@
 
 ## `test_the_forest_gives_scikit_learns_answer_for_every_sequence_of_the_paper`
 
-**Result:** ✅ passed in 0.81 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.92 s · [line 22](../../tests/test_synthesis_salis.py#L22) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** A mistake in reading the exported forest would make every synthesis verdict wrong without any error.
 
@@ -21,7 +21,7 @@ The 1512 exported trees give, for the nine features of each of the 303 paper seq
 
 ## `test_melting_temperature_equals_biopythons_nearest_neighbour_value`
 
-**Result:** ✅ passed in 0.05 s · [line 31](../../tests/test_synthesis_salis.py#L31) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 31](../../tests/test_synthesis_salis.py#L31) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** A wrong melting temperature changes how many windows count as too cold or too hot, and so the verdict.
 
@@ -97,7 +97,7 @@ Whitespace and case are accepted; the first other base is named; an empty text i
 
 ## `test_the_features_equal_the_authors_numbers_on_the_shortest_sequences_of_the_paper`
 
-**Result:** ✅ passed in 2.90 s · [line 112](../../tests/test_synthesis_salis.py#L112) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 3.14 s · [line 112](../../tests/test_synthesis_salis.py#L112) · **Area:** Synthesis Success Calculator (Salis) · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The folding, window and repeat parts together must reproduce the published model on real sequences.
 

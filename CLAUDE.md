@@ -154,7 +154,7 @@ Everything is kept in the data folder (`primer_db.data_dir()`), in three files, 
 - **History** (recent files, recent background genomes): `sourcefiles.recent_store()`, in `recent.ini`.
 - **Secrets** (API keys, logins): `secret_store`, never a file.
 - **What belongs to one open file** (hidden primers and sites, display switches, tracks): an attribute of the `Editor`, gone when the file
-  closes; `exports.project_meta` saves it in an `.odp` project.
+  closes; `exports.project_meta` saves it in an `.oDNA` project.
 - **A value given on the command line**: `tool_settings.override`, never written.
 
 Never open a new `.ini` or JSON file for settings. When a saved key of `settings.ini` is renamed or changes meaning, raise

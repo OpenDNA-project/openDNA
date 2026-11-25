@@ -4,7 +4,7 @@
 
 ## `gff_bed_and_queries`
 
-**Result:** ✅ passed · [line 351](../../core/src/tracks.rs#L351) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed · [line 398](../../core/src/tracks.rs#L398) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Loaded GFF/GTF/BED/VCF annotation tracks could show features off by one base, lose escaped names, or miss features in a region.
 
@@ -30,11 +30,11 @@ GFF3/GTF, BED and VCF files load into an index: every type counted (a whole-sequ
 
 ## `partial_regions_colours_notes_and_features_across_the_origin`
 
-**Result:** ✅ passed · [line 402](../../core/src/tracks.rs#L402) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed · [line 449](../../core/src/tracks.rs#L449) · **Area:** Annotation tracks (GFF/GTF/BED/VCF) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
-**Why it matters:** A GFF3 file of partial region lines could be read as empty again, a feature across the origin could be refused or split in two, or a colour or note in the file could be lost.
+**Why it matters:** A GFF3 file of partial region lines could be read as empty again, a feature across the origin could be refused or split in two, or a colour or note in the file could be lost, or the extra columns of a BED file (TSS heights, TU lengths...) could be lost before they reach a recap or a feature's notes.
 
-A region that does not cover its sequence is a type worth showing; a line whose end comes before its start is one item on a circle (its end past the length, found from both sides of the origin) and is left out and counted on a linear sequence; GFF colour/colour and Note/product and the BED itemRgb column are kept as written.
+A region that does not cover its sequence is a type worth showing; a line whose end comes before its start is one item on a circle (its end past the length, found from both sides of the origin) and is left out and counted on a linear sequence; GFF colour/colour and Note/product and the BED itemRgb column are kept as written. The BED columns past itemRgb are kept on each item (a BED12's three block columns left out).
 
 | # | Input | Expected output |
 |---|---|---|
@@ -43,6 +43,7 @@ A region that does not cover its sequence is a type worth showing; a line whose 
 | 3 | keep region only on a linear sequence | 1 dropped; 1 item left |
 | 4 | BED itemRgb '255,0,0' and '0' | colours [('255,0,0',1)] ('0' is no colour) |
 | 5 | one gene 1..5000, no ##sequence-region | types [(gene,1,not whole)]: only a type naming a sequence, or a stated length, makes a line 'whole' |
+| 6 | BED9 + height=81, RSPM=12; BED12 (blocks 2, '3,4,', '0,6,') + TU=1; BED4 | extra 'height=81\tRSPM=12'; 'TU=1'; none |
 
 **Review notes:**
 

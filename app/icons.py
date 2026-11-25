@@ -2,9 +2,11 @@
 light theme and white on the dark one. A funnel for the display filter, an hourglass for the history, and one per category
 of the quick filters in the tab row."""
 import math
+from functools import lru_cache
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QFont, QIcon, QPainter, QPainterPath, QPalette, QPen, QPixmap, QPolygonF
+from PySide6.QtCore import QByteArray, QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPalette, QPen, QPixmap, QPolygonF
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication
 
 import theme
@@ -289,3 +291,48 @@ def lock_icon(palette=None):
                                (QIcon.On, True, theme.color("highlight_text"))):
         icon.addPixmap(_pixmap(_padlock, color, 1.0, shut), QIcon.Normal, state)
     return icon
+
+
+# ---- the Alignment view: its toolbar, the eye and the pin of a track (outline shapes of the Tabler set, drawn from SVG) ----
+def _outline(body):
+    """A draw function for `_pixmap` / `_icon`: the SVG shapes `body` (24 x 24, 2 wide round strokes) in the brush's colour."""
+    def draw(p, s):
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{p.brush().color().name()}" stroke-opacity="{p.brush().color().alphaF():.2f}" '
+               f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
+        QSvgRenderer(QByteArray(svg.encode())).render(p, QRectF(0, 0, s, s))
+    return draw
+
+
+_SHAPES = {
+    "sidebar": '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16"/>',
+    "grid": "".join(f'<circle cx="{x}" cy="{y}" r="1"/>' for x in (5, 12, 19) for y in (5, 12, 19)),
+    "search": '<circle cx="10" cy="10" r="7"/><path d="M21 21l-6-6"/>',
+    "eye": '<path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0-4 0"/><path d="M21 12c-2.4 4-5.4 6-9 6c-3.6 0-6.6-2-9-6c2.4-4 5.4-6 9-6c3.6 0 6.6 2 9 6"/>',
+    "eye-off": '<path d="M10.585 10.587a2 2 0 0 0 2.829 2.828"/><path d="M16.681 16.673a8.717 8.717 0 0 1-4.681 1.327c-3.6 0-6.6-2-9-6'
+              'c1.272-2.12 2.712-3.678 4.32-4.674m2.86-1.146a9.055 9.055 0 0 1 1.82-.18c3.6 0 6.6 2 9 6c-.666 1.11-1.379 2.067-2.138 2.87"/>'
+              '<path d="M3 3l18 18"/>',
+    "pin": '<path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5-1.5l1.5-4l4-4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/>',
+}
+
+
+def toolbar_icon(name, palette=None):
+    """'sidebar', 'grid' or 'search': the Alignment view's toolbar."""
+    return _icon(_outline(_SHAPES[name]), palette)
+
+
+def eye_pixmap(shown, color):
+    """An open or a struck-through eye in `color` (QColor): a track shown or hidden in the Tracks panel."""
+    return _pixmap(_outline(_SHAPES["eye" if shown else "eye-off"]), color)
+
+
+PIN_COLOR = "#1e88e5"   # the pin of a pinned track
+
+
+@lru_cache(maxsize=16)
+def _pin(rgba):
+    return _pixmap(_outline(_SHAPES["pin"]), QColor.fromRgba(rgba))
+
+
+def pin_pixmap(color):
+    """The pin of a pinned track, in `color` (QColor); drawn once per colour."""
+    return _pin(color.rgba())

@@ -45,9 +45,30 @@ after the ones it has: a one-record GenBank file becomes a multi-record GenBank 
 only: FASTA keeps no features). The new records are written into the file at once (the records already in it are copied byte for
 byte, and Undo does not remove the new ones); the sequence that was open keeps its unsaved edits until you save it. An open `.dna`
 file, project or unsaved sequence is first saved as GenBank, and the records are added to that file. The alignment view (Ctrl+Shift+G, or a new tab with the Alignment view; off until you ask for it, on any sequence) shows
-tracks loaded with File → Load Track: GFF3/GTF/BED annotations, VCF variants and BAM alignments
-(coverage + reads; the `.bai` is made if missing; several files at once). Click a track's name to hide
-it, right-click it for expanded/condensed/hidden and a log scale, drag the line under it to resize; the
+tracks loaded with File → Load Track: GFF3/GTF/BED/bigBed annotations, signal tracks (bigWig, bedGraph, wig), VCF variants and
+BAM alignments (coverage + reads; the `.bai` is made if missing; several files at once, which go in a group named after their
+folder). A signal track draws its values as bars, a line or a one-line heatmap (right-click > Signal), each pixel the mean or the
+highest value of its bases, on a range of its own values in view, shared with its group, or fixed; several signals can be
+overlaid in one row (for example the two strands of RNA-seq), and the value under the mouse shows in the header. Import >
+Features and Tracks > Track Hub reads a UCSC track hub (the address of its `hub.txt`, or a folder holding one): it lists the
+hub's tracks in its groups, copies the files of a hub on the internet beside the open file, and loads them with the hub's short
+labels and colours; the tracks the hub hides at first load hidden, ready to tick in the Tracks panel. The
+Tracks button opens the Tracks panel: every track in its groups, with a box to show or hide it, a filter, and Ctrl/Shift-click to
+select many; its buttons and right-click menu change all the selected tracks at once (expanded, condensed or dense display, height,
+colour or a light-to-dark range of colours, log scale, group, name, remove), drag tracks to reorder them or onto a group to move
+them, and Group by Name groups tracks whose names start alike. A group is a header line in the view: click it to collapse its
+tracks. Click a track's name to hide it (the panel shows it again), right-click it for the same menu, drag the line under it to
+resize; Fit makes the shown tracks share the pane's height. Select bases (Shift+drag) and right-click the selection or the ruler
+for Highlight Selection (a named, coloured band across every track), Recap Tracks Here (a table of every track over the selection:
+the items there with the share they cover and their file's extra columns, each signal's mean, lowest, highest and sum read from
+its values, the read depth, the sequence's own features and GC %; a row per group with the mean of its tracks; sortable, copied or
+saved as CSV, with the value at every base for regions up to 1,000 bp) and Export This Region as Image (SVG or PNG, the tracks as
+shown). The panel's Regions tab lists the highlights: double-click to go there, F2 to rename, recolour, delete, recap them all,
+import or export them as BED. Right-click an item of a track to add it as a feature; right-click a track for Next / Previous Item,
+Export Items as BED and Copy to Features (its items in the whole sequence, the view, the selection or the highlights, as one type,
+each with a note "from track ..." and the file's extra columns as notes; an item already there as a feature is skipped; one undo
+step); right-click a signal for Regions Above Threshold (the stretches at or over a value, joined across small gaps, as highlights
+or features). A project (.oDNA) keeps the order, groups and look of the tracks, and the highlights. The
 Legend button in the genome view's header opens a window explaining every colour and mark. A GFF3/GTF file first lists its
 feature types with their number of lines: untick the ones you do not want (a type whose lines only cover the whole sequence, such
 as a `region` line naming the chromosome, starts unticked). The same window offers the extra fields the file has: each line's
@@ -93,7 +114,7 @@ record from NCBI; a background genome from NCBI), Features and Tracks (GFF3/GTF/
 NCBI protein, shown in the 3D structure window), Alignments (BAM, or map FASTQ reads) and Primers (a primer list). A track, VCF or BAM file is checked against the open sequence: another sequence name, items past its end, VCF REF bases that are not the bases here or a BAM reference of another length give a warning naming what differs, and the file is loaded anyway.
 
 **Primer lists** (Import → Primers): either FASTA (`>name` then the sequence, on one or more lines) or a table with one primer per line, the name then the sequence, separated by a tab, a comma or a semicolon (more columns are ignored). A first line naming the columns (`name`, `sequence`...), blank lines and lines starting with `#` are skipped. A primer is 8 to 200 letters of A, C, G, T or IUPAC codes (either case) with a one-line name of at most 60 characters. Every other line is refused, never guessed: the report names each refused line with its number and the reason, and nothing invalid reaches the primer database. *Export* is grouped the
-same way, each group greyed while there is nothing of it: Whole File (a GenBank copy; an **Open DNA Project** `.odp`: the
+same way, each group greyed while there is nothing of it: Whole File (a GenBank copy; an **Open DNA Project** `.oDNA`: the
 GenBank file plus the loaded tracks and BAM files (as paths, absolute and relative to the project, since BAM files can be huge), the DNA lock
 the display options and what each pane keeps of itself (the Digest's digests with their ticked enzymes and filters, the Sequence view's letter size and spacing); the **NCBI submission** pair `.fsa` + `.tbl` for table2asn), DNA (FASTA, FASTA of the selection, plain bases),
 Features (GFF3, BED, NCBI feature table), Protein (the translations of the CDS features, or of the selection), Alignments (each loaded BAM as
@@ -405,7 +426,7 @@ crowded draws everything. **A position scale** runs inside the features (under t
 5 x 10^k bp, the step picked from the map's size so the labels never crowd (every 10 bp on a 100 bp oligo, every 500 bp on a
 6 kb plasmid, every 0.5-1 Mb on a 10 Mb genome), with smaller unlabelled ticks between when there is room, in bp, kb or Mb to
 suit the step. Rearranging the tabs lasts as long as the window; the next file you open starts from the standard layout again, so what
-you see never depends on what you left behind. The one exception is an Open DNA Project (`.odp`), which opens with the tabs
+you see never depends on what you left behind. The one exception is an Open DNA Project (`.oDNA`), which opens with the tabs
 it was saved with. Windows show tabs of split panes: pick any view or tool in a pane's header ("+" after the last tab adds
 one; right-click a tab to rename/duplicate it, middle-click duplicates; View → Reset View Tabs puts the standard layout back).
 A pane builds its view the first time you look at it, and drops it when it shows something else, so tabs you never visit and
