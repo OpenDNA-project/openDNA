@@ -14,19 +14,10 @@ edit. You can design primers, Cas9 guides and assemblies on your own computer, a
 
 | System | Requirements | Download |
 |---|---|---|
-| **Windows** | Windows 10 or 11, 64-bit (x86-64). No administrator rights, no Python. | **[oDNA_beta_<version>-setup.exe](https://github.com/OpenDNA-project/openDNA/releases/latest)**: the installer; openDNA then updates itself |
-| **macOS, Apple Silicon** | macOS 14 Sonoma or later, on a Mac with an M1 chip or later (Apple menu → *About This Mac* shows **Chip**). | **[oDNA_beta_<version>-macos-arm64.dmg](https://github.com/OpenDNA-project/openDNA/releases/latest)**: open it, drag openDNA to Applications; openDNA then updates itself |
-| **macOS, Intel** | macOS 14 Sonoma or later, on an Intel Mac (*About This Mac* shows **Processor**). | **[oDNA_beta_<version>-macos-x86_64.dmg](https://github.com/OpenDNA-project/openDNA/releases/latest)**: open it, drag openDNA to Applications; openDNA then updates itself |
-| **Linux** | 64-bit (x86-64) with glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+ (`ldd --version` shows it; not RHEL / Rocky 9). A desktop (X11 or Wayland) with OpenGL and fontconfig. | **[oDNA_beta_<version>-linux-x86_64.AppImage](https://github.com/OpenDNA-project/openDNA/releases/latest)**: `chmod +x` it and run it; it updates itself |
-
-Older systems, Windows on ARM, or anything else: [run from source](CONTRIBUTING.md#run-from-source) (Python 3.11+ and Rust).
-The Terminal's pipelines (optional: read mapping, assembly, MAFFT / Clustal Omega) run bioconda tools, on Windows through WSL (*Install tools* in each pipeline).
-
-Each release has a `SHA256SUMS` file listing the checksum of every download, on the [releases page](https://github.com/OpenDNA-project/openDNA/releases).
-
-> **Keep a copy of files you cannot replace.** The programs are not signed, which is why your system will warn you the first time.
-> Check the SHA-256 against the release notes, then click *More info* → *Run anyway* on Windows, or right-click openDNA → *Open* →
-> *Open* on macOS ([SECURITY.md](SECURITY.md)). If you are new, the [tutorial](docs/TUTORIAL.md) takes about 15 minutes.
+| **Windows** | Windows 10 or 11, 64-bit (x86-64). | **[oDNA_beta_<version>-setup.exe](https://github.com/OpenDNA-project/openDNA/releases/latest)**:
+| **macOS, Apple Silicon** | macOS 14 Sonoma or later, on a Mac with an M1 chip or later (Apple menu → *About This Mac* shows **Chip**). | **[oDNA_beta_<version>-macos-arm64.dmg](https://github.com/OpenDNA-project/openDNA/releases/latest)**: open it, drag openDNA to Applications |
+| **macOS, Intel** | macOS 14 Sonoma or later, on an Intel Mac (*About This Mac* shows **Processor**). | **[oDNA_beta_<version>-macos-x86_64.dmg](https://github.com/OpenDNA-project/openDNA/releases/latest)**: open it, drag openDNA to Applications |
+| **Linux** | 64-bit (x86-64) with glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+ (`ldd --version` shows it; not RHEL / Rocky 9). A desktop (X11 or Wayland) with OpenGL and fontconfig. | **[oDNA_beta_<version>-linux-x86_64.AppImage](https://github.com/OpenDNA-project/openDNA/releases/latest)**: `chmod +x` |
 
 ## Features
 
