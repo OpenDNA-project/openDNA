@@ -131,25 +131,28 @@ impl Mem {
         Mem { intervals, reach, levels }
     }
 
-    fn bins(&self, start: u64, end: u64, n: usize) -> Vec<Acc> {
+    fn bins(&self, start: u64, end: u64, n: usize, zoom: bool) -> Vec<Acc> {
         let mut bins = Bins::new(start, end, n);
         let half = bins.width / 2.0;
-        // The coarsest level whose blocks are at most half a bin wide; none: the intervals themselves.
-        match self.levels.iter().rev().find(|(size, _)| *size as f64 <= half) {
+        // The coarsest level whose blocks are at most half a bin wide; none (or not `zoom`): the intervals themselves.
+        match self.levels.iter().rev().find(|(size, _)| zoom && *size as f64 <= half) {
             Some((size, blocks)) => {
                 let (first, last) = ((start / size) as usize, ((end + size - 1) / size) as usize);
                 for (i, acc) in blocks.iter().enumerate().take(last.min(blocks.len())).skip(first) {
                     bins.add(i as u64 * size, (i as u64 + 1) * size, acc);
                 }
             }
-            None => {
-                let first = self.reach.partition_point(|&far| far <= start);   // the first interval that reaches past start
-                for &(s, e, v) in self.intervals[first..].iter().take_while(|iv| iv.0 < end) {
-                    bins.add(s, e, &value(s, e, v as f64));
-                }
-            }
+            None => self.each(start, end, |s, e, v| bins.add(s, e, &value(s, e, v))),
         }
         bins.out
+    }
+
+    /// Each interval that reaches into [start, end), in order of start, with its value.
+    fn each(&self, start: u64, end: u64, mut f: impl FnMut(u64, u64, f64)) {
+        let first = self.reach.partition_point(|&far| far <= start);   // the first interval that reaches past start
+        for &(s, e, v) in self.intervals[first..].iter().take_while(|iv| iv.0 < end) {
+            f(s, e, v as f64);
+        }
     }
 }
 
@@ -271,43 +274,90 @@ impl Signal {
 
     /// `n` bins over [start, end) of sequence `seq`: (mean over the bases with a value, highest value) each, NaN where none.
     pub fn bins(&self, seq: &str, start: u64, end: u64, n: usize) -> io::Result<Vec<(f64, f64)>> {
-        let accs = match &self.source {
-            Source::Mem(mems) => match mems.get(seq) {
-                Some(m) => m.bins(start, end, n),
-                None => vec![Acc::default(); n.max(1)],
-            },
+        Ok(self.accs(seq, start, end, n, true)?.iter().map(Acc::result).collect())
+    }
+
+    /// [start, end) read from the values themselves, never a zoom level (exact: a recap's numbers): (bases with a value, their
+    /// sum, lowest, highest), the extremes NaN when no base has one.
+    pub fn stats(&self, seq: &str, start: u64, end: u64) -> io::Result<(f64, f64, f64, f64)> {
+        let a = self.accs(seq, start, end, 1, false)?[0];
+        Ok(if a.covered > 0.0 { (a.covered, a.sum, a.min, a.max) } else { (0.0, 0.0, f64::NAN, f64::NAN) })
+    }
+
+    /// The stretches of [start, end) where the value is at least `threshold`, read from the values themselves: [(start, end)] in
+    /// order, stretches that touch merged into one.
+    pub fn runs(&self, seq: &str, start: u64, end: u64, threshold: f64) -> io::Result<Vec<(u64, u64)>> {
+        let mut out: Vec<(u64, u64)> = Vec::new();
+        self.each_value(seq, start, end, |s, e, v| {
+            let (s, e) = (s.max(start), e.min(end));
+            if v >= threshold && s < e {
+                match out.last_mut() {
+                    Some(last) if s <= last.1 => last.1 = last.1.max(e),
+                    _ => out.push((s, e)),
+                }
+            }
+        })?;
+        Ok(out)
+    }
+
+    /// Each value stored over [start, end) of `seq` (an interval and its value, as the file holds them), in order of start.
+    fn each_value(&self, seq: &str, start: u64, end: u64, mut f: impl FnMut(u64, u64, f64)) -> io::Result<()> {
+        match &self.source {
+            Source::Mem(mems) => {
+                if let Some(m) = mems.get(seq) {
+                    m.each(start, end, f);
+                }
+            }
             Source::Big(reader) => {
-                let Some(&(_, length)) = self.sequences.iter().find(|(name, _)| name == seq) else {
-                    return Ok(vec![(f64::NAN, f64::NAN); n.max(1)]);
-                };
-                let mut r = reader.lock().unwrap_or_else(|e| e.into_inner());
-                let (s, e) = (start.min(length) as u32, end.min(length) as u32);
-                let mut bins = Bins::new(start, end, n);
-                let half = bins.width / 2.0;
-                let zoom = r.info().zoom_headers.iter().map(|z| z.reduction_level).filter(|&l| l as f64 <= half).max();
-                let err = |e: &dyn std::fmt::Display| invalid(format!("{seq}:{start}-{end}: {e}"));
-                if s < e {
-                    match zoom {
-                        Some(level) => {
-                            for rec in r.get_zoom_interval(seq, s, e, level).map_err(|x| err(&x))? {
-                                let rec = rec.map_err(|x| err(&x))?;
-                                let m = &rec.summary;
-                                bins.add(rec.start as u64, rec.end as u64,
-                                         &Acc { sum: m.sum, covered: m.bases_covered as f64, max: m.max_val, min: m.min_val });
-                            }
-                        }
-                        None => {
-                            for v in r.get_interval(seq, s, e).map_err(|x| err(&x))? {
-                                let v = v.map_err(|x| err(&x))?;
-                                bins.add(v.start as u64, v.end as u64, &value(v.start as u64, v.end as u64, v.value as f64));
-                            }
+                if let Some(&(_, length)) = self.sequences.iter().find(|(name, _)| name == seq) {
+                    let mut r = reader.lock().unwrap_or_else(|e| e.into_inner());
+                    let (s, e) = (start.min(length) as u32, end.min(length) as u32);
+                    let err = |e: &dyn std::fmt::Display| invalid(format!("{seq}:{start}-{end}: {e}"));
+                    if s < e {
+                        for v in r.get_interval(seq, s, e).map_err(|x| err(&x))? {
+                            let v = v.map_err(|x| err(&x))?;
+                            f(v.start as u64, v.end as u64, v.value as f64);
                         }
                     }
                 }
+            }
+        }
+        Ok(())
+    }
+
+    /// The bins' sums (through the zoom levels when `zoom` and a bin spans many bases).
+    fn accs(&self, seq: &str, start: u64, end: u64, n: usize, zoom: bool) -> io::Result<Vec<Acc>> {
+        Ok(match &self.source {
+            Source::Mem(mems) => match mems.get(seq) {
+                Some(m) => m.bins(start, end, n, zoom),
+                None => vec![Acc::default(); n.max(1)],
+            },
+            Source::Big(reader) => {
+                let mut bins = Bins::new(start, end, n);
+                let half = bins.width / 2.0;
+                let length = self.sequences.iter().find(|(name, _)| name == seq).map(|&(_, l)| l);
+                let level = {
+                    let r = reader.lock().unwrap_or_else(|e| e.into_inner());
+                    r.info().zoom_headers.iter().map(|z| z.reduction_level).filter(|&l| zoom && l as f64 <= half).max()
+                };
+                match (level, length) {
+                    (Some(level), Some(length)) if start.min(length) < end.min(length) => {
+                        let mut r = reader.lock().unwrap_or_else(|e| e.into_inner());
+                        let (s, e) = (start.min(length) as u32, end.min(length) as u32);
+                        let err = |e: &dyn std::fmt::Display| invalid(format!("{seq}:{start}-{end}: {e}"));
+                        for rec in r.get_zoom_interval(seq, s, e, level).map_err(|x| err(&x))? {
+                            let rec = rec.map_err(|x| err(&x))?;
+                            let m = &rec.summary;
+                            bins.add(rec.start as u64, rec.end as u64,
+                                     &Acc { sum: m.sum, covered: m.bases_covered as f64, max: m.max_val, min: m.min_val });
+                        }
+                    }
+                    (Some(_), _) => {}   // (a sequence the file does not have, or nothing of it in view)
+                    (None, _) => self.each_value(seq, start, end, |s, e, v| bins.add(s, e, &value(s, e, v)))?,
+                }
                 bins.out
             }
-        };
-        Ok(accs.iter().map(Acc::result).collect())
+        })
     }
 }
 
@@ -341,6 +391,13 @@ mod tests {
         // the whole of it in 1 bin goes through the zoom levels (64 bp blocks): (100 + 300 + 200) / 300 bases = 2
         assert_eq!(s.bins("c", 0, 600, 1).unwrap(), vec![(2.0, 3.0)]);
         assert!(s.bins("other", 0, 10, 2).unwrap()[0].0.is_nan());
+        // stats read the values, never a zoom block: [50, 550) holds 50 bases at 1, 100 at 3, 50 at 2 -> 200 bases, sum 450
+        assert_eq!(s.stats("c", 50, 550).unwrap(), (200.0, 450.0, 1.0, 3.0));
+        // at least 2: [100, 200) and [500, 600), apart; at least 1 from 50: [50, 200) (touching values merged), [500, 600)
+        assert_eq!(s.runs("c", 0, 600, 2.0).unwrap(), vec![(100, 200), (500, 600)]);
+        assert_eq!(s.runs("c", 50, 600, 1.0).unwrap(), vec![(50, 200), (500, 600)]);
+        let none = s.stats("c", 250, 400).unwrap();
+        assert!(none.0 == 0.0 && none.2.is_nan());
         // wig: fixedStep from 1 (0 here) every 10 with span 5, then variableStep at 101 (100) span 10
         let w = write(&dir, "a.wig", "fixedStep chrom=c start=1 step=10 span=5\n4\n8\nvariableStep chrom=c span=10\n101 6\n");
         let s = Signal::open(&w).unwrap();
@@ -364,6 +421,9 @@ mod tests {
         // [1990, 2010) in 2 bins: 10 bases at 10 then 10 at 30; a sequence the file does not have: no value
         assert_eq!(s.bins("pBAD30_eilR", 1990, 2010, 2).unwrap(), vec![(10.0, 10.0), (30.0, 30.0)]);
         assert!(s.bins("other", 0, 10, 1).unwrap()[0].0.is_nan());
+        // stats over [1000, 4500): 1000 bases at 10, 2000 at 30, 500 at 20 -> sum 80,000, lowest 10, highest 30
+        assert_eq!(s.stats("pBAD30_eilR", 1000, 4500).unwrap(), (3500.0, 80_000.0, 10.0, 30.0));
+        assert_eq!(s.runs("pBAD30_eilR", 0, 5936, 20.0).unwrap(), vec![(2000, 5936)]);
         // sites.bb: three BED 9 entries, read as the BED lines they stand for (name, strand, itemRgb colour)
         let t = crate::tracks::Track::open(&hub.join("sites.bb")).unwrap();
         let (items, more) = t.query("pBAD30_eilR", 0, 5936, 10);

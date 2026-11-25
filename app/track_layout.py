@@ -7,6 +7,9 @@ table of rows (`Editor.row_table`). The layout is a list of nodes, each a row ke
 holds rows, never groups). Each row has a `Style`. Every change made through a method here calls `on_change(edited)` (the
 Editor's: the views and the Tracks panel follow it, and a change made by hand, `edited`, is something new for a project to save;
 adding and removing rows and loading a saved layout are not).
+
+The layout also holds the highlighted regions (`regions`, a list of `Region`): bands drawn across every track, listed in the
+panel's Regions tab, recapped and exported as BED, saved with the rest.
 """
 import re
 from collections import Counter
@@ -22,6 +25,7 @@ RENDERS = ("bars", "line", "heatmap")      # how a signal track is drawn
 SUMMARIES = ("mean", "max")                # what a signal shows where a pixel holds many bases: their mean, or the highest value
 RANGES = ("auto", "group", "fixed")        # a signal's range: its own values in view, its group's, or low..high
 FIXED = ("bases",)                         # kinds that are only shown or hidden (no display mode, height or colour)
+REGION_COLOR = "#ffb300"                   # a highlight's colour unless one is chosen
 SPLIT = re.compile(r"[_\-. ]+")   # what separates the parts of a track's name ("Group by name")
 
 
@@ -45,6 +49,15 @@ DEFAULT = asdict(Style())
 
 
 @dataclass
+class Region:
+    """A highlighted region: bases start..end (0-based, end excluded), a name and a colour ("#rrggbb")."""
+    start: int
+    end: int
+    name: str = ""
+    color: str = REGION_COLOR
+
+
+@dataclass
 class Group:
     name: str
     keys: list = field(default_factory=list)
@@ -55,6 +68,7 @@ class Layout:
     def __init__(self, on_change=None):
         self.nodes = [Group(SEQUENCE, list(BUILTIN))]
         self.styles = {}
+        self.regions = []
         self.on_change = on_change or (lambda edited=True: None)
 
     # ---- reading ---------------------------------------------------------------------------------------------------------------
@@ -127,6 +141,23 @@ class Layout:
         hosts = set(keys)
         self.restyle_each({k: {"overlay": None} for k, st in self.styles.items() if k in hosts or st.overlay in hosts})
 
+    def add_regions(self, regions):
+        """Highlight `regions` (Region), kept in order of start."""
+        self.regions = sorted(self.regions + list(regions), key=lambda r: (r.start, r.end))
+        self.on_change(True)
+
+    def change_regions(self, regions, **fields):
+        """Rename or recolour highlights (`name`, `color`)."""
+        for r in regions:
+            for name, value in fields.items():
+                setattr(r, name, value)
+        self.on_change(True)
+
+    def remove_regions(self, regions):
+        gone = {id(r) for r in regions}
+        self.regions = [r for r in self.regions if id(r) not in gone]
+        self.on_change(True)
+
     def ungroup(self, name):
         """The group's rows go to the top level, where the group was."""
         g = self.group(name)
@@ -190,11 +221,12 @@ class Layout:
     def to_json(self):
         nodes = [{"group": n.name, "keys": list(n.keys), "collapsed": n.collapsed} if isinstance(n, Group) else n for n in self.nodes]
         styles = {k: {f: v for f, v in asdict(s).items() if v != DEFAULT[f]} for k, s in self.styles.items()}
-        return {"nodes": nodes, "styles": {k: s for k, s in styles.items() if s}}
+        return {"nodes": nodes, "styles": {k: s for k, s in styles.items() if s}, **({"regions": [asdict(r) for r in self.regions]} if self.regions else {})}
 
-    def load_json(self, data, present):
+    def load_json(self, data, present, length=None):
         """A saved layout, for the rows this file has now (`present`): rows it no longer has are dropped, rows it did not know
-        are added at the end, and a style value that cannot be read is left at its default (an older or hand-edited project)."""
+        are added at the end, and a style value that cannot be read is left at its default (an older or hand-edited project); a
+        highlight that cannot be read, or that ends past `length` (the sequence's), is left out."""
         if not data:
             return
         present = list(present)
@@ -210,6 +242,8 @@ class Layout:
                 for f, v in values.items():
                     if f in DEFAULT and _valid(f, v):
                         setattr(self.style(k), f, v)
+        self.regions = [Region(r["start"], r["end"], str(r.get("name", "")), r.get("color") or REGION_COLOR)
+                        for r in data.get("regions") or [] if isinstance(r, dict) and _region(r) and (length is None or r["end"] <= length)]
         self.on_change(False)
 
 
@@ -234,6 +268,43 @@ def _valid(name, value):
             "summary": lambda v: v in SUMMARIES, "range": lambda v: v in RANGES,
             "low": lambda v: type(v) in (int, float), "high": lambda v: type(v) in (int, float),
             "overlay": lambda v: v is None or isinstance(v, str)}[name](value)
+
+
+def _region(r):
+    """Can this saved highlight be read (whole positions, start before end, a colour or none)?"""
+    return type(r.get("start")) is int and type(r.get("end")) is int and 0 <= r["start"] < r["end"] and _valid("color", r.get("color"))
+
+
+def regions_bed(regions, seqid):
+    """Highlights as BED lines (sequence, start, end, name, score 0, strand ., thickStart, thickEnd, itemRgb), so a genome
+    browser shows them in their colours."""
+    def rgb(color):
+        return ",".join(str(int(color[i:i + 2], 16)) for i in (1, 3, 5))
+    return "".join(f"{seqid}\t{r.start}\t{r.end}\t{r.name or '.'}\t0\t.\t{r.start}\t{r.end}\t{rgb(r.color)}\n" for r in regions)
+
+
+def read_regions_bed(text, length):
+    """([Region], [what was not read]) from BED text: name and itemRgb kept when there; a line that is not a region of a
+    sequence of `length` bases is named, not dropped silently. The sequence column is not checked (a BED of another name
+    for the same sequence is common)."""
+    regions, unread = [], []
+    for n, line in enumerate(text.splitlines(), 1):
+        f = line.split("\t") if "\t" in line else line.split()
+        if not line.strip() or f[0].startswith(("#", "track", "browser")):
+            continue
+        try:
+            start, end = int(f[1]), int(f[2])
+        except (IndexError, ValueError):
+            unread.append(f"line {n}: not sequence, start, end")
+            continue
+        if not 0 <= start < end <= length:
+            unread.append(f"line {n}: {start:,}-{end:,} is not within 0-{length:,}")
+            continue
+        color = REGION_COLOR
+        if len(f) > 8 and re.fullmatch(r"\d+,\d+,\d+", f[8]) and all(int(c) < 256 for c in f[8].split(",")):   # (as tracks read it)
+            color = "#%02x%02x%02x" % tuple(int(c) for c in f[8].split(","))
+        regions.append(Region(start, end, f[3] if len(f) > 3 and f[3] != "." else "", color))
+    return regions, unread
 
 
 def name_groups(labels, parts=1):

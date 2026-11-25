@@ -24,6 +24,9 @@ pub struct Item {
     pub color: Option<Box<str>>,
     /// GFF `Note`, `product` or `description`; None when there is none.
     pub note: Option<Box<str>>,
+    /// A BED line's columns past the ninth (itemRgb), tab-separated, the block columns of a BED12 left out: what a file adds
+    /// to each item (TSS height, TU length...); None when there are none.
+    pub extra: Option<Box<str>>,
 }
 
 pub struct Track {
@@ -320,7 +323,7 @@ fn parse_gff(line: &str) -> Parsed {
     let name = first(&["Name", "gene_name", "gene", "locus_tag", "gene_id", "ID", "transcript_id"]).unwrap_or_else(|| f[2].to_string());
     let color = first(&["color", "colour", "Color", "Colour"]).map(String::into_boxed_str);
     let note = first(&["Note", "product", "description"]).map(String::into_boxed_str);
-    Ok(Some((f[0].to_string(), Item { start: start - 1, end, strand, name, kind: f[2].to_string(), color, note })))
+    Ok(Some((f[0].to_string(), Item { start: start - 1, end, strand, name, kind: f[2].to_string(), color, note, extra: None })))
 }
 
 /// BED line (0-based start, end-exclusive) -> (sequence, item).
@@ -338,7 +341,11 @@ fn parse_bed(line: &str) -> Parsed {
     let name = f.get(3).map(|s| s.to_string()).unwrap_or_default();
     // itemRgb (column 9): "r,g,b"; "0" means none.
     let color = f.get(8).filter(|c| **c != "0" && **c != ".").map(|c| c.to_string().into_boxed_str());
-    Ok(Some((f[0].to_string(), Item { start, end, strand, name, kind: "bed".into(), color, note: None })))
+    // Past itemRgb: a BED12's blocks (a count, then lists of sizes and starts), then whatever columns the file adds.
+    let blocks = f.len() >= 12 && f[9].parse::<u32>().is_ok() && f[10].split(',').all(|v| v.is_empty() || v.parse::<u64>().is_ok());
+    let rest = f.get(if blocks { 12 } else { 9 }..).unwrap_or_default();
+    let extra = (!rest.is_empty()).then(|| rest.join("\t").into_boxed_str());
+    Ok(Some((f[0].to_string(), Item { start, end, strand, name, kind: "bed".into(), color, note: None, extra })))
 }
 
 /// VCF line (CHROM POS ID REF ALT ...) -> (sequence, item spanning the REF bases), named
@@ -355,7 +362,7 @@ fn parse_vcf(line: &str) -> Parsed {
     let short = |s: &str| if s.len() > 12 { format!("{}…", s.chars().take(10).collect::<String>()) } else { s.to_string() };
     let change = format!("{}>{}", short(f[3]), short(f[4]));
     let name = if f[2] == "." { change } else { format!("{} {change}", f[2]) };
-    let item = Item { start: pos - 1, end: pos - 1 + f[3].len().max(1) as u64, strand: 0, name, kind: "variant".into(), color: None, note: None };
+    let item = Item { start: pos - 1, end: pos - 1 + f[3].len().max(1) as u64, strand: 0, name, kind: "variant".into(), color: None, note: None, extra: None };
     Ok(Some((f[0].to_string(), item)))
 }
 
@@ -443,9 +450,9 @@ chr1\t100\t.\tA\tG\t50\nchr1\t200\trs7\tACGT\tA\t.\n").unwrap();
         let gff = std::env::temp_dir().join("ge_test_wrap.gff3");
         std::fs::write(&gff, "##gff-version 3
 ##sequence-region c 1 1000
-c	src	region	100	500	.	.	.	ID=a;Name=one;color=#257215
-c	src	region	950	50	.	.	.	ID=w;Name=wraps;colour=185,21,21;Note=across%20the%20origin
-c	src	gene	600	700	.	+	.	ID=g;product=lacZ
+c\tsrc\tregion\t100\t500\t.\t.\t.\tID=a;Name=one;color=#257215
+c\tsrc\tregion\t950\t50\t.\t.\t.\tID=w;Name=wraps;colour=185,21,21;Note=across%20the%20origin
+c\tsrc\tgene\t600\t700\t.\t+\t.\tID=g;product=lacZ
 ").unwrap();
         let mut t = Track::open(&gff).unwrap();
         // --- a region that does not cover the sequence is worth showing; the wrapping line is counted with the others ---
@@ -469,9 +476,15 @@ c	src	gene	600	700	.	+	.	ID=g;product=lacZ
         assert_eq!(Track::open(&one).unwrap().types(), vec![("gene".into(), 1, false)]);
         // --- a BED colour (itemRgb), "0" meaning none ---
         let bed = std::env::temp_dir().join("ge_test_rgb.bed");
-        std::fs::write(&bed, "c	0	10	x	0	+	0	10	255,0,0
-c	20	30	y	0	+	20	30	0
+        std::fs::write(&bed, "c\t0\t10\tx\t0\t+\t0\t10\t255,0,0
+c\t20\t30\ty\t0\t+\t20\t30\t0
 ").unwrap();
         assert_eq!(Track::open(&bed).unwrap().colors(), vec![("255,0,0".to_string(), 1)]);
+        // --- the columns past itemRgb are kept (a BED12's blocks left out) ---
+        std::fs::write(&bed, "c\t0\t10\tx\t0\t+\t0\t10\t0\theight=81\tRSPM=12\n\
+c\t20\t30\ty\t0\t+\t20\t30\t0\t2\t3,4,\t0,6,\tTU=1\nc\t40\t50\tz\n").unwrap();
+        let extras: Vec<Option<String>> = Track::open(&bed).unwrap().query("c", 0, 100, 10).0.iter()
+            .map(|i| i.extra.as_deref().map(str::to_string)).collect();
+        assert_eq!(extras, vec![Some("height=81\tRSPM=12".into()), Some("TU=1".into()), None]);
     }
 }

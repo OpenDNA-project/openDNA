@@ -734,6 +734,21 @@ def test_track_layout_moves_groups_reloads_and_bulk_helpers():
     ed.track_layout.separate(["m.bw"])
     assert [ed.track_layout.style(k).overlay for k in ("m.bw", "x.bw")] == [None, "p.bw"]
     ed.track_layout.separate(["p.bw"])   # (the row they are drawn in: all of them)
+    # highlighted regions: kept in order of start, saved and read back with the layout; BED out and in (name and colour kept), the
+    # lines that are not regions of this sequence named
+    L = ed.track_layout
+    L.add_regions([track_layout.Region(50, 60, "b", "#26a69a"), track_layout.Region(10, 20, "a")])
+    L.change_regions(L.regions[:1], name="first")
+    assert [(r.start, r.end, r.name, r.color) for r in L.regions] == [(10, 20, "first", "#ffb300"), (50, 60, "b", "#26a69a")]
+    again = track_layout.Layout()
+    again.load_json(L.to_json() | {"regions": L.to_json()["regions"] + [{"start": 30, "end": 20}, {"start": "x"}]}, ed.row_keys())
+    assert again.regions == L.regions   # (the two that cannot be read are left out)
+    bed = track_layout.regions_bed(L.regions, "t")
+    assert bed == "t\t10\t20\tfirst\t0\t.\t10\t20\t255,179,0\nt\t50\t60\tb\t0\t.\t50\t60\t38,166,154\n"
+    read, unread = track_layout.read_regions_bed("track name=x\n" + bed + "t 5 8\nt\t90\t200\nnot a line\n", 100)
+    assert read == L.regions + [track_layout.Region(5, 8)] and unread == ["line 5: 90-200 is not within 0-100", "line 6: not sequence, start, end"]
+    L.remove_regions(L.regions[:1])
+    assert [r.name for r in L.regions] == ["b"]
     assert ed.track_layout.style("x.bw").overlay is None
     sig = track_layout.Layout()
     sig.load_json({"nodes": ["s"], "styles": {"s": {"render": "heatmap", "summary": "max", "range": "fixed", "low": -2, "high": 5.5,
