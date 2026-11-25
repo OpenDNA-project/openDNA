@@ -35,7 +35,7 @@ Plants repeats in random DNA and checks repeats.find_repeats and pair_repeats re
 
 ## `test_multiple_alignment_consensus_identity_and_parsing`
 
-**Result:** ✅ passed in 0.07 s · [line 112](../../tests/test_repeats_msa.py#L112) · **Area:** Multiple sequence alignment · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.05 s · [line 112](../../tests/test_repeats_msa.py#L112) · **Area:** Multiple sequence alignment · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the built-in multiple aligner could lose bases, misplace a gap, or give wrong consensus, identity and column/position mapping in the alignment view.
 

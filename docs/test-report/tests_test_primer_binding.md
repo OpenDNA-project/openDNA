@@ -4,7 +4,7 @@
 
 ## `test_binding_agrees_with_the_documented_rules_written_in_python`
 
-**Result:** ✅ passed in 0.13 s · [line 170](../../tests/test_primer_binding.py#L170) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.15 s · [line 170](../../tests/test_primer_binding.py#L170) · **Area:** Primer binding · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer binding sites shown on the map could deviate from the documented seed/extension rules on any of thousands of combinations of mismatches, tails, strands and topologies.
 
@@ -21,7 +21,7 @@ Compares find_primers with a Python re-implementation of the documented rules on
 
 ## `test_binding_mismatches_seed_tails_and_extension`
 
-**Result:** ✅ passed in 0.04 s · [line 231](../../tests/test_primer_binding.py#L231) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 231](../../tests/test_primer_binding.py#L231) · **Area:** Primer binding · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, specific binding rules (where a mismatch is allowed, how far the annealed part extends, how tails are handled) could change and primers would be shown binding where they do not, or not where they do.
 
@@ -92,7 +92,7 @@ Opens the sample .dna file with 15 primers and their stored primer_bind features
 
 ## `test_editor_primer_sites_pcr_product_specificity_and_save`
 
-**Result:** ✅ passed in 0.06 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.07 s · [line 640](../../tests/test_primer_binding.py#L640) · **Area:** Primer sites in the editor, PCR product, specificity · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the editor could colour the wrong mismatched bases, build a wrong PCR product (tails, origin, mismatches), give wrong non-specific priming warnings, or alter the document and undo history when saving primer sites. Or the wrong site could be called the best one, or a site hidden by hand could hide the whole primer, come back on its own, or survive a change of the binding rule; or a site below the minimum Tm could still be drawn, or hiding a primer could crash the sequence view, or the primers and sites hidden in a file could be lost when it is saved and opened again, or the file be unreadable by other programs, or two primers could share a name (in the database, a file, or both).
 

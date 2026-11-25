@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.57 s · [line 63](../../tests/test_documents.py#L63) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.55 s · [line 63](../../tests/test_documents.py#L63) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -31,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.24 s · [line 180](../../tests/test_documents.py#L180) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.15 s · [line 180](../../tests/test_documents.py#L180) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -52,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 18.15 s · [line 242](../../tests/test_documents.py#L242) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 18.10 s · [line 242](../../tests/test_documents.py#L242) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -100,7 +100,7 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.13 s · [line 376](../../tests/test_documents.py#L376) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.14 s · [line 376](../../tests/test_documents.py#L376) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
@@ -159,7 +159,7 @@ Copies a selection as reverse complement and pastes it into another document, ch
 
 **Why it matters:** Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, the Alignment view's track layout, display settings or the DNA lock.
 
-Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, the primer sites shown or hidden by hand, the signal tracks, and the Alignment view's track layout (the track in its group, only the styles changed from the defaults).
+Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .oDNA project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, the primer sites shown or hidden by hand, the signal tracks, and the Alignment view's track layout (the track in its group, only the styles changed from the defaults).
 
 | # | Input | Expected output |
 |---|---|---|
@@ -170,10 +170,11 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 | 5 | Built TT+ATGAAACCCGGGTAA+TT+RC(gene)+TT with CDS 3..17 and complement(20..34) | proteins ['MKPG','MKPG']; table has '3\t17\tCDS', '34\t20\tCDS' and a 'note rev' line |
 | 6 | translate('ATGAAATAA'); fasta_text('x', 75 A) | 'MK*'; lines of 70 and 5 |
 | 7 | write_submission | .fsa starts with '>seq_id'; .tbl exists |
-| 8 | save_project with a GFF track (added in group 'Hub', dense), GC % hidden, a signal track s.bw, enzymes on, misc_feature hidden, DNA locked | zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'; signals = [s.bw with its path, relative path, seqid and name]; track_layout = {nodes: [Sequence group with the 5 built-in rows, Hub group with extra.gff3, s.bw], styles: {extra.gff3: {mode: dense}, GC %: {shown: false}}} |
-| 9 | open_project | same sequence and feature count; metadata equals what was written |
-| 10 | project_file for a track whose absolute path is gone, project moved | resolves to moved/extra.gff3 |
-| 11 | open_project on 'not a zip' bytes | OSError matching 'not an Open DNA Project' |
+| 8 | is_project on a.oDNA, B.ODNA, old.odp and a.gb | True for the first three (any case, and the .odp of older versions), False for a.gb |
+| 9 | save_project with a GFF track (added in group 'Hub', dense), GC % shown and Bases unfrozen (both against their defaults), a signal track s.bw, enzymes on, misc_feature hidden, DNA locked | zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'; signals = [s.bw with its path, relative path, seqid and name]; track_layout = {nodes: [Sequence group with the 5 built-in rows, Hub group with extra.gff3, s.bw], styles: {extra.gff3: {mode: dense}, GC %: {shown: true}, Bases: {frozen: false}}} |
+| 10 | open_project | same sequence and feature count; metadata equals what was written |
+| 11 | project_file for a track whose absolute path is gone, project moved | resolves to moved/extra.gff3 |
+| 12 | open_project on 'not a zip' bytes | OSError matching 'not an Open DNA Project' |
 
 **Review notes:**
 
@@ -187,7 +188,7 @@ Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 he
 
 ## `test_track_layout_moves_groups_reloads_and_bulk_helpers`
 
-**Result:** ✅ passed in 0.00 s · [line 661](../../tests/test_documents.py#L661) · **Area:** Alignment view tracks · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 664](../../tests/test_documents.py#L664) · **Area:** Alignment view tracks · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the Tracks panel could lose or double tracks when they are dragged between groups, a change could reach the views without a redraw, a project could close without offering to save a layout changed by hand, a project could reopen with tracks scrambled or styles broken, Group by Name, the light-to-dark colours or Fit could give wrong values, and two loaded files of the same name (or one named like a built-in row) could share one row, with nothing to show it, or highlighted regions could be lost from a project or read wrong from a BED file.
 
@@ -195,7 +196,7 @@ Drives the track layout model the Tracks panel edits (no widget): adding rows to
 
 | # | Input | Expected output |
 |---|---|---|
-| 1 | new Layout(on_change counts) | keys = the 5 built-in rows; one group 'Sequence' |
+| 1 | new Layout(on_change counts) | keys = the 5 built-in rows, Bases first; one group 'Sequence'; Bases and Features frozen, GC % hidden, the others shown and not frozen |
 | 2 | add(a, b) to group Hub; add(c, a) at the top level | keys = built-ins, a, b, c (a not added twice); 2 changes announced, not made by hand |
 | 3 | move([c, a], 'Hub') | Hub = [b, a, c] (display order), c no longer at the top level |
 | 4 | collapse(Hub); set_tree([(Hub, [c]), (None, [b]), (Sequence, built-ins)]) | keys = c, b, built-ins, a (a, not in the tree, kept at the end); Hub still collapsed |
@@ -209,7 +210,7 @@ Drives the track layout model the Tracks panel edits (no widget): adding rows to
 | 12 | gradient('#3949ab', 3); gradient('#3949AB', 1) | ['#babfe2', '#6e76a4', '#222c67'] (light = c + (255 - c) x 0.65, dark = c x 0.6); ['#3949ab'] |
 | 13 | fit_heights({a: (10, 33), b: (10, 15), c: (10, 40)}, 100, gap 6); the same a, b in 20 px | {a: 27, b: 15, c: 27} ((100 - 18) // 3 = 27, b capped at its natural 15); {a: 10, b: 10} |
 | 14 | Editor: add tracks a.bed, a.bed, Features (group G) and BAM r.bam; remove a.bed (2) and r.bam | names a.bed, a.bed (2), Features (2); rows after the built-ins: those 3 then r.bam, r.bam variants, r.bam reads (kind reads, track_of names r.bam); after removal a.bed, Features (2), group G = both; colour indexes 0 and 2 kept |
-| 15 | an Editor on w.odp, then on w.gb: add track x.bed, then hide it | adding leaves both unmodified; hiding marks w.odp modified, w.gb not |
+| 15 | an Editor on w.oDNA, then on w.gb: add track x.bed, then hide it | adding leaves both unmodified; hiding marks w.oDNA modified, w.gb not |
 | 16 | signals p.bw, m.bw, x.bw added; overlay all three; separate m.bw; separate p.bw | in ed.signals, kind signal, 5 loaded in all; overlay None, p.bw, p.bw; m.bw alone again, x.bw still in p.bw; then none overlaid |
 | 17 | load_json styles s: heatmap, max, fixed -2..5.5, overlay t; t: render dots, range own, low True | s read as given; t keeps bars, auto, 0.0 (not valid values) |
 | 18 | add regions (50,60,'b',#26a69a) and (10,20,'a'); rename the first 'first' | [(10,20,first,#ffb300), (50,60,b,#26a69a)] |
@@ -225,7 +226,7 @@ Drives the track layout model the Tracks panel edits (no widget): adding rows to
 
 ## `test_display_switches_and_kind_counts`
 
-**Result:** ✅ passed in 0.00 s · [line 789](../../tests/test_documents.py#L789) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 802](../../tests/test_documents.py#L802) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 
@@ -245,7 +246,7 @@ Builds a 1200 bp GenBank with six gene/CDS pairs plus two misc_features, and che
 
 ## `test_label_text_is_black_or_white_by_contrast_and_always_readable`
 
-**Result:** ✅ passed in 0.05 s · [line 813](../../tests/test_documents.py#L813) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 826](../../tests/test_documents.py#L826) · **Area:** Drawing · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Feature names drawn on a light or mid-tone colour could be hard or impossible to read.
 
@@ -264,7 +265,7 @@ text_color_on picks black or white by WCAG contrast ratio, so the letters on any
 
 ## `test_table_sort_key_puts_numbers_in_order_before_words`
 
-**Result:** ✅ passed in 0.00 s · [line 829](../../tests/test_documents.py#L829) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 842](../../tests/test_documents.py#L842) · **Area:** Drawing · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** A click on a table header could put 1,200 before 95, or scatter a column of locations, sizes and dates.
 

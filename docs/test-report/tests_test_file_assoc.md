@@ -44,7 +44,7 @@ Seeds the fake registry with other programs' keys, registers then unregisters, a
 
 ## `test_startup_question_decision_table`
 
-**Result:** ✅ passed in 0.04 s · [line 242](../../tests/test_file_assoc.py#L242) · **Area:** Windows file associations: start-up question · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 242](../../tests/test_file_assoc.py#L242) · **Area:** Windows file associations: start-up question · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it the app could nag users at every start about file associations, ask when running from source or off Windows, ignore 'don't ask again', or fail to repair the association after the exe was moved.
 
@@ -58,9 +58,10 @@ Walks the should_ask / ask_at_startup decision table with the fake registry and 
 | 4 | dont_ask=true (also with accepted=true and a stale registration) | None |
 | 5 | asked=true | None |
 | 6 | Registered for another path: never accepted / accepted / stale_asked_for = this path / launched from a third path | None / 'stale' / None / 'stale' |
-| 7 | asked=true written to an ini file and reloaded | None (the boolean survives the reload) |
-| 8 | accepted=true, registered for another path, ask_at_startup | None, and the registration now points to this exe (silent repair) |
-| 9 | asked=true but an OpenGenEdit registration present | should_ask 'stale'; ask_at_startup repairs silently and removes the legacy keys; then None |
+| 7 | Only .gb and .fa registered (an older version): never accepted / accepted / new_asked_for = the missing types / everything registered | no question / 'new' (the .odna type is missing) / no question again / no question |
+| 8 | asked=true written to an ini file and reloaded | None (the boolean survives the reload) |
+| 9 | accepted=true, registered for another path, ask_at_startup | None, and the registration now points to this exe (silent repair) |
+| 10 | asked=true but an OpenGenEdit registration present | should_ask 'stale'; ask_at_startup repairs silently and removes the legacy keys; then None |
 
 **Does not fully prove its claim:**
 

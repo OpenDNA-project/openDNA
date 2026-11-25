@@ -452,6 +452,12 @@ def test_signal_files_bigwig_bedgraph_and_wig_read_the_same_values(tmp_path):
     with pytest.raises(OSError, match="not valid bedGraph or wig"):
         (tmp_path / "bad.wig").write_text("variableStep span=3\n")
         core.Signal(str(tmp_path / "bad.wig"))
+    # several files read side by side: each as read alone does, in the order given; a file that cannot be read gives its error
+    files = [bw, tmp_path / "same.bedGraph", tmp_path / "missing.bed", ROOT / "demo" / "hub" / "pBAD30_eilR" / "sites.bb"]
+    many = track_files.read_many(files)
+    assert list(many) == files and [type(v).__name__ for v in many.values()] == ["Signal", "Signal", "FileNotFoundError", "Track"]
+    assert isinstance(many[files[2]], OSError)
+    assert many[bw].sequences() == [("pBAD30_eilR", 5936)]
 
 
 def test_tracks_gff_bed_parsing_query_density_and_search(track_of_many, tmp_path):

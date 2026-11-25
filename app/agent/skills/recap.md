@@ -8,7 +8,7 @@
 recap SOURCE START..END [--track FILE ...]
 ```
 
-`SOURCE` is an Open DNA Project (`.odp`: its tracks are loaded, in its order and groups) or a sequence file; `--track` adds a track file (GFF, GTF, BED, bigBed, VCF, bigWig, bedGraph, wig, BAM), as many as needed. The place is `START..END` (1-based, inclusive) or a feature's name.
+`SOURCE` is an Open DNA Project (`.oDNA`: its tracks are loaded, in its order and groups) or a sequence file; `--track` adds a track file (GFF, GTF, BED, bigBed, VCF, bigWig, bedGraph, wig, BAM), as many as needed. The place is `START..END` (1-based, inclusive) or a feature's name.
 
 Instead of a place: `--regions places.bed` recaps each region of a BED file; with neither, the project's highlighted regions.
 

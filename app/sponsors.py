@@ -99,7 +99,9 @@ def welcome_html():
     """The opening message: who made it, that it is free, and where the official download is."""
     by = f"{project.AUTHOR} (<a href='mailto:{project.CONTACT_EMAIL}'>{project.CONTACT_EMAIL}</a>)" if project.CONTACT_EMAIL else project.AUTHOR
     return (f"Version {project.VERSION}. Developed by {by}.<br>"
-            f"{project.NAME} is <b>free software</b> (AGPL-3.0). The official download is "
+            f"{project.NAME} is <b>free software</b> (AGPL-3.0). Support it: "
+            "<b><a href='https://github.com/sponsors/Ant-Champ'>GitHub Sponsors</a> &middot; <a href='https://ko-fi.com/achamp'>Ko-fi</a></b>.<br>"
+            f"The official download is "
             f"<a href='{project.REPO_URL}'>github.com/{project.REPO}</a>.<br>"
             f"Bugs and feature requests: <a href='{project.ISSUES_URL}'>GitHub Issues</a> "
             "(Help &gt; Report a Problem).")

@@ -282,6 +282,19 @@ def test_startup_question_decision_table(reg, ini, tmp_path):
     assert ask(reg, ini) is None
     assert ask(reg, ini, launch=[r"E:\Third\openDNA.exe"]) == "stale"   # but a new move asks again
 
+    # --- a file type added after the user said Yes is proposed once (the types already registered are left as they are)
+    reg = FakeRegistry()
+    ini.clear()
+    F.register([".gb", ".fa"], reg, EXE)   # (what an older version registered)
+    assert ask(reg, ini) is None   # the user never said Yes
+    ini.setValue("accepted", "true")
+    assert ask(reg, ini) == "new" and ".odna" in F.status(None, reg, EXE) and F.missing_types(reg, EXE).split(",")[-1] == "odna"
+    ini.setValue("new_asked_for", F.missing_types(reg, EXE))   # answered (Not now) for these types
+    assert ask(reg, ini) is None
+    F.register(None, reg, EXE)   # all of them now
+    ini.setValue("new_asked_for", "")
+    assert ask(reg, ini) is None
+
     # --- ini booleans survive a reload
     reg = FakeRegistry()
     path = str(tmp_path / "a.ini")

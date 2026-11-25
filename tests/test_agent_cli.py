@@ -932,8 +932,8 @@ def test_recap_command_gives_the_numbers_of_the_window_recap(capsys, tmp_path):
     # a project: the two coverages in a group, a highlight; recapped with no place given, as a table
     ed.track_layout.move(["plus.bw", "minus.bw"], "Coverage")
     ed.track_layout.add_regions([track_layout.Region(1000, 2600, "here")])
-    exports.save_project(ed, tmp_path / "p.odp")
-    code, out, _ = run(capsys, "recap", tmp_path / "p.odp", "--tsv")
+    exports.save_project(ed, tmp_path / "p.oDNA")
+    code, out, _ = run(capsys, "recap", tmp_path / "p.oDNA", "--tsv")
     lines = [line.split("\t") for line in out.strip().splitlines()]
     assert code == 0 and lines[0] == list(track_recap.COLUMNS)
     assert [(r[0], r[3], r[6], r[7], r[10]) for r in lines[2:]] == [
@@ -952,15 +952,15 @@ def test_print_command_draws_the_project_as_the_window_export(capsys, tmp_path):
     ed, _ = cli_tools.track_editor(str(PLASMID), [HUB / "plus.bw", HUB / "sites.bb"])
     ed.track_layout.restyle(["plus.bw"], label="Coverage plus")
     ed.track_layout.add_regions([track_layout.Region(1500, 2500, "Highlighted here")])
-    exports.save_project(ed, tmp_path / "p.odp")
-    res = answer(capsys, "print", tmp_path / "p.odp", "1001..4000", tmp_path / "r.svg")
+    exports.save_project(ed, tmp_path / "p.oDNA")
+    res = answer(capsys, "print", tmp_path / "p.oDNA", "1001..4000", tmp_path / "r.svg")
     svg = (tmp_path / "r.svg").read_text(encoding="utf-8")
     assert (res["tracks_shown"], res["regions"], res["start"], res["end"]) == (2, 1, 1001, 4000)
-    assert "Coverage plus" in svg and "Highlighted here" in svg and "sites.bb" in svg
+    assert "Coverage" in svg and "Highlighted here" in svg and "sites" in svg   # (names wrap in the narrow names column)
     answer(capsys, "print", PLASMID, "1001..4000", tmp_path / "r.png", "--track", HUB / "plus.bw", "--width", "900")
     assert QImage(str(tmp_path / "r.png")).width() == 900
-    assert "already exists" in run(capsys, "print", tmp_path / "p.odp", "1..100", tmp_path / "r.svg")[2]
-    assert "must end in" in run(capsys, "print", tmp_path / "p.odp", "1..100", tmp_path / "r.jpg")[2]
+    assert "already exists" in run(capsys, "print", tmp_path / "p.oDNA", "1..100", tmp_path / "r.svg")[2]
+    assert "must end in" in run(capsys, "print", tmp_path / "p.oDNA", "1..100", tmp_path / "r.jpg")[2]
 
 
 def test_track_features_command_adds_what_copy_to_features_adds(capsys, tmp_path):

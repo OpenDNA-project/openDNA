@@ -8,7 +8,7 @@ Open DNA Project file.
   (.tbl), the input of NCBI's table2asn (https://www.ncbi.nlm.nih.gov/genbank/feature_table/);
 - the proteins of the CDS features (standard genetic code) as FASTA.
 
-Open DNA Project file (.odp): a zip holding `sequence.gb` (the document, as Save writes it)
+Open DNA Project file (.oDNA): a zip holding `sequence.gb` (the document, as Save writes it)
 and `project.json`, what a GenBank file cannot hold and the program otherwise keeps only in
 memory: the loaded tracks and BAM files (their paths, absolute and relative to the project,
 since BAM files can be gigabytes) and how the Alignment view shows them (order, groups, colours: track_layout), the DNA lock, the display options and the state of the panes' views (the layout's `state` entries:
@@ -29,7 +29,13 @@ import codon_usage
 import genetic_code
 from sequence_view import cds_codons
 
-PROJECT_EXT = ".odp"
+PROJECT_EXT = ".oDNA"
+PROJECT_EXTS = (".odna", ".odp")   # what a project is called (lower case): ".odp" is what earlier versions wrote, still opened
+
+
+def is_project(path):
+    """Is `path` an Open DNA Project (by its extension, whatever the case)?"""
+    return str(path).lower().endswith(PROJECT_EXTS)
 PROJECT_VERSION = 1
 
 
@@ -172,7 +178,7 @@ def project_meta(editor, project_path, layout=None):
 
 
 def save_project(editor, path, layout=None):
-    """Write the document and its in-memory extras as an Open DNA Project (.odp). `layout`: the window's tabs."""
+    """Write the document and its in-memory extras as an Open DNA Project (.oDNA). `layout`: the window's tabs."""
     path = Path(path)
     with tempfile.TemporaryDirectory() as tmp:
         gb = Path(tmp) / "sequence.gb"

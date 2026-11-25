@@ -4,7 +4,7 @@
 
 ## `test_off_target_search_covers_every_record`
 
-**Result:** ✅ passed in 0.05 s · [line 76](../../tests/test_reference.py#L76) · **Area:** Off-target search (reference genome) · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 76](../../tests/test_reference.py#L76) · **Area:** Off-target search (reference genome) · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer and guide off-target checks could miss copies on the second or later chromosome, report the open sequence as its own off-target, show green after a search that timed out, or lose/double hits at window edges.
 
@@ -29,7 +29,7 @@ With a fake 3-record genome, checks the primer genome check finds copies on chr2
 
 ## `test_ncbi_genome_search_and_download`
 
-**Result:** ✅ passed in 0.02 s · [line 187](../../tests/test_reference.py#L187) · **Area:** NCBI genome download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 187](../../tests/test_reference.py#L187) · **Area:** NCBI genome download · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, searching NCBI for a reference genome could build wrong URLs, and downloading one could produce a broken FASTA (records joined without newlines), leave partial files, or download the same genome repeatedly.
 

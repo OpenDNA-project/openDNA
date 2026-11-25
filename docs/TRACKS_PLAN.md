@@ -21,7 +21,7 @@ made from `tracks-2-signal`). PR 5 (editing and sync) is next, on a branch made 
 What PR 1 built, for the next PRs to build on:
 
 - `app/track_layout.py`: the layout model (no Qt). Every change goes through a `Layout` method, which calls
-  `on_change(edited)` (`Editor._layout_changed`: `tracks_changed`, and a hand-made change marks an `.odp` modified); kinds of
+  `on_change(edited)` (`Editor._layout_changed`: `tracks_changed`, and a hand-made change marks an `.oDNA` modified); kinds of
   rows that take a scale, a colour or nothing (`SCALED`, `COLORED`, `FIXED`) live here.
 - `Editor.row_table`: `{row key: (kind, loaded track or None)}`, the one place that knows a file's rows. A loaded track has
   `kind` ("track", "signal" or "bam": `editor.ENTRY_ROWS`) and a name unique against every row (`Editor.add_track`);
@@ -81,7 +81,7 @@ rebuilds the same copy.
 
 - Each PR follows `CLAUDE.md`: changelog lines, `tests.json` and the rebuilt report for every test added or changed,
   `/simplify` then `/code-review` before pushing, a recipe and a `test_<command>_...` test for every new command.
-- Per-file state (track order, groups, styles, regions, sync shifts) is an attribute of the `Editor`, saved in the `.odp`
+- Per-file state (track order, groups, styles, regions, sync shifts) is an attribute of the `Editor`, saved in the `.oDNA`
   by `exports.project_meta` (see "Where a setting goes" in `CLAUDE.md`). Panel width and similar go in `window_state`.
 - No widget tests exist. Put the logic (layout model, parsers, recap, conversions, shifting) in modules without widgets
   and test those; check the panel and the drawing by running the app on the test data, and say in each PR which parts
@@ -117,7 +117,7 @@ rebuilds the same copy.
   top level; "Group by name" (split on `_`) is a manual action in the panel; a hub import (PR 2) keeps the hub's groups.
 - In the view, each group is a header line; a click collapses all its tracks into that one line.
 - A Fit button squeezes the shown tracks into the pane's height.
-- Order, groups, colours, labels and display modes are saved in the `.odp`.
+- Order, groups, colours, labels and display modes are saved in the `.oDNA`.
 
 ## PR 2: Signal tracks and track hub import
 
@@ -135,7 +135,7 @@ rebuilds the same copy.
 
 - Highlights: right-click a selection > Highlight region... (name, colour), drawn as a band across every track.
   A Regions tab in the Tracks panel lists them: jump to, rename, recolour, delete, import and export as BED. Saved in the
-  `.odp`.
+  `.oDNA`.
 - Recap: right-click a selection > Recap tracks here, and Recap highlighted regions. A table, one row per track (and per
   region when several), plus a summary row per group (the mean of its tracks); sortable, copy and export as CSV.
   Content per track: annotation items overlapping (name, start, end, strand, share of the region covered, extra
@@ -143,7 +143,7 @@ rebuilds the same copy.
   BAM: mean depth and the variants in the region; also the genome's own features in the region and the GC %.
 - Command `recap START..END` (one JSON answer, `--tsv` one row per track, `--regions places.bed`, `--per-base`). The
   window and the command use the same function, so the numbers agree.
-- Print: right-click a selection > Export this region as image..., and command `print <project.odp> START..END out.svg`
+- Print: right-click a selection > Export this region as image..., and command `print <project.oDNA> START..END out.svg`
   (`.png` by the extension, default width 1600 px). It draws the view as the project shows it (visible tracks, order,
   styles, highlights). Without a project: `print genome.gb --track a.bed --track b.bw ...` with default styles. Reuse
   the existing SVG export.
@@ -178,11 +178,11 @@ The riskiest part; its own PR for its own review.
   item lengthens it, a deletion shortens it, an item deleted entirely is removed and named in the status bar; a signal
   gets no value over inserted bases and loses those of deleted ones); undoing the edit undoes the shift. Left as they
   are: a warning says the tracks are off by X bp after position Y. The choice is remembered for the file and saved in the
-  `.odp`; the panel shows each track's state ("in sync", or "off by +100 bp after 12,345").
+  `.oDNA`; the panel shows each track's state ("in sync", or "off by +100 bp after 12,345").
 - Synced tracks are never written on their own. On save, files shifted by sync need a double confirmation: first a
   dialog listing each file and what changes in it ("RefSeq_2022_CDS.bed: 412 items moved, 1 removed") with Write shifted
   files / Keep the files as they are; then "This overwrites N files. Originals are kept as .orig. Continue?" with Cancel
   as the default. A file with both hand edits and sync shifts gets the double confirmation.
-- Kept as they are on disk: the `.odp` records the edits that apply to each synced track (position, bp added or removed)
+- Kept as they are on disk: the `.oDNA` records the edits that apply to each synced track (position, bp added or removed)
   and replays them when the project opens, so the tracks are in sync again without touching the files.
 - Record what stays unsolved in `docs/KNOWN_ISSUES.md`.

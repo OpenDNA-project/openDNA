@@ -2,8 +2,9 @@
 group and restyle many at once. It edits the file's track layout (track_layout, `Editor.track_layout`), and every view of
 the file redraws on `Editor.tracks_changed`.
 
-- Tick a box to show a track, untick to hide it; ticking one of several selected tracks ticks them all; a group's box ticks
-  its tracks.
+- Click the eye of a track to show or hide it (one of several selected: all of them); a group's eye does its tracks.
+- A pinned track (right-click: Pin Track, or the pin at the right of its row) stays at the top of the view when the tracks scroll;
+  the sequence and the features are.
 - Ctrl- and Shift-click select several; a group selected stands for all its tracks. The buttons and the right-click menu
   (`fill_menu`, also the menu of a track or group in the view) act on the selection.
 - Drag tracks to reorder them, or onto a group to move them into it; groups are dragged too (never into another group).
@@ -14,14 +15,15 @@ A second tab lists the highlighted regions (track_actions.RegionsTab).
 """
 from collections import Counter
 
-from PySide6.QtCore import QItemSelection, QItemSelectionModel, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtCore import QItemSelection, QItemSelectionModel, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QColorDialog, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
-    QLineEdit, QListWidget, QMenu, QMessageBox, QPushButton, QSpinBox, QTabWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+    QAbstractItemView, QColorDialog, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
+    QLineEdit, QListWidget, QMenu, QMessageBox, QSpinBox, QTabWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
     QWidget,
 )
 
+import icons
 import track_actions
 import track_layout
 from track_layout import FIXED, MODES, RENDERS, SCALED, Group
@@ -29,8 +31,38 @@ from uikit import plural
 
 ROW, GROUP = "row", "group"
 KEY = Qt.UserRole   # (ROW, row key) or (GROUP, group name) of each item of the tree
-ROW_FLAGS = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsEditable
-GROUP_FLAGS = ROW_FLAGS | Qt.ItemIsDropEnabled   # (its box is set from its tracks here, not by Qt: see _set_group)
+ROW_FLAGS = Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsDragEnabled | Qt.ItemIsEditable
+GROUP_FLAGS = ROW_FLAGS | Qt.ItemIsDropEnabled
+FROZEN_COLOR = "#1e88e5"   # the pin of a frozen track (the view's names column draws the same)
+EYE = 16                   # px: the eye of a row (a click on it shows or hides the track), the swatch of its colour after it
+ICON = 34                  # px of the eye and the swatch
+
+
+def row_icon(shown, color, widget):
+    """The eye (open: shown, struck through: hidden) and, after it, a swatch of the track's colour."""
+    ratio = widget.devicePixelRatioF()
+    pix = QPixmap(int(ICON * ratio), int(EYE * ratio))
+    pix.setDevicePixelRatio(ratio)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setOpacity(1.0 if shown else 0.5)
+    p.drawPixmap(0, 0, EYE, EYE, icons.eye_pixmap(shown, widget.palette().color(QPalette.Text)))
+    if color:
+        p.setOpacity(1.0 if shown else 0.4)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(color))
+        p.drawRoundedRect(21, 4, 10, 8, 2, 2)
+    p.end()
+    return QIcon(pix)
+
+
+def pin_icon(pinned, widget):
+    """The pin column: blue when pinned, a faint one otherwise (a click on it pins or unpins)."""
+    color = QColor(FROZEN_COLOR) if pinned else QColor(widget.palette().color(QPalette.Text))
+    if not pinned:
+        color.setAlpha(60)
+    return QIcon(icons.pin_pixmap(color))
 
 
 def show_menu(menu, global_pos):
@@ -68,8 +100,16 @@ def fill_menu(menu, view, keys, group=None):
                        lambda: layout.collapse(group.name, not group.collapsed))
     if not keys:
         return
-    menu.addAction("Show", lambda: layout.restyle(keys, shown=True))
-    menu.addAction("Hide", lambda: layout.restyle(keys, shown=False))
+    shown = {layout.style(k).shown for k in keys}
+    if shown != {False}:
+        menu.addAction("Hide", lambda: layout.restyle(keys, shown=False))
+    if shown != {True}:
+        menu.addAction("Show", lambda: layout.restyle(keys, shown=True))
+    frozen = all(layout.style(k).frozen for k in keys)
+    menu.addAction("Unpin Track" if frozen else "Pin Track", lambda: layout.restyle(keys, frozen=not frozen))
+    if group is None and n == 1:
+        menu.addAction("Rename…", lambda: _rename(view, keys[0]))
+    menu.addSeparator()
     styled = [k for k in keys if kinds[k] not in FIXED]
     if styled:
         display = menu.addMenu("Display")
@@ -84,13 +124,12 @@ def fill_menu(menu, view, keys, group=None):
             any(layout.style(k).height for k in styled))
         scaled = [k for k in styled if kinds[k] in SCALED]
         if scaled:
-            scale = display.addMenu("Scale")
+            scale = menu.addMenu("Scale")
             scales = {layout.style(k).scale for k in scaled}
             for key in track_layout.SCALES:
                 a = scale.addAction(key.capitalize(), lambda s=key: layout.restyle(scaled, scale=s))
                 a.setCheckable(True)
                 a.setChecked(scales == {key})
-    track_actions.track_actions(menu, view, keys)
     signals = [k for k in keys if kinds[k] == "signal"]
     if signals:
         _signal_menu(menu.addMenu("Signal"), view, signals)
@@ -101,21 +140,22 @@ def fill_menu(menu, view, keys, group=None):
             color.addAction("Light to Dark over These Tracks…", lambda: _gradient(view, paint))
         color.addAction("Back to Their Own Colours", lambda: layout.restyle(paint, color=None)).setEnabled(
             any(layout.style(k).color for k in paint))
+    track_actions.track_actions(menu, view, keys)
     menu.addSeparator()
-    move = menu.addMenu("Move to Group")
+    grouping = menu.addMenu("Group")
+    move = grouping.addMenu("Move to Group")
     for g in layout.groups():
         if g is not group:
             move.addAction(g.name, lambda name=g.name: layout.move(keys, name))
     move.addSeparator()
     move.addAction("New Group…", lambda: _new_group(view, keys))
-    move.addAction("No Group", lambda: layout.move(keys, None))
+    grouping.addAction("Remove from Its Group", lambda: layout.move(keys, None))
     if n > 1:
-        menu.addAction("Group by Name…", lambda: _group_by_name(view, keys))
+        grouping.addAction("Group by Name…", lambda: _group_by_name(view, keys))
     if group is not None:
-        menu.addAction("Rename Group…", lambda: _rename_group(view, group))
-        menu.addAction("Ungroup", lambda: layout.ungroup(group.name))
-    elif n == 1:
-        menu.addAction("Rename…", lambda: _rename(view, keys[0]))
+        grouping.addSeparator()
+        grouping.addAction("Rename Group…", lambda: _rename_group(view, group))
+        grouping.addAction("Ungroup", lambda: layout.ungroup(group.name))
     entries = list({id(e): e for k in keys if (e := ed.track_of(k)) is not None}.values())
     if entries:
         menu.addSeparator()
@@ -144,6 +184,9 @@ def _signal_menu(menu, view, keys):
     fixed.setCheckable(True)
     fixed.setChecked({st.range for st in styles} == {"fixed"})
     menu.addSeparator()
+    entry = view.editor.track_of(keys[0])
+    if len(keys) == 1 and entry is not None:
+        menu.addAction("Regions Above Threshold…", lambda: track_actions.threshold_regions(view, entry))
     if len(keys) > 1:
         menu.addAction(f"Overlay in One Row ({len(keys)})", lambda: layout.overlay(keys))
     together = {k for k, st in layout.styles.items() if st.overlay in keys or (st.overlay and k in keys)}
@@ -151,13 +194,24 @@ def _signal_menu(menu, view, keys):
 
 
 def _fixed_range(view, keys):
+    """Both ends of a fixed range in one dialog."""
     st = view.editor.track_layout.style(keys[0])
-    low, ok = QInputDialog.getDouble(view, "Fixed range", "Lowest value (bottom of the row):", st.low, -1e12, 1e12, 3)
-    if not ok:
+    dialog = QDialog(view)
+    dialog.setWindowTitle("Fixed range")
+    low, high = (QDoubleSpinBox(minimum=-1e12, maximum=1e12, decimals=3, value=v) for v in (st.low, max(st.high, st.low + 1)))
+    form = QFormLayout(dialog)
+    form.addRow("Lowest value (bottom of the row):", low)
+    form.addRow("Highest value (top of the row):", high)
+    buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    form.addRow(buttons)
+    if dialog.exec() != QDialog.Accepted:
         return
-    high, ok = QInputDialog.getDouble(view, "Fixed range", "Highest value (top of the row):", max(st.high, low + 1), low, 1e12, 3)
-    if ok and high > low:
-        view.editor.track_layout.restyle(keys, range="fixed", low=low, high=high)
+    if high.value() > low.value():
+        view.editor.track_layout.restyle(keys, range="fixed", low=low.value(), high=high.value())
+    else:
+        view.info.setText("Fixed range not set: the highest value must be above the lowest")
 
 
 def _height(view, keys):
@@ -251,17 +305,40 @@ class TrackTree(QTreeWidget):
         super().__init__()
         self.panel = panel
         self.setHeaderHidden(True)
-        self.setColumnCount(2)
+        self.setColumnCount(3)   # name (with its eye and colour), kind of file, pin
         self.header().setStretchLastSection(False)
         self.header().setSectionResizeMode(0, QHeaderView.Stretch)
         self.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.header().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.header().resizeSection(2, 28)
+        self.press_ok = True   # does the mouse button held down belong to something that may be dragged (see mousePressEvent)?
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setDragDropMode(QAbstractItemView.InternalMove)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setEditTriggers(QAbstractItemView.EditKeyPressed)   # F2: rename (a click selects, a drag moves)
         self.setUniformRowHeights(True)
         self.setIndentation(14)
+        self.setIconSize(QSize(ICON, EYE))   # (the eye and the colour swatch in one icon)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
+
+    def mousePressEvent(self, event):
+        pos = event.position().toPoint()
+        item = self.itemAt(pos)
+        left = event.button() == Qt.LeftButton
+        column = self.columnAt(pos.x())
+        dx = pos.x() - self.visualItemRect(item).left() if item is not None else -1
+        if left and item is not None and (column == 2 or (column == 0 and 0 <= dx < EYE + 4)):
+            self.panel.toggle(item, pin=column == 2)   # the eye or the pin: show or hide, pin or unpin (the row is not selected)
+            self.press_ok = False
+            return
+        # A press that is not on a row's own content (the indent, the arrow, the empty room below) starts no drag: Qt would
+        # select every row the mouse then crosses, which looks like tracks selecting themselves.
+        self.press_ok = left and item is not None and dx >= 0
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.press_ok:
+            super().mouseMoveEvent(event)
 
     def dropEvent(self, event):
         target = self.itemAt(event.position().toPoint())
@@ -282,8 +359,7 @@ class TracksPanel(QWidget):
         self.setMinimumWidth(170)
         self.filter = QLineEdit(placeholderText="Filter tracks", clearButtonEnabled=True)
         self.filter.textChanged.connect(self._apply_filter)
-        select = QPushButton("Select All", toolTip="Select every track the filter shows")
-        select.clicked.connect(self.select_shown)
+        select = track_actions.small_button("Select All", "Select every track the filter shows", self.select_shown)
         top = QHBoxLayout()
         top.addWidget(self.filter, 1)
         top.addWidget(select)
@@ -292,15 +368,9 @@ class TracksPanel(QWidget):
         bar = QHBoxLayout()
         layout_ = self.editor.track_layout
         for text, act, tip in (("Show", lambda keys: layout_.restyle(keys, shown=True), "Show the selected tracks"),
-                               ("Hide", lambda keys: layout_.restyle(keys, shown=False), "Hide the selected tracks"),
-                               ("Heatmap", self._heatmap, "The selected signal tracks as one-line heatmaps"),
-                               ("Colour…", self._color, "One colour for the selected tracks (More: light to dark)")):
-            b = QPushButton(text, toolTip=tip)
-            b.clicked.connect(lambda _=False, act=act: self._on_selection(act))
-            bar.addWidget(b)
-        more = QPushButton("More", toolTip="Display, height, groups, rename, remove: for the selected tracks")
-        more.clicked.connect(lambda: self._menu_at(more.mapToGlobal(more.rect().bottomLeft())))
-        bar.addWidget(more)
+                               ("Hide", lambda keys: layout_.restyle(keys, shown=False), "Hide the selected tracks")):
+            bar.addWidget(track_actions.small_button(text, tip, lambda _=False, act=act: self._on_selection(act)))
+        bar.addWidget(track_actions.small_button("Fit All Vertically", "Make the shown tracks fit the height of the pane", view.fit_tracks))
         bar.addStretch()
         self.tree = TrackTree(self)
         self.tree.itemChanged.connect(self._item_changed)
@@ -390,24 +460,26 @@ class TracksPanel(QWidget):
         return item
 
     def _set_row(self, item, key):
-        """A row's look in the tree: its name, box, display mode and colour swatch."""
+        """A row's look in the tree: its eye and colour swatch, its name, the kind of file it comes from (or the row it is
+        overlaid in) in a lighter colour, and its pin in the last column."""
         st = self.editor.track_layout.style(key)
         item.setText(0, self.editor.track_layout.label(key))
         kind = self.editor.row_table[key][0]
-        item.setText(1, "hidden" if not st.shown else "" if kind in FIXED else f"in {self.editor.track_layout.label(st.overlay)}"
-                     if st.overlay else st.render if kind == "signal" and st.render == "heatmap" else st.mode)
-        item.setCheckState(0, Qt.Checked if st.shown else Qt.Unchecked)
-        color = self.view.canvas.row_color(key)
-        item.setIcon(0, track_actions.swatch(color) if color else QIcon())
-        item.setToolTip(0, key if item.text(0) != key else "")
+        item.setText(1, f"in {self.editor.track_layout.label(st.overlay)}" if st.overlay else self.view.canvas.file_type(key))
+        item.setForeground(1, self.palette().color(QPalette.PlaceholderText))
+        item.setIcon(0, row_icon(st.shown, self.view.canvas.row_color(key), self))
+        item.setIcon(2, pin_icon(st.frozen, self))
+        shape = "" if kind in FIXED else f"{st.render if kind == 'signal' and st.render == 'heatmap' else st.mode}"
+        item.setToolTip(0, (key + "\n" if item.text(0) != key else "") + (shape + (", pinned" if st.frozen else "") if shape else ""))
 
     def _set_groups(self):
-        """Each group's box: ticked when all its tracks are shown, empty when none is, half otherwise."""
+        """Each group's eye: open when any of its tracks is shown."""
+        layout = self.editor.track_layout
         for i in range(self.tree.topLevelItemCount()):
             top = self.tree.topLevelItem(i)
-            if top.data(0, KEY)[0] == GROUP:
-                states = {top.child(j).checkState(0) for j in range(top.childCount())}
-                top.setCheckState(0, states.pop() if len(states) == 1 else Qt.PartiallyChecked if states else Qt.Unchecked)
+            if top.data(0, KEY)[0] == GROUP and (g := layout.group(top.data(0, KEY)[1])) is not None:
+                top.setIcon(0, row_icon(any(layout.style(k).shown for k in g.keys), None, self))
+                top.setIcon(2, pin_icon(any(layout.style(k).frozen for k in g.keys), self))
 
     def renamed(self, old, new):
         """A group was renamed: it stays folded here if it was."""
@@ -442,23 +514,19 @@ class TracksPanel(QWidget):
             return self.editor.track_layout.group(items[0].data(0, KEY)[1])
         return None
 
+    def clicked(self, item, column=0):
+        """A track clicked in the list: the view scrolls to it (a group: to its first track)."""
+        kind, name = item.data(0, KEY)
+        if kind == ROW:
+            self.view.focus_track(name)
+        elif (g := self.editor.track_layout.group(name)) is not None and g.keys:
+            self.view.focus_track(g.keys[0])
+
     def _on_selection(self, act):
         if keys := self.selected_keys():
             act(keys)
         else:
             self.view.info.setText("Select tracks in the list first (Ctrl- and Shift-click pick several)")
-
-    def _heatmap(self, keys):
-        if signals := [k for k in keys if self.editor.row_table[k][0] == "signal"]:
-            self.editor.track_layout.restyle(signals, render="heatmap", mode="dense")   # (one line each: many in one screen)
-        else:
-            self.view.info.setText("Heatmap is for signal tracks (bigWig, bedGraph, wig)")
-
-    def _color(self, keys):
-        if paint := colored(self.view, keys):
-            _choose_color(self.view, paint)
-        else:
-            self.view.info.setText("These tracks are drawn in colours of their own (features, primers, reads)")
 
     def _menu_at(self, global_pos, pos=None):
         if pos is not None and (item := self.tree.itemAt(pos)) is not None and not item.isSelected():
@@ -487,17 +555,23 @@ class TracksPanel(QWidget):
                     self.tree.blockSignals(True)
                     item.setText(0, name)
                     self.tree.blockSignals(False)
-            elif (g := layout.group(name)) is not None:   # its box: all its tracks shown, or all hidden
-                layout.restyle(g.keys, shown=item.checkState(0) != Qt.Unchecked)
             return
-        shown = item.checkState(0) == Qt.Checked
         label = item.text(0).strip()
         if label != layout.label(name):
             layout.restyle([name], label=None if label in ("", name) else label)
-        elif shown != layout.style(name).shown:
-            # one box of a selection: all of them (their boxes are set when the panel shows the change)
-            keys = self.selected_keys() if item.isSelected() else [name]
-            layout.restyle(keys, shown=shown)
+
+    def toggle(self, item, pin=False):
+        """The eye of a row or a group clicked: show or hide it (a row among several selected: all of them; a group: its
+        tracks, hidden when any is shown); `pin`: the pin column, pin or unpin them the same way."""
+        layout = self.editor.track_layout
+        kind, name = item.data(0, KEY)
+        field, now = ("frozen", lambda k: layout.style(k).frozen) if pin else ("shown", lambda k: layout.style(k).shown)
+        if kind == GROUP:
+            if (g := layout.group(name)) is not None:
+                layout.restyle(g.keys, **{field: not any(now(k) for k in g.keys)})
+            return
+        keys = self.selected_keys() if item.isSelected() else [name]
+        layout.restyle(keys, **{field: not now(name)})
 
     def tree_moved(self):
         """After a drag and drop: the tree's order is the layout's."""
@@ -539,7 +613,7 @@ class TracksPanel(QWidget):
         for item in self._row_items():
             if not item.isHidden():
                 index = self.tree.indexFromItem(item)
-                chosen.select(index, model.index(index.row(), 1, index.parent()))
+                chosen.select(index, model.index(index.row(), 2, index.parent()))
         self.tree.selectionModel().select(chosen, QItemSelectionModel.ClearAndSelect)   # (one selection signal, not one each)
 
     def _count(self):

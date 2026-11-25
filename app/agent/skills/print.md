@@ -5,7 +5,7 @@
 ## 1. From a project
 
 ```
-print PROJECT.odp START..END OUT.svg
+print PROJECT.oDNA START..END OUT.svg
 ```
 
 The project's tracks are drawn as it shows them: the tracks shown and hidden, their order, groups, colours, heights, heatmaps and highlighted regions. `START..END` is 1-based and inclusive, or a feature's name. `OUT` ends in `.svg`, `.png` or `.tif`, and must not exist (nothing is overwritten). `--width` sets the width in pixels (default 1600); the height is what the tracks need.

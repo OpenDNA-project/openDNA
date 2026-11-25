@@ -1,5 +1,5 @@
 """The order, groups and look of the Alignment view's tracks for one open file (`Editor.track_layout`), kept apart from Qt so
-it can be tested and saved in a project (.odp).
+it can be tested and saved in a project (.oDNA).
 
 A row is a line of the view, named by a key: a built-in track ("GC %", "Bases", "Features", "Primers", "Query hits"), a
 loaded track (its name), or one of a BAM file's three rows (its name, "<name> variants", "<name> reads"): the Editor keeps the
@@ -15,11 +15,13 @@ import re
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 
-BUILTIN = {"GC %": "gc", "Bases": "bases", "Features": "features", "Primers": "primers", "Query hits": "hits"}   # key -> kind
+BUILTIN = {"Bases": "bases", "Features": "features", "Primers": "primers", "Query hits": "hits", "GC %": "gc"}   # key -> kind (bases at the top)
+FROZEN = ("Bases", "Features")             # the rows kept in view when the tracks scroll, until the user unfreezes them
+HIDDEN = ("GC %",)                         # the rows hidden until the user shows them
 SEQUENCE = "Sequence"     # the group the built-in tracks start in
 MODES = ("expanded", "condensed", "dense")   # dense: one line (UCSC); hiding is `Style.shown`
 SCALES = ("linear", "log2", "log10")
-SCALED = ("coverage", "track", "signal")   # kinds with a scale choice
+SCALED = ("coverage", "signal")   # kinds with a scale choice (bars: an annotation track has none to choose)
 COLORED = ("gc", "track", "coverage", "signal")   # kinds drawn in one colour that can be chosen (features, primers, reads have their own)
 RENDERS = ("bars", "line", "heatmap")      # how a signal track is drawn
 SUMMARIES = ("mean", "max")                # what a signal shows where a pixel holds many bases: their mean, or the highest value
@@ -43,9 +45,15 @@ class Style:
     low: float = 0.0          # signal tracks: the fixed range
     high: float = 1.0
     overlay: str = None       # signal tracks: the key of the signal row it is drawn in (an overlay), None: a row of its own
+    frozen: bool = False      # kept in view at the top when the tracks scroll
 
 
 DEFAULT = asdict(Style())
+
+
+def default_style(key):
+    """A row's style before anything is chosen: the sequence and the annotations frozen, the GC % hidden."""
+    return Style(shown=key not in HIDDEN, frozen=key in FROZEN)
 
 
 @dataclass
@@ -75,7 +83,7 @@ class Layout:
     def style(self, key):
         st = self.styles.get(key)
         if st is None:
-            st = self.styles[key] = Style()
+            st = self.styles[key] = default_style(key)
         return st
 
     def label(self, key):
@@ -220,7 +228,7 @@ class Layout:
     # ---- project --------------------------------------------------------------------------------------------------------------
     def to_json(self):
         nodes = [{"group": n.name, "keys": list(n.keys), "collapsed": n.collapsed} if isinstance(n, Group) else n for n in self.nodes]
-        styles = {k: {f: v for f, v in asdict(s).items() if v != DEFAULT[f]} for k, s in self.styles.items()}
+        styles = {k: {f: v for f, v in asdict(s).items() if v != asdict(default_style(k))[f]} for k, s in self.styles.items()}
         return {"nodes": nodes, "styles": {k: s for k, s in styles.items() if s}, **({"regions": [asdict(r) for r in self.regions]} if self.regions else {})}
 
     def load_json(self, data, present, length=None):
@@ -267,7 +275,7 @@ def _valid(name, value):
             "label": lambda v: v is None or isinstance(v, str), "render": lambda v: v in RENDERS,
             "summary": lambda v: v in SUMMARIES, "range": lambda v: v in RANGES,
             "low": lambda v: type(v) in (int, float), "high": lambda v: type(v) in (int, float),
-            "overlay": lambda v: v is None or isinstance(v, str)}[name](value)
+            "overlay": lambda v: v is None or isinstance(v, str), "frozen": lambda v: isinstance(v, bool)}[name](value)
 
 
 def _region(r):

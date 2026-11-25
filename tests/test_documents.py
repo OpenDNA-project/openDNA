@@ -572,7 +572,7 @@ def test_copy_reverse_complement_keeps_annotations_flipped():
 
 def test_text_exports_and_the_project_file(tmp_path):
     """The text exports of a document (GFF3, BED, NCBI feature table with minus-strand parts as start > stop, proteins of a CDS
-    on each strand, FASTA wrapped at 70, the submission pair); an Open DNA Project (.odp) round-trips the sequence, the features,
+    on each strand, FASTA wrapped at 70, the submission pair); an Open DNA Project (.oDNA) round-trips the sequence, the features,
     the tracks (also by their path beside the project), the display settings and the DNA lock."""
     ed = Editor(Document(str(DEMO)), DEMO)
     # --- GFF3, BED, feature table, proteins
@@ -619,14 +619,17 @@ def test_text_exports_and_the_project_file(tmp_path):
     track.write_text(f"{ed.doc.name}\tx\tgene\t10\t50\t.\t+\t.\tName=g1\n")
     ed.add_track(SimpleNamespace(name=track.name, kind="track", path=str(track), seqid=ed.doc.name, types=["gene"], fields=[]), "Hub")   # as load_track does
     ed.track_layout.style(track.name).mode = "dense"
-    ed.track_layout.style("GC %").shown = False
+    ed.track_layout.style("GC %").shown = True   # (hidden unless chosen)
+    ed.track_layout.style("Bases").frozen = False   # (frozen unless chosen)
     ed.add_track(SimpleNamespace(name="s.bw", kind="signal", path=str(tmp_path / "s.bw"), seqid=ed.doc.name))
     ed.set_display(enzymes=True, hidden_kinds={"misc_feature"})
     ed.dna_locked = True
     site = ed.doc.sequence()[100:120]
     assert ed.doc.sequence().upper().count(site.upper()) == 1 and reverse_complement(site).upper() not in ed.doc.sequence().upper()
     assert ed.import_primers([("pX", site)]) == 1     # a primer of this file: written as a primer_bind feature
-    project = tmp_path / "work.odp"
+    project = tmp_path / "work.oDNA"
+    assert exports.PROJECT_EXT == ".oDNA" and all(exports.is_project(n) for n in ("a.oDNA", "B.ODNA", "old.odp"))   # (.odp: older versions)
+    assert not exports.is_project("a.gb")
     exports.save_project(ed, project)
     with zipfile.ZipFile(project) as z:
         assert set(z.namelist()) == {"sequence.gb", "project.json"}
@@ -639,7 +642,7 @@ def test_text_exports_and_the_project_file(tmp_path):
     assert meta["signals"] == [{"path": str(tmp_path / "s.bw"), "relative": "s.bw", "seqid": ed.doc.name, "name": "s.bw"}]
     assert meta["track_layout"] == {"nodes": [{"group": "Sequence", "keys": list(track_layout.BUILTIN), "collapsed": False},
                                               {"group": "Hub", "keys": ["extra.gff3"], "collapsed": False}, "s.bw"],
-                                    "styles": {"extra.gff3": {"mode": "dense"}, "GC %": {"shown": False}}}
+                                    "styles": {"extra.gff3": {"mode": "dense"}, "GC %": {"shown": True}, "Bases": {"frozen": False}}}
     assert not list(tmp_path.glob("*.part")), "written through a temporary file"
     doc, back = exports.open_project(project)
     assert doc.sequence() == ed.doc.sequence() and back == meta
@@ -651,8 +654,8 @@ def test_text_exports_and_the_project_file(tmp_path):
     moved.mkdir()
     (moved / "extra.gff3").write_text(track.read_text())
     entry = dict(meta["tracks"][0], path=str(tmp_path / "gone.gff3"))
-    assert exports.project_file(entry, moved / "work.odp") == str(moved / "extra.gff3"), "found beside the moved project"
-    bad = tmp_path / "bad.odp"
+    assert exports.project_file(entry, moved / "work.oDNA") == str(moved / "extra.gff3"), "found beside the moved project"
+    bad = tmp_path / "bad.oDNA"
     bad.write_bytes(b"not a zip")
     with pytest.raises(OSError, match="not an Open DNA Project"):
         exports.open_project(bad)
@@ -665,7 +668,10 @@ def test_track_layout_moves_groups_reloads_and_bulk_helpers():
     rows apart (a second file of the same name, a file named like a built-in row)."""
     changes = []   # each change announced: True when made by hand (a project has something new to save)
     L = track_layout.Layout(changes.append)
-    assert L.keys() == list(track_layout.BUILTIN) and [g.name for g in L.groups()] == ["Sequence"]
+    assert L.keys() == list(track_layout.BUILTIN) and [g.name for g in L.groups()] == ["Sequence"] and L.keys()[0] == "Bases"
+    # before anything is chosen: the bases and the features frozen, the GC % hidden, the rest shown and free to scroll
+    assert [(k, L.style(k).shown, L.style(k).frozen) for k in L.keys()] == [
+        ("Bases", True, True), ("Features", True, True), ("Primers", True, False), ("Query hits", True, False), ("GC %", False, False)]
     L.add(["a.bed", "b.bed"], "Hub")
     L.add(["c.bed", "a.bed"])   # a.bed is already there: not added twice
     assert L.keys() == [*track_layout.BUILTIN, "a.bed", "b.bed", "c.bed"] and changes == [False, False]
@@ -698,6 +704,13 @@ def test_track_layout_moves_groups_reloads_and_bulk_helpers():
     back.load_json(saved, [*track_layout.BUILTIN, "a.bed", "d.bed"])
     assert back.keys() == [*track_layout.BUILTIN, "a.bed", "d.bed"] and back.group("G").keys == ["a.bed"]
     assert back.style("a.bed").height is None and back.style("a.bed").mode == "condensed" and "b.bed" not in back.styles
+    # freezing is saved too, against each row's own default (the features stay frozen, the GC % hidden, unless changed)
+    back.restyle(["Primers"], frozen=True)
+    back.restyle(["Bases"], frozen=False)
+    again = track_layout.Layout()
+    again.load_json(back.to_json(), back.keys())
+    assert [(again.style(k).frozen, again.style(k).shown) for k in ("Primers", "Bases", "Features", "GC %")] == [
+        (True, True), (False, True), (True, True), (False, False)]
     # Group by Name: the first parts of the names; a group of one is not made
     names = ["HDTM_GluP0A", "HDTM_GluP0B", "RNAseq_Glu_Plus", "solo", "A6S_1_Pos", "A6S_1_Neg", "A6S_2_Pos"]
     assert track_layout.name_groups(names, 1) == {"HDTM_GluP0A": "HDTM", "HDTM_GluP0B": "HDTM", "A6S_1_Pos": "A6S",
@@ -756,7 +769,7 @@ def test_track_layout_moves_groups_reloads_and_bulk_helpers():
     assert (sig.style("s").render, sig.style("s").summary, sig.style("s").range, sig.style("s").low, sig.style("s").high) == ("heatmap", "max", "fixed", -2, 5.5)
     assert (sig.style("t").render, sig.style("t").range, sig.style("t").low) == ("bars", "auto", 0.0)   # (values it cannot read: defaults)
     # a project keeps the layout: a change by hand there is something to save; loading a track is not (a GenBank file: neither)
-    for path, marked in (("w.odp", True), ("w.gb", False)):
+    for path, marked in (("w.oDNA", True), ("w.gb", False)):
         doc = Document.new_sequence("w", "ACGT" * 25, False)
         doc.modified = False
         proj = Editor(doc, path)

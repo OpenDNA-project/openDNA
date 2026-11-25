@@ -2,9 +2,10 @@
 single bases, with tracks: overview, ruler, GC %, bases (zoomed in), features, primer
 sites, loaded annotation tracks (GFF3/GTF/BED/VCF) and BAM alignments (coverage + reads).
 
-Mouse: wheel = zoom at the pointer, Shift+wheel or a sideways wheel = pan, drag = pan, Shift+drag = select, click = cursor
-or feature, double-click = zoom in. The locus box takes "12,000-15,000", "12000" or a name. Many tracks scroll up and down
-under the overview and the ruler, which stay at the top (the wheel over the track names scrolls them).
+Mouse: wheel = scroll the tracks up and down, Ctrl+wheel = zoom at the pointer, Shift+wheel or a sideways wheel = pan, drag =
+pan, Shift+drag = select, click = cursor or feature, double-click = zoom in. The locus box takes "12,000-15,000", "12000" or a
+name. Many tracks scroll up and down under the overview and the ruler, which stay at the top, with the pinned tracks (the bases
+and the features, until unpinned: right-click a track).
 
 Everything is drawn from what is visible: GC comes from Rust in screen-sized bins (a
 cached block sum when zoomed out), crowded tracks switch to a density plot. BAM coverage
@@ -14,8 +15,8 @@ Read colours, variant colouring and flags: see alignments.py.
 
 Tracks are drawn in the order and groups of the file's track layout (track_layout, `Editor.track_layout`), which the Tracks
 panel (track_panel, opened from the header) edits: many tracks at once, by drag and drop, with a filter. Each track can be
-expanded, condensed (thin lanes, no labels), dense (one line) or hidden (it then takes no room; click its name to hide it,
-the panel shows it again), resized by dragging the thin line under it (taller = more lanes of reads), given a colour, and
+expanded, condensed (thin lanes, no labels), dense (one line) or hidden (it then takes no room; the panel shows it again),
+resized by dragging the thin line under it (taller = more lanes of reads), given a colour, and
 bar tracks (coverage, dense annotations) drawn on a log scale. A group is a header line; a click collapses it.
 
 Highlighted regions (`track_layout.regions`) are bands across every track. Right-click the ruler or a selection for the actions
@@ -30,9 +31,10 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QFontMetricsF, QImage, QPainter, QPalette, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QScrollArea, QSizePolicy, QSplitter, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QScrollArea, QSizePolicy, QSplitter, QToolButton, QVBoxLayout, QWidget,
 )
 
+import icons
 import image_export
 import theme
 import tool_settings
@@ -51,7 +53,12 @@ from variants import annotate_variants, apply_variants, can_apply, change_text, 
 from sequence_view import TEMP_COLOR, primer_color
 
 LEFT = 74         # px for track names, at least (longer names widen the column: see GenomeCanvas.left)
-MAX_LEFT = 160    # px: the widest the names column gets (longer names are cut short, the whole name in their tooltip)
+MAX_LEFT = 160    # px: the widest the names column gets before NAMES_SHARE (longer names wrap onto more lines)
+NAMES_SHARE = 0.7   # the names column is this share of what its names ask for: they wrap rather than widen it
+NAMES_MIN = 72      # px: but "Features" and its pin fit on a line
+NAME_X = 5          # px from the left of the names column to a name: clear of the 3 px colour stripe
+NAME_FLAGS = Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap | Qt.TextWrapAnywhere   # a name wraps at spaces, else anywhere
+FROZEN_COLOR = "#1e88e5"   # the pin of a pinned track in the names column
 MIN_SPAN = 40     # bp: deepest zoom
 DENSE = 2500      # more items than this in view -> density plot
 BASE_COLORS = {"A": "#2e7d32", "C": "#1565c0", "G": "#ef6c00", "T": "#c62828"}
@@ -70,7 +77,7 @@ HITS_HEAD = 14               # px above the Local Align rows: the track's name (
 INDENT = 10                  # px the names of a group's tracks are set in from its header
 # kind -> (lanes, lane px expanded, lane px condensed, lanes condensed); 0 lanes = a bar plot
 # of that height. Condensed reads: twice the rows in less room (IGV's "squished"). Dense: one lane of the condensed size.
-KINDS = {"gc": (0, 30, 16, 0), "features": (4, 13, 6, 4), "primers": (2, 9, 5, 2), "track": (3, 11, 5, 3), "signal": (0, 30, 16, 0),
+KINDS = {"gc": (0, 30, 16, 0), "features": (4, 13, 6, 4), "primers": (2, 9, 5, 2), "track": (3, 14, 5, 3), "signal": (0, 30, 16, 0),
          "coverage": (0, 30, 16, 0), "reads": (READ_LANES, 7, 3, 2 * READ_LANES), "hits": (1, 14, 8, 1),
          "variants": (2, 12, 5, 2)}
 DENSE_BAR, DENSE_LANE = 10, 9   # px of a bar track (GC, coverage) and of the one line of other tracks in dense mode
@@ -80,6 +87,8 @@ MAX_SHARE = 0.6     # the alignment view asks for at most this share of the scre
 SCALES = {"linear": lambda v: v, "log2": lambda v: math.log2(1 + v), "log10": lambda v: math.log10(1 + v)}   # (track_layout.SCALES)
 GC_COLOR, COVERAGE_COLOR, SIGNAL_COLOR = "#7986cb", "#9e9e9e", "#3949ab"
 DENSE_GAP = 1       # px under a dense row (a heatmap of 200 tracks in one screen), GAP under the others
+ALL_LANES = 1000    # expanded rows: as many lanes as their items need
+PACKED = ("features", "primers", "track")   # kinds whose height follows the lanes their items need in view (see GenomeCanvas.need)
 
 
 class _Relay(QObject):
@@ -156,6 +165,11 @@ class GenomeCanvas(QWidget):
         tool_settings.notifier.changed.connect(self._settings_changed)
         self.read_kinds = {}
         self.plain = False      # no cursor, selection or search hits drawn (an image of a region: write_region)
+        self.indents = {}       # row -> px its name is set in (all rows, when there are group lines)
+        self.frozen, self.frozen_h = set(), 0   # the rows kept in view when scrolling and the px they take, from the last layout
+        self.need, self.laid = {}, {}   # row -> lanes its items need in view (from the last paint); what the last layout used
+        self.pointer = None     # (x, y) of the mouse over the tracks: a thin line down them and what is under it
+        self.grid = window_state("alignment_view").value("grid", True, type=bool)   # thin vertical guides under the tracks
 
     def theme_changed(self):
         """Light / dark switch (theme.refresh_views): the cached tracks and the reads' colours are made again."""
@@ -187,6 +201,20 @@ class GenomeCanvas(QWidget):
         this y, so they stay in view."""
         return max(0, -self.y())
 
+    def ly(self, y):
+        """y in the layout of a point of the canvas: once the tracks are scrolled the frozen rows are drawn at the top of what
+        shows (`_paint_frozen`), not where the layout puts them."""
+        top = self.view_top()
+        return y - top if top and top + self.header_h <= y < top + self.header_h + self.pinned_h() else y
+
+    def pinned_h(self):
+        """px of the frozen rows kept in view: none when they would take more than half the pane (they scroll like the others)."""
+        return self.frozen_h if self.frozen_h * 2 <= self.panel.tracks_area.viewport().height() else 0
+
+    def lpt(self, pt):
+        """`pt` (QPointF) with its y in the layout (see ly)."""
+        return QPointF(pt.x(), self.ly(pt.y()))
+
     def scale(self):
         """1 at the font the sizes are made for; more with a larger font (or screen scaling), so names fit their lanes (read
         from the font at each layout_rows)."""
@@ -202,10 +230,10 @@ class GenomeCanvas(QWidget):
         return self.editor.track_layout.style(name)
 
     def row_kinds(self):
-        """{row key: kind} of the rows that can be drawn now (Editor.row_table): the bases only zoomed in, the primers and the
-        Local Align hits only when there are some."""
+        """{row key: kind} of the rows that can be drawn now (Editor.row_table): the primers and the Local Align hits only when
+        there are some."""
         ed = self.editor
-        absent = {"Bases": self.panel.vend - self.panel.vstart > self.width_px() / 7, "Primers": not ed.drawn_primers,
+        absent = {"Primers": not ed.drawn_primers,
                   "Query hits": not ed.query_hits}
         return {k: kind for k, (kind, _) in ed.row_table.items() if not absent.get(k)}
 
@@ -246,8 +274,24 @@ class GenomeCanvas(QWidget):
         if kind == "hits":   # Local Align: one row per alignment (hit), under a line with the track's name
             rows = max(1, len(self.editor.query_hits))
             return own or self.hits_head() + rows * px
-        n = 1 if st.mode == "dense" else condensed_lanes if st.mode == "condensed" else lanes
+        n = self.max_lanes(kind, st.mode)
+        if not own and kind in PACKED and name in self.need:
+            # no more room than the items in view take; expanded: all of them, however many lanes that is
+            n = self.need[name] if st.mode == "expanded" else min(n, self.need[name])
         return own or px * max(1, n)
+
+    @staticmethod
+    def max_lanes(kind, mode):
+        _, _, _, condensed = KINDS[kind]
+        return 1 if mode == "dense" else condensed if mode == "condensed" else KINDS[kind][0]
+
+    def pack_row(self, name, boxes, h):
+        """`pack` for a row: into the lanes its height gives when set by hand, else as many as its mode allows; the lanes used
+        are noted (`need`): the row is made that tall at the next layout (expanded: however many lanes it takes)."""
+        st = self.style(name)
+        out = pack(boxes, self.lanes(name, h) if st.height else ALL_LANES if st.mode == "expanded" else self.max_lanes(self.kinds[name], st.mode))
+        self.need[name] = max((o[0] for o in out), default=-1) + 1
+        return out
 
     def min_height(self, name):
         """The least a row can be made (the Fit button): one lane, or a short bar."""
@@ -286,6 +330,19 @@ class GenomeCanvas(QWidget):
                 nodes.append((group, drawn))
         # The built-in tracks alone in their group: no header line, the view looks as it did. A collapsed group always has its line.
         headers = len(nodes) > 1 or any(g is not None and g.collapsed for g, _ in nodes)
+        # The frozen rows come first, in a block of their own (no group line), kept in view when scrolling.
+        self.frozen = {k for _, drawn in nodes for k in drawn if layout.style(k).frozen}
+        nodes = [(None, [k for _, drawn in nodes for k in drawn if k in self.frozen])] +             [(g, [k for k in drawn if k not in self.frozen]) for g, drawn in nodes]
+        nodes = [(g, drawn) for g, drawn in nodes if drawn]
+        # The names column: as wide as the longest name needs (at least LEFT, at most MAX_LEFT), less NAMES_SHARE: names wrap.
+        indent = {name: INDENT if headers else 0 for group, drawn in nodes for name in drawn}   # (every row: pinned ones line up too)
+        self.indents = indent
+        widest = max([fm.horizontalAdvance(self.track_label(name, kinds[name])) + indent[name] for name in indent]
+                     + [fm.horizontalAdvance(self.group_text(g, len(drawn))) for g, drawn in nodes if g and headers], default=0)
+        if ed.query_hits:
+            widest = max(widest, fm.horizontalAdvance(self.hit_label(len(ed.query_hits))))
+        self.left = int(max(NAMES_MIN, NAMES_SHARE * max(LEFT, min(MAX_LEFT, widest + 12))))
+        frozen_end = y
         for group, drawn in nodes:
             if group and headers:
                 self.group_rows.append((group, y, self._name_h, len(drawn)))
@@ -300,15 +357,16 @@ class GenomeCanvas(QWidget):
                 else:
                     self.kinds[name] = kind
                     h = self.track_height(name, kind)
+                    if not layout.style(name).height and layout.style(name).mode != "dense":   # room for the whole name
+                        lines = fm.boundingRect(QRectF(0, 0, self.left - 11 - indent[name], 10000), NAME_FLAGS, self.track_label(name)).height()
+                        h = max(h, math.ceil(lines))
                 rows.append((name, y, h))
                 self.gaps[name] = DENSE_GAP if kind != "bases" and layout.style(name).mode == "dense" else GAP
                 y += h + self.gaps[name]
-        # The names column: as wide as the longest name needs (at least LEFT, at most MAX_LEFT; a longer one is cut short)
-        widest = max([fm.horizontalAdvance(self.track_label(name)) + (INDENT if name in self.indented else 0) for name, _, _ in rows if name]
-                     + [fm.horizontalAdvance(self.group_text(g, n)) for g, _, _, n in self.group_rows], default=0)
-        if ed.query_hits:
-            widest = max(widest, fm.horizontalAdvance(self.hit_label(len(ed.query_hits))))
-        self.left = int(max(LEFT, min(MAX_LEFT, widest + 12)))
+            if drawn[0] in self.frozen:
+                frozen_end = y
+        self.frozen_h = frozen_end - self.header_h
+        self.laid = dict(self.need)
         self.rows, self.bottom = rows, y
         return rows, y
 
@@ -316,9 +374,15 @@ class GenomeCanvas(QWidget):
     def group_text(group, drawn):
         return f"{'▸' if group.collapsed else '▾'} {group.name} ({drawn})"
 
-    def track_label(self, name):
+    def file_type(self, name):
+        """The kind of file a loaded track comes from ("BED", "BAM", "BIGWIG"), "" for the built-in rows."""
+        entry = self.editor.track_of(name)
+        suffixes = Path(entry.path).suffixes if entry is not None else []
+        return next((s[1:].upper() for s in reversed(suffixes) if s.lower() != ".gz"), "")
+
+    def track_label(self, name, kind=None):
         """What the names column says for a track (a BAM's reads: "reads", its file name is just above), or the name given to it."""
-        if self.kinds.get(name) == "reads" and not self.style(name).label:
+        if (kind or self.kinds.get(name)) == "reads" and not self.style(name).label:
             return "reads"
         return self.editor.track_layout.label(name)
 
@@ -326,6 +390,7 @@ class GenomeCanvas(QWidget):
         """The group whose header line is under y, or None."""
         if self.in_header(y):
             return None
+        y = self.ly(y)
         return next((g for g, top, h, _ in self.group_rows if top <= y < top + h + GAP // 2), None)
 
     def in_header(self, y):
@@ -336,6 +401,7 @@ class GenomeCanvas(QWidget):
         """Named track whose rows (or the gap under them) contain y: (name, top, height), from the last layout."""
         if self.in_header(y):
             return None
+        y = self.ly(y)
         for name, top, h in self.rows:
             if name and top <= y < top + h + self.gaps.get(name, GAP):
                 return name, top, h
@@ -344,17 +410,18 @@ class GenomeCanvas(QWidget):
     def edge_at(self, y):
         """Track whose bottom line is under y (drag it to resize), or None."""
         row = self.row_at(y)
+        y = self.ly(y)
         if row and row[0] in self.kinds and abs(y - (row[1] + row[2] + self.gaps[row[0]] / 2)) <= max(1, min(3, self.gaps[row[0]])):
             return row
         return None
 
-    def track_menu(self, name, global_pos):
+    def track_menu(self, name, global_pos, pos=None):
         """Right-click on a track: the Tracks panel's menu, for every track selected there when this one is among them."""
         kind = self.kinds[name]
         keys = self.panel.tracks_panel.selected_keys()
         menu = QMenu(self)
         track_panel.fill_menu(menu, self.panel, keys if name in keys else [name])
-        track_actions.region_actions(menu, self.panel)
+        track_actions.region_actions(menu, self.panel, pos)
         if kind == "variants":
             a = self.editor.track_of(name)
             # changes the reads spell out (not the breaks and no-read stretches, which are flagged but not changes)
@@ -404,9 +471,17 @@ class GenomeCanvas(QWidget):
             dx = (old[0] - key[0]) / (key[1] - key[0]) * self.width_px()
             p = QPainter(self)
             p.fillRect(self.rect(), self.palette().color(QPalette.Base))
-            p.drawPixmap(QPointF(dx, 0), self.layer)
-            names = QRectF(0, 0, self.left - 4, self.height())  # the names column does not move
-            p.drawPixmap(names, self.layer, QRectF(0, 0, (self.left - 4) * dpr, self.height() * dpr))
+            p.save()
+            p.setClipRect(QRectF(self.left - 4, 0, self.width(), self.height()))   # (the names column is not dragged along)
+            names_w = self.left - 4   # (only the tracks slide: the layer's names column stays out)
+            p.drawPixmap(QRectF(names_w + dx, 0, self.width() - names_w, self.height()), self.layer,
+                         QRectF(names_w * dpr, 0, (self.width() - names_w) * dpr, self.height() * dpr))
+            p.restore()
+            p.fillRect(QRectF(0, 0, self.width(), self.header_h - 2), self.palette().color(QPalette.Base))
+            self._paint_header(p)   # (the overview stays put, the ruler is made for the view as it is now)
+            names = QRectF(0, self.header_h, self.left - 4, self.height() - self.header_h)  # the names column does not move
+            p.drawPixmap(names, self.layer, QRectF(0, self.header_h * dpr, (self.left - 4) * dpr, (self.height() - self.header_h) * dpr))
+            self._paint_frozen(p, dx)
             self._paint_pinned(p)
             self._paint_overlay(p)
             p.end()
@@ -424,10 +499,34 @@ class GenomeCanvas(QWidget):
             self.layer_key, self.dirty = key, False
         p = QPainter(self)
         p.drawPixmap(0, 0, self.layer)
+        self._paint_frozen(p)
         self._paint_pinned(p)
         with timed("genome view: cursor + selection (on the cached tracks)"):
             self._paint_overlay(p)
         p.end()
+
+    def _paint_frozen(self, p, dx=0):
+        """Tracks scrolled down: the frozen rows (drawn at the top of the layer) again under the ruler, over the tracks under
+        them; `dx`: the layer is sliding along in a pan (the names column does not)."""
+        top = self.view_top()
+        if not top or not self.pinned_h() or self.layer is None:
+            return
+        dpr, y0, h, w = self.devicePixelRatioF(), self.header_h, self.pinned_h(), self.width()
+        p.fillRect(QRectF(0, top + y0, w, h), self.palette().color(QPalette.Base))
+        p.save()
+        p.setClipRect(QRectF(self.left - 4 if dx else 0, top + y0, w, h))
+        names_w = self.left - 4 if dx else 0
+        p.drawPixmap(QRectF(names_w + dx, top + y0, w - names_w, h), self.layer, QRectF(names_w * dpr, y0 * dpr, (w - names_w) * dpr, h * dpr))
+        p.restore()
+        if dx:
+            p.drawPixmap(QRectF(0, top + y0, self.left - 4, h), self.layer, QRectF(0, y0 * dpr, (self.left - 4) * dpr, h * dpr))
+        line = QColor(self.palette().color(QPalette.PlaceholderText))
+        line.setAlpha(60)
+        p.setPen(line)
+        p.drawLine(QPointF(0, top + y0 + h - GAP / 2), QPointF(w, top + y0 + h - GAP / 2))
+        line.setAlpha(28)   # (a soft shadow under it: what slides under the frozen rows)
+        p.setPen(line)
+        p.drawLine(QPointF(0, top + y0 + h - GAP / 2 + 1), QPointF(w, top + y0 + h - GAP / 2 + 1))
 
     def _paint_pinned(self, p):
         """Tracks scrolled down: the overview and the ruler again at the top of what shows, over the tracks under them."""
@@ -445,8 +544,13 @@ class GenomeCanvas(QWidget):
         p.restore()
 
     def _paint_overlay(self, p):
+        line = QColor(self.palette().color(QPalette.PlaceholderText))
+        line.setAlpha(90)
+        p.setPen(line)   # the bar between the names and the tracks
+        p.drawLine(QPointF(self.left - 4, 0), QPointF(self.left - 4, self.height()))
         if self.plain:
             return
+        self._paint_selected_names(p)
         ed, panel = self.editor, self.panel
         hl = QColor(theme.selection_color())
         vs, ve = panel.vstart, panel.vend
@@ -470,6 +574,27 @@ class GenomeCanvas(QWidget):
         elif vs <= ed.start <= ve:
             p.setPen(QPen(hl, 1))
             p.drawLine(QPointF(self.x(ed.start), top), QPointF(self.x(ed.start), bottom))
+        if self.pointer and not self.drag:
+            self._paint_pointer(p)
+
+    def _paint_selected_names(self, p):
+        """A light band on the names of the tracks selected in the Tracks panel."""
+        panel = getattr(self.panel, "tracks_panel", None)
+        keys = set(panel.selected_keys()) if panel is not None else set()
+        if not keys:
+            return
+        top = self.view_top()
+        color = QColor(theme.selection_color())
+        color.setAlpha(70)
+        under = top + self.header_h + (self.pinned_h() if top else 0)   # (rows scrolled up under the ruler or the frozen rows)
+        for name, y, h in self.rows:
+            if name in keys:
+                frozen = name in self.frozen and self.pinned_h()
+                y += top if frozen and top else 0
+                r = QRectF(0, y, self.left - 4, h + 1)
+                r = r if frozen else r.intersected(QRectF(0, under, self.left - 4, 1 << 24))
+                p.fillRect(r, color)
+                p.fillRect(QRectF(r.x(), r.y(), 2, r.height()), QColor(theme.selection_color()))
 
     def _paint_layers(self, p):
         ed, panel = self.editor, self.panel
@@ -483,7 +608,7 @@ class GenomeCanvas(QWidget):
         # export draws them all.
         view_h = self.panel.tracks_area.viewport().height()
         self.band = (-1, 1 << 30) if image_export.ACTIVE else (self.view_top() - view_h, self.view_top() + 2 * view_h)
-        rows = [r for r in rows if not r[0] or (r[1] + r[2] >= self.band[0] and r[1] <= self.band[1])]
+        rows = [r for r in rows if not r[0] or r[0] in self.frozen or (r[1] + r[2] >= self.band[0] and r[1] <= self.band[1])]
         tops = {name: (top, h) for name, top, h in rows if name}
         W = self.width_px()
         vs, ve = panel.vstart, panel.vend
@@ -492,6 +617,15 @@ class GenomeCanvas(QWidget):
         lap = Laps("genome view: tracks")
         self._paint_header(p)
         lap("overview + ruler")
+        if self.grid and not self.plain:   # thin guides in the background, at the ruler's ticks (100 bp at the least)
+            guide = QColor(dim)
+            guide.setAlpha(28)
+            p.setPen(guide)
+            step = max(100, nice_step((ve - vs) / (W / 110)))
+            tick = math.ceil(vs / step) * step
+            while tick <= ve:
+                p.drawLine(QPointF(self.x(tick), self.header_h), QPointF(self.x(tick), self.bottom))
+                tick += step
 
         # GC % (20-80 % range, 50 % midline).
         if row := tops.get("GC %"):
@@ -511,8 +645,10 @@ class GenomeCanvas(QWidget):
         # Bases at deep zoom.
         if "Bases" in tops:
             top, h = tops["Bases"]
-            seq = ed.doc.sequence(int(vs), int(math.ceil(ve)))
             cw = W / (ve - vs)
+            if cw < 1:   # too far out to tell the bases apart: a line
+                p.fillRect(QRectF(left, top + h / 2 - 1, W, 2), QColor("#9e9e9e"))
+            seq = ed.doc.sequence(int(vs), int(math.ceil(ve))) if cw >= 1 else ""
             for i, c in enumerate(seq):
                 x = self.x(int(vs) + i)
                 p.fillRect(QRectF(x, top, cw - 0.5, h), QColor(BASE_COLORS.get(c.upper(), "#9e9e9e")))
@@ -528,10 +664,11 @@ class GenomeCanvas(QWidget):
             labels = lh >= 11 * self.scale()  # condensed: thin lanes, no labels
             feats = [f for f in ed.shown if any(s < ve and e > vs for s, e in f.spans)]
             if len(feats) > DENSE:
+                self.need.pop("Features", None)
                 self._density(p, [(s, e) for f in feats for s, e in f.spans], top, h, QColor("#90a4ae"))
             else:
                 boxes = [(self.x(min(s for s, _ in f.spans)), self.x(max(e for _, e in f.spans)), f) for f in feats]
-                for lane, x0, x1, f in pack(boxes, self.lanes("Features", h)):
+                for lane, x0, x1, f in self.pack_row("Features", boxes, h):
                     y = top + lane * lh
                     color = ed.colors[f.index]
                     for s, e in f.spans:
@@ -553,7 +690,7 @@ class GenomeCanvas(QWidget):
             lh = self.lane_h("Primers")
             boxes = [(self.x(s.extent[0][0]), self.x(s.extent[-1][1]), s) for s in ed.drawn_primers
                      if any(a < ve and b > vs for a, b in s.spans)]
-            for lane, x0, x1, site in pack(boxes, self.lanes("Primers", h)):
+            for lane, x0, x1, site in self.pack_row("Primers", boxes, h):
                 y = top + lane * lh + lh / 2
                 p.setPen(QPen(QColor(primer_color(site)), 2))
                 for a, b in site.spans:
@@ -572,6 +709,7 @@ class GenomeCanvas(QWidget):
             a, b = int(vs), int(math.ceil(ve))
             items, more = t.track.query(t.seqid, a, b, DENSE)
             if more:
+                self.need.pop(t.name, None)   # (a plot: the row's own height)
                 counts = t.track.density(t.seqid, a, b, max(1, int(W // 2)))
                 self._bars(p, counts, top, h, color, self.style(t.name).scale)
                 continue
@@ -579,7 +717,7 @@ class GenomeCanvas(QWidget):
             shifted = t.track.query(t.seqid, a + ed.length, b + ed.length, DENSE)[0] if t.wraps and ed.circular else []
             boxes = [(self.x(item[0] - turn), self.x(item[1] - turn), item)
                      for found, turn in ((items, 0), (shifted, ed.length)) for item in found]
-            for lane, x0, x1, item in pack(boxes, self.lanes(t.name, h)):
+            for lane, x0, x1, item in self.pack_row(t.name, boxes, h):
                 s, e, strand, name, _, raw, note, _ = item
                 r = QRectF(max(left, x0), top + lane * lh, max(1.5, min(left + W, x1) - max(left, x0)), lh - 2)
                 own = color if chosen else t.colors.get(raw, color)   # the file's colour, when it was imported and read
@@ -636,16 +774,35 @@ class GenomeCanvas(QWidget):
             y = top + h + self.gaps.get(name, GAP) / 2
             p.drawLine(QPointF(0, y), QPointF(self.width(), y))
             p.setPen(dim)
-            x = 2 + (INDENT if name in self.indented else 0)
-            short = h < name_h - 2   # a dense or squeezed row: its name in a smaller font, so it is not cut
+            x = NAME_X + self.indents.get(name, 0)
+            width = left - 6 - x
+            short = h < name_h - 2   # a dense or squeezed row: its name in a smaller font, one line, so it is not cut
             if short:
                 small.setPixelSize(max(7, int(h) + 1))
                 p.setFont(small)
             names = p.fontMetrics() if short else fm
-            p.drawText(QRectF(x, top - 1, left - 6 - x, min(max(h, names.height()), name_h)), Qt.AlignLeft | Qt.AlignVCenter,
-                       names.elidedText(self.track_label(name), Qt.ElideRight, int(left - 6 - x)))
+            label = self.track_label(name)
             if short:
+                p.drawText(QRectF(x, top - 1, width, min(max(h, names.height()), name_h)), Qt.AlignLeft | Qt.AlignVCenter,
+                           names.elidedText(label, Qt.ElideRight, int(width)))
                 p.setFont(self.font())
+            else:   # the name wraps over as many lines as the row has, its file type (lighter) under it
+                p.save()
+                p.setClipRect(QRectF(0, top - 1, left - 5, h + 1))
+                flags = NAME_FLAGS
+                p.drawText(QRectF(x, top - 1, width, h + 1), flags, label)
+                used = names.boundingRect(QRectF(0, 0, width, 10000), flags, label).height()
+                if (kind := self.file_type(name)) and used + names.height() <= h + 2:
+                    light = QColor(dim)
+                    light.setAlpha(110)
+                    p.setPen(light)
+                    p.drawText(QRectF(x, top - 1 + used, width, names.height()), Qt.AlignLeft | Qt.AlignTop, kind)
+                p.restore()
+            stripe = self.row_color(name)   # the track's colour down the left of its name (the rows drawn in several: grey)
+            p.fillRect(QRectF(0, top, 3, h), QColor(stripe) if stripe else dim)
+            if name in self.frozen:
+                mark = top + h - name_h if h >= 2 * name_h else top - 1   # (at the bottom corner of a tall row, where the name is not)
+                p.drawPixmap(QRectF(left - 15, mark + (name_h - 11) / 2, 11, 11), icons.pin_pixmap(QColor(FROZEN_COLOR)), QRectF(0, 0, 64, 64))
             if self.kinds.get(name) == "hits":
                 self._hit_labels(p, top, h, fm)
         # Group header lines: a light band across the view, the group's name in the names column (click: collapse / expand).
@@ -662,6 +819,8 @@ class GenomeCanvas(QWidget):
         p.setFont(self.font())
         lap("track names")
         lap.done()
+        if self.need != self.laid and not image_export.ACTIVE:   # the items in view need other rows than the layout gave
+            QTimer.singleShot(0, self.panel.refresh)
 
     def _highlights(self, p, fm):
         """The highlighted regions in view: a light band of each one's colour across the tracks, its name at the top."""
@@ -684,11 +843,18 @@ class GenomeCanvas(QWidget):
         dim = self.palette().color(QPalette.PlaceholderText)
         left, W, n = self.left, self.width_px(), max(1, ed.length)
         vs, ve = panel.vstart, panel.vend
-        p.fillRect(QRectF(left, 6, W, 4), dim)
+        track = QColor(dim)
+        track.setAlpha(70)
+        p.setPen(Qt.NoPen)
+        p.setBrush(track)
+        p.drawRoundedRect(QRectF(left, 5, W, 6), 3, 3)
         hl = QColor(theme.selection_color())
-        p.setPen(QPen(hl, 2))
+        window = QColor(hl)
+        window.setAlpha(60)
+        p.setPen(QPen(hl, 1.5))
+        p.setBrush(window)
+        p.drawRoundedRect(QRectF(left + vs / n * W, 3, max(6.0, (ve - vs) / n * W), 10), 3, 3)   # (drag it to move the view)
         p.setBrush(Qt.NoBrush)
-        p.drawRect(QRectF(left + vs / n * W, 3, max(3.0, (ve - vs) / n * W), 10))
         # Ruler: labels on their baseline, the ticks and the line under them.
         base = self.ruler_base
         step = nice_step((ve - vs) / (W / 110))
@@ -991,6 +1157,7 @@ class GenomeCanvas(QWidget):
         row = self.row_at(y)
         if not row or self.kinds.get(row[0]) != "hits":
             return -1
+        y = self.ly(y)
         head = self.hits_head()
         i = int((y - row[1] - head) // self.lane_h(row[0])) if y >= row[1] + head else -1
         return i if 0 <= i < len(self.editor.query_hits) else -1
@@ -1208,7 +1375,7 @@ class GenomeCanvas(QWidget):
     def name_at(self, x, y):
         """Track whose name (the line that hides / shows it) is under (x, y), else None."""
         row = self.row_at(y)
-        if x < self.left - 4 and row and row[0] in self.kinds and y < row[1] + self.name_h():
+        if x < self.left - 4 and row and row[0] in self.kinds and self.ly(y) < row[1] + self.name_h():
             return row[0]
         return None
 
@@ -1225,9 +1392,8 @@ class GenomeCanvas(QWidget):
         if name is not None:
             label = self.editor.track_layout.label(name)
             return Text(f"<b>{escape(label)}</b>" + (f" ({escape(name)})" if label != name else "") +
-                        "<br>Click: hide this track (the Tracks panel shows it again). "
-                        "Right-click: display, colour, group" + (", scale" if self.kinds[name] in SCALED else "") + ".")
-        return next((a[1] for r, a in reversed(self.hits) if a[0] == "feature" and r.contains(QPointF(pt))), None)
+                        "<br>Right-click: display, colour, group, pin" + (", scale" if self.kinds[name] in SCALED else "") + ".")
+        return next((a[1] for r, a in reversed(self.hits) if a[0] == "feature" and r.contains(self.lpt(QPointF(pt)))), None)
 
     def mousePressEvent(self, event):
         x, y = event.position().x(), event.position().y()
@@ -1245,29 +1411,30 @@ class GenomeCanvas(QWidget):
         if event.button() == Qt.RightButton:
             pt = event.position()
             hit = next((a for r, a in reversed(self.hits) if a[0] in ("feature", "primer", "variant", "range")
-                        and r.adjusted(-1, -2, 1, 2).contains(pt)), None) if not header else None
+                        and r.adjusted(-1, -2, 1, 2).contains(self.lpt(pt))), None) if not header else None
             if hit and hit[0] == "variant":
                 self.variant_menu(hit[1], hit[2], event.globalPosition().toPoint())
             elif hit and hit[0] == "range":   # an item of an annotation track: its actions, then its track's
                 menu = QMenu(self)
                 track_actions.item_actions(menu, self.panel, hit[4], hit[5])
                 track_panel.fill_menu(menu, self.panel, [hit[4].name])
-                track_actions.region_actions(menu, self.panel)
+                track_actions.region_actions(menu, self.panel, int(self.pos(x)))
                 track_panel.show_menu(menu, event.globalPosition().toPoint())
             elif hit:  # a feature or a primer: its menu; elsewhere in a track: the track's menu
                 from feature_table import feature_menu, primer_menu  # here: feature_table imports the tools
                 (primer_menu if hit[0] == "primer" else feature_menu)(self, self.editor, hit[1], event.globalPosition().toPoint())
             elif row and row[0] in self.kinds:
-                self.track_menu(row[0], event.globalPosition().toPoint())
+                self.track_menu(row[0], event.globalPosition().toPoint(), int(self.pos(x)))
             elif header:   # the ruler: the selection and the highlighted regions
                 menu = QMenu(self)
-                track_actions.region_actions(menu, self.panel)
+                track_actions.region_actions(menu, self.panel, int(self.pos(x)))
                 track_panel.show_menu(menu, event.globalPosition().toPoint())
             return
         if event.button() != Qt.LeftButton:
             return
-        if self.on_overview(x, y):  # overview bar: jump there
+        if self.on_overview(x, y):  # overview bar: jump there, and follow the mouse while it is held
             self.panel.center_on(int((x - self.left) / self.width_px() * self.editor.length))
+            self.drag = ("overview", x, 0, 0, True)
             return
         if edge := self.edge_at(y):
             self.resizing = (edge[0], y, edge[2])
@@ -1276,12 +1443,34 @@ class GenomeCanvas(QWidget):
             self.editor.select_query_hit(i)
             self.editor.navigate.emit(self.editor.start)
             return
-        if name := self.name_at(x, y):  # the name: hide (the Tracks panel shows it again)
-            self.editor.track_layout.restyle([name], shown=False)
-            self.panel.info.setText(f"{self.editor.track_layout.label(name)} hidden: tick it in the Tracks panel to show it again")
+        if x < self.left - 4:   # the names do nothing when clicked (the Tracks panel hides and selects tracks)
             return
         mode = "select" if event.modifiers() & Qt.ShiftModifier else "pan"
         self.drag = (mode, x, self.panel.vstart, self.panel.vend, False)
+
+    def leaveEvent(self, event):
+        self.pointer = None
+        self.panel.pointer.setText("")
+        self.update()
+
+    def _paint_pointer(self, p):
+        """A thin line down the tracks where the mouse is, and a small label with the position (and the value of a signal)."""
+        x, y = self.pointer
+        top = self.view_top() + self.header_h
+        hl = QColor(theme.selection_color())
+        hl.setAlpha(150)
+        p.setPen(QPen(hl, 1))
+        p.drawLine(QPointF(x, top), QPointF(x, self.bottom))
+        row = self.row_at(y)
+        text = self.signal_text(row[0], x).strip() if row and self.kinds.get(row[0]) == "signal" else f"{int(self.pos(x)) + 1:,}"
+        fm = QFontMetricsF(self.font())
+        w = fm.horizontalAdvance(text) + 12
+        box = QRectF(x + 6 if x + 6 + w < self.width() else x - 6 - w, top + 2, w, fm.height() + 4)
+        p.setPen(Qt.NoPen)
+        p.setBrush(self.palette().color(QPalette.ToolTipBase))
+        p.drawRoundedRect(box, 4, 4)
+        p.setPen(self.palette().color(QPalette.ToolTipText))
+        p.drawText(box, Qt.AlignCenter, text)
 
     def on_overview(self, x, y):
         """Is (x, y) on the overview bar at the top (a click there jumps)?"""
@@ -1296,21 +1485,29 @@ class GenomeCanvas(QWidget):
         if not self.drag:
             pt = event.position()
             x = pt.x()
-            if x >= self.left and (row := self.row_at(y)) and self.kinds.get(row[0]) == "signal":
-                self.panel.info.setText(self.signal_text(row[0], x))
+            self.pointer = (x, y) if x >= self.left and not self.in_header(y) else None
+            self.update()
+            if self.pointer:
+                row = self.row_at(y)
+                self.panel.pointer.setText(self.signal_text(row[0], x) if row and self.kinds.get(row[0]) == "signal"
+                                           else f"Pointer {int(self.pos(x)) + 1:,}")
             # a hand over what a click does something with: a feature, a primer, a read..., a track's name, the overview
             clickable = self.on_overview(x, y) or (not self.in_header(y) and (
                 self.group_at(y) is not None or
-                any(r.adjusted(-1, -2, 1, 2).contains(pt) for r, _ in self.hits) or self.name_at(x, y) is not None
+                any(r.adjusted(-1, -2, 1, 2).contains(self.lpt(pt)) for r, _ in self.hits)
                 or (x < self.left - 4 and self.hit_row_at(y) >= 0)))
             self.setCursor(Qt.SplitVCursor if self.edge_at(y) else Qt.PointingHandCursor if clickable else Qt.ArrowCursor)
             # a track item's note (GFF Note / product), when a track was imported with it
             if any(t.show_notes for t in self.editor.tracks):
                 self.setToolTip(next((act[3] for r, act in reversed(self.hits) if act[0] == "range" and act[3]
-                                      and r.adjusted(-1, -2, 1, 2).contains(pt)), ""))
+                                      and r.adjusted(-1, -2, 1, 2).contains(self.lpt(pt))), ""))
             return
         mode, x0, vs, ve, _ = self.drag
         x = event.position().x()
+        if mode == "overview":
+            self.panel.center_on(int((x - self.left) / self.width_px() * self.editor.length))
+            return
+        self.pointer = None
         self.drag = (mode, x0, vs, ve, abs(x - x0) > 3)
         if not self.drag[4]:
             return
@@ -1339,7 +1536,7 @@ class GenomeCanvas(QWidget):
             return
         pt = event.position()
         for rect, action in reversed(self.hits) if not self.in_header(pt.y()) else ():   # (tracks under the ruler: hidden)
-            if rect.adjusted(-1, -2, 1, 2).contains(pt):
+            if rect.adjusted(-1, -2, 1, 2).contains(self.lpt(pt)):
                 if action[0] == "feature":
                     self.editor.select_feature(action[1])
                 elif action[0] == "primer":
@@ -1369,14 +1566,15 @@ class GenomeCanvas(QWidget):
 
     def wheelEvent(self, event):
         delta = event.angleDelta()
-        if event.position().x() < self.left - 4 and not event.modifiers() & Qt.ShiftModifier:
-            event.ignore()   # over the track names: the scroll area scrolls the tracks up and down
+        mods = event.modifiers()
+        if not mods & (Qt.ShiftModifier | Qt.ControlModifier) and abs(delta.y()) >= abs(delta.x()):
+            event.ignore()   # the plain wheel: the scroll area scrolls the tracks up and down
             return
         vs, ve = self.panel.vstart, self.panel.vend
-        if event.modifiers() & Qt.ShiftModifier or abs(delta.x()) > abs(delta.y()):   # pan: a tenth of the view per notch
+        if mods & Qt.ShiftModifier or abs(delta.x()) > abs(delta.y()):   # pan: a tenth of the view per notch
             step = (delta.x() or delta.y()) / 120 * (ve - vs) * 0.1
             self.panel.set_view(vs - step, ve - step)
-        elif delta.y():   # zoom, in proportion to the delta (a touchpad's small steps zoom a little)
+        elif delta.y():   # Ctrl+wheel: zoom, in proportion to the delta (a touchpad's small steps zoom a little)
             self.panel.zoom(0.8 ** (delta.y() / 120), self.pos(event.position().x()))
         event.accept()
 
@@ -1532,24 +1730,43 @@ class GenomeView(QWidget):
         self.seq_window = None
         self.locus = QLineEdit(placeholderText="Go to: 12,000-15,000 · 12000 · gene name", clearButtonEnabled=True)
         self.locus.returnPressed.connect(self.go)
-        self.info = InfoLabel()
+        self.info = InfoLabel()   # messages (in the status bar)
+        self.range_label, self.pointer, self.selected = QLabel(), QLabel(), QLabel()
         header = QHBoxLayout()
-        header.setContentsMargins(4, 2, 4, 0)
-        self.tracks_button = QPushButton("Tracks", checkable=True,
-                                         toolTip="The tracks panel: show, hide, reorder, group and restyle many tracks at once")
-        self.tracks_button.setMaximumWidth(max(80, self.tracks_button.sizeHint().width()))
+        header.setContentsMargins(6, 4, 6, 4)
+        header.setSpacing(8)
+        self.tools = []   # the toolbar's buttons (an exported image leaves them out)
+
+        def tool(icon, tip, checkable=False, text=""):
+            b = QToolButton(checkable=checkable, toolTip=tip, autoRaise=True, text=text)
+            if icon:
+                b.setIcon(icons.toolbar_icon(icon))
+            b.setMinimumSize(28, 28)
+            self.tools.append(b)
+            return b
+
+        self.tracks_button = tool("sidebar", "The tracks panel: show, hide, reorder, group and restyle many tracks at once", True)
         header.addWidget(self.tracks_button)
+        self.locus.addAction(icons.toolbar_icon("search"), QLineEdit.LeadingPosition)
+        self.locus.setPlaceholderText("Go to 12,000-15,000, a position or a gene")
         header.addWidget(self.locus, 2)
-        for text, slot, tip in (("−", lambda: self.zoom(2.0), "Zoom out"), ("+", lambda: self.zoom(0.5), "Zoom in"),
-                                ("Whole", self.show_all, "Whole sequence"),
-                                ("Selection", self.show_selection, "Zoom to the selection"),
-                                ("Fit", self.fit_tracks, "Make the shown tracks fit the height of the pane")):
-            b = QPushButton(text, clicked=slot, toolTip=tip)
-            b.setMaximumWidth(max(80, b.sizeHint().width()))   # (a larger font: the text still fits)
-            header.addWidget(b)
-        header.addWidget(self.info, 3)
-        self.legend = QPushButton("Legend", checkable=True, toolTip="What the colours and marks mean (own window)")
-        self.legend.setMaximumWidth(max(80, self.legend.sizeHint().width()))
+        self.tools.append(self.locus)
+        for group in ((("\u2212", lambda: self.zoom(2.0), "Zoom out"), ("+", lambda: self.zoom(0.5), "Zoom in")),
+                      (("Whole Sequence", self.show_all, "Zoom out to the whole sequence"),
+                       ("Selection", self.show_selection, "Zoom to the selection"))):
+            segment = QHBoxLayout()
+            segment.setSpacing(0)
+            for text, slot, tip in group:
+                b = QPushButton(text, clicked=slot, toolTip=tip)
+                b.setMaximumWidth(max(34, b.sizeHint().width()))   # (a larger font: the text still fits)
+                segment.addWidget(b)
+                self.tools.append(b)
+            header.addLayout(segment)
+        guides = tool("grid", "Thin vertical guides under the tracks, every 100 bp up to 100 kb or more depending on the zoom", True)
+        guides.setChecked(window_state("alignment_view").value("grid", True, type=bool))
+        guides.toggled.connect(self.show_guides)
+        header.addWidget(guides)
+        self.legend = tool(None, "What the colours and marks mean (own window)", True, "?")
         self.legend.toggled.connect(self.show_legend)
         self.legend_window = None
         tool_settings.notifier.changed.connect(self._settings_changed)
@@ -1575,15 +1792,30 @@ class GenomeView(QWidget):
         self.width_timer = QTimer(self, singleShot=True, interval=400,
                                   timeout=lambda: window_state("alignment_view").setValue("panel_width", self.body.sizes()[0]))
         self.body.splitterMoved.connect(lambda *_: self.width_timer.start())
-        opened = state.value("panel_open", False, type=bool)
+        opened = state.value("panel_open", True, type=bool)
         self.tracks_panel.setVisible(opened)
         self.tracks_button.setChecked(opened)
         self.tracks_button.toggled.connect(self.show_tracks_panel)
+        self.tracks_panel.tree.itemClicked.connect(self.tracks_panel.clicked)
+        self.tracks_panel.tree.itemSelectionChanged.connect(self.canvas.update)   # (the selected tracks' names are highlighted)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addLayout(header)
         layout.addWidget(self.body, 1)
+        self.status = QFrame()   # under the tracks: the view's range, the pointer, the selection, messages, a hint
+        bar = QHBoxLayout(self.status)
+        bar.setContentsMargins(12, 3, 12, 3)
+        bar.setSpacing(16)
+        hint = QLabel("Scroll: tracks · Ctrl+scroll: zoom · Shift+drag: select")
+        hint.setEnabled(False)   # (greyed: a note)
+        for label in (self.range_label, self.pointer, self.selected):
+            bar.addWidget(label)
+        bar.addWidget(self.info, 1)
+        bar.addWidget(hint)
+        layout.addWidget(self.status)
+        editor.selection_changed.connect(self.show_selected)
+        self.show_selected()
         # After edits: redraw once typing pauses (GC/feature data may be large to refetch).
         self.timer = QTimer(self, singleShot=True, interval=250, timeout=self._after_edit)
         editor.changed.connect(self.timer.start)
@@ -1602,6 +1834,30 @@ class GenomeView(QWidget):
     def show_tracks_panel(self, on):
         self.tracks_panel.setVisible(on)
         window_state("alignment_view").setValue("panel_open", on)
+
+    def focus_track(self, key):
+        """Scroll the tracks so the row of `key` shows in full (under the ruler and the frozen rows), when it is shown."""
+        canvas = self.canvas
+        row = next(((top, h) for name, top, h in canvas.rows if name == key), None)
+        if row is None or key in canvas.frozen and canvas.pinned_h():
+            return
+        bar = self.tracks_area.verticalScrollBar()
+        top, h = row
+        low = top - canvas.header_h - canvas.pinned_h() - GAP   # (the least the bar may be at for the row to show under what is pinned)
+        high = top + h + GAP - self.tracks_area.viewport().height()
+        if bar.value() > low:
+            bar.setValue(low)
+        elif bar.value() < high:
+            bar.setValue(high)
+
+    def show_selected(self):
+        ed = self.editor
+        self.selected.setText(f"Selection {ed.start + 1:,}–{ed.end:,} ({format_bp(ed.end - ed.start)} bp)" if ed.end > ed.start else "")
+
+    def show_guides(self, on):
+        self.canvas.grid = on
+        window_state("alignment_view").setValue("grid", on)
+        self.canvas.invalidate()
 
     def fit_tracks(self):
         """The Fit button: the shown tracks share the height of the pane, none taller than its mode makes it nor under one lane
@@ -1635,7 +1891,7 @@ class GenomeView(QWidget):
             if self.fitted != height + 4:
                 self.fit_timer.start()
             span = self.vend - self.vstart
-            self.info.setText(f"{int(self.vstart) + 1:,}–{int(self.vend):,}  ({format_bp(int(span), span / 10)})")
+            self.range_label.setText(f"{int(self.vstart) + 1:,}–{int(self.vend):,}  ({format_bp(int(span), span / 10)})")
             if redraw:
                 self.canvas.invalidate()
             else:
@@ -1648,7 +1904,7 @@ class GenomeView(QWidget):
         and the scroll bar of the tracks."""
         bar = self.tracks_area.verticalScrollBar()
         return [self.header.itemAt(i).widget() for i in range(self.header.count()) if self.header.itemAt(i).widget()] + \
-            [self.tracks_panel, bar.parentWidget() if bar.parentWidget() is not self.tracks_area else bar]
+            [self.status, self.tracks_panel, bar.parentWidget() if bar.parentWidget() is not self.tracks_area else bar]
 
     def _fit_splitter(self, canvas_height):
         """A splitter keeps its pane sizes: give this view (or its workspace pane) the room

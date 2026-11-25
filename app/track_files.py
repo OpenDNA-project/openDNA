@@ -5,6 +5,7 @@ both go through here, so they read a file the same way.
 A loaded track is a SimpleNamespace with `name`, `kind` ("track": GFF, GTF, BED, bigBed, VCF; "signal": bigWig, bedGraph,
 wig; "bam"), `path`, `seqid` (the file's name for this sequence) and what its kind needs (see `make_entry`).
 """
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,6 +29,18 @@ def track_kind(path):
 def read(path, kind):
     """The file read as its kind says (OSError when it cannot be)."""
     return {"bam": Bam, "signal": Signal}.get(kind, Track)(str(path))
+
+
+def read_many(paths, workers=8):
+    """{path: the file read (as `read` does), or the OSError it gave} for every file of `paths`, read side by side: the Rust
+    readers let go of Python's lock while they open a file, so a hundred files take about as long as the slowest few."""
+    def one(path):
+        try:
+            return read(path, track_kind(path))
+        except OSError as e:
+            return e
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(paths)))) as pool:
+        return dict(zip(paths, pool.map(one, paths)))
 
 
 def is_gff(found):

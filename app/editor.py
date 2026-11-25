@@ -390,7 +390,7 @@ class Editor(QObject):
         self.untranslated = set()    # (location, label) of CDSs whose translation is off
         self.primer_sites, self.site_by_key, self.primer_lanes = [], {}, {}
         # Primers of the database not drawn on this file (still in the database, still listed greyed in the Primers view).
-        self.hidden_primers = set()   # (for this session only; an .odp project keeps them)
+        self.hidden_primers = set()   # (for this session only; an .oDNA project keeps them)
         # Sites shown or hidden by hand: {primer name: {"sequence": upper-case, "sites": {site_key: shown}}}, under the binding
         # rule (seed, exact 3′, mismatches) `site_rule` they were made with; another rule finds other sites, so it starts afresh.
         self.site_rule, self.site_choices = None, {}
@@ -1497,10 +1497,10 @@ class Editor(QObject):
         return {entry.name + suffix: kind for suffix, kind in ENTRY_ROWS[entry.kind]}
 
     def _layout_changed(self, edited=True):
-        """The track layout changed: the Alignment views follow. A change made by hand in a project (.odp, which keeps the layout;
+        """The track layout changed: the Alignment views follow. A change made by hand in a project (.oDNA, which keeps the layout;
         a GenBank file does not) is something new to save."""
         self.tracks_changed.emit()
-        if edited and str(self.path).lower().endswith(".odp"):
+        if edited and str(self.path).lower().endswith((".odna", ".odp")):
             self.doc.modified = True
             self.modified_changed.emit()
 

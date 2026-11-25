@@ -4,7 +4,7 @@ All panes of a window share its Editor, so they stay in sync without knowing eac
 
 Layouts are plain data ({"view": name} or {"split": "h"/"v", "sizes": [...], "children":
 [...]}, per tab). Every document opens with DEFAULT below, so the window you get is the same
-every time; only an Open DNA Project (.odp) carries a layout of its own, and View > Reset
+every time; only an Open DNA Project (.oDNA) carries a layout of its own, and View > Reset
 Tabs brings DEFAULT back after you have rearranged things.
 
 A pane builds its view the first time it is shown, and drops it when it shows something else
@@ -102,7 +102,7 @@ def pane(view, state=None):
 # Every document opens with this, whatever was on screen before: the sequence across 70 % of the window, the map above
 # the features in the 30 % on the right, in one tab ("+" adds more). Nothing is added to it (no alignment pane for a long
 # sequence), and a pane builds its view only when it is shown. The one exception is an
-# Open DNA Project (.odp), which carries the layout it was saved with.
+# Open DNA Project (.oDNA), which carries the layout it was saved with.
 DEFAULT = [
     # Sizes are weights, not pixels: Qt shares the window out in this ratio (70 / 30, then half and half).
     {"layout": split("h", [7000, 3000], pane("Sequence"), split("v", [5000, 5000], pane("Map"), pane("Features")))},

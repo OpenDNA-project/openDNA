@@ -346,7 +346,7 @@ def test_unit_features_keep_their_geometry_and_survive_a_file_round_trip(tmp_pat
     assert sum(units.is_tu(f) for f in ed.shown) == 2
     ed.set_display(units=False)
     assert not any(units.is_tu(f) for f in ed.shown)
-    assert exports.project_meta(ed, "x.odp")["display"]["units"] is False
+    assert exports.project_meta(ed, "x.oDNA")["display"]["units"] is False
     ed.set_display(hidden_kinds={"mRNA"}, units=True)
     assert sum(units.is_tu(f) for f in ed.shown) == 2, "hiding the mRNA type leaves units to their own switch"
 

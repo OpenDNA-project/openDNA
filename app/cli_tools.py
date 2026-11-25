@@ -734,7 +734,7 @@ def track_editor(source, tracks=()):
     import track_import
     from editor import Editor
     warnings, meta = [], None
-    if str(source).lower().endswith(exports.PROJECT_EXT):
+    if exports.is_project(source):
         try:
             doc, meta = exports.open_project(source)
         except OSError as e:
@@ -1043,7 +1043,7 @@ def register(sub, cli):
     s.set_defaults(run=cmd_hub)
     tracks_help = "a track file to add (annotation, signal or BAM); several --track for several"
     s = sub.add_parser("recap", help="what every track holds over a region (items, signal mean / min / max / sum, depth), as Recap Tracks Here")
-    s.add_argument("source", help="a sequence file, or an Open DNA Project (.odp) with its tracks and highlighted regions")
+    s.add_argument("source", help="a sequence file, or an Open DNA Project (.oDNA) with its tracks and highlighted regions")
     s.add_argument("where", nargs="?", help="START..END (1-based) or a feature's name; none: --regions, else the project's highlighted regions")
     s.add_argument("--track", action="append", help=tracks_help)
     s.add_argument("--regions", help="a BED file of regions to recap, each on its own")
@@ -1051,7 +1051,7 @@ def register(sub, cli):
     s.add_argument("--tsv", action="store_true", help="one tab-separated row per region and track (and per group: the mean of its tracks) instead of JSON")
     s.set_defaults(run=cmd_recap)
     s = sub.add_parser("print", help="the Alignment view over START..END as an SVG or PNG file, as the project shows its tracks")
-    s.add_argument("source", help="an Open DNA Project (.odp: its tracks, order, looks, highlights) or a sequence file with --track")
+    s.add_argument("source", help="an Open DNA Project (.oDNA: its tracks, order, looks, highlights) or a sequence file with --track")
     s.add_argument("where", help="START..END (1-based) or a feature's name")
     s.add_argument("out", help="the new image file: .svg (vector), .png or .tif")
     s.add_argument("--track", action="append", help=tracks_help)

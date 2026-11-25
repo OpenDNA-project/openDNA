@@ -4747,7 +4747,7 @@
    "id": "tests/test_documents.py::test_text_exports_and_the_project_file",
    "area": "Exports and project file",
    "role": "Without it, GFF3/BED/feature-table/protein exports could be malformed (e.g. wrong strand convention for NCBI submission) and Open DNA Project files could lose tracks, the Alignment view's track layout, display settings or the DNA lock.",
-   "purpose": "Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .odp project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, the primer sites shown or hidden by hand, the signal tracks, and the Alignment view's track layout (the track in its group, only the styles changed from the defaults).",
+   "purpose": "Checks the text exports of the demo vector and a built two-CDS sequence (GFF3 header and strand column, BED line count, NCBI table header and minus-strand start>stop, translations, FASTA width), the submission file pair, and that a .oDNA project round-trips sequence, features, tracks, display and lock, finds a moved track, and rejects a non-zip file. The project keeps each track's chosen feature types and fields, the primer sites shown or hidden by hand, the signal tracks, and the Alignment view's track layout (the track in its group, only the styles changed from the defaults).",
    "cases": [
     {
      "input": "gff3_text(demo_vector)",
@@ -4778,8 +4778,12 @@
      "expected": ".fsa starts with '>seq_id'; .tbl exists"
     },
     {
-     "input": "save_project with a GFF track (added in group 'Hub', dense), GC % hidden, a signal track s.bw, enzymes on, misc_feature hidden, DNA locked",
-     "expected": "zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'; signals = [s.bw with its path, relative path, seqid and name]; track_layout = {nodes: [Sequence group with the 5 built-in rows, Hub group with extra.gff3, s.bw], styles: {extra.gff3: {mode: dense}, GC %: {shown: false}}}"
+     "input": "is_project on a.oDNA, B.ODNA, old.odp and a.gb",
+     "expected": "True for the first three (any case, and the .odp of older versions), False for a.gb"
+    },
+    {
+     "input": "save_project with a GFF track (added in group 'Hub', dense), GC % shown and Bases unfrozen (both against their defaults), a signal track s.bw, enzymes on, misc_feature hidden, DNA locked",
+     "expected": "zip holds exactly sequence.gb and project.json; version, dna_locked, track relative 'extra.gff3' and absolute path, display settings recorded; no *.part left; the track entry keeps types ['gene'], and primer_sites has 'rule' and 'primers'; signals = [s.bw with its path, relative path, seqid and name]; track_layout = {nodes: [Sequence group with the 5 built-in rows, Hub group with extra.gff3, s.bw], styles: {extra.gff3: {mode: dense}, GC %: {shown: true}, Bases: {frozen: false}}}"
     },
     {
      "input": "open_project",
@@ -4815,7 +4819,7 @@
    "cases": [
     {
      "input": "new Layout(on_change counts)",
-     "expected": "keys = the 5 built-in rows; one group 'Sequence'"
+     "expected": "keys = the 5 built-in rows, Bases first; one group 'Sequence'; Bases and Features frozen, GC % hidden, the others shown and not frozen"
     },
     {
      "input": "add(a, b) to group Hub; add(c, a) at the top level",
@@ -4870,8 +4874,8 @@
      "expected": "names a.bed, a.bed (2), Features (2); rows after the built-ins: those 3 then r.bam, r.bam variants, r.bam reads (kind reads, track_of names r.bam); after removal a.bed, Features (2), group G = both; colour indexes 0 and 2 kept"
     },
     {
-     "input": "an Editor on w.odp, then on w.gb: add track x.bed, then hide it",
-     "expected": "adding leaves both unmodified; hiding marks w.odp modified, w.gb not"
+     "input": "an Editor on w.oDNA, then on w.gb: add track x.bed, then hide it",
+     "expected": "adding leaves both unmodified; hiding marks w.oDNA modified, w.gb not"
     },
     {
      "input": "signals p.bw, m.bw, x.bw added; overlay all three; separate m.bw; separate p.bw",
@@ -5856,6 +5860,10 @@
     {
      "input": "Registered for another path: never accepted / accepted / stale_asked_for = this path / launched from a third path",
      "expected": "None / 'stale' / None / 'stale'"
+    },
+    {
+     "input": "Only .gb and .fa registered (an older version): never accepted / accepted / new_asked_for = the missing types / everything registered",
+     "expected": "no question / 'new' (the .odna type is missing) / no question again / no question"
     },
     {
      "input": "asked=true written to an ini file and reloaded",
@@ -9358,6 +9366,10 @@
      "expected": "OSError 'not valid bedGraph or wig'"
     },
     {
+     "input": "read_many([plus.bw, same.bedGraph, a missing file, sites.bb])",
+     "expected": "same order; Signal, Signal, the FileNotFoundError it gave (an OSError), Track; plus.bw's sequences read back"
+    },
+    {
      "input": "stats(1000, 4500) of each file",
      "expected": "(3500 bases, sum 80,000, lowest 10, highest 30) each"
     },
@@ -9418,7 +9430,7 @@
      "expected": "item wrap 5801-6236 covers 0.6 (300 of 500 bases, past the origin)"
     },
     {
-     "input": "a project with plus and minus in group Coverage and a highlight 'here' 1001..2600; recap p.odp --tsv",
+     "input": "a project with plus and minus in group Coverage and a highlight 'here' 1001..2600; recap p.oDNA --tsv",
      "expected": "header = COLUMNS; rows sites.bb (1 item), plus.bw (1600, 17.5, 28000), minus.bw (1600, 5.0, 8000), 'Coverage (mean of 2)' (1600, 11.25, 18000)"
     },
     {
@@ -9439,8 +9451,8 @@
    "purpose": "Saves a project of the demo plasmid with a renamed signal track and a highlight, prints a region to SVG and checks the text drawn; prints a sequence with --track to PNG at a chosen width; refuses an existing file and an unknown extension.",
    "cases": [
     {
-     "input": "print p.odp 1001..4000 r.svg (plus.bw shown as 'Coverage plus', sites.bb, highlight 'Highlighted here')",
-     "expected": "tracks_shown 2, regions 1, start 1001, end 4000; the SVG holds 'Coverage plus', 'Highlighted here', 'sites.bb'"
+     "input": "print p.oDNA 1001..4000 r.svg (plus.bw shown as 'Coverage plus', sites.bb, highlight 'Highlighted here')",
+     "expected": "tracks_shown 2, regions 1, start 1001, end 4000; the SVG holds 'Coverage' (the name wraps in the narrow names column), 'Highlighted here', 'sites'"
     },
     {
      "input": "print pBAD30_eilR.gb 1001..4000 r.png --track plus.bw --width 900",

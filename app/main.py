@@ -90,8 +90,8 @@ from uikit import ask, background_jobs, in_background, plural, run_busy, run_can
 tool_settings.register_page(genetic_code.TOOL, codon_dialog.UsageBox)   # the codon usage line of the Genetic code page
 
 FASTA_EXT = {".fa", ".fasta", ".fna", ".fas", ".ffn", ".frn", ".mfa"}
-OPEN_FILTER = ("Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas *.odp);;"
-               "Open DNA Project (*.odp);;All files (*)")
+OPEN_FILTER = ("Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *.fa *.fasta *.fna *.fas *.oDNA *.odp);;"
+               "Open DNA Project (*.oDNA *.odp);;All files (*)")
 TRACK_FILTER = ("Tracks (*.gff *.gff3 *.gtf *.bed *.bb *.bigbed *.bw *.bigwig *.bedgraph *.bg *.bdg *.wig *.vcf *.vcf.gz *.bam);;"
                 "Alignments (*.bam);;Variants (*.vcf *.vcf.gz);;All files (*)")
 ANNOTATION_FILTER = "Annotation tracks (*.gff *.gff3 *.gtf *.bed *.bb *.bigbed);;All files (*)"
@@ -278,6 +278,7 @@ class MainWindow(QMainWindow):
         self._fill_recent_menu()
         action(file, "&Save", QKeySequence.Save, self.save)
         save_as = action(file, "Save &As…", None, self.save_as)
+        action(file, "Save as &Project (.oDNA)…", None, self.save_project_as)
         # QKeySequence.SaveAs has no key on Windows: Ctrl+Shift+S everywhere (once, where the platform's own is the same)
         save_as.setShortcuts(list(dict.fromkeys([*QKeySequence.keyBindings(QKeySequence.SaveAs), QKeySequence("Ctrl+Shift+S")])))
         file.addSeparator()
@@ -316,7 +317,7 @@ class MainWindow(QMainWindow):
         exp = self.menuBar().addMenu("E&xport")
         self.export_whole = exp.addMenu("&Whole File")
         self.export_whole.addAction(QAction("&GenBank (.gb)…", self, triggered=self.export_genbank))
-        self.export_whole.addAction(QAction("Open DNA &Project (.odp: tracks, alignments, display)…", self,
+        self.export_whole.addAction(QAction("Open DNA &Project (.oDNA: tracks, alignments, display)…", self,
                                             triggered=self.export_project))
         self.export_whole.addAction(QAction("NCBI &Submission (.fsa + .tbl for table2asn)…", self,
                                             triggered=self.export_submission))
@@ -654,14 +655,14 @@ class MainWindow(QMainWindow):
             return False
         title = "Import as New Chromosome"
         # A .dna file is never changed, and an unsaved sequence or a project has no GenBank file to add to: save one first.
-        if ed.untitled or ed.path.suffix.lower() in (".dna", exports.PROJECT_EXT):
+        if ed.untitled or (ed.path.suffix.lower() == ".dna" or exports.is_project(ed.path)):
             why = ("is not saved yet" if ed.untitled else
                    "is a .dna file, which openDNA never changes" if ed.path.suffix.lower() == ".dna" else "is a project")
             if QMessageBox.question(self, title, f"{ed.path.name} {why}. Save it as a GenBank file first? The new chromosome is "
                                     "then added to that file.", QMessageBox.Save | QMessageBox.Cancel) != QMessageBox.Save:
                 return False
             target, _ = QFileDialog.getSaveFileName(self, "Save As GenBank", str(ed.path.with_suffix(".gb")), "GenBank (*.gb *.gbk)")
-            if not target or Path(target).suffix.lower() in (".dna", exports.PROJECT_EXT) or not self._write(Path(target)):
+            if not target or (Path(target).suffix.lower() == ".dna" or exports.is_project(target)) or not self._write(Path(target)):
                 return False
         fasta = bool(ed.fasta_record) and not ed.multi_genbank
         if path is None:
@@ -804,7 +805,7 @@ class MainWindow(QMainWindow):
         self._drop_autosave()
         cached = self.record_docs.get(record) if same_file else None
         names, lengths, meta, gb_record = [], [], None, False
-        project = Path(path).suffix.lower() == exports.PROJECT_EXT
+        project = exports.is_project(path)
         try:
             if same_file and not reread and record in dict(old.fasta_records):
                 lengths = list(old.fasta_records)
@@ -1412,17 +1413,28 @@ class MainWindow(QMainWindow):
         ed = self.editor
         if ed.multi_genbank:
             return self._save_file_as()
-        project = ed.path.suffix.lower() == exports.PROJECT_EXT
+        project = exports.is_project(ed.path)
         suggested = str(ed.path.with_suffix(exports.PROJECT_EXT if project else ".gb"))
-        filters = ["GenBank (*.gb *.gbk)", "Open DNA Project, GenBank + tracks and display (*.odp)"]
+        filters = ["GenBank (*.gb *.gbk)", "Open DNA Project, GenBank + tracks and display (*.oDNA)"]
         path, _ = QFileDialog.getSaveFileName(self, "Save As", suggested, ";;".join(filters[::-1] if project else filters))
         return self._write(Path(path)) if path else False
+
+    def save_project_as(self):
+        """File > Save as Project: the file with its tracks, their order and looks, the highlights and the display, as .oDNA."""
+        ed = self.editor
+        if ed.multi_genbank:
+            return self._save_file_as()
+        suggested = str(ed.path.with_suffix(exports.PROJECT_EXT))
+        path, _ = QFileDialog.getSaveFileName(self, "Save as Project", suggested, "Open DNA Project (*.oDNA)")
+        if not path:
+            return False
+        return self._write(Path(path) if exports.is_project(path) else Path(path + exports.PROJECT_EXT))
 
     def _write(self, path):
         ed = self.editor
         refreshed = self._refresh_before_save()
         try:
-            if Path(path).suffix.lower() == exports.PROJECT_EXT:
+            if exports.is_project(path):
                 run_busy(self, f"Saving {Path(path).name}…", lambda: exports.save_project(ed, path, self.workspace.dump()))
                 ed.doc.modified = False
                 ed.untitled, ed.path = False, Path(path)
@@ -1572,7 +1584,7 @@ class MainWindow(QMainWindow):
         return path and self._export(path, lambda: ed.doc.write_genbank(str(path), ed.file_primer_features()))
 
     def export_project(self):
-        path = self._export_path("Export Open DNA Project", "odp", "Open DNA Project (*.odp)")
+        path = self._export_path("Export Open DNA Project", "oDNA", "Open DNA Project (*.oDNA)")
         return path and self._export(path, lambda: exports.save_project(self.editor, path, self.workspace.dump()))
 
     def export_submission(self):
@@ -1753,8 +1765,11 @@ class MainWindow(QMainWindow):
         views = self.workspace.views(GenomeView)
         for v in views:
             v.setUpdatesEnabled(False)
+        # Several files: all opened at once in a thread pool, then taken in turn (the questions a file asks stay one at a time).
+        paths = [path for path, _, _ in files]
+        read = run_busy(self, f"Reading {len(paths)} files…", lambda: track_files.read_many(paths)) if len(paths) > 2 else {}
         try:
-            loaded = [self.load_track(path, group=group, said=said, name=name) for path, group, name in files]
+            loaded = [self.load_track(path, group=group, said=said, name=name, read=read) for path, group, name in files]
         finally:
             for v in views:
                 v.setUpdatesEnabled(True)
@@ -1805,13 +1820,14 @@ class MainWindow(QMainWindow):
             except OSError as e:   # (the folder cannot be made)
                 return [(t, None, str(e)) for t in tracks]
         return run_cancellable(self, "Import a track hub", work, len(tracks))
-    def load_track(self, path, seqid=None, quiet=False, types=None, fields=None, group=None, said=None, name=None):
+    def load_track(self, path, seqid=None, quiet=False, types=None, fields=None, group=None, said=None, name=None, read=None):
         """Add a GFF3/GTF/BED/bigBed/VCF file as a track of the genome view (and to Find), a bigWig/bedGraph/wig file as a
         signal track, or a BAM file as coverage + reads. `quiet`: no questions: None when the track has nothing for this sequence.
         `types`, `fields`: the feature types and extra fields to keep (a project's; track_import.ALL: everything); None: asked
         for a GFF/GTF file (see _track_choice). `group`: the group of the Alignment view it goes in. `said`: a list that collects
         the warnings (one message for many files: load_tracks) instead of a message each. `name`: the track's name (a project's,
-        so its rows keep their place and look), else the file's."""
+        so its rows keep their place and look), else the file's. `read`: files already opened ({path: reader or OSError}:
+        track_files.read_many)."""
         ed = self.editor
         file_name = Path(path).name
 
@@ -1825,7 +1841,11 @@ class MainWindow(QMainWindow):
 
         kind = track_files.track_kind(path)
         try:
-            track = run_busy(self, f"Reading {file_name}…", lambda: track_files.read(path, kind))
+            track = (read or {}).pop(path, None)
+            if isinstance(track, OSError):
+                raise track
+            if track is None:
+                track = run_busy(self, f"Reading {file_name}…", lambda: track_files.read(path, kind))
         except OSError as e:
             if said is not None:
                 said.append(f"{file_name}: not read ({e})")

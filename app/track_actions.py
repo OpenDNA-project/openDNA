@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFormLayout,
-    QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QTreeWidget,
+    QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -40,11 +40,28 @@ def swatch(color):
 
 
 # ---- the menus ---------------------------------------------------------------------------------------------------------------
-def region_actions(menu, view):
-    """The actions on the selection and on the highlighted regions."""
+def small_button(text, tip, act):
+    """A push button of the panel, in a smaller font so its whole text shows."""
+    b = QPushButton(text, toolTip=tip)
+    f = b.font()
+    if f.pointSizeF() > 0:
+        f.setPointSizeF(f.pointSizeF() * 0.85)
+    else:
+        f.setPixelSize(max(7, int(f.pixelSize() * 0.85)))
+    b.setFont(f)
+    b.clicked.connect(act)
+    return b
+
+
+def region_actions(menu, view, pos=None):
+    """The actions on the selection and on the highlighted regions; `pos`: where it was right-clicked (a highlight there can be
+    removed)."""
     ed = view.editor
     spans = selection_spans(ed)
     menu.addSection("Selection" if spans else "Regions")
+    for r in [r for r in ed.track_layout.regions if pos is not None and r.start <= pos < r.end]:
+        menu.addAction(" ".join(f"Remove Highlight {r.name} ({r.start + 1:,}–{r.end:,})".split()),
+                       lambda r=r: ed.track_layout.remove_regions([r]))
     menu.addAction("Highlight Selection…", lambda: highlight_selection(view)).setEnabled(bool(spans))
     menu.addAction("Recap Tracks Here…", lambda: show_recap(view, [("selection", s, e) for s, e in spans])).setEnabled(bool(spans))
     menu.addAction("Export This Region as Image…", lambda: export_region_image(view, *spans[0])).setEnabled(len(spans) == 1)
@@ -54,24 +71,19 @@ def region_actions(menu, view):
 
 
 def track_actions(menu, view, keys):
-    """The actions on what tracks `keys` hold: their items into features, a signal's high stretches, moving item to item."""
+    """The actions on the items of annotation tracks `keys`, in an Items submenu: moving item to item, into features, as BED."""
     ed = view.editor
-    entries = [e for k in keys if (e := ed.track_of(k)) is not None and e.name == k]
-    annotations = [e for e in entries if e.kind == "track"]
-    signals = [e for e in entries if e.kind == "signal"]
-    if not (annotations or len(signals) == 1):
+    annotations = [e for k in keys if (e := ed.track_of(k)) is not None and e.name == k and e.kind == "track"]
+    if not annotations:
         return
-    menu.addSeparator()
+    items = menu.addMenu("Items")
     if len(annotations) == 1:
         t = annotations[0]
-        menu.addAction("Next Item", lambda: go_to_item(view, t, True))
-        menu.addAction("Previous Item", lambda: go_to_item(view, t, False))
-        menu.addAction("Export Items as BED…", lambda: export_items_bed(view, t))
-    if annotations:
-        menu.addAction("Copy to Features…" if len(annotations) == 1 else f"Copy {len(annotations)} Tracks to Features…",
-                       lambda: copy_to_features(view, annotations))
-    if len(signals) == 1:
-        menu.addAction("Regions Above Threshold…", lambda: threshold_regions(view, signals[0]))
+        items.addAction("Next Item", lambda: go_to_item(view, t, True))
+        items.addAction("Previous Item", lambda: go_to_item(view, t, False))
+        items.addAction("Export Items as BED…", lambda: export_items_bed(view, t))
+    items.addAction("Copy to Features…" if len(annotations) == 1 else f"Copy {len(annotations)} Tracks to Features…",
+                    lambda: copy_to_features(view, annotations))
 
 
 def item_actions(menu, view, entry, item):
@@ -434,10 +446,10 @@ class RegionsTab(QWidget):
                                ("Import…", lambda: import_regions(self.view), "Highlight the regions of a BED file"),
                                ("Export…", lambda: export_regions(self.view, self._chosen() or self.editor.track_layout.regions),
                                 "The selected regions (all when none is selected) as a BED file")):
-            b = QPushButton(text, toolTip=tip)
-            b.clicked.connect(act)
-            bar.addWidget(b)
+            bar.addWidget(small_button(text, tip, act))
         bar.addStretch()
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._menu)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 4, 0, 0)
         layout.addLayout(bar)
@@ -489,6 +501,19 @@ class RegionsTab(QWidget):
             c = QColorDialog.getColor(QColor(chosen[0].color), self, "Colour of the highlights")
             if c.isValid():
                 self.editor.track_layout.change_regions(chosen, color=c.name())
+
+    def _menu(self, pos):
+        """Right-click on a highlight in the list: remove, recolour or recap it (with the others selected with it)."""
+        if (item := self.tree.itemAt(pos)) is not None and not item.isSelected():
+            self.tree.clearSelection()
+            item.setSelected(True)
+        if chosen := self._chosen():
+            menu = QMenu(self)
+            menu.addAction("Remove Highlight" if len(chosen) == 1 else f"Remove {len(chosen)} Highlights", self._delete)
+            menu.addAction("Colour…", self._recolor)
+            menu.addAction("Recap…", self._recap)
+            menu.exec(self.tree.viewport().mapToGlobal(pos))
+            menu.deleteLater()
 
     def _delete(self):
         if chosen := self._chosen():

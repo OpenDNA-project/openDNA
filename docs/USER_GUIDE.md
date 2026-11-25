@@ -68,7 +68,7 @@ import or export them as BED. Right-click an item of a track to add it as a feat
 Export Items as BED and Copy to Features (its items in the whole sequence, the view, the selection or the highlights, as one type,
 each with a note "from track ..." and the file's extra columns as notes; an item already there as a feature is skipped; one undo
 step); right-click a signal for Regions Above Threshold (the stretches at or over a value, joined across small gaps, as highlights
-or features). A project (.odp) keeps the order, groups and look of the tracks, and the highlights. The
+or features). A project (.oDNA) keeps the order, groups and look of the tracks, and the highlights. The
 Legend button in the genome view's header opens a window explaining every colour and mark. A GFF3/GTF file first lists its
 feature types with their number of lines: untick the ones you do not want (a type whose lines only cover the whole sequence, such
 as a `region` line naming the chromosome, starts unticked). The same window offers the extra fields the file has: each line's
@@ -114,7 +114,7 @@ record from NCBI; a background genome from NCBI), Features and Tracks (GFF3/GTF/
 NCBI protein, shown in the 3D structure window), Alignments (BAM, or map FASTQ reads) and Primers (a primer list). A track, VCF or BAM file is checked against the open sequence: another sequence name, items past its end, VCF REF bases that are not the bases here or a BAM reference of another length give a warning naming what differs, and the file is loaded anyway.
 
 **Primer lists** (Import → Primers): either FASTA (`>name` then the sequence, on one or more lines) or a table with one primer per line, the name then the sequence, separated by a tab, a comma or a semicolon (more columns are ignored). A first line naming the columns (`name`, `sequence`...), blank lines and lines starting with `#` are skipped. A primer is 8 to 200 letters of A, C, G, T or IUPAC codes (either case) with a one-line name of at most 60 characters. Every other line is refused, never guessed: the report names each refused line with its number and the reason, and nothing invalid reaches the primer database. *Export* is grouped the
-same way, each group greyed while there is nothing of it: Whole File (a GenBank copy; an **Open DNA Project** `.odp`: the
+same way, each group greyed while there is nothing of it: Whole File (a GenBank copy; an **Open DNA Project** `.oDNA`: the
 GenBank file plus the loaded tracks and BAM files (as paths, absolute and relative to the project, since BAM files can be huge), the DNA lock
 the display options and what each pane keeps of itself (the Digest's digests with their ticked enzymes and filters, the Sequence view's letter size and spacing); the **NCBI submission** pair `.fsa` + `.tbl` for table2asn), DNA (FASTA, FASTA of the selection, plain bases),
 Features (GFF3, BED, NCBI feature table), Protein (the translations of the CDS features, or of the selection), Alignments (each loaded BAM as
@@ -426,7 +426,7 @@ crowded draws everything. **A position scale** runs inside the features (under t
 5 x 10^k bp, the step picked from the map's size so the labels never crowd (every 10 bp on a 100 bp oligo, every 500 bp on a
 6 kb plasmid, every 0.5-1 Mb on a 10 Mb genome), with smaller unlabelled ticks between when there is room, in bp, kb or Mb to
 suit the step. Rearranging the tabs lasts as long as the window; the next file you open starts from the standard layout again, so what
-you see never depends on what you left behind. The one exception is an Open DNA Project (`.odp`), which opens with the tabs
+you see never depends on what you left behind. The one exception is an Open DNA Project (`.oDNA`), which opens with the tabs
 it was saved with. Windows show tabs of split panes: pick any view or tool in a pane's header ("+" after the last tab adds
 one; right-click a tab to rename/duplicate it, middle-click duplicates; View → Reset View Tabs puts the standard layout back).
 A pane builds its view the first time you look at it, and drops it when it shows something else, so tabs you never visit and
