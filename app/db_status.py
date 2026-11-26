@@ -116,7 +116,7 @@ def features_library():
         prefix = f"{names.get(cid) or parts_library.source_name(cid)}: "
         if cid == parts_library.YOURS and not path.exists():
             st.add(f"{prefix}Features", "none yet: right-click a feature → Add to Features Database, "
-                                        "or Import → Features and Tracks → Import Features to Features Database")
+                                        "or the Import button of the Features Database tab")
             continue
         read = _read_collection(st, path, prefix)
         if read is None:

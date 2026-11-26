@@ -26,7 +26,7 @@ Using temporary collection files, checks collection metadata and measured-streng
 
 ## `test_shipped_parts_meet_the_data_quality_rules`
 
-**Result:** ✅ passed in 0.03 s · [line 135](../../tests/test_parts_library.py#L135) · **Area:** Features Database (shipped data) · **Checked against:** property/invariant · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.02 s · [line 135](../../tests/test_parts_library.py#L135) · **Area:** Features Database (shipped data) · **Checked against:** property/invariant · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, the shipped parts library could gain junk entries (primer sites, cloning-site slices, unnamed types), parts too short to annotate meaningfully, duplicates, or parts without a citation, cluttering every user's automatic annotation.
 

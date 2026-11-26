@@ -5,7 +5,7 @@ HELP[view]    - the short guide: 5-8 bullet lines, plain language (keep it near 
 Every key gesture below is one the code handles (see also shortcuts.py, which lists them for Help > Keyboard Shortcuts).
 """
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QMessageBox
 
 import tool_settings
 
@@ -156,18 +156,8 @@ def open_options(window, view):
     window.open_settings(view)
 
 
-class ViewHelpDialog(QDialog):
+def show_view_help(parent, view):
     """The "?" popup: the view's guide and a Close button (Enter / Esc close it)."""
-
-    def __init__(self, parent, view):
-        super().__init__(parent)
-        self.setWindowTitle(f"{view}: Quick Guide")
-        self.label = QLabel(help_text(view), wordWrap=True)
-        self.label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.label.setMinimumWidth(420)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
-        buttons.rejected.connect(self.reject)
-        buttons.button(QDialogButtonBox.Close).setDefault(True)
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.label)
-        layout.addWidget(buttons)
+    box = QMessageBox(QMessageBox.NoIcon, f"{view}: Quick Guide", help_text(view), QMessageBox.Close, parent)
+    box.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    box.exec()

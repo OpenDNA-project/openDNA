@@ -720,7 +720,12 @@ def cmd_hub(args):
     caps += [f"{f['label']}: not copied ({f['error']})" for f in failed]
     files = [{"name": t.name, "label": t.label, "group": t.group, "hidden": t.hidden, "file": str(path), "bytes": path.stat().st_size}
              for t, path, _ in copied if path is not None]
-    return answer(settings, caps=caps, folder=str(out), files=files, failed=failed)
+    extra = {}
+    if args.with_genome:
+        fasta, lengths = track_hub.copy_genome(hub, genome, out)
+        extra["genome"] = {"file": str(fasta), "bytes": fasta.stat().st_size, "sequences": [{"name": n, "length": n_} for n, n_ in lengths],
+                           "from": track_hub.genome_source(hub, genome)}
+    return answer(settings, caps=caps, folder=str(out), files=files, failed=failed, **extra)
 
 
 # ---- tracks: recap, print, track-features, signal-regions (the Alignment view's actions on regions and tracks) -----------------
@@ -1040,6 +1045,8 @@ def register(sub, cli):
     s.add_argument("source", help="the hub: a URL of its hub.txt, a hub.txt, or a folder holding one")
     s.add_argument("--genome", help="which genome of the hub (needed when it has several)")
     s.add_argument("--out", help="get: a new folder for the files")
+    s.add_argument("--with-genome", dest="with_genome", action="store_true",
+                   help="get: also the hub's genome as a FASTA file in the folder (its .2bit file, or UCSC's when the hub names none; can be gigabytes)")
     s.set_defaults(run=cmd_hub)
     tracks_help = "a track file to add (annotation, signal or BAM); several --track for several"
     s = sub.add_parser("recap", help="what every track holds over a region (items, signal mean / min / max / sum, depth), as Recap Tracks Here")

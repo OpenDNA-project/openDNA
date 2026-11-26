@@ -1,6 +1,6 @@
 # hub: the tracks of a UCSC track hub, listed or copied
 
-**Use when:** the user has a UCSC track hub (the address of its `hub.txt`, a `hub.txt`, or a folder holding one) and wants to know what is in it, or to have its files (bigWig signals, bigBed annotations) on their computer to open in openDNA. The same reading and copying as the window's Import > Features and Tracks > Track Hub, which then loads them.
+**Use when:** the user has a UCSC track hub (the address of its `hub.txt`, a `hub.txt`, or a folder holding one) and wants to know what is in it, or to have its files (bigWig signals, bigBed annotations) on their computer to open in openDNA. The same reading and copying as the window's Import > Tracks > Track Hub, which then loads them.
 
 ## 1. List the tracks
 
@@ -18,12 +18,12 @@ A hub with several genomes needs `--genome NAME` (one of `hub.genomes`): ask the
 hub get HUB --out NEW_FOLDER
 ```
 
-`--out` must be a folder that does not exist or is empty: nothing is overwritten. Every track openDNA reads is copied (hidden ones too: hidden is only how the hub shows them at first); `files` lists each with its group and whether it starts hidden, `failed` the ones that could not be copied. A remote hub's files can be hundreds of megabytes: say how many tracks there are before `get`, and tell the user it downloads from the hub's server.
+`--out` must be a folder that does not exist or is empty: nothing is overwritten. Every track openDNA reads is copied (hidden ones too: hidden is only how the hub shows them at first); `files` lists each with its group and whether it starts hidden, `failed` the ones that could not be copied. `--with-genome` also writes the hub's genome as `GENOME.fa` in the folder (`genome`: file, size, sequences, where it came from): the hub's own `twoBitPath`, or UCSC's `<genome>.2bit` when the hub names none. A genome can be gigabytes (a human one is about 3 GB as .2bit, more as FASTA): say so and ask before using it. It is written in upper case (the soft-masking of repeats is not kept). A remote hub's files can be hundreds of megabytes: say how many tracks there are before `get`, and tell the user it downloads from the hub's server.
 
 ## What to tell the user
 
 - How many tracks, in which groups, and how many start hidden. The tracks of a type openDNA does not read are in `warnings`: name them.
-- Where the folder is. To see them in openDNA: open their sequence, then Import > Features and Tracks > Track Hub (it reads the hub, keeps its groups, labels and colours), or load the copied files with Signal Track / Annotation Track.
+- Where the folder is. To see them in openDNA: open their sequence, then Import > Tracks > Track Hub (it reads the hub, keeps its groups, labels and colours), or load the copied files with Import > Tracks > Track File.
 - Any file in `failed`, with its error.
 
 ## Example
@@ -40,4 +40,5 @@ hub get demo/hub --out example_hub
 | `... is not a track hub` | the file's first lines must be `hub NAME` and `genomesFile FILE`: check the address |
 | `the hub has several genomes ...` | add `--genome` with one of the names listed |
 | `cannot read ...` | the address or a file of the hub cannot be reached: check it, or the network |
+| `cannot get the sequence of ...` | the genome's .2bit could not be downloaded or read: the hub names a wrong `twoBitPath`, or UCSC has no file for that name |
 | `The output folder ... is not empty` | choose a new folder with `--out` |

@@ -49,7 +49,7 @@ Reads the demo hub's plus.bw through the bigtools library and a bedGraph and a w
 
 ## `test_tracks_gff_bed_parsing_query_density_and_search`
 
-**Result:** ✅ passed in 0.08 s · [line 463](../../tests/test_core_formats.py#L463) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.10 s · [line 463](../../tests/test_core_formats.py#L463) · **Area:** Annotation tracks (GFF3/GTF/BED) · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, imported annotation tracks could show features with off-by-one coordinates, wrong names or strands, crash on malformed lines, drop features across the origin or a whole type, lose the file's colours, or miss features when zooming and searching.
 
@@ -73,7 +73,7 @@ Parses GFF3/GTF/BED files written in the test and checks names, coordinates, str
 
 ## `test_feature_locations_round_trip`
 
-**Result:** ✅ passed in 0.01 s · [line 657](../../tests/test_core_formats.py#L657) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 657](../../tests/test_core_formats.py#L657) · **Area:** GenBank feature locations · **Checked against:** round-trip/self-consistency · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening and saving a GenBank file could silently change or drop complex feature locations (joins, complement, fuzzy ends, between-base sites, remote references).
 
@@ -118,7 +118,7 @@ Writes a multi-record 60-column FASTA and checks core.Fasta fetch against Python
 
 ## `test_bam_variants_leave_nothing_out_near_the_ends_and_read_the_origin_of_a_circle`
 
-**Result:** ✅ passed in 0.02 s · [line 817](../../tests/test_core_formats.py#L817) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.03 s · [line 817](../../tests/test_core_formats.py#L817) · **Area:** BAM reads · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A break, a gap or a deletion near an end of the reference, or through the origin of a plasmid, could be hidden or mistaken for something else.
 

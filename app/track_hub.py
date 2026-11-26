@@ -11,17 +11,20 @@ openDNA reads the bigWig and bigBed tracks; any other type (bam, vcfTabix, hic..
 never dropped silently. The tracks are always copied (never read from the server: an edit must land on the user's own copy).
 """
 import posixpath
+import queue
 import re
-import shutil
+import threading
 from collections import Counter
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import twobit
 from user_error import UserError
 
 READ = ("bigWig", "bigBed")   # the track types openDNA reads
+UCSC_2BIT = "https://hgdownload.soe.ucsc.edu/goldenPath/{0}/bigZips/{0}.2bit"   # a genome the hub names without a twoBitPath (hg38, mm10...)
 
 
 def is_url(source):
@@ -79,6 +82,7 @@ class Hub:
     label: str
     source: str           # where its hub.txt is
     genomes: dict         # genome -> where its trackDb is
+    twobit: dict = field(default_factory=dict)   # genome -> where its .2bit sequence is (only those the hub gives)
 
 
 @dataclass
@@ -110,7 +114,8 @@ def open_hub(source):
     genomes = {s["genome"]: resolve(genomes_file, s["trackDb"]) for s in stanzas(read_text(genomes_file)) if "genome" in s and "trackDb" in s}
     if not genomes:
         raise UserError(f"{genomes_file} names no genome with a trackDb")
-    return Hub(first["hub"], first.get("shortLabel") or first["hub"], source, genomes)
+    twobit = {s["genome"]: resolve(genomes_file, s["twoBitPath"]) for s in stanzas(read_text(genomes_file)) if "genome" in s and "twoBitPath" in s}
+    return Hub(first["hub"], first.get("shortLabel") or first["hub"], source, genomes, twobit)
 
 
 def _trackdb(location, seen=None):
@@ -180,37 +185,125 @@ def local_names(tracks):
     return {t.name: t.file_name if counts[t.file_name] == 1 else f"{t.name}_{t.file_name}" for t in tracks}
 
 
-def copy_track(track, path):
-    """Copy (or download) one track's file to `path`, through a temporary file (a stopped download leaves no half file)."""
+STALL = 15   # seconds a server may stay silent (connecting, or between two chunks) before the file is given up
+WORKERS = 4   # files copied at once
+CHUNK = 1 << 16
+
+
+def copy_file(location, path, progress=None):
+    """Copy (or download) the file at `location` (a URL or a path) to `path`, through a temporary file (a stopped or failed copy
+    leaves no half file). `progress(done, total)` (total None when a server does not say) is told after each chunk and may return
+    False to stop: copy_file then returns False. A server silent for STALL seconds raises OSError."""
     part = Path(str(path) + ".part")
-    if is_url(track.url):
-        with open_url(track.url, timeout=300) as reply, open(part, "wb") as out:   # (streamed: a bigWig can be hundreds of MB)
-            shutil.copyfileobj(reply, out)
-    else:
-        shutil.copyfile(track.url, part)
-    part.replace(path)
+    stopped, remote = False, is_url(location)
+    try:
+        with (open_url(location, timeout=STALL) if remote else open(location, "rb")) as reply, open(part, "wb") as out:
+            length = getattr(reply, "headers", {}).get("Content-Length") if remote else str(Path(location).stat().st_size)
+            total = int(length) if length and length.isdigit() else None
+            done = 0
+            while chunk := reply.read(CHUNK):   # (streamed: a bigWig can be hundreds of MB)
+                out.write(chunk)
+                done += len(chunk)
+                if progress is not None and progress(done, total) is False:
+                    stopped = True
+                    break
+        if not stopped:
+            part.replace(path)
+    except OSError as e:
+        if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):   # (a connect timeout comes as a URLError)
+            raise OSError(f"the server did not answer for {STALL} seconds") from None
+        raise
+    finally:
+        part.unlink(missing_ok=True)
+    return not stopped
 
 
-def copy_tracks(tracks, folder, progress=None):
-    """Copy the files of `tracks` into `folder` (made if needed). A file already there is kept (copying the hub again reuses
-    it). `progress(done, total, track)` is told after each file and may return False to stop. Returns [(track, path or None,
-    error or "")], one per track: a track that failed is said, never dropped."""
+class Transfer:
+    """One file being copied by a worker thread, for the window to show: `state` is waiting, copying, done, failed (`error` says
+    why) or cancelled; `done` and `total` count bytes (total 0 when unknown), `text` adds a word ("converting chr1"). `cancel()`
+    takes effect at once for the window; the worker gives up at its next chunk (or when the server's silence times out), unseen."""
+
+    def __init__(self, label, job, track=None, path=None):
+        self.label, self.job, self.track, self.path = label, job, track, path
+        self.state, self.done, self.total, self.text, self.error, self.result = "waiting", 0, 0, "", "", None
+        self.stop = threading.Event()
+
+    def update(self, done, total, text=""):
+        """The job's progress call: False once cancelled."""
+        self.done, self.total, self.text = done, total or 0, text
+        return not self.stop.is_set()
+
+    def cancel(self):
+        self.stop.set()
+        if self.state in ("waiting", "copying"):
+            self.state = "cancelled"
+
+    def again(self):
+        """A new Transfer of the same file for Retry (the old one may still have a thread stuck on a silent server: it is left alone)."""
+        return Transfer(self.label, self.job, self.track, self.path)
+
+    def finished(self):
+        return self.state in ("done", "failed", "cancelled")
+
+    def run(self):
+        if self.stop.is_set():
+            return
+        self.state = "copying"
+        if self.stop.is_set():   # (cancelled between the two lines above)
+            self.state = "cancelled"
+            return
+        try:
+            self.result = self.job(self)
+        except (OSError, UserError) as e:
+            self.error = str(e)
+        self.state = "cancelled" if self.stop.is_set() else "failed" if self.error else "done"
+        if self.state == "cancelled":
+            self.error = ""   # (a cancelled file's late error is unseen)
+
+
+def start(transfers, workers=WORKERS):
+    """Run `transfers` on `workers` threads, the rest waiting their turn. Returns the threads (daemon: one stuck on a silent
+    server never keeps the program from closing)."""
+    todo = queue.Queue()
+    for t in transfers:
+        todo.put(t)
+
+    def work():
+        while True:
+            try:
+                todo.get_nowait().run()
+            except queue.Empty:
+                return
+    threads = [threading.Thread(target=work, daemon=True) for _ in range(min(workers, len(transfers)))]
+    for t in threads:
+        t.start()
+    return threads
+
+
+def track_transfers(tracks, folder):
+    """A Transfer for each of `tracks` into `folder` (made if needed). A file already there is kept (copying the hub again
+    reuses it)."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     names = local_names(tracks)
-    out = []
-    for i, t in enumerate(tracks):
-        path = folder / names[t.name]
-        try:
-            if not path.exists():
-                copy_track(t, path)
-            out.append((t, path, ""))
-        except OSError as e:
-            out.append((t, None, str(e)))
-        if progress is not None and progress(i + 1, len(tracks), t) is False:
-            out += [(rest, None, "stopped") for rest in tracks[i + 1:]]
-            break
-    return out
+
+    def one(path, location):
+        return lambda t: path.exists() or copy_file(location, path, t.update)
+    return [Transfer(t.label, one(folder / names[t.name], t.url), t, folder / names[t.name]) for t in tracks]
+
+
+def copied(transfers):
+    """[(track, path or None, error)], one per track transfer: one that failed or was stopped is said, never dropped."""
+    return [(t.track, t.path if t.state == "done" and t.result is not False else None, t.error or "stopped") for t in transfers]
+
+
+def copy_tracks(tracks, folder):
+    """Copy the files of `tracks` into `folder`, several at once (the command line; the window shows the Transfers).
+    Returns what `copied` says."""
+    transfers = track_transfers(tracks, folder)
+    for thread in start(transfers):
+        thread.join()
+    return copied(transfers)
 
 
 def pick_genome(hub, names):
@@ -218,3 +311,45 @@ def pick_genome(hub, names):
     only one, else None (the caller asks)."""
     wanted = {str(n).lower() for n in names if n}
     return next((g for g in hub.genomes if g.lower() in wanted), None) or (next(iter(hub.genomes)) if len(hub.genomes) == 1 else None)
+
+
+def genome_source(hub, genome):
+    """Where the sequence of `genome` is: the hub's own `twoBitPath`, else UCSC's file of that name (a genome the hub only maps
+    its tracks on, such as hg38)."""
+    return hub.twobit.get(genome) or UCSC_2BIT.format(genome)
+
+
+def genome_size(location):
+    """The size in bytes of the .2bit file at `location` (a URL or a path), None when a server does not say."""
+    if not is_url(location):
+        return Path(location).stat().st_size
+    with open_url(location) as reply:
+        length = reply.headers.get("Content-Length")
+    return int(length) if length and length.isdigit() else None
+
+
+def copy_genome(hub, genome, folder, progress=None):
+    """The sequence of `genome` as the FASTA file `folder`/<genome>.fa (the .2bit file downloaded or read, then written as FASTA;
+    the downloaded copy is not kept). Returns (path, [(sequence, length)]), None when `progress` stopped it. `progress(done,
+    total, name)` is told after each chunk of the download (name "": bytes) and after each sequence (name: the sequence). A FASTA file already there is kept. UserError when the sequence cannot be read."""
+    source = genome_source(hub, genome)
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    fasta = folder / f"{Path(genome).name}.fa"
+    local = folder / f"{Path(genome).name}.2bit"
+    downloaded = is_url(source)
+    try:
+        if downloaded:
+            if not local.exists() and not copy_file(source, local, None if progress is None else lambda d, n: progress(d, n, "")):
+                return None
+        else:
+            local = Path(source)
+        lengths = twobit.sequences(local)
+        if not fasta.exists() and twobit.to_fasta(local, fasta, progress) is None:
+            return None
+    except OSError as e:   # (urllib's errors are OSErrors)
+        raise UserError(f"cannot get the sequence of {genome} from {source}: {e}") from None
+    finally:
+        if downloaded:
+            local.unlink(missing_ok=True)
+    return fasta, lengths

@@ -34,7 +34,7 @@ Each user mistake gives exit code 1, nothing on stdout and exactly one `ERROR:` 
 
 ## `test_every_recipe_example_still_runs`
 
-**Result:** ✅ passed in 3.47 s · [line 74](../../tests/test_agent_cli.py#L74) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 3.28 s · [line 74](../../tests/test_agent_cli.py#L74) · **Area:** Command line for agents · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** A recipe could keep telling agents to run a command that no longer exists or whose arguments changed.
 
@@ -87,7 +87,7 @@ Every mistake (wrong reference, wrong residue, nothing to change, outside the pl
 
 ## `test_a_change_through_the_origin_is_made_and_the_file_keeps_its_origin`
 
-**Result:** ✅ passed in 0.03 s · [line 153](../../tests/test_agent_cli.py#L153) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 153](../../tests/test_agent_cli.py#L153) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A mutation that spans the origin of the plasmid could be refused or give a shifted, wrong plasmid.
 
@@ -121,7 +121,7 @@ A 4-row table (substitution, reverse-strand substitution, deletion, wrong refere
 
 ## `test_pcr_batch_gives_the_pairs_the_panel_gives`
 
-**Result:** ✅ passed in 0.07 s · [line 202](../../tests/test_agent_cli.py#L202) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 202](../../tests/test_agent_cli.py#L202) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could give primers different from what the PCR panel gives for the same region, or hide that a target has no pair, or overwrite earlier results.
 
@@ -143,7 +143,7 @@ pcr check and run give, for 150..400 and 200..450, the pairs of primer_design.de
 
 ## `test_recombineering_batch_gives_the_designs_the_panel_gives`
 
-**Result:** ✅ passed in 0.04 s · [line 252](../../tests/test_agent_cli.py#L252) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 252](../../tests/test_agent_cli.py#L252) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** The batch could place the cassette in the wrong orientation or place, give primers whose tails are not the genome's homologies, or overwrite earlier results.
 
@@ -162,7 +162,7 @@ For a 521 bp circular genome, a 120 bp cassette and rows replacing a CDS, a 11 b
 
 ## `test_batches_keep_going_past_bad_rows_and_never_collide_on_file_names`
 
-**Result:** ✅ passed in 0.06 s · [line 283](../../tests/test_agent_cli.py#L283) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.09 s · [line 283](../../tests/test_agent_cli.py#L283) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** One bad row could end a 200-row run, two rows could overwrite each other's file, or a value the windows would refuse could pass without the user knowing.
 
@@ -181,7 +181,7 @@ A table (saved as cp1252, as Excel does) with ids differing only by case, unsafe
 
 ## `test_sites_command_gives_the_cuts_and_fragments_of_the_windows`
 
-**Result:** ✅ passed in 0.02 s · [line 347](../../tests/test_agent_cli.py#L347) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 347](../../tests/test_agent_cli.py#L347) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could be told an enzyme cuts at the wrong base, or get fragment sizes that differ from the Digest tool's.
 
@@ -200,7 +200,7 @@ On a 400 bp circle with GAATTC planted at 201..206 and GGATCC at 301..306, `site
 
 ## `test_guides_command_gives_the_guides_and_marks_of_the_spacer_finder`
 
-**Result:** ✅ passed in 0.03 s · [line 365](../../tests/test_agent_cli.py#L365) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 365](../../tests/test_agent_cli.py#L365) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could report a guide at the wrong place, or a different list or mark from the Spacer Finder window's.
 
@@ -219,7 +219,7 @@ A planted SpCas9 site (20 nt guide + AGG at 101..123) is found with its PAM, str
 
 ## `test_repeats_command_gives_the_stretches_the_compare_view_gives`
 
-**Result:** ✅ passed in 0.03 s · [line 387](../../tests/test_agent_cli.py#L387) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 387](../../tests/test_agent_cli.py#L387) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could miss a repeat that can recombine in the cell, or place it wrongly.
 
@@ -237,7 +237,7 @@ A 30 bp stretch planted twice (21..50 and 221..250) is reported as one direct re
 
 ## `test_synthesis_command_gives_what_the_synthesis_module_gives`
 
-**Result:** ✅ passed in 3.68 s · [line 405](../../tests/test_agent_cli.py#L405) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 3.96 s · [line 405](../../tests/test_agent_cli.py#L405) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** The command line and the Synthesis tab could drift apart if the command had its own copy of the logic.
 
@@ -255,7 +255,7 @@ The synthesis command returns the same probability, features and verdict as synt
 
 ## `test_search_command_finds_dna_on_both_strands_and_names`
 
-**Result:** ✅ passed in 0.03 s · [line 420](../../tests/test_agent_cli.py#L420) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 420](../../tests/test_agent_cli.py#L420) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could say a sequence is absent when it is on the other strand, or give a position that is off by one.
 
@@ -286,7 +286,7 @@ Every command of the parser except the four that read a file has a runnable exam
 
 ## `test_align_command_finds_pieces_and_structural_changes_like_local_align`
 
-**Result:** ✅ passed in 0.05 s · [line 445](../../tests/test_agent_cli.py#L445) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.08 s · [line 445](../../tests/test_agent_cli.py#L445) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could report a read as matching where it does not, or miss that a query has a deletion or is inverted.
 
@@ -330,7 +330,7 @@ A 200 bp sequence and a copy with 10 bases deleted are aligned: removing the gap
 
 ## `test_codon_batch_recodes_in_place_keeping_the_protein`
 
-**Result:** ✅ passed in 0.04 s · [line 503](../../tests/test_agent_cli.py#L503) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.05 s · [line 503](../../tests/test_agent_cli.py#L503) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** An agent could write a recoded plasmid whose protein changed, whose reverse-strand gene was written the wrong way round, or whose bases differ from what the Recode window gives.
 
@@ -422,7 +422,7 @@ Nested overrides; values beyond their limits read within them; the Primer bindin
 
 ## `test_checkup_command_gives_the_verdicts_of_the_checkup_window`
 
-**Result:** ✅ passed in 0.04 s · [line 629](../../tests/test_agent_cli.py#L629) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.03 s · [line 629](../../tests/test_agent_cli.py#L629) · **Area:** Command line for agents · **Checked against:** independent implementation · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could say a gene will be expressed when nothing drives it, or the reverse.
 
@@ -513,7 +513,7 @@ plannotate_run.rows_from on two rows in pLannotate's columns: a plain CDS, and a
 
 ## `test_wsltools_command_says_what_is_missing_and_never_installs_wsl`
 
-**Result:** ✅ passed in 0.02 s · [line 756](../../tests/test_agent_cli.py#L756) · **Area:** Command line for agents · **Checked against:** property/invariant · **Strength:** 🔴 weak
+**Result:** ✅ passed in 0.01 s · [line 756](../../tests/test_agent_cli.py#L756) · **Area:** Command line for agents · **Checked against:** property/invariant · **Strength:** 🔴 weak
 
 **Why it matters:** The installer's optional step, or an agent, could try to install WSL itself, or fail with a traceback where WSL is missing; or the install could leave out pLannotate's databases or a Terminal tool; or the status (also shown by Help > Run Setup Again) could report the wrong tools as installed.
 
@@ -593,11 +593,11 @@ With the one network call replaced by canned replies: a search lists the record 
 
 ## `test_hub_command_lists_and_copies_like_the_import`
 
-**Result:** ✅ passed in 0.10 s · [line 849](../../tests/test_agent_cli.py#L849) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.07 s · [line 849](../../tests/test_agent_cli.py#L849) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, `hub list` / `hub get` could disagree with Import > Track Hub, or a hub's groups, labels, colours and hidden tracks could be read wrong (or a track silently dropped), with nothing to show it.
 
-Lists and copies the demo hub and compares with track_hub (the module the window calls); then a hub built in the test with two genomes, an included trackDb file, a composite with a view and a subtrack switched off, a colour given by the composite, a super track not shown, a bam track and a track hidden by its own visibility; then the same hub on a server (track_hub.open_url replaced: no network).
+Lists and copies the demo hub and compares with track_hub (the module the window calls); then a hub built in the test with two genomes, an included trackDb file, a composite with a view and a subtrack switched off, a colour given by the composite, a super track not shown, a bam track and a track hidden by its own visibility; then the same hub on a server (track_hub.open_url replaced: no network). Last, the hub's genome: a .2bit file made by an independent encoder in the test, read and written as FASTA (twobit, track_hub.copy_genome).
 
 | # | Input | Expected output |
 |---|---|---|
@@ -605,14 +605,16 @@ Lists and copies the demo hub and compares with track_hub (the module the window
 | 2 | hub get demo/hub --out copy; again into copy; get with no --out | plus.bw, minus.bw, sites.bb with the same bytes; 'not empty'; 'needs --out' |
 | 3 | the two-genome hub without --genome; with --genome g1 | 'several genomes'; a1 (Comp, shown, #010203), a2 (hidden: parent off), s1 (Super, hidden: super track not shown), reads (bam, not read, said in warnings), quiet (hidden) |
 | 4 | hub get https://example.org/h/hub.txt --genome g1 (open_url serves the files) | a1.bw, a2.bw, s1.bb, q.bw with their bytes; ../a2.bw from g1/ asked at the hub's folder; r.bam not copied; settings say it sends requests to its server |
+| 5 | a .2bit file (chrA: 97 bases with N runs, chrB: 12) written by a reference encoder in the test; hub get g1 --with-genome | FASTA with >chrA (80 + 17 bases, the Ns kept) and >chrB, lines 80 long; the sequences listed with 97 and 12; the source is the hub's twoBitPath |
+| 6 | genome g2 (no twoBitPath); its size; a copy from a server; a FASTA read as .2bit | UCSC's goldenPath/g2/bigZips/g2.2bit; the file's byte size; only g2.fa left in the folder (the downloaded copy not kept); 'not a .2bit' refused |
 
 **Review notes:**
 
-- The window's dialog and its copy with a progress bar (hub_dialog, main.import_hub) are not tested: no widget tests; checked by running the app offscreen on the demo hub.
+- The window's dialog, its copy with a progress bar and the import of the genome into a new tab saved as a project (hub_dialog, main.import_hub) are not tested: no widget tests; the dialog's choice was checked offscreen on the demo hub, the rest by reading only. Soft-masking, version 1 (64-bit) files and a big-endian file are not exercised.
 
 ## `test_recap_command_gives_the_numbers_of_the_window_recap`
 
-**Result:** ✅ passed in 0.06 s · [line 908](../../tests/test_agent_cli.py#L908) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.06 s · [line 942](../../tests/test_agent_cli.py#L942) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, `recap` could disagree with the window's Recap Tracks Here, or a recap could give a signal's mean, sum or items wrong, mix up a group's mean row, or miss a project's highlighted regions, with nothing to show it.
 
@@ -632,7 +634,7 @@ Recaps the demo plasmid with the demo hub's two bigWigs and bigBed and compares 
 
 ## `test_print_command_draws_the_project_as_the_window_export`
 
-**Result:** ✅ passed in 0.17 s · [line 945](../../tests/test_agent_cli.py#L945) · **Area:** Agent command line · **Checked against:** smoke · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.16 s · [line 979](../../tests/test_agent_cli.py#L979) · **Area:** Agent command line · **Checked against:** smoke · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, `print` could draw a project without its tracks' names as shown or its highlights, at the wrong width, or write over a file, with nothing to show it.
 
@@ -650,7 +652,7 @@ Saves a project of the demo plasmid with a renamed signal track and a highlight,
 
 ## `test_track_features_command_adds_what_copy_to_features_adds`
 
-**Result:** ✅ passed in 0.04 s · [line 966](../../tests/test_agent_cli.py#L966) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 1000](../../tests/test_agent_cli.py#L1000) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, copying a track's items into the sequence could lose an item's name, its 'from track' note or its file's extra columns, add the same item twice, or give the wrong type, with nothing to show it.
 
@@ -665,7 +667,7 @@ Copies a BED file of two items (one with extra columns, one on the minus strand)
 
 ## `test_signal_regions_command_finds_the_stretches_of_regions_above_threshold`
 
-**Result:** ✅ passed in 0.02 s · [line 988](../../tests/test_agent_cli.py#L988) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.02 s · [line 1022](../../tests/test_agent_cli.py#L1022) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, Regions Above Threshold and `signal-regions` could miss, split or merge stretches wrongly, give a wrong mean, or write a wrong BED file, with nothing to show it.
 
@@ -680,7 +682,7 @@ Finds the stretches of the demo bigWig over 20 (with its BED file), then of a be
 
 ## `test_split_command_writes_one_file_per_record_and_file_hash_name_reads_one`
 
-**Result:** ✅ passed in 0.07 s · [line 1026](../../tests/test_agent_cli.py#L1026) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.05 s · [line 1060](../../tests/test_agent_cli.py#L1060) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could be unable to use one chromosome of a multi-record file, or split a file into files that lose bases or have clashing names.
 
@@ -700,7 +702,7 @@ A two-record GenBank file is refused by a bare name with the record names and th
 
 ## `test_merge_command_joins_files_and_records_and_keeps_what_the_format_keeps`
 
-**Result:** ✅ passed in 0.09 s · [line 1049](../../tests/test_agent_cli.py#L1049) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.08 s · [line 1083](../../tests/test_agent_cli.py#L1083) · **Area:** Command line for agents · **Checked against:** round-trip/self-consistency · **Strength:** 🟡 adequate
 
 **Why it matters:** An agent could merge files into a multi-record file that loses a sequence, overwrites a file, or silently drops features or topology.
 
@@ -721,7 +723,7 @@ Three GenBank inputs (one repeated) are joined in order into a multi-record file
 
 ## `test_circular_tools_give_the_same_answers_on_a_plasmid_turned_round_the_origin`
 
-**Result:** ✅ passed in 0.36 s · [line 1072](../../tests/test_agent_cli.py#L1072) · **Area:** Command line for agents · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.38 s · [line 1106](../../tests/test_agent_cli.py#L1106) · **Area:** Command line for agents · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** A restriction site, guide, repeat or gene that straddles the origin of a plasmid could be missed or misplaced by a tool, while the same plasmid cut elsewhere is fine.
 
@@ -743,7 +745,7 @@ A 900 bp circle holds EcoRI, a guide with its PAM, a 30 bp repeat in two copies 
 
 ## `test_a_limit_that_is_reached_is_always_a_warning`
 
-**Result:** ✅ passed in 0.05 s · [line 1132](../../tests/test_agent_cli.py#L1132) · **Area:** Command line for agents · **Checked against:** in-test reference model · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.05 s · [line 1166](../../tests/test_agent_cli.py#L1166) · **Area:** Command line for agents · **Checked against:** in-test reference model · **Strength:** 🟡 adequate
 
 **Why it matters:** A list cut short or a search stopped at its limit could be taken for the complete answer.
 
@@ -762,7 +764,7 @@ Each limit is lowered to 1 (guides --top 1, search hits, repeats listed, align p
 
 ## `test_variants_command_sees_changes_on_both_sides_of_the_origin_and_apply_writes_them`
 
-**Result:** ✅ passed in 0.04 s · [line 1154](../../tests/test_agent_cli.py#L1154) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.04 s · [line 1188](../../tests/test_agent_cli.py#L1188) · **Area:** Command line for agents · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** A change at the first or last base of a plasmid, or a deletion across the origin, could be missed or mistaken for a break, because reads over the origin are mapped as two clipped pieces.
 
@@ -777,3 +779,21 @@ A 600 bp circle with SNPs at bases 1, 5 and 600 is read by 100-base reads every 
 **Review notes:**
 
 - The reads are error-free and evenly spaced; real reads would add noise (the thresholds are tested in test_core_formats).
+
+## `test_hub_files_are_copied_four_at_a_time_and_a_silent_server_can_be_cancelled`
+
+**Result:** ✅ passed in 0.17 s · [line 1232](../../tests/test_agent_cli.py#L1232) · **Area:** Agent command line · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+
+**Why it matters:** Without it, one server that stops answering would freeze a track hub import for minutes, files would be copied one by one, or a cancelled file would be loaded half copied.
+
+Eight track files are copied with a stand-in for the network (track_hub.open_url): at most four at once, one of them from a server that never answers; cancelling it takes effect at once, leaves no .part file and is reported as stopped while the other seven are kept; a server that times out is a failed file with its reason, and Retry copies it once the server answers.
+
+| # | Input | Expected output |
+|---|---|---|
+| 1 | 8 files, 4 workers, each answer takes 50 ms | never more than 4 at once; 7 done while the silent one holds a worker |
+| 2 | cancel the silent file, then let its server go | cancelled immediately; no .part file; copied() says stopped for it and gives the other 7 paths |
+| 3 | the server raises a timeout, then Retry after it answers | failed with 'did not answer'; after reset and a new run: done, content as served |
+
+**Review notes:**
+
+- The window's rows and buttons (hub_dialog) are checked by hand, not by a test: the suite builds no widgets.

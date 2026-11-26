@@ -2,15 +2,15 @@
 
 [← unit-test report](README.md)
 
-Built by `scripts/test_report.py` on 2026-11-25 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
+Built by `scripts/test_report.py` on 2026-11-26 from `tests.json` and the last run. Every test of the project is listed below, Python (`tests/`) and Rust (`core/src`), with what would break unnoticed without it, what its expected answer is checked against, its strength and the reviewer's notes. The Python suite holds no UI tests: windows, dialogs and drawing are checked by hand before a release.
 
 ## Totals
 
 | Suite | Tests | Passed | Failed / not run | Strong | Adequate | Weak | Not reviewed | With review notes |
 |---|---|---|---|---|---|---|---|---|
-| Python | 166 | 166 | 0 | 105 | 58 | 3 | 0 | 130 |
+| Python | 167 | 167 | 0 | 105 | 59 | 3 | 0 | 131 |
 | Rust | 83 | 83 | 0 | 49 | 33 | 1 | 0 | 57 |
-| **All** | 249 | 249 | 0 | 154 | 91 | 4 | 0 | 187 |
+| **All** | 250 | 250 | 0 | 154 | 92 | 4 | 0 | 188 |
 
 ## Weak or unreviewed tests
 
@@ -19,7 +19,7 @@ Built by `scripts/test_report.py` on 2026-11-25 from `tests.json` and the last r
 - `tests/test_synthesis_vendors.py::test_the_idt_login_and_screening_requests_have_the_shape_the_open_client_uses` (weak): The shape being checked is the one the open-source SBOL-utilities client is reported to use, not one read from IDT's documentation (behind a login) or seen on the live service: the first real call by someone with an IDT API account is the real test.
 - `core/src/primers.rs::tests::tm_and_tm_range_of_plain_and_degenerate_primers` (weak): (was tm_is_sane) 10 °C window only; exact values are checked in Python by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython. The code comment in the test still points to tests/test_primers.py, which no longer exists.; (was tm_is_sane) Comment says 'more salt or more primer = higher Tm' but primer concentration is never varied; the self-complementary (symmetric) branch is untested.; (was tm_is_sane) Superseded by tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (exact Biopython values, the same input checks, salt/Mg/dNTP/primer direction); it only remains as a fast Rust smoke test.; (was tm_range_of_a_plain_primer_is_its_tm_and_bad_letters_give_none) Duplicates the end of tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython (tm(degenerate) is None, tm_range(plain) == (tm, tm), tm_range('ACGTX') is None); the only extra is tm_range('A'), and tm_is_sane already checks tm('ACGTN') is None.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) For the two self-complementary primers only bracketing is checked, so an arbitrarily wide range would pass there.; (was tm_range_is_exactly_the_lowest_and_highest_tm_of_the_expanded_oligos) Overlaps tests/test_core_sequence.py::test_melting_temperature_matches_santalucia_and_biopython, which checks bracketing for 'AGCGGRTAACAATYTCACACNGGA' only; this Rust test is the stronger one (exact bounds, 4 primers).
 
-## Gaps and proposed tests (3 of 249 tests)
+## Gaps and proposed tests (3 of 250 tests)
 
 Tests that do not fully prove what they claim: what a bug could slip past, and a test that would catch it.
 
@@ -46,7 +46,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 
 ## Every test, by file
 
-### `tests/test_agent_cli.py` (42 tests)
+### `tests/test_agent_cli.py` (43 tests)
 
 | Test | Why it matters | Checked against | Strength | Proves its claim | Review notes |
 |---|---|---|---|---|---|
@@ -82,7 +82,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_detect_features_calls_a_part_known_only_when_a_feature_covers_exactly_its_bases` | A part could be reported as already annotated just because another feature overlaps it, hiding a real missing part. | hand-computed | adequate | not checked | Uses a stand-in editor, not a real one; Detect Features' window itself has no widget test. |
 | `test_gibson_command_adds_overlaps_and_builds_the_product_the_panel_builds` | An agent could give primers whose overlaps do not join the fragments, or a product that is not what the Assembly panel makes. | independent implementation | adequate | sound | Only Gibson is covered: Golden Gate, Sidewinder and restriction/ligation have no command yet.<br>The product's origin is the window's (a few bases before fragment 1): the test compares it as a circle. |
 | `test_ncbi_command_searches_and_fetches_through_the_import_dialogs_functions` | An agent could send more than the user's words to NCBI, fetch a record other than the one named, or overwrite a file. | hand-computed | adequate | sound | The real service is never called by the tests: an NCBI change in its answers is not caught here. |
-| `test_hub_command_lists_and_copies_like_the_import` | Without it, `hub list` / `hub get` could disagree with Import > Track Hub, or a hub's groups, labels, colours and hidden tracks could be read wrong (or a track silently dropped), with nothing to show it. | hand-computed | strong | not checked | The window's dialog and its copy with a progress bar (hub_dialog, main.import_hub) are not tested: no widget tests; checked by running the app offscreen on the demo hub. |
+| `test_hub_command_lists_and_copies_like_the_import` | Without it, `hub list` / `hub get` could disagree with Import > Track Hub, or a hub's groups, labels, colours and hidden tracks could be read wrong (or a track silently dropped), with nothing to show it. | hand-computed | strong | not checked | The window's dialog, its copy with a progress bar and the import of the genome into a new tab saved as a project (hub_dialog, main.import_hub) are not tested: no widget tests; the dialog's choice was checked offscreen on the demo hub, the rest by reading only. Soft-masking, version 1 (64-bit) files and a big-endian file are not exercised. |
 | `test_recap_command_gives_the_numbers_of_the_window_recap` | Without it, `recap` could disagree with the window's Recap Tracks Here, or a recap could give a signal's mean, sum or items wrong, mix up a group's mean row, or miss a project's highlighted regions, with nothing to show it. | hand-computed | strong | not checked | A BAM file's depth and variants in a recap are not checked here (no small BAM in the demo); the window's dialog around the same rows is checked by running the app only. |
 | `test_print_command_draws_the_project_as_the_window_export` | Without it, `print` could draw a project without its tracks' names as shown or its highlights, at the wrong width, or write over a file, with nothing to show it. | smoke | adequate | not checked | Checks the text and size of the image, not the drawing itself (the bars, heatmaps and bands are checked by looking at images from the app). |
 | `test_track_features_command_adds_what_copy_to_features_adds` | Without it, copying a track's items into the sequence could lose an item's name, its 'from track' note or its file's extra columns, add the same item twice, or give the wrong type, with nothing to show it. | hand-computed | strong | not checked |  |
@@ -92,6 +92,7 @@ Tests that do not fully prove what they claim: what a bug could slip past, and a
 | `test_circular_tools_give_the_same_answers_on_a_plasmid_turned_round_the_origin` | A restriction site, guide, repeat or gene that straddles the origin of a plasmid could be missed or misplaced by a tool, while the same plasmid cut elsewhere is fine. | property/invariant | strong | sound | Variants have their own test (they need a BAM).<br>Random sequence: a stretch of 30 bases that repeats by chance next to the planted one would change a length (the check allows 30 to 32). |
 | `test_a_limit_that_is_reached_is_always_a_warning` | A list cut short or a search stopped at its limit could be taken for the complete answer. | in-test reference model | adequate | sound | The limits are monkeypatched down, so it shows each command reports a reached limit, not that the real limits (500, 20,000, 30) are the right ones. |
 | `test_variants_command_sees_changes_on_both_sides_of_the_origin_and_apply_writes_them` | A change at the first or last base of a plasmid, or a deletion across the origin, could be missed or mistaken for a break, because reads over the origin are mapped as two clipped pieces. | hand-computed | strong | sound | The reads are error-free and evenly spaced; real reads would add noise (the thresholds are tested in test_core_formats). |
+| `test_hub_files_are_copied_four_at_a_time_and_a_silent_server_can_be_cancelled` | Without it, one server that stops answering would freeze a track hub import for minutes, files would be copied one by one, or a cancelled file would be loaded half copied. | hand-computed | adequate | not checked | The window's rows and buttons (hub_dialog) are checked by hand, not by a test: the suite builds no widgets. |
 
 ### `tests/test_assembly.py` (10 tests)
 

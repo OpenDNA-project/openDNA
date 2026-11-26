@@ -73,7 +73,7 @@ Checks site lists for repeated, tandem and palindromic sites, sites across the o
 
 ## `test_binding_matches_the_primer_sites_stored_in_the_real_dna_file`
 
-**Result:** ✅ passed in 0.01 s · [line 580](../../tests/test_primer_binding.py#L580) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.00 s · [line 580](../../tests/test_primer_binding.py#L580) · **Area:** Primer binding, real file · **Checked against:** independent implementation · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the primer sites the app computes could disagree with those SnapGene stored in a real lab file, which is the most direct check that users see the same sites as in their other tool.
 

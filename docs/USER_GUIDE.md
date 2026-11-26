@@ -50,9 +50,9 @@ BAM alignments (coverage + reads; the `.bai` is made if missing; several files a
 folder). A signal track draws its values as bars, a line or a one-line heatmap (right-click > Signal), each pixel the mean or the
 highest value of its bases, on a range of its own values in view, shared with its group, or fixed; several signals can be
 overlaid in one row (for example the two strands of RNA-seq), and the value under the mouse shows in the header. Import >
-Features and Tracks > Track Hub reads a UCSC track hub (the address of its `hub.txt`, or a folder holding one): it lists the
-hub's tracks in its groups, copies the files of a hub on the internet beside the open file, and loads them with the hub's short
-labels and colours; the tracks the hub hides at first load hidden, ready to tick in the Tracks panel. The
+Tracks > Track Hub reads a UCSC track hub (the address of its `hub.txt`, or a folder holding one): it lists the
+hub's tracks in its groups, copies the files of a hub on the internet beside the open file (four at a time, one row each with its own bar and its own ✕; Cancel All works even when a server does not answer; Retry Failed copies the ones that failed again), and loads them with the hub's short
+labels and colours; the tracks the hub hides at first load hidden, ready to tick in the Tracks panel. Choose "Import the hub's genome with the tracks" to also fetch the hub's genome (its .2bit file, or UCSC's when the hub names none; the dialog tells how big it is): it opens in a new tab with the tracks and is saved as a new .oDNA project. The
 Tracks button opens the Tracks panel: every track in its groups, with a box to show or hide it, a filter, and Ctrl/Shift-click to
 select many; its buttons and right-click menu change all the selected tracks at once (expanded, condensed or dense display, height,
 colour or a light-to-dark range of colours, log scale, group, name, remove), drag tracks to reorder them or onto a group to move
@@ -110,7 +110,7 @@ frames), *Feature details* (every qualifier of the features, not only the names)
 *Primers* (a primer name finds where it binds), and *Where*: this sequence, the selection only, or all sequences of the FASTA file (DNA only;
 it opens the sequence of the hit). It stops at 20,000 hits.
 **Import and Export menus.** *Import* is grouped by what a file holds: DNA (GenBank, .dna, FASTA or an Open DNA Project; a
-record from NCBI; a background genome from NCBI), Features and Tracks (GFF3/GTF/BED, VCF, *Import Features to Features Database*), Proteins (a protein FASTA or an
+record from NCBI; a background genome from NCBI), Tracks (a track file: GFF3/GTF/BED, bigWig, VCF, BAM; a track hub), Proteins (a protein FASTA or an
 NCBI protein, shown in the 3D structure window), Alignments (BAM, or map FASTQ reads) and Primers (a primer list). A track, VCF or BAM file is checked against the open sequence: another sequence name, items past its end, VCF REF bases that are not the bases here or a BAM reference of another length give a warning naming what differs, and the file is loaded anyway.
 
 **Primer lists** (Import → Primers): either FASTA (`>name` then the sequence, on one or more lines) or a table with one primer per line, the name then the sequence, separated by a tab, a comma or a semicolon (more columns are ignored). A first line naming the columns (`name`, `sequence`...), blank lines and lines starting with `#` are skipped. A primer is 8 to 200 letters of A, C, G, T or IUPAC codes (either case) with a one-line name of at most 60 characters. Every other line is refused, never guessed: the report names each refused line with its number and the reason, and nothing invalid reaches the primer database. *Export* is grouped the
@@ -434,7 +434,7 @@ views you have switched away from cost nothing. Click a primer, then shift-click
 Tools → Detect Common Features finds known features from the **Features Database**
 (Databases → Features Database). The window is split in half: the sequence on the left, the features found on the right; click a feature to select where it would be annotated (the sequence goes there), and tick the ones to add. The *In the file* column says whether each one is new, already annotated, or annotated the other way round: a CDS, promoter, RBS or primer binding site found in the opposite direction to the file's feature on the same bases is ticked, and *Add* turns the file's feature round (its name and notes stay; one undo step each); other types annotated the other way are listed but not ticked, as they are often annotated either way. The database is made of **sources**, one file each (`app/parts/*.tsv`, named by their
 publication or database, plus your own features in `parts.tsv` in the data folder, the source **Local**: right-click a feature → Add
-to Features Database, or Import → Features and Tracks → Import Features to Features Database; each keeps the file it came from).
+to Features Database, or the Import button of the tab; each keeps the file it came from).
 *Sources* (in the tool and in the database's tab) ticks the sources that are looked for; a source switched off is used by nothing, the Plasmid Checkup included. A part may carry the **strength**
 its source measured, with the units and the host it was measured in; units differ per source, so a number is only
 comparable inside its own source, and a part nothing measured shows none. What ships: cloning-vector features from

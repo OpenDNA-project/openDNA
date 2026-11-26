@@ -35,7 +35,7 @@ from primer_panel import PrimerPanel
 from protein import ProteinView
 import wip
 from sequence_view import SequenceView
-from view_help import ViewHelpDialog, open_options, options_tip
+from view_help import show_view_help, open_options, options_tip
 from view_picker import ViewPicker
 from pcr import PcrPage
 from tools import DigestDialog, OrfDialog
@@ -136,7 +136,7 @@ class Pane(QWidget):
         self.cog = QToolButton(autoRaise=True, focusPolicy=Qt.TabFocus)
         self.cog.clicked.connect(lambda: open_options(workspace.window, self.view_name))
         self.help = QToolButton(text="?", toolTip="Quick guide to this view", autoRaise=True, focusPolicy=Qt.TabFocus)
-        self.help.clicked.connect(lambda: ViewHelpDialog(self, self.view_name).exec())
+        self.help.clicked.connect(lambda: show_view_help(self, self.view_name))
         header.addWidget(self.cog)
         header.addWidget(self.help)
         self._update_helpers()

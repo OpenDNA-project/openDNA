@@ -899,6 +899,40 @@ def test_hub_command_lists_and_copies_like_the_import(capsys, tmp_path, monkeypa
         ("a1.bw", b"data of g1/a1.bw"), ("a2.bw", b"data of a2.bw"), ("s1.bb", b"data of g1/s1.bb"), ("q.bw", b"data of g1/q.bw")]
     assert "https://example.org/a2.bw" not in asked and "https://example.org/h/a2.bw" in asked   # (../ from g1/ is the hub's folder)
     assert "to its server" in got["settings"]["hub"]["sends"]["value"] and not (tmp_path / "web" / "r.bam").exists()
+    # the hub's genome: a .2bit file (written here by a reference encoder: T C A G packed four to a byte, N and soft-masked runs)
+    # read back as the FASTA the window opens; a genome the hub gives no twoBitPath for comes from UCSC's own address
+    import struct
+    import twobit
+
+    def encode(seqs):
+        index, body = b"", b""
+        offset = 16 + sum(1 + len(n) + 4 for n in seqs)
+        for name, bases in seqs.items():
+            index += bytes([len(name)]) + name.encode() + struct.pack("<I", offset + len(body))
+            runs = [(i, 1) for i, c in enumerate(bases) if c == "N"]
+            packed = bytearray((len(bases) + 3) // 4)
+            for i, c in enumerate(bases):
+                packed[i // 4] |= ("TCAG".index(c.upper()) if c != "N" else 0) << (6 - 2 * (i % 4))
+            body += struct.pack("<I", len(bases)) + struct.pack("<I", len(runs)) + b"".join(struct.pack("<I", r[0]) for r in runs) \
+                + b"".join(struct.pack("<I", r[1]) for r in runs) + struct.pack("<II", 1, 2) + struct.pack("<I", 3) + struct.pack("<I", 0) + bytes(packed)
+        return struct.pack("<IIII", twobit.SIGNATURE, 0, len(seqs), 0) + index + body
+    genome = {"chrA": "ACGTNNACGTAC" * 8 + "T", "chrB": "GGGCCCAAATTT"}   # (96 + 1 bases, then 12)
+    (h / "genome.2bit").write_bytes(encode(genome))
+    (h / "genomes.txt").write_text("genome g1\ntrackDb g1/trackDb.txt\ntwoBitPath genome.2bit\n\ngenome g2\ntrackDb g1/trackDb.txt\n")
+    assert twobit.sequences(h / "genome.2bit") == [("chrA", 97), ("chrB", 12)]
+    got = answer(capsys, "hub", "get", h, "--genome", "g1", "--out", tmp_path / "with", "--with-genome")
+    fasta = Path(got["genome"]["file"]).read_text().splitlines()
+    assert fasta == [">chrA", genome["chrA"][:80], genome["chrA"][80:], ">chrB", genome["chrB"]], "N kept, the lines 80 bases long"
+    assert got["genome"]["sequences"] == [{"name": "chrA", "length": 97}, {"name": "chrB", "length": 12}]
+    assert got["genome"]["from"] == str(h / "genome.2bit")
+    assert track_hub.genome_source(track_hub.open_hub(h), "g2") == "https://hgdownload.soe.ucsc.edu/goldenPath/g2/bigZips/g2.2bit"
+    assert track_hub.genome_size(h / "genome.2bit") == (h / "genome.2bit").stat().st_size
+    # a genome that is on a server: downloaded, written as FASTA, and the downloaded copy not kept
+    monkeypatch.setattr(track_hub, "open_url", lambda url, timeout=60: io.BytesIO((h / "genome.2bit").read_bytes()))
+    web = track_hub.copy_genome(track_hub.Hub("x", "x", "u", {"g2": "t"}), "g2", tmp_path / "ucsc")
+    assert web[1] == [("chrA", 97), ("chrB", 12)] and sorted(p.name for p in (tmp_path / "ucsc").iterdir()) == ["g2.fa"]
+    with pytest.raises(UserError, match="not a .2bit"):
+        twobit.sequences(tmp_path / "ucsc" / "g2.fa")
 
 
 HUB = ROOT / "demo" / "hub" / "pBAD30_eilR"   # plus.bw: 10 over [0, 2000), 30 to 4000, 20 to 5,936; minus.bw; sites.bb: 3 items
@@ -1193,3 +1227,52 @@ def test_variants_command_sees_changes_on_both_sides_of_the_origin_and_apply_wri
     write_bam(bam.with_name("h.bam"), [("p", n)], hard)
     notes = answer(capsys, "variants", gb, bam.with_name("h.bam"), "--min-depth", 3)["variants"]
     assert [(v["position"], v["kind"]) for v in notes] == [(1, "clip")] and "could not be checked" in notes[0]["change"]
+
+
+def test_hub_files_are_copied_four_at_a_time_and_a_silent_server_can_be_cancelled(tmp_path, monkeypatch):
+    """Import > Track Hub copies several files at once, and its Cancel works when a server does not answer: without it, one dead
+    server would freeze the import for minutes, or a stopped file would be loaded half copied."""
+    import threading
+    import time
+    import track_hub
+    tracks = [track_hub.HubTrack(f"t{i}", f"T{i}", f"https://example.org/t{i}.bw", "bigWig", "g", False) for i in range(8)]
+    lock, now, most, silent, release = threading.Lock(), [0], [0], {"https://example.org/t5.bw"}, threading.Event()
+
+    def open_url(url, timeout=60):
+        if url in silent:
+            release.wait(5)   # (a server that never answers, until the test lets it go)
+            raise TimeoutError()
+        with lock:
+            now[0] += 1
+            most[0] = max(most[0], now[0])
+        time.sleep(0.05)
+        with lock:
+            now[0] -= 1
+        return io.BytesIO(url.encode())
+    monkeypatch.setattr(track_hub, "open_url", open_url)
+    transfers = track_hub.track_transfers(tracks, tmp_path / "out")
+    threads = track_hub.start(transfers)
+    deadline = time.time() + 5
+    while sum(t.state == "done" for t in transfers) < 7 and time.time() < deadline:
+        time.sleep(0.01)
+    assert most[0] == 4 and [t.state for t in transfers].count("done") == 7   # (the silent one holds a worker; the others pass it)
+    assert transfers[5].state == "copying"
+    transfers[5].cancel()   # at once: the window does not wait for the server
+    assert transfers[5].state == "cancelled" and transfers[5].finished()
+    release.set()
+    for t in threads:
+        t.join(5)
+    assert transfers[5].state == "cancelled" and not any(tmp_path.joinpath("out").glob("*.part"))
+    got = track_hub.copied(transfers)
+    assert [path is None for _, path, _ in got] == [i == 5 for i in range(8)] and got[5][2] == "stopped"
+    assert (tmp_path / "out" / "t3.bw").read_bytes() == b"https://example.org/t3.bw" and not (tmp_path / "out" / "t5.bw").exists()
+    # a server that gives up (the timeout) is a failed file with its reason, and Retry copies it once the server answers
+    silent.clear()
+    monkeypatch.setattr(track_hub, "open_url", lambda url, timeout=60: (_ for _ in ()).throw(TimeoutError()))
+    again = track_hub.track_transfers(tracks[5:6], tmp_path / "out")
+    track_hub.start(again)[0].join(5)
+    assert again[0].state == "failed" and "did not answer" in again[0].error
+    monkeypatch.setattr(track_hub, "open_url", open_url)
+    again = [again[0].again()]
+    track_hub.start(again)[0].join(5)
+    assert again[0].state == "done" and (tmp_path / "out" / "t5.bw").read_bytes() == b"https://example.org/t5.bw"

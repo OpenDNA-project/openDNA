@@ -3,7 +3,7 @@
 It is one library made of *sources*, one file each, so a source can be left out whole:
 - `app/parts/*.tsv`: bundled with the program, one file per published source (named by its `#title`);
 - `parts.tsv` in the app data folder: your own features, shown as the source "Local" (right-click a feature → Add to
-  Features Database, Import → Features and Tracks → Import Features to Features Database). Each keeps the file it came from.
+  Features Database, the Import button of the Features Database tab). Each keeps the file it came from.
 
 Databases → Features Database opens it as a tab (db_tabs.py): the Features view on it, source a column of its own.
 

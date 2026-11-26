@@ -17,7 +17,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget,
+    QDialog, QDialogButtonBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton, QSplitter, QVBoxLayout,
+    QWidget,
 )
 
 from opendna_core import Document
@@ -26,8 +27,9 @@ import db_status
 import parts_library
 import primer_db
 import runner
+from annotation import import_files
 from editor import Editor
-from uikit import fit_columns, plural
+from uikit import fit_columns, plural, run_busy
 
 SPACER = 20   # N between two entries on the database's (unseen) document
 FEATURES, PRIMERS = "features", "primers"
@@ -187,8 +189,8 @@ column header</b> (Type, Strand, Source) to tick the values shown; a filtered co
 <li><b>Source</b> is where a feature comes from (a publication or database, or Local), then the record or file it was taken
 from. <b>Measured</b>, when a source measured something, is its strength in that source's units and host.</li>
 <li><b>Sources</b> ticks the sources that Detect Common Features and the Plasmid Checkup look for.</li>
-<li><b>Add</b> your own: right-click features in a file → Add to Features Database, or Import → Features and Tracks → Import
-Features to Features Database. <b>Delete</b> them: right-click here (only Local features can be deleted).</li>
+<li><b>Add</b> your own: right-click features in a file → Add to Features Database, or <b>Import</b> the features of GenBank or
+.dna files. <b>Delete</b> them: right-click here (only Local features can be deleted).</li>
 </ul>""",
     PRIMERS: """<p>Every primer you have made, designed or imported, the same in every file: a primer that binds the open sequence is
 drawn there.</p>
@@ -230,6 +232,27 @@ def help_dialog(parent, key):
     return dialog
 
 
+def import_parts(parent, paths=None):
+    """Every named feature of your own files goes in the Features Database, as a Local feature (the Import of its tab)."""
+    title = "Import features to the Features Database"
+    if not paths:
+        paths, _ = QFileDialog.getOpenFileNames(parent, title, "", "Annotated sequences (*.gb *.gbk *.gbff *.dna);;All files (*)")
+    if not paths:
+        return 0
+    rejected = []
+    try:
+        added = run_busy(parent, "Reading features…", lambda: import_files(paths, rejected))
+    except OSError as e:
+        QMessageBox.critical(parent, title, str(e))
+        return 0
+    text = f"{plural(added, 'new feature')} added to the Features Database, source Local ({parts_library.user_library()})."
+    if rejected:   # named, with the reason, never dropped silently
+        text += f"\n\n{plural(len(rejected), 'feature')} not added:\n" + "\n".join(f"• {n[:40]!r}: {why}" for n, why in rejected[:15])
+        text += f"\n… and {len(rejected) - 15} more." if len(rejected) > 15 else ""
+    (QMessageBox.warning if rejected else QMessageBox.information)(parent, title, text)
+    return added
+
+
 class DatabaseTab(QWidget):
     """A database's tab: a header (its name, how many entries, its buttons, Help), its list (the Features or Primers view) and
     the sequence of the entry clicked."""
@@ -256,6 +279,7 @@ class DatabaseTab(QWidget):
         self.edit_button = self.delete_button = None
         if key == FEATURES:
             # a push button with a menu: its arrow has room of its own (a tool button drew it over the text)
+            head.addWidget(QPushButton("Import…", clicked=lambda: import_parts(self), toolTip="Add the named features of GenBank or .dna files"))
             sources = QPushButton("Sources", toolTip="Which sources Detect Common Features and the Plasmid Checkup look for")
             sources.setMenu(sources_menu(sources))
             head.addWidget(sources)

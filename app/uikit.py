@@ -16,6 +16,32 @@ _IRREGULAR = {"copy": "copies", "match": "matches", "mismatch": "mismatches", "O
               "assembly": "assemblies", "index": "indexes", "bp": "bp", "nt": "nt", "aa": "aa", "kb": "kb"}
 
 
+class _TallBoxes(QObject):
+    """A message box whose text would be taller than the screen keeps its first lines and puts the whole text in the
+    scrollable details area (opened), so its buttons stay reachable."""
+    HEAD = 4
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Show and isinstance(obj, QMessageBox) and not obj.detailedText():
+            text = obj.text()
+            screen = obj.screen() or QApplication.primaryScreen()
+            lines = text.count("\n") + 1 + len(text) // 90   # (a rough count of the lines it takes)
+            if screen is not None and lines * obj.fontMetrics().lineSpacing() > screen.availableGeometry().height() * 0.6:
+                obj.setDetailedText(text)
+                obj.setText("\n".join(text.split("\n")[:self.HEAD]) + "\n…")
+                for b in obj.findChildren(QPushButton):
+                    if "etails" in b.text():
+                        b.click()
+                        break
+        return False
+
+
+def limit_tall_boxes(app):
+    """Install once on the QApplication: every message box then fits the screen."""
+    app._tall_boxes = _TallBoxes(app)
+    app.installEventFilter(app._tall_boxes)
+
+
 def plural(n, word, many=None):
     """'1 primer', '3 primers', '1,234 features' (thousands separated); `many` for a plural the table above does not know."""
     if n == 1:

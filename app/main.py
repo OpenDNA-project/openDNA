@@ -67,8 +67,7 @@ from track_check import match_contig   # (tests/test_multi_record.py reads it fr
 from sequence_view import SequenceView
 from terminal import Terminal
 from workspace import DEFAULT as DEFAULT_LAYOUT, Workspace, pane, split
-from annotation import DetectDialog, import_files
-from parts_library import user_library
+from annotation import DetectDialog
 from cas9 import Cas9Dialog
 import tool_settings
 import codon_dialog
@@ -85,7 +84,7 @@ import autosave
 from autosave import autosave_path
 from add_record import AddRecordsDialog
 import multigb
-from uikit import ask, background_jobs, in_background, plural, run_busy, run_cancellable
+from uikit import ask, background_jobs, in_background, limit_tall_boxes, plural, run_busy
 
 tool_settings.register_page(genetic_code.TOOL, codon_dialog.UsageBox)   # the codon usage line of the Genetic code page
 
@@ -94,10 +93,6 @@ OPEN_FILTER = ("Sequence files (*.gb *.gbk *.gbff *.genbank *.ape *.embl *.dna *
                "Open DNA Project (*.oDNA *.odp);;All files (*)")
 TRACK_FILTER = ("Tracks (*.gff *.gff3 *.gtf *.bed *.bb *.bigbed *.bw *.bigwig *.bedgraph *.bg *.bdg *.wig *.vcf *.vcf.gz *.bam);;"
                 "Alignments (*.bam);;Variants (*.vcf *.vcf.gz);;All files (*)")
-ANNOTATION_FILTER = "Annotation tracks (*.gff *.gff3 *.gtf *.bed *.bb *.bigbed);;All files (*)"
-SIGNAL_FILTER = "Signal tracks (*.bw *.bigwig *.bedgraph *.bg *.bdg *.wig);;All files (*)"
-VCF_FILTER = "Variants (*.vcf *.vcf.gz);;All files (*)"
-BAM_FILTER = "Aligned reads (*.bam);;All files (*)"
 AUTOSAVE_MS = 60_000
 TIP_MS = 300_000   # the status bar shows another tip every 5 minutes
 
@@ -291,25 +286,20 @@ class MainWindow(QMainWindow):
         file.addAction(self.close_window_action)
         file.addAction(QAction("&Quit", self, shortcut=QKeySequence.Quit, triggered=QApplication.closeAllWindows))   # every window, each asking about its own unsaved changes
 
-        # Import: by what the file holds. Tracks and reads need an open sequence (greyed until then).
+        # Import: by what the file holds. Tracks (annotations, signals, variants, reads) need an open sequence (greyed until then).
         imp = self.menuBar().addMenu("&Import")
         dna = imp.addMenu("&DNA")
         dna.addAction(QAction("&Sequence File (GenBank, .dna, FASTA, Project)…", self, triggered=self.choose_file))
         action(dna, "Sequence File as New &Chromosome…", None, lambda: self.import_as_chromosome())
         dna.addAction(QAction("From &NCBI (Nucleotide)…", self, triggered=self.import_ncbi))
         dna.addAction(QAction("&Background Genome from NCBI…", self, triggered=self.import_genome))
-        features = imp.addMenu("&Features and Tracks")
-        action(features, "&Annotation Track (GFF3, GTF, BED)…", None, lambda: self.load_tracks(ANNOTATION_FILTER))
-        action(features, "&Signal Track (bigWig, bedGraph, wig)…", None, lambda: self.load_tracks(SIGNAL_FILTER))
-        action(features, "Track &Hub (UCSC)…", None, self.import_hub)
-        action(features, "&Variants (VCF)…", None, lambda: self.load_tracks(VCF_FILTER))
-        features.addAction(QAction("Import &Features to Features Database…", self, triggered=self.import_parts))
+        tracks = imp.addMenu("&Tracks")
+        action(tracks, "&Track File (GFF, GTF, BED, bigWig, bedGraph, VCF, BAM)…", None, lambda: self.load_tracks(TRACK_FILTER))
+        action(tracks, "Track &Hub (UCSC)…", None, self.import_hub)
         proteins = imp.addMenu("&Proteins")
         proteins.addAction(wip.mark_action(QAction("Protein &FASTA (3D Structure)…", self, triggered=self.import_protein), "protein"))
         proteins.addAction(wip.mark_action(QAction("From &NCBI (Protein)…", self, triggered=lambda: self.import_ncbi("Protein")),
                                            "protein"))
-        alignments = imp.addMenu("&Alignments")
-        action(alignments, "Aligned &Reads (BAM)…", None, lambda: self.load_tracks(BAM_FILTER))
         primer_import = imp.addMenu("P&rimers")
         primer_import.addAction(QAction("Primer &List (TSV, CSV, FASTA)…", self, triggered=self.import_primer_list))
 
@@ -563,7 +553,7 @@ class MainWindow(QMainWindow):
         history.setShortcut("Ctrl+H")
         view.addAction(history)
         for panel in (filters, history):   # (the two side panels side by side, one group)
-            button = QToolButton(autoRaise=True)
+            button = QToolButton(autoRaise=True, toolButtonStyle=Qt.ToolButtonTextBesideIcon)   # the icon, then "Filters" / "History"
             button.setDefaultAction(panel)
             row2.addWidget(button)
         # (Light / Dark / System is View > Theme: chosen once, it does not need room in the toolbar)
@@ -854,7 +844,8 @@ class MainWindow(QMainWindow):
         carry = ([e for e in old.loaded() if getattr(e, "path", None)]
                  if old is not None and record and old.fasta_record and Path(old.path) == Path(path) else [])
         keep_tabs = same_file and meta is None
-        letters = self.sequence_view.size if same_file else None
+        shown = self.workspace.views(SequenceView) if same_file else []
+        letters = shown[0].size if shown else None
         if same_file:
             self.record_docs[old.fasta_record] = old.doc
             self.record_docs.pop(record, None)
@@ -914,7 +905,8 @@ class MainWindow(QMainWindow):
         ed.set_extra([p for p in old.extra if p not in temporary], temporary)
         self.set_dna_locked(old.dna_locked)
         if letters:
-            self.sequence_view.set_size(letters)
+            for view in self.workspace.views(SequenceView, build=True)[:1]:
+                view.set_size(letters)
 
     def _apply_project(self, meta, path):
         """What an Open DNA Project holds besides the GenBank part: display, tracks and BAM files, the DNA lock."""
@@ -1137,7 +1129,8 @@ class MainWindow(QMainWindow):
             a.setEnabled(True)
         ed.changed.connect(lambda: ed is self.editor and self._update_undo_actions())
         self._update_undo_actions()
-        self.sequence_view.setFocus()
+        for view in self.workspace.views(SequenceView, build=True)[:1]:   # (a saved layout may have none: add nothing)
+            view.setFocus()
         self._update_title()
         self._update_status()
         self._collect_primers()
@@ -1302,7 +1295,6 @@ class MainWindow(QMainWindow):
             self.workspace.setCurrentWidget(shown)
         else:
             self.workspace.setCurrentIndex(min(current, layouts - 1))
-        self.workspace.ensure(SequenceView)   # a document always has one, whatever the layout says
         self.genome_action.setChecked(bool(self.workspace.views(GenomeView)))
 
     def reset_layout(self):
@@ -1780,19 +1772,35 @@ class MainWindow(QMainWindow):
         return loaded
 
     def import_hub(self):
-        """Import > Track Hub: pick a UCSC track hub and its tracks (hub_dialog), copy their files (a hub on the internet: into the
-        folder chosen; one on this computer: read where they are), and load them in the hub's groups, with its short labels and
-        colours, those it hides at first hidden."""
+        """Import > Track Hub: pick a UCSC track hub and its tracks (hub_dialog), which copies their files (a hub on the internet:
+        into the folder chosen, several at once; one on this computer: read where they are); then load them in the hub's groups,
+        with its short labels and colours, those it hides at first hidden."""
         from hub_dialog import HubDialog
         dialog = HubDialog(self, self.editor)
         if dialog.exec() != QDialog.Accepted:
             return
-        tracks, folder = dialog.chosen(), dialog.target()
         said = [f"{t.label}: {t.why}" for t in dialog.tracks if t.why]   # (listed in the dialog, not loaded: said again here)
-        if folder is None:
-            copied = [(t, Path(t.url), "") for t in tracks]
+        if dialog.with_genome.isChecked():
+            self._import_hub_genome(dialog.hub, dialog.genome.currentText(), dialog.genome_got, dialog.copied, said)
         else:
-            copied = self._copy_hub(tracks, folder)
+            self._load_hub_tracks(dialog.hub, dialog.copied, said)
+
+    def _import_hub_genome(self, hub, genome, got, copied, said):
+        """The hub's genome (`got`: the FASTA file the dialog wrote and its sequences) opened in a new tab, the tracks loaded on it,
+        and the whole saved as a new .oDNA project (File > Save as Project asks where)."""
+        fasta, lengths = got
+        page = self.open_path(str(fasta))
+        if page is None:
+            return
+        page._load_hub_tracks(hub, copied, said)
+        if len(lengths) > 1:
+            QMessageBox.information(
+                page, "Import a track hub",
+                f"{genome} has {len(lengths)} sequences. A project keeps the one that is open ({lengths[0][0]}); the others stay in\n{fasta}")
+        page.save_project_as()
+
+    def _load_hub_tracks(self, hub, copied, said):
+        """Load the tracks of `hub` that were copied (`copied`: [(track, path or None, why not)]) on the open sequence."""
         said += [f"{t.label}: not copied ({why})" for t, path, why in copied if path is None]
         files = [(t, path) for t, path, _ in copied if path is not None]
         names = track_hub.local_names([t for t, _ in files])
@@ -1805,21 +1813,9 @@ class MainWindow(QMainWindow):
             for view in self.workspace.views(GenomeView):
                 view.tracks_button.setChecked(True)   # (the panel lists them: many start hidden)
             hidden = sum(not look["shown"] for look in looks.values())
-            self.statusBar().showMessage(f"{plural(len(looks), 'track')} loaded from {dialog.hub.label}"
+            self.statusBar().showMessage(f"{plural(len(looks), 'track')} loaded from {hub.label}"
                                          + (f"; {hidden} hidden, as the hub has them: tick them in the Tracks panel" if hidden else ""), 10000)
 
-    def _copy_hub(self, tracks, folder):
-        """Copy the hub's files into `folder` in a worker thread, with a progress dialog that can stop it: [(track, path or None,
-        what went wrong)] (track_hub.copy_tracks)."""
-        def work(state):
-            def progress(done, total, track):
-                state.update(done=done, text=f"{done} of {total}: {track.label}")
-                return not state["cancel"]
-            try:
-                return track_hub.copy_tracks(tracks, folder, progress)
-            except OSError as e:   # (the folder cannot be made)
-                return [(t, None, str(e)) for t in tracks]
-        return run_cancellable(self, "Import a track hub", work, len(tracks))
     def load_track(self, path, seqid=None, quiet=False, types=None, fields=None, group=None, said=None, name=None, read=None):
         """Add a GFF3/GTF/BED/bigBed/VCF file as a track of the genome view (and to Find), a bigWig/bedGraph/wig file as a
         signal track, or a BAM file as coverage + reads. `quiet`: no questions: None when the track has nothing for this sequence.
@@ -1917,26 +1913,6 @@ class MainWindow(QMainWindow):
                      "circular", "Import As Is leaves them out.") == "circular" and self.set_circular(True):
                 return types, fields, True
         return types, fields, False
-
-    def import_parts(self, paths=None):
-        """Every named feature of your own files goes in the Features Database, as a Local feature."""
-        if not paths:
-            paths, _ = QFileDialog.getOpenFileNames(self, "Import features to the Features Database", "",
-                                                    "Annotated sequences (*.gb *.gbk *.gbff *.dna);;All files (*)")
-        if not paths:
-            return 0
-        rejected = []
-        try:
-            added = run_busy(self, "Reading features…", lambda: import_files(paths, rejected))
-        except OSError as e:
-            QMessageBox.critical(self, "Import features to the Features Database", str(e))
-            return 0
-        text = f"{plural(added, 'new feature')} added to the Features Database, source Local ({user_library()})."
-        if rejected:   # named, with the reason, never dropped silently
-            text += f"\n\n{plural(len(rejected), 'feature')} not added:\n" + "\n".join(f"• {n[:40]!r}: {why}" for n, why in rejected[:15])
-            text += f"\n… and {len(rejected) - 15} more." if len(rejected) > 15 else ""
-        (QMessageBox.warning if rejected else QMessageBox.information)(self, "Import features to the Features Database", text)
-        return added
 
     def remove_tracks(self):
         """File > Remove Tracks: every annotation / variant track and read alignment loaded on this sequence (the files are not
@@ -2246,6 +2222,7 @@ if __name__ == "__main__":
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(project.NAME)
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())
+    limit_tall_boxes(app)
     app.setApplicationName(project.NAME)   # the data folder is then %APPDATA%\openDNA whether run from source or as the exe
     copy_old_data()   # settings and primers kept under the old name come along, before anything reads (or makes) the data folder
     tool_settings.stamp_format()

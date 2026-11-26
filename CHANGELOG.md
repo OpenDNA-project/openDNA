@@ -5,6 +5,22 @@ Every feature or fix adds its line under "Unreleased" in the change that makes i
 
 ## Unreleased
 
+## 0.9.2 (2026-11-26)
+
+**Features**
+- Added: importing a track hub can also import its genome (a new tab, saved as a new project), instead of only mapping the tracks on the open file.
+
+**Bugfixes**
+- Importing a track hub no longer freezes for minutes when a server stops answering: Cancel works at once, and each file gives up after 15 seconds of silence.
+- Opening an .oDNA project no longer adds a Sequence view that was not in the saved tabs.
+- Long error and warning messages (such as the list of missing project files) no longer grow taller than the screen: the full text scrolls.
+
+**UI/UX**
+- The Filters and History buttons next to the background genome box show their name beside the icon.
+- Importing a track hub copies four files at a time, shows each one's progress and its own cancel button, and can retry the ones that failed.
+- Import > Tracks holds every track kind (one Track File entry, plus Track Hub; aligned reads moved here); importing features into the Features Database is now a button of that tab.
+- A view's "?" quick guide is now a standard message box.
+
 ## 0.9.1 (2026-11-25)
 
 **UI/UX**

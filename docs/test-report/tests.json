@@ -9386,7 +9386,7 @@
    "id": "tests/test_agent_cli.py::test_hub_command_lists_and_copies_like_the_import",
    "area": "Agent command line",
    "role": "Without it, `hub list` / `hub get` could disagree with Import > Track Hub, or a hub's groups, labels, colours and hidden tracks could be read wrong (or a track silently dropped), with nothing to show it.",
-   "purpose": "Lists and copies the demo hub and compares with track_hub (the module the window calls); then a hub built in the test with two genomes, an included trackDb file, a composite with a view and a subtrack switched off, a colour given by the composite, a super track not shown, a bam track and a track hidden by its own visibility; then the same hub on a server (track_hub.open_url replaced: no network).",
+   "purpose": "Lists and copies the demo hub and compares with track_hub (the module the window calls); then a hub built in the test with two genomes, an included trackDb file, a composite with a view and a subtrack switched off, a colour given by the composite, a super track not shown, a bam track and a track hidden by its own visibility; then the same hub on a server (track_hub.open_url replaced: no network). Last, the hub's genome: a .2bit file made by an independent encoder in the test, read and written as FASTA (twobit, track_hub.copy_genome).",
    "cases": [
     {
      "input": "hub list demo/hub",
@@ -9403,12 +9403,20 @@
     {
      "input": "hub get https://example.org/h/hub.txt --genome g1 (open_url serves the files)",
      "expected": "a1.bw, a2.bw, s1.bb, q.bw with their bytes; ../a2.bw from g1/ asked at the hub's folder; r.bam not copied; settings say it sends requests to its server"
+    },
+    {
+     "input": "a .2bit file (chrA: 97 bases with N runs, chrB: 12) written by a reference encoder in the test; hub get g1 --with-genome",
+     "expected": "FASTA with >chrA (80 + 17 bases, the Ns kept) and >chrB, lines 80 long; the sequences listed with 97 and 12; the source is the hub's twoBitPath"
+    },
+    {
+     "input": "genome g2 (no twoBitPath); its size; a copy from a server; a FASTA read as .2bit",
+     "expected": "UCSC's goldenPath/g2/bigZips/g2.2bit; the file's byte size; only g2.fa left in the folder (the downloaded copy not kept); 'not a .2bit' refused"
     }
    ],
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": [
-    "The window's dialog and its copy with a progress bar (hub_dialog, main.import_hub) are not tested: no widget tests; checked by running the app offscreen on the demo hub."
+    "The window's dialog, its copy with a progress bar and the import of the genome into a new tab saved as a project (hub_dialog, main.import_hub) are not tested: no widget tests; the dialog's choice was checked offscreen on the demo hub, the rest by reading only. Soft-masking, version 1 (64-bit) files and a big-endian file are not exercised."
    ]
   },
   {
@@ -9522,6 +9530,31 @@
    "oracle": "hand-computed",
    "strength": "strong",
    "issues": []
+  },
+  {
+   "id": "tests/test_agent_cli.py::test_hub_files_are_copied_four_at_a_time_and_a_silent_server_can_be_cancelled",
+   "area": "Agent command line",
+   "role": "Without it, one server that stops answering would freeze a track hub import for minutes, files would be copied one by one, or a cancelled file would be loaded half copied.",
+   "purpose": "Eight track files are copied with a stand-in for the network (track_hub.open_url): at most four at once, one of them from a server that never answers; cancelling it takes effect at once, leaves no .part file and is reported as stopped while the other seven are kept; a server that times out is a failed file with its reason, and Retry copies it once the server answers.",
+   "cases": [
+    {
+     "input": "8 files, 4 workers, each answer takes 50 ms",
+     "expected": "never more than 4 at once; 7 done while the silent one holds a worker"
+    },
+    {
+     "input": "cancel the silent file, then let its server go",
+     "expected": "cancelled immediately; no .part file; copied() says stopped for it and gives the other 7 paths"
+    },
+    {
+     "input": "the server raises a timeout, then Retry after it answers",
+     "expected": "failed with 'did not answer'; after reset and a new run: done, content as served"
+    }
+   ],
+   "oracle": "hand-computed",
+   "strength": "adequate",
+   "issues": [
+    "The window's rows and buttons (hub_dialog) are checked by hand, not by a test: the suite builds no widgets."
+   ]
   }
  ],
  "removed": [

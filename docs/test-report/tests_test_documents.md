@@ -4,7 +4,7 @@
 
 ## `test_saving_never_damages_the_original`
 
-**Result:** ✅ passed in 0.67 s · [line 63](../../tests/test_documents.py#L63) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.68 s · [line 63](../../tests/test_documents.py#L63) · **Area:** Safe saving · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, a save that fails (disk path missing, file locked, bad data) could truncate or corrupt the user's only copy of a file or wrongly mark unsaved work as saved.
 
@@ -31,7 +31,7 @@ Forces GenBank and FASTA saves to fail in several ways and checks the original f
 
 ## `test_corrupt_and_truncated_files_are_a_clear_error`
 
-**Result:** ✅ passed in 1.38 s · [line 180](../../tests/test_documents.py#L180) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
+**Result:** ✅ passed in 1.08 s · [line 180](../../tests/test_documents.py#L180) · **Area:** Corrupt files · **Checked against:** property/invariant · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, opening a truncated or damaged file could crash the app or, worse, open a partial sequence that the user then saves over the original.
 
@@ -52,7 +52,7 @@ Truncates a real .dna and a GenBank file at many points and checks each open eit
 
 ## `test_random_edits_keep_bases_and_features_then_undo_redo_exactly`
 
-**Result:** ✅ passed in 18.62 s · [line 242](../../tests/test_documents.py#L242) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
+**Result:** ✅ passed in 17.78 s · [line 242](../../tests/test_documents.py#L242) · **Area:** Editing and undo / redo · **Checked against:** in-test reference model · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, some combination of edits (especially across the origin or with joins) could shift features onto the wrong bases or make undo/redo restore a different document, corrupting annotations silently.
 
@@ -100,7 +100,7 @@ Checks the edited_ranges list after typing, replacing, pasting and deleting; tha
 
 ## `test_undo_history_steps`
 
-**Result:** ✅ passed in 0.16 s · [line 376](../../tests/test_documents.py#L376) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
+**Result:** ✅ passed in 0.14 s · [line 376](../../tests/test_documents.py#L376) · **Area:** Undo history · **Checked against:** hand-computed · **Strength:** 🟢 strong
 
 **Why it matters:** Without it, the History panel could show wrong step names, primer database changes could fall out of sync with base edits on undo/redo, the DNA lock could be bypassed, or undo across records of a multi-record file could go in the wrong order.
 
@@ -128,7 +128,7 @@ Checks the names of annotation steps, that primer database add/rename/edit/delet
 
 ## `test_copy_reverse_complement_keeps_annotations_flipped`
 
-**Result:** ✅ passed in 0.00 s · [line 510](../../tests/test_documents.py#L510) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.01 s · [line 510](../../tests/test_documents.py#L510) · **Area:** Copy / paste · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, Copy Reverse Complement could paste the right bases but with features on the wrong strand or wrong positions, or break across the plasmid origin.
 
@@ -226,7 +226,7 @@ Drives the track layout model the Tracks panel edits (no widget): adding rows to
 
 ## `test_display_switches_and_kind_counts`
 
-**Result:** ✅ passed in 0.01 s · [line 802](../../tests/test_documents.py#L802) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
+**Result:** ✅ passed in 0.00 s · [line 802](../../tests/test_documents.py#L802) · **Area:** Feature display · **Checked against:** hand-computed · **Strength:** 🟡 adequate
 
 **Why it matters:** Without it, toggling display options could re-read all features from the core (slow on genomes) or wipe Local Align hits, and type counts could go stale after edits.
 
